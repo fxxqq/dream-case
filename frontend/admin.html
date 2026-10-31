@@ -1,0 +1,1301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>管理后台 · 造梦橱窗</title>
+  <style>
+    :root { --bg:#f6f7fb; --card:#fff; --text:#1f2330; --muted:#7a8095; --primary:#5b5bd6; --border:#e6e8f0; --danger:#e5484d; --ok:#2f9e44; }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif; background:var(--bg); color:var(--text); }
+    .wrap { max-width:1200px; margin:0 auto; padding:0 20px 60px; }
+    header { background:#fff; border-bottom:1px solid var(--border); }
+    .header-inner { display:flex; align-items:center; gap:16px; height:60px; max-width:1200px; margin:0 auto; padding:0 20px; }
+    .logo { font-weight:700; color:var(--primary); font-size:17px; }
+    .spacer { flex:1; }
+    .btn { border:none; border-radius:8px; padding:8px 16px; font-size:13px; cursor:pointer; }
+    .btn-primary { background:var(--primary); color:#fff; }
+    .btn-ghost { background:#fff; border:1px solid var(--border); color:var(--text); }
+    .btn-danger { background:#fff0f1; color:var(--danger); border:1px solid #f6c6c8; }
+    .btn-ok { background:#e7f8ec; color:var(--ok); border:1px solid #bfe8ca; }
+    .btn-sm { padding:5px 10px; font-size:12px; }
+
+    .login { max-width:360px; margin:120px auto; background:#fff; padding:32px; border-radius:16px; border:1px solid var(--border); }
+    .login h1 { font-size:18px; margin-bottom:6px; }
+    .login p { color:var(--muted); font-size:13px; margin-bottom:20px; }
+    .login input { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px; margin-bottom:12px; font-size:14px; background:#fafafe; }
+
+    .stats { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }
+    .stat { background:#fff; border:1px solid var(--border); border-radius:8px; padding:6px 14px; display:flex; align-items:baseline; gap:6px; }
+    .stat b { font-size:16px; }
+    .stat span { color:var(--muted); font-size:12px; }
+
+    .tabs { display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
+    .tab { padding:8px 18px; border-radius:999px; border:1px solid var(--border); background:#fff; cursor:pointer; font-size:14px; }
+    .tab.active { background:#1f2330; border-color:#1f2330; color:#fff; }
+
+    .panel { background:#fff; border:1px solid var(--border); border-radius:14px; overflow:hidden; }
+    .row { display:flex; align-items:center; gap:14px; padding:14px 18px; border-bottom:1px solid var(--border); }
+    .row:last-child { border-bottom:none; }
+    .row img { width:72px; height:54px; object-fit:cover; border-radius:8px; background:#eceef5; }
+    .row-main { flex:1; min-width:0; }
+    .row-title { font-weight:600; font-size:14px; margin-bottom:4px; }
+    .row-meta { font-size:12px; color:var(--muted); }
+    .row-meta .pvuv { color:#5b5bd6; font-variant-numeric:tabular-nums; cursor:help; }
+    .row-meta .row-link { color:#5b5bd6; word-break:break-all; }
+    .row-meta .row-link.repo { color:#0a7d43; }
+    .row-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .tag { display:inline-block; font-size:11px; padding:2px 8px; border-radius:999px; background:#eeeefc; color:var(--primary); margin-left:6px; }
+    .tag.warn { background:#fff7e6; color:#d48806; }
+    .tag.bad { background:#fff0f1; color:var(--danger); }
+    .tag.ok { background:#e7f8ec; color:var(--ok); }
+    .empty { padding:40px; text-align:center; color:var(--muted); font-size:14px; }
+    .form-inline { display:flex; gap:10px; padding:16px 18px; flex-wrap:wrap; }
+    .form-inline input { flex:1; min-width:140px; padding:9px 12px; border:1px solid var(--border); border-radius:10px; font-size:13px; background:#fafafe; }
+    .hint { padding:0 18px 16px; color:var(--muted); font-size:12px; }
+
+    /* 作品编辑弹窗 */
+    .modal-mask { position:fixed; inset:0; background:rgba(20,22,30,.45); display:none; align-items:center; justify-content:center; z-index:60; padding:20px; }
+    .modal { background:#fff; border-radius:16px; width:100%; max-width:640px; max-height:90vh; overflow:auto; padding:24px; }
+    .modal h2 { font-size:17px; margin-bottom:16px; }
+    .field { margin-bottom:14px; }
+    .field > label { display:block; font-size:13px; color:var(--muted); margin-bottom:6px; }
+    .field input, .field select, .field textarea {
+      width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px;
+      font-size:14px; background:#fafafe; font-family:inherit; color:var(--text);
+    }
+    .field textarea { resize:vertical; }
+    .field input[type="file"] { padding:8px; font-size:13px; }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+    /* 作品形态多选（chip） */
+    .type-picker { display:flex; flex-wrap:wrap; gap:8px; }
+    .type-picker .type-opt { position:relative; display:inline-flex; align-items:center; cursor:pointer; flex:1 1 auto; }
+    .type-picker .type-opt input { position:absolute; opacity:0; width:0; height:0; pointer-events:none; }
+    .type-picker .type-opt span {
+      display:inline-flex; align-items:center; justify-content:center; width:100%;
+      padding:8px 10px; border:1.5px solid var(--border); border-radius:999px; background:#fff;
+      color:#4a4f5e; font-size:13.5px; font-weight:500; white-space:nowrap;
+      transition:background .15s,color .15s,border-color .15s,box-shadow .15s;
+    }
+    .type-picker .type-opt:hover span { border-color:#b9bbf0; }
+    .type-picker .type-opt input:checked + span {
+      background:var(--primary); border-color:var(--primary); color:#fff;
+      box-shadow:0 4px 12px rgba(91,91,214,.28);
+    }
+    .type-picker .type-opt input:checked + span::after { content:'✓'; font-size:12px; font-weight:700; }
+    .modal-foot { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
+    .file-preview { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; align-items:center; }
+    .file-preview img { width:72px; height:72px; object-fit:cover; border-radius:8px; border:1px solid var(--border); display:block; }
+    /* 缩略图 + 删除按钮 */
+    .file-preview .thumb { position:relative; }
+    .file-preview .thumb-del {
+      position:absolute; top:-6px; right:-6px; width:20px; height:20px;
+      border:none; border-radius:50%; background:rgba(20,20,30,.66); color:#fff;
+      font-size:11px; line-height:1; cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+      transition:background .15s;
+    }
+    .file-preview .thumb-del:hover { background:#e5484d; }
+    .file-preview .thumb-tip { font-size:11px; color:var(--muted); }
+    /* 宣传图排序 */
+    .file-preview .gal { cursor:grab; }
+    .file-preview .gal.dragging { opacity:.45; cursor:grabbing; }
+    .file-preview .gal.drag-over img { outline:2px solid #5b5bd6; outline-offset:1px; }
+    .gal-order {
+      position:absolute; top:2px; left:2px; min-width:16px; height:16px; padding:0 3px;
+      display:flex; align-items:center; justify-content:center;
+      background:rgba(20,20,30,.66); color:#fff; font-size:10px; border-radius:8px; pointer-events:none;
+    }
+    .gal-move {
+      position:absolute; bottom:2px; width:18px; height:18px; border:none; border-radius:50%;
+      background:rgba(20,20,30,.66); color:#fff; font-size:12px; line-height:1; cursor:pointer;
+      display:flex; align-items:center; justify-content:center; transition:background .15s;
+    }
+    .gal-move:hover { background:#5b5bd6; }
+    .gal-move.prev { left:2px; }
+    .gal-move.next { right:2px; }
+    /* 粘贴上传 */
+    .file-row { display:flex; gap:8px; align-items:center; }
+    .file-row input[type="file"] { flex:1; min-width:0; }
+    .paste-mini {
+      flex:none; display:inline-flex; align-items:center; gap:4px;
+      padding:8px 12px; border:1px dashed var(--border); border-radius:10px;
+      background:#fff; color:var(--muted); font-size:13px; font-family:inherit;
+      cursor:pointer; transition:all .15s;
+    }
+    .paste-mini:hover { border-color:#5b5bd6; color:#5b5bd6; background:#f3f3ff; }
+    .paste-mini.on { border-style:solid; border-color:#5b5bd6; color:#5b5bd6; background:#eef0fb; }
+    .paste-tip { font-style:normal; font-size:11px; color:#a0a3b5; margin-left:6px; }
+    .field.paste-active { background:#fbfbff; box-shadow: inset 3px 0 0 #5b5bd6; border-radius:6px; }
+    @media (max-width:560px) { .grid2 { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <span class="logo">✦ 造梦橱窗 · 后台</span>
+      <a class="btn btn-ghost" href="/">返回网站</a>
+      <span class="spacer"></span>
+      <button class="btn btn-ghost" id="logoutBtn" style="display:none">退出</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="login" id="loginBox">
+      <h1>管理员登录</h1>
+      <p>请输入管理口令（服务端环境变量 ADMIN_KEY）</p>
+      <input type="password" id="keyInput" placeholder="管理口令" />
+      <button class="btn btn-primary" id="loginBtn" style="width:100%">进入后台</button>
+    </div>
+
+    <div id="adminBox" style="display:none">
+      <div class="stats" id="stats"></div>
+
+      <div class="tabs" id="tabs">
+        <button class="tab active" data-tab="pending">待审核</button>
+        <button class="tab" data-tab="all">全部作品</button>
+        <button class="tab" data-tab="reports">投诉处理</button>
+        <button class="tab" data-tab="claims">认领申请</button>
+        <button class="tab" data-tab="feedback">意见反馈</button>
+        <button class="tab" data-tab="comments">评论管理</button>
+        <button class="tab" data-tab="categories">分类管理</button>
+        <button class="tab" data-tab="types">形态管理</button>
+        <button class="tab" data-tab="tools">推荐位</button>
+        <button class="tab" data-tab="creators">认证创作者</button>
+      </div>
+
+      <div class="panel" id="panel"></div>
+    </div>
+  </div>
+
+  <!-- 作品新建 / 编辑弹窗 -->
+  <div class="modal-mask" id="editorMask">
+    <div class="modal">
+      <h2 id="editorTitle">新建作品</h2>
+      <form id="workForm">
+        <div class="field">
+          <label>标题 *</label>
+          <input name="title" required maxlength="100" placeholder="作品名称" />
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label>作者</label>
+            <input name="author" maxlength="50" placeholder="默认：管理员" />
+          </div>
+        </div>
+        <div class="field">
+          <label>形态（可多选）</label>
+          <div class="type-picker" id="adminTypePicker"></div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label>分类</label>
+            <select name="category" id="catSelect"></select>
+          </div>
+          <div class="field">
+            <label>状态</label>
+            <select name="status">
+              <option value="approved">已通过（立即展示）</option>
+              <option value="pending">待审核</option>
+              <option value="rejected">已拒绝</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>是否开源</label>
+          <select name="openSource">
+            <option value="">不标注</option>
+            <option value="1">开源（代码公开）</option>
+            <option value="0">闭源</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>源码仓库地址（标注开源时必填）</label>
+          <input type="text" name="repo" maxlength="500" placeholder="https://github.com/用户名/仓库" />
+        </div>
+        <div class="field">
+          <label>是否收费</label>
+          <select name="paid">
+            <option value="">免费 / 不标注</option>
+            <option value="1">需要付费（含付费版本）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>链接（网站地址 / 下载链接 / 体验链接，按形态必填）</label>
+          <input name="link" maxlength="500" placeholder="https://..." />
+        </div>
+        <div class="field">
+          <label>介绍 / 使用说明</label>
+          <textarea name="prompt" rows="3" maxlength="1000" placeholder="做什么用的、怎么体验、有什么亮点"></textarea>
+        </div>
+        <div class="field" data-paste="image">
+          <label>封面 / 截图 <span id="coverHint">*</span> <em class="paste-tip">可 Ctrl+V 粘贴</em></label>
+          <div class="file-row">
+            <input type="file" name="image" accept="image/*" />
+            <button type="button" class="paste-mini" data-paste="image"><span>📋</span>粘贴</button>
+          </div>
+          <div class="file-preview" id="coverPreview"></div>
+        </div>
+        <div class="field" data-paste="qrcode">
+          <label>二维码（小程序必填） <em class="paste-tip">可 Ctrl+V 粘贴</em></label>
+          <div class="file-row">
+            <input type="file" name="qrcode" accept="image/*" />
+            <button type="button" class="paste-mini" data-paste="qrcode"><span>📋</span>粘贴</button>
+          </div>
+          <div class="file-preview" id="qrPreview"></div>
+        </div>
+        <div class="field" data-paste="images">
+          <label>宣传图（最多 9 张，选填） <em class="paste-tip">可连续 Ctrl+V 粘贴</em></label>
+          <div class="file-row">
+            <input type="file" name="images" accept="image/*" multiple />
+            <button type="button" class="paste-mini" data-paste="images"><span>📋</span>粘贴</button>
+          </div>
+          <div class="file-preview" id="galleryPreview"></div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" id="cancelEdit">取消</button>
+          <button type="submit" class="btn btn-primary" id="saveWorkBtn">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let KEY = sessionStorage.getItem('adminKey') || '';
+    let currentTab = 'pending';
+    const $ = id => document.getElementById(id);
+    const panel = $('panel');
+
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    const api = (path, opts = {}) => {
+      const url = path + (path.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(KEY);
+      return fetch(url, opts).then(async r => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || '请求失败');
+        return data;
+      });
+    };
+    const toast = msg => {
+      let t = document.getElementById('t');
+      if (!t) { t = document.createElement('div'); t.id = 't'; t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#1f2330;color:#fff;padding:10px 22px;border-radius:999px;font-size:14px;z-index:99'; document.body.appendChild(t); }
+      t.textContent = msg; t.style.opacity = 1;
+      clearTimeout(t._x); t._x = setTimeout(() => t.style.opacity = 0, 2000);
+    };
+    // 让打开着的前台页面静默刷新（改精选/置顶/审核/删除后不用手动刷新）
+    const notifyCh = (() => { try { return ('BroadcastChannel' in window) ? new BroadcastChannel('dm-sync') : null; } catch { return null; } })();
+    const notifySite = () => {
+      try { if (notifyCh) notifyCh.postMessage('works-changed'); } catch { /* ignore */ }
+      try { localStorage.setItem('dm_works_changed', String(Date.now())); } catch { /* ignore */ }
+    };
+
+    // ---- 登录 ----
+    $('loginBtn').onclick = async () => {
+      const key = $('keyInput').value.trim();
+      if (!key) return toast('请输入口令');
+      KEY = key;
+      try {
+        await api('/api/admin/stats');
+        sessionStorage.setItem('adminKey', KEY);
+        enter();
+      } catch (e) { toast(e.message || '口令错误'); }
+    };
+    $('logoutBtn').onclick = () => { sessionStorage.removeItem('adminKey'); location.reload(); };
+
+    function enter() {
+      $('loginBox').style.display = 'none';
+      $('adminBox').style.display = 'block';
+      $('logoutBtn').style.display = 'inline-block';
+      loadStats();
+      renderTab(currentTab);
+    }
+
+    async function loadStats() {
+      try {
+        const s = await api('/api/admin/stats');
+        $('stats').innerHTML = [
+          ['作品总数', s.total], ['已通过', s.approved], ['待审核', s.pending],
+          ['待处理投诉', s.reports], ['待看反馈', s.feedback], ['待审认领', s.claims || 0],
+          ['今日 PV', s.pvToday || 0], ['今日 UV', s.uvToday || 0],
+          ['累计 PV', s.pv || 0], ['累计 UV', s.uv || 0],
+          ['总浏览', s.views], ['总点赞', s.likes]
+        ].map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
+      } catch (e) { toast(e.message); }
+    }
+
+    // ---- Tab 切换 ----
+    $('tabs').onclick = e => {
+      const t = e.target.dataset.tab;
+      if (!t) return;
+      currentTab = t;
+      document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+      renderTab(t);
+    };
+
+    function renderTab(tab) {
+      panel.innerHTML = '<div class="empty">加载中…</div>';
+      if (tab === 'pending') loadWorks('pending');
+      if (tab === 'all') loadWorks('全部');
+      if (tab === 'reports') loadReports();
+      if (tab === 'claims') loadClaims();
+      if (tab === 'feedback') loadFeedback();
+      if (tab === 'comments') loadComments();
+      if (tab === 'categories') loadCategories();
+      if (tab === 'types') loadTypes();
+      if (tab === 'tools') loadTools();
+      if (tab === 'creators') loadCreators();
+    }
+
+    // ---- 作品 ----
+    let WORK_CACHE = {};   // id → 作品（编辑用）
+    let editingId = null;  // null = 新建
+
+    let curStatus = '全部';   // 当前作品列表的筛选状态（原地改行时判断是否该移出列表）
+
+    // 单行 HTML：loadWorks 与原地补丁共用，保证两种渲染完全一致
+    // 链接缩略显示：去协议，超长截断，悬停 title 显示完整地址
+    function shortUrl(u, max = 46) {
+      let s = String(u || '').replace(/^https?:\/\//i, '').replace(/\/$/, '');
+      return s.length > max ? s.slice(0, max - 1) + '…' : s;
+    }
+    function rowHtml(w) {
+      return `
+          <div class="row" data-row="${w.id}">
+            <img src="${w.thumb}" alt="" />
+            <div class="row-main">
+              <div class="row-title">${esc(w.title)}
+                <span class="tag">${esc((w.types && w.types.length ? w.types : [w.type || '网站']).join(' / '))}</span>
+                ${w.status === 'pending' ? '<span class="tag warn">待审核</span>' : ''}
+                ${w.anon ? '<span class="tag">匿名投稿</span>' : ''}
+                ${w.status === 'rejected' ? '<span class="tag bad">已拒绝</span>' : ''}
+                ${w.featured ? '<span class="tag ok">精选</span>' : ''}
+                ${w.pinned ? '<span class="tag">置顶</span>' : ''}
+                ${w.openSource === true ? '<span class="tag ok">开源</span>' : w.openSource === false ? '<span class="tag">闭源</span>' : ''}
+                ${w.paid ? '<span class="tag warn">付费</span>' : ''}
+                ${w.claimable ? `<span class="tag warn" title="${w.claimed ? '已开放认领，审核通过会转移归属' : '无归属作品（匿名投稿 / 后台代传）默认可认领'}">可认领</span>` : ''}
+              </div>
+              <div class="row-meta">@${esc(w.author)} · ${esc(w.category)} · ♥${w.likes} · 👁${w.views}
+                · <span class="pvuv" title="今日 PV ${w.pvToday || 0} · UV ${w.uvToday || 0}">PV ${w.pv || 0} · UV ${w.uv || 0}</span>
+                ${w.reports ? `· <span style="color:#e5484d">投诉 ${w.reports}</span>` : ''}
+                ${w.link ? `· <a href="${esc(w.link)}" target="_blank" rel="noopener" class="row-link" title="${esc(w.link)}">${esc(shortUrl(w.link))}</a>` : ''}
+                ${w.repo ? `· <a href="${esc(w.repo)}" target="_blank" rel="noopener" class="row-link repo" title="源码：${esc(w.repo)}">源码：${esc(shortUrl(w.repo, 30))}</a>` : ''}</div>
+            </div>
+            <div class="row-actions">
+              <button class="btn btn-ghost btn-sm" data-act="edit" data-id="${w.id}">编辑</button>
+              ${w.status !== 'approved' ? `<button class="btn btn-ok btn-sm" data-act="approve" data-id="${w.id}">通过</button>` : ''}
+              ${w.status !== 'rejected' ? `<button class="btn btn-danger btn-sm" data-act="reject" data-id="${w.id}">拒绝</button>` : ''}
+              <button class="btn btn-ghost btn-sm" data-act="feature" data-id="${w.id}">${w.featured ? '取消精选' : '设为精选'}</button>
+              <button class="btn btn-ghost btn-sm" data-act="pin" data-id="${w.id}">${w.pinned ? '取消置顶' : '置顶'}</button>
+              <button class="btn btn-ghost btn-sm" data-act="claimopen" data-id="${w.id}">${w.claimable ? '关闭认领' : '开放认领'}</button>
+              <button class="btn btn-danger btn-sm" data-act="del" data-id="${w.id}">删除</button>
+            </div>
+          </div>`;
+    }
+
+    // 只替换这一行（或直接移除），不重渲染整个列表 → 页面不跳动、滚动位置不变
+    function patchRow(id) {
+      const el = panel.querySelector(`.row[data-row="${id}"]`);
+      const w = WORK_CACHE[id];
+      if (!el) return;
+      const stay = w && (curStatus === '全部' || w.status === curStatus);
+      if (!stay) { el.style.transition = 'opacity .2s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 200); return; }
+      const tmp = document.createElement('div');
+      tmp.innerHTML = rowHtml(w).trim();
+      el.replaceWith(tmp.firstElementChild);
+    }
+
+    async function loadWorks(status) {
+      curStatus = status;
+      try {
+        const list = await api('/api/admin/works?status=' + encodeURIComponent(status));
+        list.forEach(w => { WORK_CACHE[w.id] = w; });
+        const head = `<div class="form-inline" style="border-bottom:1px solid var(--border)">
+            <button class="btn btn-primary" id="newWorkBtn">＋ 新建作品</button>
+          </div>`;
+        if (!list.length) { panel.innerHTML = head + '<div class="empty">暂无作品</div>'; return; }
+        panel.innerHTML = head + list.map(rowHtml).join('');
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    // ---- 新建 / 编辑弹窗 ----
+    const editorMask = $('editorMask');
+    const workForm = $('workForm');
+
+    // 作品形态（多选）：形态清单由后台「形态管理」维护，这里动态渲染
+    async function loadTypeOptions() {
+      try {
+        const meta = await fetch('/api/type-meta').then(r => r.json());
+        const box = $('adminTypePicker');
+        const cur = [...box.querySelectorAll('input[name="types"]:checked')].map(i => i.value);
+        box.innerHTML = (Array.isArray(meta) ? meta : []).map((t, i) => {
+          const on = cur.length ? cur.indexOf(t.name) !== -1 : i === 0;
+          return `<label class="type-opt"><input type="checkbox" name="types" value="${esc(t.name)}"${on ? ' checked' : ''} /><span>${t.icon || '✨'} ${esc(t.name)}</span></label>`;
+        }).join('');
+      } catch {}
+    }
+    function adminSelectedTypes() {
+      return [...workForm.querySelectorAll('input[name="types"]:checked')].map(i => i.value);
+    }
+    function adminSetTypes(list) {
+      const want = (list || []).filter(Boolean);
+      workForm.querySelectorAll('input[name="types"]').forEach(i => { i.checked = want.indexOf(i.value) !== -1; });
+      if (!adminSelectedTypes().length) workForm.querySelector('input[name="types"]').checked = true;
+    }
+
+    async function loadCatOptions(selected) {
+      try {
+        const list = await api('/api/categories');
+        $('catSelect').innerHTML = list
+          .filter(c => c !== '全部')
+          .map(c => `<option value="${esc(c)}"${c === selected ? ' selected' : ''}>${esc(c)}</option>`)
+          .join('');
+      } catch {}
+    }
+
+    // ---- 图片预览（带删除）----
+    let existingCover = '';     // 编辑时的原封面
+    let existingQr = '';        // 编辑时的原二维码
+    let originalImages = [];    // 编辑时服务器上原有的宣传图
+    let galItems = [];          // 有序宣传图：{kind:'old',url} | {kind:'new',file,src}
+    let qrCleared = false;      // 二维码被手动删除
+
+    // 原有但已从列表里删掉的宣传图
+    const removedGallery = () => {
+      const kept = galItems.filter(it => it.kind === 'old').map(it => it.url);
+      return originalImages.filter(u => kept.indexOf(u) === -1);
+    };
+
+    const thumbHtml = (src, delAttr, extra = '') =>
+      `<div class="thumb" ${extra}><img src="${src}" alt="" />${delAttr ? `<button type="button" class="thumb-del" ${delAttr} title="删除">✕</button>` : ''}</div>`;
+
+    function setNewGallery(list) {
+      try {
+        const dt = new DataTransfer();
+        list.forEach(f => dt.items.add(f));
+        workForm.images.files = dt.files;
+        return true;
+      } catch (_) { return false; }
+    }
+
+    function keptExisting() {
+      return galItems.filter(it => it.kind === 'old').map(it => it.url);
+    }
+
+    function renderGalleryPreview() {
+      $('galleryPreview').innerHTML = galItems.map((it, i) =>
+        `<div class="thumb gal" draggable="true" data-index="${i}" title="拖动可调整顺序">
+           <img src="${it.kind === 'old' ? it.url : it.src}" alt="" />
+           <span class="gal-order">${i + 1}</span>
+           <button type="button" class="gal-move prev" data-gmove="${i}:-1" title="前移">‹</button>
+           <button type="button" class="gal-move next" data-gmove="${i}:1" title="后移">›</button>
+           <button type="button" class="thumb-del" data-del="gal" data-i="${i}" title="删除">✕</button>
+         </div>`).join('');
+      bindThumbDel();
+      bindGalleryDrag();
+    }
+
+    function moveGal(from, to) {
+      if (from === to || from < 0 || to < 0 || from >= galItems.length || to >= galItems.length) return;
+      const [it] = galItems.splice(from, 1);
+      galItems.splice(to, 0, it);
+      renderGalleryPreview();
+    }
+
+    let galDragFrom = -1;
+    function bindGalleryDrag() {
+      const box = $('galleryPreview');
+      box.querySelectorAll('.gal').forEach(el => {
+        el.addEventListener('dragstart', e => {
+          galDragFrom = +el.dataset.index;
+          el.classList.add('dragging');
+          try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(galDragFrom)); } catch (_) {}
+        });
+        el.addEventListener('dragend', () => {
+          el.classList.remove('dragging');
+          box.querySelectorAll('.gal').forEach(x => x.classList.remove('drag-over'));
+        });
+        el.addEventListener('dragover', e => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (+el.dataset.index !== galDragFrom) el.classList.add('drag-over');
+        });
+        el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+        el.addEventListener('drop', e => {
+          e.preventDefault();
+          el.classList.remove('drag-over');
+          if (galDragFrom >= 0 && galDragFrom !== +el.dataset.index) moveGal(galDragFrom, +el.dataset.index);
+        });
+      });
+      box.querySelectorAll('.gal-move').forEach(btn => {
+        btn.onclick = e => {
+          e.preventDefault();
+          const [i, d] = btn.dataset.gmove.split(':').map(Number);
+          moveGal(i, i + d);
+        };
+      });
+    }
+
+    function renderCoverPreview() {
+      const f = workForm.image.files[0];
+      $('coverPreview').innerHTML = f
+        ? thumbHtml(URL.createObjectURL(f), 'data-del="cover"') + '<span class="thumb-tip">新封面</span>'
+        : (existingCover ? thumbHtml(existingCover, '') + '<span class="thumb-tip">当前封面（必填）</span>' : '');
+      bindThumbDel();
+    }
+
+    function renderQrPreview() {
+      const f = workForm.qrcode.files[0];
+      $('qrPreview').innerHTML = f
+        ? thumbHtml(URL.createObjectURL(f), 'data-del="qr"')
+        : (existingQr && !qrCleared ? thumbHtml(existingQr, 'data-del="qr"') + '<span class="thumb-tip">当前二维码</span>' : '');
+      bindThumbDel();
+    }
+
+    function bindThumbDel() {
+      document.querySelectorAll('.file-preview .thumb-del').forEach(btn => {
+        btn.onclick = e => {
+          e.preventDefault();
+          const kind = btn.dataset.del;
+          const i = +btn.dataset.i;
+          if (kind === 'cover') {
+            workForm.image.value = '';
+            renderCoverPreview();
+          } else if (kind === 'qr') {
+            workForm.qrcode.value = '';
+            qrCleared = true;  // 提交时真正删除服务器上的二维码
+            renderQrPreview();
+            toast('已删除二维码');
+          } else if (kind === 'gal') {
+            const [it] = galItems.splice(i, 1);
+            if (it && it.kind === 'new') URL.revokeObjectURL(it.src);
+            syncGalleryInput();
+            renderGalleryPreview();
+          }
+        };
+      });
+    }
+
+    // 把 galItems 里的新图同步回 file input（FormData / 旧逻辑兼容）
+    function syncGalleryInput() {
+      const news = galItems.filter(it => it.kind === 'new').map(it => it.file);
+      setNewGallery(news);
+    }
+
+    async function openEditor(id) {
+      editingId = id || null;
+      workForm.reset();
+      existingCover = ''; existingQr = ''; originalImages = []; galItems = []; qrCleared = false;
+      ['coverPreview', 'qrPreview', 'galleryPreview'].forEach(x => $(x).innerHTML = '');
+      setPasteTarget('image');
+      const w = id ? WORK_CACHE[id] : null;
+      $('editorTitle').textContent = w ? '编辑作品：' + w.title : '新建作品';
+      $('coverHint').textContent = w ? '（不选则保留原封面）' : '*';
+      $('saveWorkBtn').textContent = w ? '保存修改' : '创建作品';
+      await loadTypeOptions();
+      await loadCatOptions(w ? w.category : null);
+      let draftRestored = false;
+      if (!w) draftRestored = restoreDraft(); // 新建模式恢复草稿
+      if (w) {
+        workForm.title.value = w.title || '';
+        workForm.author.value = w.author || '';
+        adminSetTypes(w.types && w.types.length ? w.types : [w.type || '网站']);
+        workForm.status.value = w.status || 'approved';
+        workForm.openSource.value = w.openSource === true ? '1' : w.openSource === false ? '0' : '';
+        workForm.repo.value = w.repo || '';
+        workForm.paid.value = w.paid ? '1' : '';
+        workForm.link.value = w.link || '';
+        workForm.prompt.value = w.intro || '';
+        existingCover = w.image || '';
+        existingQr = w.qrcode || '';
+        originalImages = (w.images || []).slice();
+        galItems = originalImages.map(u => ({ kind: 'old', url: u }));
+      }
+      renderCoverPreview();
+      renderQrPreview();
+      renderGalleryPreview();
+      editorMask.style.display = 'flex';
+      if (draftRestored) toast('已恢复上次未提交的草稿（图片需重新选择）');
+      setTimeout(() => workForm.title.focus(), 50);
+    }
+
+    // ---- 关闭保护 + 草稿（新建模式）----
+    const DRAFT_KEY = 'admin_work_draft';
+    let draftTimer = null;
+    function editorDirty() {
+      if (['title', 'author', 'link', 'prompt'].some(k => workForm[k].value.trim())) return true;
+      if (workForm.image.files.length || workForm.qrcode.files.length) return true;
+      if (galItems.length) return true;
+      return false;
+    }
+    function saveDraft() {
+      if (editingId) return; // 编辑模式不存草稿
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({
+          title: workForm.title.value, author: workForm.author.value,
+          types: adminSelectedTypes(), category: workForm.category.value,
+          status: workForm.status.value, link: workForm.link.value,
+          openSource: workForm.openSource.value,
+          repo: workForm.repo.value,
+          paid: workForm.paid.value,
+          prompt: workForm.prompt.value, t: Date.now()
+        }));
+      } catch {}
+    }
+    function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch {} }
+    function restoreDraft() {
+      try {
+        const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+        if (!d) return false;
+        if (!['title', 'author', 'link', 'prompt'].some(k => (d[k] || '').trim())) return false;
+        workForm.title.value = d.title || '';
+        workForm.author.value = d.author || '';
+        adminSetTypes(Array.isArray(d.types) && d.types.length ? d.types : (d.type ? [d.type] : ['网站']));
+        if ([...workForm.category.options].some(o => o.value === d.category)) workForm.category.value = d.category;
+        if ([...workForm.status.options].some(o => o.value === d.status)) workForm.status.value = d.status;
+        workForm.openSource.value = ['', '1', '0'].includes(d.openSource) ? d.openSource : '';
+        workForm.repo.value = d.repo || '';
+        workForm.paid.value = d.paid === '1' ? '1' : '';
+        workForm.link.value = d.link || '';
+        workForm.prompt.value = d.prompt || '';
+        return true;
+      } catch { return false; }
+    }
+    workForm.addEventListener('input', () => { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 400); });
+    workForm.addEventListener('change', () => saveDraft());
+
+    function tryCloseEditor() {
+      if (!editingId && editorDirty()) {
+        saveDraft();
+        if (!confirm('内容还没提交，已自动存为草稿，下次打开「新建作品」会恢复（图片需重新选择）。确定关闭吗？')) return;
+      }
+      editorMask.style.display = 'none';
+    }
+    $('cancelEdit').onclick = tryCloseEditor;
+    editorMask.onclick = e => { if (e.target === editorMask) tryCloseEditor(); };
+    workForm.image.onchange = e => { renderCoverPreview(); };
+    workForm.qrcode.onchange = e => {
+      if (workForm.qrcode.files[0]) qrCleared = false;
+      renderQrPreview();
+    };
+    workForm.images.onchange = e => {
+      const files = [...e.target.files];
+      for (const f of files) {
+        if (!f.type || !f.type.startsWith('image/')) continue;
+        if (galItems.length >= 9) { toast('最多 9 张宣传图'); break; }
+        galItems.push({ kind: 'new', file: f, src: URL.createObjectURL(f) });
+      }
+      e.target.value = ''; // 清空，方便再次选择追加
+      syncGalleryInput();
+      renderGalleryPreview();
+    };
+
+    // ---- 粘贴上传（封面 / 二维码 / 宣传图）----
+    let pasteTarget = 'image';
+
+    function setPasteTarget(t) {
+      pasteTarget = t;
+      document.querySelectorAll('.paste-mini').forEach(b => b.classList.toggle('on', b.dataset.paste === t));
+      document.querySelectorAll('.field[data-paste]').forEach(f => f.classList.toggle('paste-active', f.dataset.paste === t));
+    }
+
+    function clipboardImage(cd) {
+      if (!cd) return null;
+      for (const it of [...(cd.items || [])]) {
+        if (it.kind === 'file' && it.type && it.type.startsWith('image/')) {
+          const f = it.getAsFile();
+          if (f) return f;
+        }
+      }
+      for (const f of [...(cd.files || [])]) if (f.type && f.type.startsWith('image/')) return f;
+      return null;
+    }
+
+    function putFile(input, file) {
+      try {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        input.onchange({ target: input });
+        return true;
+      } catch (_) { return false; }
+    }
+
+    function appendGallery(files) {
+      let added = 0;
+      for (const f of files) {
+        if (!f.type || !f.type.startsWith('image/')) continue;
+        if (galItems.length >= 9) { toast('最多 9 张宣传图'); break; }
+        galItems.push({ kind: 'new', file: f, src: URL.createObjectURL(f) });
+        added++;
+      }
+      if (!added) return;
+      syncGalleryInput();
+      renderGalleryPreview();
+      toast(`已粘贴宣传图 ${galItems.length}/9`);
+    }
+
+    function applyPasted(target, file) {
+      if (!file) return;
+      if (target === 'images') { appendGallery([file]); return; }
+      const input = target === 'qrcode' ? workForm.qrcode : workForm.image;
+      if (!putFile(input, file)) { toast('当前浏览器不支持粘贴，请点击选择文件'); return; }
+      toast(target === 'qrcode' ? '已粘贴二维码' : '已粘贴封面');
+    }
+
+    document.querySelectorAll('.paste-mini').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        e.preventDefault();
+        const t = btn.dataset.paste;
+        setPasteTarget(t);
+        if (!navigator.clipboard || !navigator.clipboard.read) { toast('请按 Ctrl+V 粘贴'); return; }
+        try {
+          const items = await navigator.clipboard.read();
+          for (const item of items) {
+            const type = item.types.find(x => x.startsWith('image/'));
+            if (!type) continue;
+            const blob = await item.getType(type);
+            applyPasted(t, new File([blob], 'clipboard.png', { type }));
+            return;
+          }
+          toast('剪贴板里没有图片，请先截图或复制图片');
+        } catch (_) { toast('浏览器未授权读取剪贴板，请直接按 Ctrl+V'); }
+      });
+    });
+
+    document.querySelectorAll('.field[data-paste]').forEach(f => {
+      f.addEventListener('mouseenter', () => setPasteTarget(f.dataset.paste));
+    });
+
+    document.addEventListener('paste', e => {
+      if (editorMask.style.display === 'none') return;
+      const ae = document.activeElement;
+      if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && ae.type !== 'file'
+          && e.clipboardData && e.clipboardData.getData('text')) return;
+      const file = clipboardImage(e.clipboardData);
+      if (!file) return;
+      e.preventDefault();
+      applyPasted(pasteTarget, file);
+    });
+
+    workForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = $('saveWorkBtn');
+      const oldText = btn.textContent;
+      try {
+        // 形态必填校验：只有网站需要链接，小程序需要二维码
+        const pickedTypes = [...document.querySelectorAll('#adminTypePicker input:checked')].map(i => i.value);
+        if (pickedTypes.includes('网站') && !workForm.link.value.trim()) {
+          throw new Error('形态含「网站」，请填写网站地址');
+        }
+        if (pickedTypes.includes('小程序')) {
+          const hasQr = workForm.qrcode.files.length > 0 || (existingQr && !qrCleared);
+          if (!hasQr) throw new Error('形态含「小程序」，请上传小程序码 / 二维码');
+        }
+
+        const fd = new FormData(workForm);
+        if (!editingId && !workForm.image.files.length) throw new Error('请上传封面图');
+
+        // 图片压缩（封面 1600 + 缩略图 520，宣传图 1600）
+        const cover = workForm.image.files[0];
+        if (cover) {
+          const main = await shrink(cover, 1600, 0.85);
+          const thumb = await shrink(cover, 960, 0.82);
+          if (main) { fd.set('image', main, 'cover.jpg'); }
+          if (thumb) { fd.set('thumb', thumb, 'thumb.jpg'); }
+        }
+        fd.delete('images');
+        // 按界面顺序逐张压缩后追加（已有图不重传，用 imageOrder 告知最终顺序）
+        const newFiles = galItems.filter(it => it.kind === 'new').map(it => it.file).slice(0, 9);
+        for (let i = 0; i < newFiles.length; i++) {
+          const g = await shrink(newFiles[i], 1600, 0.82);
+          fd.append('images', g || newFiles[i], 'gallery-' + i + '.jpg');
+        }
+        if (galItems.length) {
+          let n = -1;
+          fd.set('imageOrder', JSON.stringify(galItems.map(it =>
+            it.kind === 'old' ? it.url : `__new__${++n}`)));
+        }
+
+        // 编辑模式：保留已有宣传图、删除被标记的图片与二维码
+        if (editingId) {
+          fd.set('keepExisting', '1');
+          const removed = removedGallery();
+          if (removed.length) fd.set('removedImages', JSON.stringify(removed));
+          if (!workForm.qrcode.files.length && qrCleared) fd.set('removeQrcode', '1');
+        }
+
+        const path = editingId ? '/api/admin/works/' + editingId : '/api/admin/works';
+        btn.disabled = true;
+        btn.textContent = '保存中…';
+        await api(path, { method: editingId ? 'PUT' : 'POST', body: fd });
+        if (!editingId) clearDraft(); // 创建成功，草稿完成使命
+        editorMask.style.display = 'none';
+        toast(editingId ? '已保存修改' : '作品已创建');
+        notifySite();
+        loadStats();
+        renderTab(currentTab);
+      } catch (err) {
+        toast(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = oldText;
+      }
+    });
+
+    // 用 canvas 压缩图片
+    function shrink(file, maxSize, quality) {
+      return new Promise(resolve => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(b => resolve(b), 'image/jpeg', quality);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+        img.src = url;
+      });
+    }
+
+    panel.addEventListener('click', async e => {
+      if (e.target.id === 'newWorkBtn') { openEditor(null); return; }
+      const btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      const { act, id } = btn.dataset;
+      if (act === 'edit') { openEditor(id); return; }
+      try {
+        const w = WORK_CACHE[id] || {};
+        if (act === 'del') {
+          if (!confirm('确定删除这个作品？图片也会一起删除')) return;
+          await api('/api/admin/works/' + id, { method: 'DELETE' });
+          delete WORK_CACHE[id];
+          toast('已删除');
+          patchRow(id);               // 只移除这一行
+          loadStats();
+          notifySite();
+          return;
+        }
+        if (act === 'feature') {
+          const r = await api(`/api/admin/works/${id}/feature`, { method: 'POST' });
+          w.featured = r.featured;
+          toast(r.featured ? '已设为精选' : '已取消精选');
+        } else if (act === 'pin') {
+          const r = await api(`/api/admin/works/${id}/pin`, { method: 'POST' });
+          w.pinned = r.pinned;
+          toast(r.pinned ? '已置顶' : '已取消置顶');
+        } else if (act === 'claimopen') {
+          const open = !w.claimable;
+          if (open && !confirm(`开放认领后，访客可以提交创作证据申请认领这个作品；\n审核通过会把作品归属改为申请人（现在是 @${w.author}）。\n\n确定开放？`)) return;
+          const r = await api(`/api/admin/works/${id}/claim-open`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ open })
+          });
+          w.claimable = r.claimable;
+          toast(r.claimable ? '已开放认领，详情页会出现认领入口' : '已关闭认领');
+        } else {
+          await api(`/api/admin/works/${id}/${act}`, { method: 'POST' });
+          w.status = act === 'approve' ? 'approved' : 'rejected';
+          toast(act === 'approve' ? '已通过' : '已拒绝');
+        }
+        WORK_CACHE[id] = w;
+        notifySite();                 // 前台静默同步（不重载页面）
+        patchRow(id);                 // 只更新这一行：按钮文案/标签变了，列表和滚动位置都不动
+      } catch (err) { toast(err.message); }
+    });
+
+    // ---- 认领申请 ----
+    async function loadClaims() {
+      try {
+        const list = await api('/api/admin/claims');
+        if (!list.length) { panel.innerHTML = '<div class="empty">还没有人申请认领作品</div>'; return; }
+        const pending = list.filter(c => c.status === 'pending').length;
+        panel.innerHTML = `<div class="form-inline" style="border-bottom:1px solid var(--border)">
+            <b style="font-size:14px">待审核 ${pending}</b>
+            <span style="color:var(--muted);font-size:12px">通过后作品会归到申请人账号下，作者名改为其用户名，之后他可以在前台编辑管理</span>
+          </div>` + list.map(c => `
+          <div class="row">
+            ${c.workThumb ? `<img src="${esc(c.workThumb)}" alt="" />` : ''}
+            <div class="row-main">
+              <div class="row-title">${esc(c.workTitle)}
+                <span class="tag ${c.status === 'pending' ? 'warn' : c.status === 'approved' ? 'ok' : 'bad'}">
+                  ${c.status === 'pending' ? '待审核' : c.status === 'approved' ? '已通过' : '已拒绝'}
+                </span>
+                ${c.workAuthor ? `<span class="tag">当前作者 @${esc(c.workAuthor)}</span>` : ''}
+              </div>
+              <div class="row-meta">申请人 <b>@${esc(c.username)}</b> · 申请时间 ${new Date(c.createdAt).toLocaleString('zh-CN')}
+                ${c.contact ? ' · 联系方式：' + esc(c.contact) : ''}</div>
+              <div class="row-meta" style="white-space:pre-wrap;background:#f7f7fb;border-radius:8px;padding:8px 10px;margin-top:6px">${esc(c.evidence)}</div>
+              ${c.note ? `<div class="row-meta" style="color:#e5484d">备注：${esc(c.note)}</div>` : ''}
+            </div>
+            <div class="row-actions">
+              <a class="btn btn-ghost btn-sm" href="/w/${esc(c.workId)}" target="_blank">查看作品</a>
+              ${c.workGone ? '' : c.status === 'pending' ? `
+                <button class="btn btn-ok btn-sm" data-claim-ok="${c.id}">通过并归属</button>
+                <button class="btn btn-danger btn-sm" data-claim-no="${c.id}">拒绝</button>` : ''}
+            </div>
+          </div>`).join('');
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    panel.addEventListener('click', async e => {
+      const ok = e.target.closest('[data-claim-ok]');
+      const no = e.target.closest('[data-claim-no]');
+      if (!ok && !no) return;
+      const id = ok ? ok.dataset.claimOk : no.dataset.claimNo;
+      try {
+        if (ok) {
+          if (!confirm('确认通过？作品将归属该申请人，作者名会改成他的用户名')) return;
+          await api(`/api/admin/claims/${id}/approve`, { method: 'POST' });
+          toast('已通过，作品已归属申请人');
+          notifySite();
+          loadStats();
+        } else {
+          if (!confirm('确认拒绝这条认领申请？')) return;
+          const note = prompt('拒绝原因（选填，仅后台可见）') || '';
+          await api(`/api/admin/claims/${id}/reject`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note })
+          });
+          toast('已拒绝');
+        }
+        loadClaims();
+      } catch (err) { toast(err.message); }
+    });
+
+    // ---- 投诉 ----
+    async function loadReports() {
+      try {
+        const list = await api('/api/admin/reports');
+        if (!list.length) { panel.innerHTML = '<div class="empty">暂无投诉</div>'; return; }
+        panel.innerHTML = list.map(r => `
+          <div class="row">
+            <div class="row-main">
+              <div class="row-title">${esc(r.workTitle)} <span class="tag ${r.status === '待处理' ? 'warn' : 'ok'}">${esc(r.status)}</span></div>
+              <div class="row-meta">原因：${esc(r.reason)}${r.description ? ' · ' + esc(r.description) : ''}
+                ${r.contact ? ' · 联系方式：' + esc(r.contact) : ''} · ${new Date(r.createdAt).toLocaleString('zh-CN')}</div>
+            </div>
+            <div class="row-actions">
+              <a class="btn btn-ghost btn-sm" href="/w/${r.workId}" target="_blank">查看作品</a>
+              ${r.status === '待处理' ? `<button class="btn btn-ok btn-sm" data-report="${r.id}">标记已处理</button>` : ''}
+            </div>
+          </div>`).join('');
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    // ---- 意见反馈 ----
+    async function loadFeedback() {
+      try {
+        const list = await api('/api/admin/feedback');
+        if (!list.length) { panel.innerHTML = '<div class="empty">还没有人反馈</div>'; return; }
+        panel.innerHTML = list.map(f => `
+          <div class="row">
+            <div class="row-main">
+              <div class="row-title">
+                <span class="tag">${esc(f.type)}</span>
+                <span class="tag ${f.status === '待查看' ? 'warn' : 'ok'}">${esc(f.status)}</span>
+                <span style="color:var(--muted);font-size:12px;margin-left:6px">${esc(f.username ? '@' + f.username : '匿名用户')} · ${new Date(f.createdAt).toLocaleString('zh-CN')}</span>
+              </div>
+              <div class="row-meta" style="white-space:pre-wrap">${esc(f.content)}</div>
+              ${f.contact ? `<div class="row-meta">联系方式：${esc(f.contact)}</div>` : ''}
+            </div>
+            <div class="row-actions">
+              <button class="btn btn-ok btn-sm" data-fb-status="${f.id}" data-next="${f.status === '待查看' ? '已处理' : '待查看'}">
+                ${f.status === '待查看' ? '标记已处理' : '改回待查看'}
+              </button>
+              <button class="btn btn-danger btn-sm" data-fb-del="${f.id}">删除</button>
+            </div>
+          </div>`).join('');
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    panel.addEventListener('click', async e => {
+      const st = e.target.closest('[data-fb-status]');
+      const del = e.target.closest('[data-fb-del]');
+      if (st) {
+        try {
+          await api(`/api/admin/feedback/${st.dataset.fbStatus}/status`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: st.dataset.next })
+          });
+          toast(st.dataset.next === '已处理' ? '已标记处理' : '已改回待查看');
+          loadStats(); loadFeedback();
+        } catch (err) { toast(err.message); }
+      }
+      if (del) {
+        if (!confirm('确定删除这条反馈吗？')) return;
+        try {
+          await api(`/api/admin/feedback/${del.dataset.fbDel}`, { method: 'DELETE' });
+          toast('已删除');
+          loadStats(); loadFeedback();
+        } catch (err) { toast(err.message); }
+      }
+    });
+
+    panel.addEventListener('click', async e => {
+      const btn = e.target.closest('[data-report]');
+      if (!btn) return;
+      try {
+        await api(`/api/admin/reports/${btn.dataset.report}/resolve`, { method: 'POST' });
+        toast('已标记处理');
+        loadStats(); loadReports();
+      } catch (err) { toast(err.message); }
+    });
+
+    // ---- 评论管理 ----
+    async function loadComments() {
+      try {
+        const list = await api('/api/admin/comments');
+        if (!list.length) { panel.innerHTML = '<div class="empty">暂无评论</div>'; return; }
+        panel.innerHTML = list.map(c => `
+          <div class="row">
+            <div class="row-main">
+              <div class="row-title">@${esc(c.username)} <span class="tag">${esc(c.workTitle)}</span></div>
+              <div class="row-meta">${esc(c.text)} · ${new Date(c.createdAt).toLocaleString('zh-CN')}</div>
+            </div>
+            <div class="row-actions">
+              <a class="btn btn-ghost btn-sm" href="/w/${esc(c.workId)}" target="_blank">查看作品</a>
+              <button class="btn btn-danger btn-sm" data-cdel="${esc(c.id)}">删除</button>
+            </div>
+          </div>`).join('');
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    panel.addEventListener('click', async e => {
+      const btn = e.target.closest('[data-cdel]');
+      if (!btn) return;
+      if (!confirm('确定删除这条评论吗？')) return;
+      try {
+        await api('/api/comments/' + btn.dataset.cdel, { method: 'DELETE' });
+        toast('评论已删除');
+        loadComments();
+      } catch (err) { toast(err.message); }
+    });
+
+    // ---- 分类 ----
+    let CAT_ORDER = [];
+    async function loadCategories() {
+      try {
+        const list = await api('/api/admin/categories');   // [{ name, count }]
+        CAT_ORDER = list.map(c => c.name);
+        panel.innerHTML = `
+          <div class="form-inline">
+            <input id="newCat" placeholder="新增分类名称" maxlength="20" />
+            <button class="btn btn-primary" id="addCatBtn">添加</button>
+          </div>
+          <div class="hint">顺序即前台筛选下拉的顺序；「其他」固定排在最后，不能移动或删除。删除分类不会影响已发布作品的分类标签。</div>
+          ` + list.map((c, i) => {
+            const last = c.name === '其他';
+            return `
+            <div class="row">
+              <div class="row-main"><div class="row-title">${esc(c.name)} <span class="tag">${c.count || 0} 件作品</span></div></div>
+              <div class="row-actions">
+                <button class="btn btn-ghost btn-sm" data-cup="${esc(c.name)}" ${last || i === 0 ? 'disabled' : ''}>↑</button>
+                <button class="btn btn-ghost btn-sm" data-cdown="${esc(c.name)}" ${last || i === list.length - 1 ? 'disabled' : ''}>↓</button>
+                <button class="btn btn-danger btn-sm" data-cat="${esc(c.name)}" ${last ? 'disabled' : ''}>删除</button>
+              </div>
+            </div>`;
+          }).join('');
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    panel.addEventListener('click', async e => {
+      if (e.target.id === 'addCatBtn') {
+        const name = $('newCat').value.trim();
+        if (!name) return toast('请输入分类名');
+        try {
+          await api('/api/categories', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+          });
+          toast('已添加'); loadCategories();
+        } catch (err) { toast(err.message); }
+      }
+      const up = e.target.dataset.cup;
+      const down = e.target.dataset.cdown;
+      if (up || down) {
+        const names = CAT_ORDER.slice();
+        const i = names.indexOf(up || down);
+        const j = up ? i - 1 : i + 1;
+        if (i < 0 || j < 0 || j >= names.length) return;
+        // 「其他」不能参与交换
+        if (names[i] === '其他' || names[j] === '其他') return;
+        [names[i], names[j]] = [names[j], names[i]];
+        try {
+          await api('/api/admin/categories/reorder', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ names })
+          });
+          loadCategories();
+        } catch (err) { toast(err.message); }
+      }
+      if (e.target.dataset.cat) {
+        if (!confirm('删除分类「' + e.target.dataset.cat + '」？')) return;
+        try {
+          await api('/api/admin/categories/' + encodeURIComponent(e.target.dataset.cat), { method: 'DELETE' });
+          toast('已删除'); loadCategories();
+        } catch (err) { toast(err.message); }
+      }
+    });
+
+    // ---- 形态 ----
+    let TYPE_ORDER = [];
+    async function loadTypes() {
+      try {
+        const list = await api('/api/admin/types');
+        TYPE_ORDER = list.map(t => t.name);
+        panel.innerHTML = `
+          <div class="form-inline">
+            <input id="newTypeName" placeholder="新增形态名称，如：工具" maxlength="10" />
+            <input id="newTypeIcon" placeholder="图标 emoji（选填）" maxlength="4" style="width:150px" />
+            <button class="btn btn-primary" id="addTypeBtn">添加</button>
+          </div>
+          <div class="hint">形态决定投稿表单的选项、作品标签与前台筛选顺序；已有作品的形态不能直接删除，请先把作品改成其他形态。</div>
+          ` + list.map((t, i) => `
+            <div class="row">
+              <div class="row-main">
+                <div class="row-title">${t.icon || '✨'} ${esc(t.name)} <span class="tag">${t.count || 0} 件作品</span></div>
+              </div>
+              <div class="row-actions">
+                <button class="btn btn-ghost btn-sm" data-tup="${esc(t.name)}" ${i === 0 ? 'disabled' : ''}>↑</button>
+                <button class="btn btn-ghost btn-sm" data-tdown="${esc(t.name)}" ${i === list.length - 1 ? 'disabled' : ''}>↓</button>
+                <button class="btn btn-danger btn-sm" data-tdel="${esc(t.name)}" ${t.name === '网站' ? 'disabled' : ''}>删除</button>
+              </div>
+            </div>`).join('');
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    panel.addEventListener('click', async e => {
+      if (e.target.id === 'addTypeBtn') {
+        const name = $('newTypeName').value.trim();
+        const icon = $('newTypeIcon').value.trim();
+        if (!name) return toast('请输入形态名称');
+        try {
+          await api('/api/admin/types', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, icon })
+          });
+          toast('已添加形态'); loadTypes();
+        } catch (err) { toast(err.message); }
+      }
+      const up = e.target.dataset.tup;
+      const down = e.target.dataset.tdown;
+      if (up || down) {
+        const names = TYPE_ORDER.slice();
+        const i = names.indexOf(up || down);
+        const j = up ? i - 1 : i + 1;
+        if (i < 0 || j < 0 || j >= names.length) return;
+        [names[i], names[j]] = [names[j], names[i]];
+        try {
+          await api('/api/admin/types/reorder', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ names })
+          });
+          loadTypes();
+        } catch (err) { toast(err.message); }
+      }
+      if (e.target.dataset.tdel) {
+        const name = e.target.dataset.tdel;
+        if (!confirm('删除形态「' + name + '」？')) return;
+        try {
+          await api('/api/admin/types/' + encodeURIComponent(name), { method: 'DELETE' });
+          toast('已删除'); loadTypes();
+        } catch (err) { toast(err.message); }
+      }
+    });
+
+    // ---- 推荐位 ----
+    async function loadTools() {
+      try {
+        const list = await api('/api/admin/tools');
+        panel.innerHTML = `
+          <div class="form-inline">
+            <input id="toolName" placeholder="工具名称" maxlength="40" />
+            <input id="toolDesc" placeholder="一句话描述" maxlength="120" />
+            <input id="toolUrl" placeholder="https://..." />
+            <button class="btn btn-primary" id="addToolBtn">添加</button>
+          </div>
+          <div class="hint">推荐位展示在作品详情页底部，适合放工具联盟 / 返佣链接</div>
+          ` + (list.length ? list.map(t => `
+            <div class="row">
+              <div class="row-main">
+                <div class="row-title">${esc(t.name)}</div>
+                <div class="row-meta">${esc(t.desc || '')} · <a href="${esc(t.url)}" target="_blank" style="color:#5b5bd6">${esc(t.url)}</a></div>
+              </div>
+              <div class="row-actions"><button class="btn btn-danger btn-sm" data-tool="${t.id}">删除</button></div>
+            </div>`).join('') : '<div class="empty">还没有推荐位</div>');
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    panel.addEventListener('click', async e => {
+      if (e.target.id === 'addToolBtn') {
+        const name = $('toolName').value.trim();
+        const url = $('toolUrl').value.trim();
+        if (!name || !url) return toast('名称和链接必填');
+        try {
+          await api('/api/admin/tools', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, desc: $('toolDesc').value.trim(), url })
+          });
+          toast('已添加'); loadTools();
+        } catch (err) { toast(err.message); }
+      }
+      if (e.target.dataset.tool) {
+        try {
+          await api('/api/admin/tools/' + e.target.dataset.tool, { method: 'DELETE' });
+          toast('已删除'); loadTools();
+        } catch (err) { toast(err.message); }
+      }
+    });
+
+    // ---- 认证创作者 ----
+    async function loadCreators() {
+      try {
+        const list = await api('/api/admin/creators');
+        panel.innerHTML = `
+          <div class="form-inline">
+            <input id="creatorName" placeholder="作者昵称（与投稿时一致）" maxlength="50" />
+            <input id="creatorBio" placeholder="简介（选填）" maxlength="200" />
+            <button class="btn btn-primary" id="addCreatorBtn">认证</button>
+          </div>
+          <div class="hint">认证后该作者的作品会显示 ✔ 标识，作者主页也会显示认证徽章</div>
+          ` + (list.length ? list.map(c => `
+            <div class="row">
+              <div class="row-main">
+                <div class="row-title">@${esc(c.name)} <span class="tag ok">认证</span></div>
+                <div class="row-meta">${esc(c.bio || '')}</div>
+              </div>
+              <div class="row-actions"><button class="btn btn-danger btn-sm" data-creator="${esc(c.name)}">取消认证</button></div>
+            </div>`).join('') : '<div class="empty">还没有认证创作者</div>');
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    panel.addEventListener('click', async e => {
+      if (e.target.id === 'addCreatorBtn') {
+        const name = $('creatorName').value.trim();
+        if (!name) return toast('请输入作者昵称');
+        try {
+          await api('/api/admin/creators', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, bio: $('creatorBio').value.trim() })
+          });
+          toast('已认证'); loadCreators();
+        } catch (err) { toast(err.message); }
+      }
+      if (e.target.dataset.creator) {
+        try {
+          await api('/api/admin/creators/' + encodeURIComponent(e.target.dataset.creator), { method: 'DELETE' });
+          toast('已取消认证'); loadCreators();
+        } catch (err) { toast(err.message); }
+      }
+    });
+
+    // 自动登录
+    if (KEY) enter();
+  </script>
+</body>
+</html>

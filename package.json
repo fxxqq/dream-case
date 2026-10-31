@@ -1,0 +1,16 @@
+{
+  "name": "ai-works-site",
+  "version": "2.0.0",
+  "description": "AI 作品聚合站",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}

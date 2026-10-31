@@ -1,0 +1,1942 @@
+/**
+ * 造梦橱窗 - 后端服务
+ * 支持：作品（网站/小程序/App/智能体/其他）投稿、搜索、分页、精选、榜单、
+ *       作者主页、点赞、投诉、审核、管理端、限流与敏感词风控、工具推荐位
+ */
+const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const seo = require('./seo');
+
+const PORT = process.env.PORT || 3000;
+const REVIEW_MODE = process.env.REVIEW_MODE === '1'; // 打开后新投稿需审核
+
+const DATA_DIR = path.join(__dirname, 'data');
+const UPLOAD_DIR = path.join(__dirname, 'uploads');
+
+// 后台口令：优先读环境变量 ADMIN_KEY，其次读 data/admin-key.txt（该目录不入库）
+const ADMIN_KEY = (() => {
+  if (process.env.ADMIN_KEY) return String(process.env.ADMIN_KEY).trim();
+  try { return fs.readFileSync(path.join(DATA_DIR, 'admin-key.txt'), 'utf-8').trim(); }
+  catch { return ''; }
+})();
+
+for (const dir of [DATA_DIR, UPLOAD_DIR]) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+// ---------- 存储层（JSON + 原子写入 + 内存缓存） ----------
+function fileOf(name) { return path.join(DATA_DIR, name); }
+
+function readJSON(name, fallback) {
+  try { return JSON.parse(fs.readFileSync(fileOf(name), 'utf-8')); }
+  catch { return fallback; }
+}
+
+function writeJSON(name, data) {
+  const target = fileOf(name);
+  const tmp = target + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, target);
+}
+
+let works = readJSON('works.json', []);
+let reports = readJSON('reports.json', []);
+let tools = readJSON('tools.json', []);
+let creators = readJSON('creators.json', []); // 认证创作者
+let users = readJSON('users.json', []);        // 注册用户
+let sessions = readJSON('sessions.json', {});  // sid -> { uid, exp }
+let comments = readJSON('comments.json', []);  // 作品评论
+let feedback = readJSON('feedback.json', []);  // 意见反馈
+let claims = readJSON('claims.json', []);      // 作品认领申请（提交证据 → 管理员审核）
+const DEFAULT_CATEGORIES = ['效率工具', '生活助手', '内容创作', '学习教育', '娱乐游戏', '开发工具', '其他'];
+let categories = readJSON('categories.json', DEFAULT_CATEGORIES);
+if (!Array.isArray(categories) || !categories.length) categories = DEFAULT_CATEGORIES.slice();
+
+// 作品形态：可在后台增删 / 调序 / 换图标（[{ name, icon }]）
+const DEFAULT_TYPES = [
+  { name: '网站', icon: '🌐' },
+  { name: '小程序', icon: '📱' },
+  { name: 'App', icon: '📲' },
+  { name: '智能体', icon: '🤖' },
+  { name: '桌面应用', icon: '🖥️' },
+  { name: '浏览器扩展', icon: '🧩' },
+  { name: '工具', icon: '🛠️' },
+  { name: '其他', icon: '✨' }
+];
+let workTypes = readJSON('types.json', DEFAULT_TYPES.map(t => ({ ...t })));
+(function normalizeWorkTypes() {
+  if (!Array.isArray(workTypes)) workTypes = [];
+  workTypes = workTypes
+    .map(t => (typeof t === 'string' ? { name: t, icon: '' } : { name: String((t && t.name) || ''), icon: String((t && t.icon) || '') }))
+    .filter(t => t.name);
+  if (!workTypes.some(t => t.name === '网站')) workTypes.unshift({ name: '网站', icon: '🌐' });
+  workTypes.forEach(t => { if (!t.icon) t.icon = '✨'; });
+})();
+
+function saveWorks() { writeJSON('works.json', works); }
+function saveReports() { writeJSON('reports.json', reports); }
+function saveTools() { writeJSON('tools.json', tools); }
+function saveCategories() { writeJSON('categories.json', categories); }
+function saveTypes() { writeJSON('types.json', workTypes); }
+function typeIconMap() {
+  const map = {};
+  workTypes.forEach(t => { map[t.name] = t.icon || '✨'; });
+  return map;
+}
+function saveUsers() { writeJSON('users.json', users); }
+function saveSessions() { writeJSON('sessions.json', sessions); }
+function saveComments() { writeJSON('comments.json', comments); }
+function saveFeedback() { writeJSON('feedback.json', feedback); }
+function saveClaims() { writeJSON('claims.json', claims); }
+
+// ---------- 用户 / 会话 ----------
+const REMEMBER_TTL = 30 * 86400e3;   // 勾选「记住我」：30 天
+const SESSION_TTL = 12 * 3600e3;     // 未勾选：12 小时（cookie 为会话级，关浏览器即失效）
+const RESERVED_NAMES = ['admin', 'administrator', '管理员', 'root', 'system', '官方', 'official'];
+
+function hashPassword(pw, salt) {
+  return crypto.scryptSync(String(pw), salt, 64).toString('hex');
+}
+function makeUser(username, password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  return {
+    id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    username,
+    salt,
+    pass: hashPassword(password, salt),
+    favs: [],          // 收藏的作品 id（按收藏时间倒序）
+    createdAt: new Date().toISOString()
+  };
+}
+function checkPassword(user, password) {
+  const h = hashPassword(password, user.salt);
+  const a = Buffer.from(h), b = Buffer.from(user.pass);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+function parseCookies(req) {
+  const out = {};
+  (req.headers.cookie || '').split(';').forEach(p => {
+    const i = p.indexOf('=');
+    if (i > 0) out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim());
+  });
+  return out;
+}
+function currentUser(req) {
+  const sid = parseCookies(req).sid;
+  if (!sid) return null;
+  const rec = sessions[sid];
+  if (!rec || !rec.uid || Date.now() > rec.exp) {
+    if (rec) { delete sessions[sid]; saveSessions(); }
+    return null;
+  }
+  return users.find(u => u.id === rec.uid) || null;
+}
+function isRemember(body) {
+  const v = (body || {}).remember;
+  return v === true || v === 1 || v === '1' || v === 'true' || v === 'on';
+}
+function setSession(res, user, remember) {
+  const sid = crypto.randomBytes(24).toString('hex');
+  const ttl = remember ? REMEMBER_TTL : SESSION_TTL;
+  sessions[sid] = { uid: user.id, exp: Date.now() + ttl };
+  // 顺手清理过期会话
+  for (const k of Object.keys(sessions)) if (sessions[k].exp < Date.now()) delete sessions[k];
+  saveSessions();
+  // 勾了「记住我」才写 Max-Age（持久 cookie）；否则是会话 cookie，关浏览器即失效
+  const maxAge = remember ? `; Max-Age=${30 * 86400}` : '';
+  res.setHeader('Set-Cookie', `sid=${sid}; Path=/; HttpOnly; SameSite=Lax${maxAge}`);
+}
+function clearSession(req, res) {
+  const sid = parseCookies(req).sid;
+  if (sid) { delete sessions[sid]; saveSessions(); }
+  res.setHeader('Set-Cookie', 'sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+}
+function requireUser(req, res) {
+  const user = currentUser(req);
+  if (!user) { res.status(401).json({ error: '请先登录' }); return null; }
+  return user;
+}
+
+// 屏蔽（不感兴趣）：存在用户记录里的作品 id 数组，只影响该用户自己看到的列表
+function blockedIds(user) {
+  return new Set(user && Array.isArray(user.blocked) ? user.blocked : []);
+}
+function filterBlocked(list, user) {
+  const set = blockedIds(user);
+  return set.size ? list.filter(w => !set.has(w.id)) : list;
+}
+
+// 历史数据迁移：为旧作品作者创建演示账号（密码 123456，可在 data/users.json 删除）
+if (!fs.existsSync(fileOf('users.json'))) {
+  ['张三', '李四', '王五'].forEach(n => {
+    if (!users.find(u => u.username === n)) {
+      const u = makeUser(n, '123456');
+      users.push(u);
+      works.filter(w => w.author === n).forEach(w => { w.userId = u.id; });
+    }
+  });
+  saveUsers();
+  saveWorks();
+  console.log('已为历史作者创建演示账号（张三/李四/王五，密码 123456），请及时修改或删除');
+}
+
+// 对外展示的形态（后台可管理；「游戏」已下线但旧数据仍兼容识别）
+let WORK_TYPES = workTypes.map(t => t.name);
+let ALL_TYPES_LEGACY = Array.from(new Set(WORK_TYPES.concat(['游戏'])));
+function syncWorkTypes() {
+  WORK_TYPES = workTypes.map(t => t.name);
+  ALL_TYPES_LEGACY = Array.from(new Set(WORK_TYPES.concat(['游戏'])));
+  seo.setTypeIcons(typeIconMap());
+}
+syncWorkTypes();
+const SENSITIVE_WORDS = ['赌博', '色情', '毒品', '代开发票', '办证', '博彩'];
+
+function hitSensitive(text) {
+  const s = String(text || '');
+  return SENSITIVE_WORDS.some(w => s.includes(w));
+}
+
+// ---------- 限流（内存滑动窗口） ----------
+const POST_LIMIT = parseInt(process.env.RATE_POST_LIMIT || '5', 10); // 每 IP 每小时发布次数
+const rateBuckets = new Map();
+function rateLimit(key, limit, windowMs) {
+  const now = Date.now();
+  const rec = rateBuckets.get(key);
+  if (!rec || now - rec.start > windowMs) {
+    rateBuckets.set(key, { start: now, count: 1 });
+    return true;
+  }
+  rec.count += 1;
+  return rec.count <= limit;
+}
+function clientIp(req) {
+  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+}
+
+// ---------- 访问统计：PV / UV ----------
+// 结构：{ days: { '2026-10-31': { pv: 12, uv: { 'u:<userId>': 1, 'ip:<ip>': 1 } } } }
+// UV 身份：登录用户按账号去重（同一账号多设备算 1 个），未登录按 IP 去重
+const VISIT_RETENTION_DAYS = 90;
+let visits = readJSON('visits.json', { days: {} });
+if (!visits || typeof visits !== 'object' || !visits.days) visits = { days: {} };
+
+function dateKey(d = new Date()) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+let visitSaveTimer = null;
+function scheduleVisitSave() {
+  if (visitSaveTimer) return;
+  visitSaveTimer = setTimeout(() => {
+    visitSaveTimer = null;
+    try { writeJSON('visits.json', visits); } catch (e) { /* 统计失败不影响主流程 */ }
+  }, 3000);
+}
+
+function trackVisit(req) {
+  const key = dateKey();
+  const day = visits.days[key] || (visits.days[key] = { pv: 0, uv: {} });
+  if (!day.uv) day.uv = {};
+  day.pv = (day.pv || 0) + 1;
+  const user = currentUser(req);
+  const vid = user ? 'u:' + user.id : 'ip:' + clientIp(req);
+  day.uv[vid] = 1;
+  // 只保留最近 N 天
+  const keys = Object.keys(visits.days).sort();
+  while (keys.length > VISIT_RETENTION_DAYS) delete visits.days[keys.shift()];
+  scheduleVisitSave();
+}
+
+function visitStats() {
+  const days = visits.days || {};
+  let pv = 0;
+  const allUv = new Set();
+  Object.values(days).forEach(d => {
+    pv += d.pv || 0;
+    Object.keys(d.uv || {}).forEach(k => allUv.add(k));
+  });
+  const today = days[dateKey()] || { pv: 0, uv: {} };
+  return {
+    pv, uv: allUv.size,
+    pvToday: today.pv || 0,
+    uvToday: Object.keys(today.uv || {}).length
+  };
+}
+
+// ---------- 作品维度访问统计（每个作品的 PV / UV） ----------
+// 结构：{ '<workId>': { pv: 12, uv: { 'u:<userId>': 1, 'ip:<ip>': 1 }, days: { '2026-10-31': { pv: 3, uv: {...} } } } }
+const workVisits = (() => {
+  const raw = readJSON('work-visits.json', {});
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+})();
+
+let workVisitSaveTimer = null;
+function scheduleWorkVisitSave() {
+  if (workVisitSaveTimer) return;
+  workVisitSaveTimer = setTimeout(() => {
+    workVisitSaveTimer = null;
+    try { writeJSON('work-visits.json', workVisits); } catch (e) { /* 统计失败不影响主流程 */ }
+  }, 3000);
+}
+
+function trackWorkVisit(req, workId) {
+  if (!workId || !works.some(w => w.id === workId)) return;
+  const rec = workVisits[workId] || (workVisits[workId] = { pv: 0, uv: {}, days: {} });
+  if (!rec.uv) rec.uv = {};
+  if (!rec.days) rec.days = {};
+  rec.pv = (rec.pv || 0) + 1;
+  const user = currentUser(req);
+  const vid = user ? 'u:' + user.id : 'ip:' + clientIp(req);
+  rec.uv[vid] = 1;
+  const dk = dateKey();
+  const day = rec.days[dk] || (rec.days[dk] = { pv: 0, uv: {} });
+  if (!day.uv) day.uv = {};
+  day.pv = (day.pv || 0) + 1;
+  day.uv[vid] = 1;
+  // 每个作品只保留最近 N 天明细
+  const keys = Object.keys(rec.days).sort();
+  while (keys.length > VISIT_RETENTION_DAYS) delete rec.days[keys.shift()];
+  scheduleWorkVisitSave();
+}
+
+function workVisitStats(workId) {
+  const rec = workVisits[workId];
+  if (!rec) return { pv: 0, uv: 0, pvToday: 0, uvToday: 0 };
+  const today = (rec.days && rec.days[dateKey()]) || { pv: 0, uv: {} };
+  return {
+    pv: rec.pv || 0,
+    uv: Object.keys(rec.uv || {}).length,
+    pvToday: today.pv || 0,
+    uvToday: Object.keys(today.uv || {}).length
+  };
+}
+
+// ---------- 应用 ----------
+const app = express();
+app.set('trust proxy', true);
+app.use(express.json({ limit: '1mb' }));
+
+// 安全 / SEO 相关响应头
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  if (req.path.startsWith('/admin')) res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  next();
+});
+
+app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '30d', immutable: true }));
+app.use(express.static(path.join(__dirname, 'frontend'), {
+  index: false,
+  setHeaders(res, filePath) {
+    // js/css 改用协商缓存：文件一有更新浏览器立即拿到新版，避免长期缓存旧代码
+    res.setHeader('Cache-Control', 'no-cache');
+  }
+}));
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '.jpg') || '.jpg';
+    cb(null, Date.now() + '-' + Math.random().toString(36).slice(2, 8) + ext);
+  }
+});
+const upload = multer({ storage, limits: { fileSize: 25 * 1024 * 1024 } }).fields([
+  { name: 'image', maxCount: 1 },
+  { name: 'thumb', maxCount: 1 },
+  { name: 'qrcode', maxCount: 1 },
+  { name: 'images', maxCount: 9 } // 宣传图，最多 9 张
+]);
+
+function isAdmin(req) {
+  if (!ADMIN_KEY) return false; // 未配置后台口令时后台整体禁用，避免空口令放行
+  return (req.query.key || req.headers['x-admin-key']) === ADMIN_KEY;
+}
+function requireAdmin(req, res, next) {
+  if (!isAdmin(req)) return res.status(403).json({ error: '无权限，请检查管理口令' });
+  next();
+}
+
+// 删除 /uploads 下的图片文件（忽略不存在的）
+function removeUpload(imgPath) {
+  if (!imgPath || typeof imgPath !== 'string') return;
+  const p = path.join(UPLOAD_DIR, path.basename(imgPath));
+  if (fs.existsSync(p)) fs.unlinkSync(p);
+}
+
+// 解析前端传来的待删除宣传图列表（JSON 数组或逗号分隔）
+function parseRemovedImages(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter(x => typeof x === 'string');
+  const s = String(raw);
+  try {
+    const arr = JSON.parse(s);
+    if (Array.isArray(arr)) return arr.filter(x => typeof x === 'string');
+  } catch (_) { /* 退化为逗号分隔 */ }
+  return s.split(',').map(x => x.trim()).filter(Boolean);
+}
+
+// 应用图片变更：封面 / 二维码 / 宣传图（支持删除与保留已有）
+// 解析前端提交的宣传图顺序：数组元素为已有图 URL，或 __new__<下标>（本次新上传的第几张）
+function parseImageOrder(raw) {
+  if (!raw) return null;
+  try {
+    const arr = JSON.parse(String(raw));
+    return Array.isArray(arr) ? arr.filter(x => typeof x === 'string') : null;
+  } catch (_) { return null; }
+}
+
+function applyImageChanges(w, req) {
+  const files = req.files || {};
+
+  // 封面：有新图则替换（删旧图），否则保持
+  const newCover = files.image && files.image[0];
+  if (newCover) {
+    removeUpload(w.image);
+    w.image = '/uploads/' + newCover.filename;
+    w.thumb = files.thumb && files.thumb[0] ? '/uploads/' + files.thumb[0].filename : w.image;
+  } else if (files.thumb && files.thumb[0]) {
+    w.thumb = '/uploads/' + files.thumb[0].filename;
+  }
+
+  // 二维码：有新图替换；传 removeQrcode=1 则删除
+  const newQr = files.qrcode && files.qrcode[0];
+  if (newQr) {
+    removeUpload(w.qrcode);
+    w.qrcode = '/uploads/' + newQr.filename;
+  } else if (String(req.body.removeQrcode) === '1' && w.qrcode) {
+    removeUpload(w.qrcode);
+    w.qrcode = '';
+  }
+
+  // 宣传图
+  const newImgs = (files.images || []).map(f => '/uploads/' + f.filename);
+  const removed = parseRemovedImages(req.body.removedImages);
+  const keepExisting = String(req.body.keepExisting) === '1';
+  const current = Array.isArray(w.images) ? w.images.slice() : [];
+
+  if (keepExisting || (!newImgs.length && removed.length)) {
+    // 增量模式：保留已有（去掉被删的）+ 追加新图
+    let list = current.filter(img => {
+      if (removed.includes(img)) { removeUpload(img); return false; }
+      return true;
+    }).concat(newImgs);
+    list.slice(9).forEach(removeUpload); // 超出上限的新图清理掉
+    w.images = list.slice(0, 9);
+  } else if (newImgs.length) {
+    // 整体替换：删掉全部旧图
+    current.forEach(removeUpload);
+    newImgs.slice(9).forEach(removeUpload);
+    w.images = newImgs.slice(0, 9);
+  }
+
+  // 排序：按前端提交的最终顺序重排（已有图与新上传图可任意混排）
+  const order = parseImageOrder(req.body.imageOrder);
+  if (order && order.length && w.images.length > 1) {
+    const pool = w.images.slice();
+    const ordered = [];
+    order.forEach(tok => {
+      const m = /^__new__(\d+)$/.exec(tok);
+      const val = m ? newImgs[Number(m[1])] : tok;
+      if (val && pool.indexOf(val) !== -1 && ordered.indexOf(val) === -1) ordered.push(val);
+    });
+    pool.forEach(v => { if (ordered.indexOf(v) === -1) ordered.push(v); }); // 未提到的排在最后
+    w.images = ordered;
+  }
+  w.updatedAt = Date.now();
+}
+
+// ---- 作品形态：支持多选（types 数组；type 保留为首个，兼容旧数据/旧链接）----
+function normalizeTypes(input) {
+  let arr = input;
+  if (typeof arr === 'string') {
+    const s = arr.trim();
+    if (!s) arr = [];
+    else if (s[0] === '[') { try { arr = JSON.parse(s); } catch { arr = s.split(','); } }
+    else arr = s.split(',');
+  }
+  if (!Array.isArray(arr)) arr = [];
+  const out = [];
+  for (const t of arr) {
+    const v = String(t || '').trim();
+    if (ALL_TYPES_LEGACY.includes(v) && out.indexOf(v) === -1) out.push(v);
+  }
+  return out.length ? out : ['网站'];
+}
+function typesOf(w) {
+  const arr = Array.isArray(w.types) ? w.types.filter(t => ALL_TYPES_LEGACY.includes(t)) : [];
+  if (arr.length) return arr;
+  return [ALL_TYPES_LEGACY.includes(w.type) ? w.type : '网站'];
+}
+function applyTypes(w, types) {
+  const arr = types && types.length ? types : ['网站'];
+  w.types = arr;
+  w.type = arr[0]; // 兼容旧字段与 /t/:type 路由
+}
+
+// 形态必填校验：只有网站必须有链接；小程序必须有小程序码；其余形态链接选填
+const LINK_REQUIRED_TYPES = ['网站'];
+function validateTypeRequired(types, link, qrcode) {
+  const list = types && types.length ? types : ['网站'];
+  if (list.includes('网站') && !String(link || '').trim()) {
+    return '作品形态含「网站」，请填写网站地址';
+  }
+  if (list.includes('小程序') && !String(qrcode || '').trim()) {
+    return '作品形态含「小程序」，请上传小程序码 / 二维码';
+  }
+  return '';
+}
+
+// 每个作品的评论数：懒加载缓存，评论增删后置空重算
+let commentCounts = null;
+function countComments(id) {
+  if (!commentCounts) {
+    commentCounts = {};
+    for (const c of comments) commentCounts[c.workId] = (commentCounts[c.workId] || 0) + 1;
+  }
+  return commentCounts[id] || 0;
+}
+function invalidateCommentCounts() { commentCounts = null; }
+
+// 开源标识：'1'/true → 开源，'0'/false → 闭源，缺省/空 → 不标注（null）
+function parseOpenSource(v) {
+  if (v === true || v === '1' || v === 'true') return true;
+  if (v === false || v === '0' || v === 'false') return false;
+  return null;
+}
+
+// 是否收费：只有作者主动勾选才为 true（默认免费且不标注）
+function parsePaid(v) {
+  return v === true || v === '1' || v === 'true';
+}
+
+// 源码仓库地址：补协议、截断；标注开源时必须非空（由调用方校验）
+function normRepo(v) {
+  let s = String(v || '').trim();
+  if (s && !/^https?:\/\//i.test(s)) s = 'https://' + s;
+  return s.slice(0, 500);
+}
+
+// 只返回对外的字段（user 传入时附加 owned 标记）
+function publicWork(w, user) {
+  const creator = creators.find(c => c.name === w.author);
+  const types = typesOf(w);
+  return {
+    id: w.id, title: w.title, author: w.author, category: w.category,
+    type: types[0], types: types,
+    intro: w.prompt || '', link: w.link || '',
+    image: w.image, thumb: w.thumb || w.image, qrcode: w.qrcode || '',
+    images: Array.isArray(w.images) ? w.images.slice(0, 9) : [],
+    likes: w.likes || 0, favs: w.favs || 0, commentCount: countComments(w.id), views: w.views || 0, featured: !!w.featured, pinned: !!w.pinned,
+    openSource: w.openSource === true ? true : (w.openSource === false ? false : null),
+    repo: w.repo || '',
+    paid: !!w.paid,
+    verified: !!creator,
+    faved: !!(user && Array.isArray(user.favs) && user.favs.includes(w.id)),
+    owned: !!(user && w.userId && user.id === w.userId),
+    claimed: !!w.userId,
+    claimable: isClaimable(w),
+    createdAt: w.createdAt
+  };
+}
+function isVisible(w) { return (w.status || 'approved') === 'approved'; }
+// 认领开关：管理员显式设过就按设置走；没设过时「无归属作品」（匿名投稿 / 后台代传）默认可认领
+function isClaimable(w) {
+  if (w.claimOpen === true) return true;
+  if (w.claimOpen === false) return false;
+  return !w.userId;
+}
+
+// ================= 公共接口 =================
+
+// ---- 注册 / 登录 ----
+const NAME_RE = /^[\w\u4e00-\u9fa5·]{2,20}$/;
+
+app.post('/api/register', (req, res) => {
+  if (!rateLimit('reg:' + clientIp(req), 10, 3600000)) {
+    return res.status(429).json({ error: '注册过于频繁，请稍后再试' });
+  }
+  const { username, password } = req.body || {};
+  const name = String(username || '').trim();
+  if (!NAME_RE.test(name)) return res.status(400).json({ error: '用户名需 2-20 位，可为中文、字母、数字、下划线' });
+  if (RESERVED_NAMES.includes(name.toLowerCase())) return res.status(400).json({ error: '该用户名不可用' });
+  if (!password || String(password).length < 6) return res.status(400).json({ error: '密码至少 6 位' });
+  if (users.find(u => u.username === name)) return res.status(400).json({ error: '用户名已被占用' });
+
+  const user = makeUser(name, String(password));
+  users.push(user);
+  saveUsers();
+  setSession(res, user, isRemember(req.body));
+  res.status(201).json({ username: user.username });
+});
+
+app.post('/api/login', (req, res) => {
+  if (!rateLimit('login:' + clientIp(req), 20, 3600000)) {
+    return res.status(429).json({ error: '尝试过于频繁，请稍后再试' });
+  }
+  const { username, password } = req.body || {};
+  const user = users.find(u => u.username === String(username || '').trim());
+  if (!user || !checkPassword(user, String(password || ''))) {
+    return res.status(401).json({ error: '用户名或密码错误' });
+  }
+  setSession(res, user, isRemember(req.body));
+  res.json({ username: user.username });
+});
+
+app.post('/api/logout', (req, res) => {
+  clearSession(req, res);
+  res.json({ ok: true });
+});
+
+app.get('/api/me', (req, res) => {
+  const user = currentUser(req);
+  res.json(user
+    ? {
+        username: user.username, createdAt: user.createdAt,
+        blocked: Array.isArray(user.blocked) ? user.blocked : [],
+        favs: Array.isArray(user.favs) ? user.favs : []
+      }
+    : { user: null });
+});
+
+// 屏蔽 / 取消屏蔽某个作品（仅影响当前登录用户看到的列表）
+app.post('/api/works/:id/block', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('block:' + user.id, 60, 60000)) {
+    return res.status(429).json({ error: '操作过于频繁，稍后再试' });
+  }
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  if (w.userId && w.userId === user.id) {
+    return res.status(400).json({ error: '不能屏蔽自己发布的作品' });
+  }
+  if (!Array.isArray(user.blocked)) user.blocked = [];
+  const on = !(req.body && req.body.on === false); // 默认屏蔽；传 on:false 为取消
+  const i = user.blocked.indexOf(w.id);
+  if (on && i === -1) user.blocked.unshift(w.id);
+  if (!on && i !== -1) user.blocked.splice(i, 1);
+  saveUsers();
+  res.json({ blocked: user.blocked, on });
+});
+
+// 我屏蔽的作品（用于「已屏蔽」列表里恢复）
+app.get('/api/blocked', (req, res) => {  const user = requireUser(req, res);
+  if (!user) return;
+  const ids = Array.isArray(user.blocked) ? user.blocked : [];
+  const map = new Map(works.map(w => [w.id, w]));
+  const list = ids.map(id => map.get(id)).filter(w => w && isVisible(w)).map(w => publicWork(w, user));
+  res.json(list);
+});
+
+// ---- 认领作品：提交证据 → 管理员审核 ----
+const CLAIM_EVIDENCE_MIN = 10;
+
+app.post('/api/works/:id/claim', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('claim:' + user.id, 5, 3600000)) {
+    return res.status(429).json({ error: '提交过于频繁，请稍后再试' });
+  }
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  if (w.userId === user.id) return res.status(400).json({ error: '这是你自己发布的作品，无需认领' });
+  // 认领由管理员逐条开放；无归属作品（匿名投稿 / 后台代传）默认开放
+  if (!isClaimable(w)) return res.status(400).json({ error: '该作品暂未开放认领' });
+  const evidence = String((req.body && req.body.evidence) || '').trim();
+  if (evidence.length < CLAIM_EVIDENCE_MIN) {
+    return res.status(400).json({ error: `请提供能证明你是作者的证据（至少 ${CLAIM_EVIDENCE_MIN} 个字）` });
+  }
+  if (evidence.length > 1000) return res.status(400).json({ error: '证据描述最多 1000 字' });
+  if (claims.some(c => c.workId === w.id && c.userId === user.id && c.status === 'pending')) {
+    return res.status(400).json({ error: '你已提交过认领申请，正在审核中' });
+  }
+  const claim = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    workId: w.id,
+    userId: user.id,
+    username: user.username,
+    evidence: evidence.slice(0, 1000),
+    contact: String((req.body && req.body.contact) || '').trim().slice(0, 100),
+    status: 'pending',
+    createdAt: new Date().toISOString()
+  };
+  claims.unshift(claim);
+  saveClaims();
+  res.status(201).json({ ok: true, claim: { id: claim.id, status: claim.status } });
+});
+
+// 我的认领记录（前端用来显示「审核中 / 已通过」状态）
+app.get('/api/me/claims', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  res.json(claims.filter(c => c.userId === user.id)
+    .map(c => ({ id: c.id, workId: c.workId, status: c.status, createdAt: c.createdAt })));
+});
+
+// 分类
+// 前端每次页面浏览上报一次（PV +1；UV 按账号/IP 去重）
+app.post('/api/track', (req, res) => {
+  const p = String((req.body && req.body.path) || '/');
+  if (p.startsWith('/admin')) return res.json({ ok: true, skipped: true });
+  if (!rateLimit('track:' + clientIp(req), 600, 3600000)) return res.json({ ok: true, skipped: true });
+  // site:false → 只记作品维度，不重复计站点 PV（弹窗打开作品时用）
+  if (!(req.body && req.body.site === false)) trackVisit(req);
+  // 作品详情页额外记一份作品维度 PV / UV
+  let wid = String((req.body && req.body.workId) || '');
+  if (!wid) {
+    const m = p.match(/^\/w\/([A-Za-z0-9_-]+)/);
+    if (m) wid = m[1];
+  }
+  if (wid) trackWorkVisit(req, wid);
+  res.json({ ok: true });
+});
+
+// 分类：对外顺序固定把「其他」放最后
+const LAST_CATEGORY = '其他';
+function orderedCategories() {
+  const rest = categories.filter(c => c !== LAST_CATEGORY);
+  return categories.includes(LAST_CATEGORY) ? [...rest, LAST_CATEGORY] : rest;
+}
+
+app.get('/api/categories', (req, res) => res.json(['全部', ...orderedCategories()]));
+app.post('/api/categories', (req, res) => {
+  const name = String((req.body && req.body.name) || '').trim().slice(0, 20);
+  if (!name) return res.status(400).json({ error: '分类名不能为空' });
+  if (categories.includes(name)) return res.status(400).json({ error: '分类已存在' });
+  // 新分类插在「其他」前面，保证「其他」始终最后一个
+  const idx = categories.indexOf(LAST_CATEGORY);
+  if (idx === -1) categories.push(name); else categories.splice(idx, 0, name);
+  saveCategories();
+  res.status(201).json(['全部', ...orderedCategories()]);
+});
+
+// 形态
+app.get('/api/types', (req, res) => res.json(['全部', ...WORK_TYPES]));
+// 形态元数据（名称 + 图标），供前端渲染 chips / 徽章
+app.get('/api/type-meta', (req, res) => {
+  const counts = {};
+  works.filter(isVisible).forEach(w => typesOf(w).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+  res.json(workTypes.map(t => ({ name: t.name, icon: t.icon, count: counts[t.name] || 0 })));
+});
+// 推荐位（工具/资源）
+app.get('/api/tools', (req, res) => res.json(tools.filter(t => t.active !== false)));
+
+// 作品列表：搜索 + 筛选 + 分页 + 排序
+app.get('/api/works', (req, res) => {
+  const { q, category, type, sort } = req.query;
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  // pageSize=all（兼容旧的 limit=500）→ 返回全部，用于全量统计
+  const rawSize = String(req.query.pageSize || req.query.limit || '12');
+  const pageSize = rawSize === 'all' ? Number.MAX_SAFE_INTEGER : Math.min(48, Math.max(1, parseInt(rawSize) || 12));
+
+  const user = currentUser(req);
+  let list = filterBlocked(works.filter(isVisible), user);
+  if (category && category !== '全部') list = list.filter(w => w.category === category);
+  if (type && type !== '全部') list = list.filter(w => typesOf(w).includes(type));
+  // 是否开源筛选：open → 标注开源；closed → 非开源（含未标注的老作品）
+  if (req.query.os === 'open') list = list.filter(w => w.openSource === true);
+  else if (req.query.os === 'closed') list = list.filter(w => w.openSource !== true);
+  // 只看我收藏的（需登录，未登录返回空列表）
+  if (req.query.fav === '1') {
+    const favIds = new Set(user && Array.isArray(user.favs) ? user.favs : []);
+    list = list.filter(w => favIds.has(w.id));
+  }
+  if (q) {
+    const kw = String(q).toLowerCase().trim();
+    list = list.filter(w =>
+      [w.title, w.author, w.prompt, w.category].some(f => String(f || '').toLowerCase().includes(kw))
+    );
+  }
+
+  if (sort === 'hot') list.sort((a, b) => score(b) - score(a));
+  else list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  // 置顶优先（最新列表里）
+  if (sort !== 'hot') list.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+
+  const total = list.length;
+  const items = list.slice((page - 1) * pageSize, page * pageSize).map(w => publicWork(w, user));
+  res.json({ items, total, page, pageSize, hasMore: page * pageSize < total });
+});
+
+// 精选
+app.get('/api/featured', (req, res) => {
+  const user = currentUser(req);
+  const list = filterBlocked(works.filter(w => isVisible(w) && w.featured), user)
+    .sort((a, b) => score(b) - score(a)).slice(0, 8).map(w => publicWork(w, user));
+  res.json(list);
+});
+
+// 榜单：period = week / month / all；by = hot（综合）/ likes（点赞）/ favs（收藏）
+const RANK_BY = {
+  hot: (a, b) => score(b) - score(a),
+  likes: (a, b) => (b.likes || 0) - (a.likes || 0) || (b.favs || 0) - (a.favs || 0),
+  favs: (a, b) => (b.favs || 0) - (a.favs || 0) || (b.likes || 0) - (a.likes || 0)
+};
+app.get('/api/rank', (req, res) => {
+  const period = ['week', 'month', 'all'].includes(req.query.period) ? req.query.period : 'week';
+  const by = Object.prototype.hasOwnProperty.call(RANK_BY, req.query.by) ? req.query.by : 'hot';
+  const limit = Math.min(50, parseInt(req.query.limit) || 10);
+  const days = period === 'week' ? 7 : period === 'month' ? 30 : 36500;
+  const since = Date.now() - days * 86400000;
+  const user = currentUser(req);
+  const list = filterBlocked(works.filter(w => isVisible(w) && new Date(w.createdAt).getTime() >= since), user)
+    .sort((a, b) => RANK_BY[by](a, b) || new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, limit)
+    .map((w, i) => ({ ...publicWork(w, user), rank: i + 1 }));
+  res.json(list);
+});
+
+function score(w) { return (w.likes || 0) * 3 + (w.favs || 0) * 4 + (w.views || 0); }
+
+// 作者主页
+app.get('/api/authors/:name', (req, res) => {
+  const name = req.params.name;
+  const user = currentUser(req);
+  const list = filterBlocked(works.filter(w => isVisible(w) && w.author === name), user)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .map(w => publicWork(w, user));
+  const creator = creators.find(c => c.name === name);
+  res.json({
+    name,
+    verified: !!creator,
+    bio: creator ? creator.bio || '' : '',
+    total: list.length,
+    totalLikes: list.reduce((s, w) => s + w.likes, 0),
+    totalFavs: list.reduce((s, w) => s + (w.favs || 0), 0),
+    works: list
+  });
+});
+
+// 作品详情（浏览量 +1）
+app.get('/api/works/:id', (req, res) => {
+  const w = works.find(x => x.id === req.params.id);
+  if (!w || (!isVisible(w) && !isAdmin(req))) return res.status(404).json({ error: '作品不存在或未通过审核' });
+  w.views = (w.views || 0) + 1;
+  saveWorks();
+  res.json(publicWork(w, currentUser(req)));
+});
+
+// 发布作品：登录用户免审直接上线；未登录（匿名）投稿先进入待审核
+app.post('/api/works', (req, res) => {
+  const user = currentUser(req);
+  const budget = user ? POST_LIMIT : Math.min(3, POST_LIMIT); // 匿名额度更紧，防刷
+  if (!rateLimit('post:' + clientIp(req), budget, 3600000)) {
+    return res.status(429).json({
+      error: user ? '发布过于频繁，请稍后再试' : '匿名投稿次数已达上限，注册后可继续发布且免审核'
+    });
+  }
+  upload(req, res, err => {
+    if (err) return res.status(400).json({ error: '上传失败：' + err.message });
+    const { title, prompt, category, link, type } = req.body;
+    const types = normalizeTypes(req.body.types || type);
+    const image = req.files && req.files.image && req.files.image[0];
+    const thumb = req.files && req.files.thumb && req.files.thumb[0];
+    const qrcode = req.files && req.files.qrcode && req.files.qrcode[0];
+    if (!image) return res.status(400).json({ error: '请上传作品封面 / 截图' });
+    if (!title) return res.status(400).json({ error: '标题为必填项' });
+
+    // 匿名投稿允许自填署名，不填就是「匿名」
+    const nickname = String(req.body.author || '').replace(/[<>\r\n]/g, '').trim().slice(0, 20);
+    const authorName = user ? user.username : (nickname || '匿名');
+
+    if (hitSensitive(title + authorName + (prompt || ''))) {
+      return res.status(400).json({ error: '内容包含违规词，请修改后重试' });
+    }
+
+    let linkVal = String(link || '').trim();
+    if (linkVal && !/^https?:\/\//i.test(linkVal)) linkVal = 'https://' + linkVal;
+
+    const typeErr = validateTypeRequired(types, linkVal, qrcode ? qrcode.filename : '');
+    if (typeErr) return res.status(400).json({ error: typeErr });
+
+    const repoVal = normRepo(req.body.repo);
+    if (parseOpenSource(req.body.openSource) === true && !repoVal)
+      return res.status(400).json({ error: '标注开源时请填写源码仓库地址' });
+
+    const needReview = REVIEW_MODE || !user; // 注册用户免审，匿名需审核
+    const work = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      title: String(title).slice(0, 100),
+      author: authorName,
+      userId: user ? user.id : null,
+      anon: !user,
+      prompt: String(prompt || '').slice(0, 1000),
+      category: categories.includes(category) ? category : '其他',
+      type: types[0],
+      types: types,
+      link: linkVal ? linkVal.slice(0, 500) : '',
+      image: '/uploads/' + image.filename,
+      thumb: thumb ? '/uploads/' + thumb.filename : '/uploads/' + image.filename,
+      qrcode: qrcode ? '/uploads/' + qrcode.filename : '',
+      images: ((req.files && req.files.images) || []).slice(0, 9).map(f => '/uploads/' + f.filename),
+      status: needReview ? 'pending' : 'approved',
+      featured: false,
+      pinned: false,
+      openSource: parseOpenSource(req.body.openSource),
+      repo: repoVal,
+      paid: parsePaid(req.body.paid),
+      reports: 0,
+      likes: 0,
+      views: 0,
+      createdAt: new Date().toISOString()
+    };
+    works.push(work);
+    saveWorks();
+    res.status(201).json({
+      ...publicWork(work, user),
+      status: work.status,
+      needReview,
+      anonymous: !user
+    });
+  });
+});
+
+// 编辑自己的作品
+app.put('/api/works/:id', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  upload(req, res, err => {
+    if (err) return res.status(400).json({ error: '上传失败：' + err.message });
+    const w = works.find(x => x.id === req.params.id);
+    if (!w) return res.status(404).json({ error: '作品不存在' });
+    if (w.userId !== user.id) return res.status(403).json({ error: '只能编辑自己的作品' });
+
+    const { title, prompt, category, link, type } = req.body;
+    // 形态必填校验：先按「改动后的预期状态」校验，通过后才动字段与文件
+    const nextTypes = (req.body.types !== undefined || type) ? normalizeTypes(req.body.types || type) : typesOf(w);
+    const nextLink = link !== undefined ? String(link).trim() : (w.link || '');
+    const nextQr = (req.files && req.files.qrcode && req.files.qrcode[0]) ? 'new'
+      : (String(req.body.removeQrcode) === '1' ? '' : (w.qrcode || ''));
+    const typeErr = validateTypeRequired(nextTypes, nextLink, nextQr);
+    if (typeErr) return res.status(400).json({ error: typeErr });
+
+    if (title) w.title = String(title).slice(0, 100);
+    if (prompt !== undefined) w.prompt = String(prompt).slice(0, 1000);
+    if (category && categories.includes(category)) w.category = category;
+    if (req.body.types !== undefined || type) applyTypes(w, normalizeTypes(req.body.types || type));
+    if (req.body.openSource !== undefined) w.openSource = parseOpenSource(req.body.openSource);
+    if (req.body.repo !== undefined) w.repo = normRepo(req.body.repo);
+    if (w.openSource === true && !w.repo) return res.status(400).json({ error: '标注开源时请填写源码仓库地址' });
+    if (req.body.paid !== undefined) w.paid = parsePaid(req.body.paid);
+    if (link !== undefined) {
+      let lv = String(link).trim();
+      if (lv && !/^https?:\/\//i.test(lv)) lv = 'https://' + lv;
+      w.link = lv.slice(0, 500);
+    }
+
+    applyImageChanges(w, req);
+
+    saveWorks();
+    res.json(publicWork(w, user));
+  });
+});
+
+// 删除自己的作品
+app.delete('/api/works/:id', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const idx = works.findIndex(x => x.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: '作品不存在' });
+  if (works[idx].userId !== user.id) return res.status(403).json({ error: '只能删除自己的作品' });
+
+  const [removed] = works.splice(idx, 1);
+  saveWorks();
+  comments = comments.filter(c => c.workId !== removed.id); // 清理该作品的评论
+  saveComments();
+  invalidateCommentCounts();
+  [removed.image, removed.thumb, removed.qrcode].concat(removed.images || []).forEach(img => {
+    if (!img) return;
+    const p = path.join(UPLOAD_DIR, path.basename(img));
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+  });
+  res.json({ ok: true });
+});
+
+// 点赞
+app.post('/api/works/:id/like', (req, res) => {
+  if (!rateLimit('like:' + clientIp(req), 60, 60000)) {
+    return res.status(429).json({ error: '操作过于频繁' });
+  }
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  w.likes = (w.likes || 0) + 1;
+  saveWorks();
+  res.json({ likes: w.likes });
+});
+
+// 收藏：需登录。每个账号的收藏列表存在 user.favs，作品上的 favs 是聚合计数
+app.post('/api/works/:id/fav', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('fav:' + user.id, 120, 60000)) {
+    return res.status(429).json({ error: '操作过于频繁' });
+  }
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  if (!Array.isArray(user.favs)) user.favs = [];
+  const on = !!(req.body && req.body.on);
+  const i = user.favs.indexOf(w.id);
+  if (on && i === -1) {
+    user.favs.unshift(w.id);
+    w.favs = (w.favs || 0) + 1;
+  } else if (!on && i !== -1) {
+    user.favs.splice(i, 1);
+    w.favs = Math.max(0, (w.favs || 0) - 1);
+  }
+  saveUsers();
+  saveWorks();
+  res.json({ favs: w.favs || 0, faved: user.favs.includes(w.id) });
+});
+
+// 登录后把本机旧的匿名收藏并入账号（只补不删，重复的忽略）
+app.post('/api/favs/merge', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('favmerge:' + user.id, 20, 60000)) {
+    return res.status(429).json({ error: '操作过于频繁' });
+  }
+  const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.slice(0, 300) : [];
+  if (!Array.isArray(user.favs)) user.favs = [];
+  let added = 0;
+  for (const id of ids) {
+    if (typeof id !== 'string' || !id || user.favs.includes(id)) continue;
+    const w = works.find(x => x.id === id);
+    if (!w || !isVisible(w)) continue;
+    user.favs.unshift(id);
+    w.favs = (w.favs || 0) + 1;
+    added++;
+  }
+  if (added) { saveUsers(); saveWorks(); }
+  res.json({ favs: user.favs, added });
+});
+
+// 投诉
+app.post('/api/works/:id/report', (req, res) => {
+  if (!rateLimit('report:' + clientIp(req), 10, 3600000)) {
+    return res.status(429).json({ error: '提交过于频繁，请稍后再试' });
+  }
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  const { reason, description, contact } = req.body || {};
+  const REASONS = ['违法违规', '涉嫌侵权/盗用他人作品', '内容不当', '虚假信息', '已不能使用', '其他'];
+  if (!REASONS.includes(reason)) return res.status(400).json({ error: '请选择投诉原因' });
+  reports.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    workId: w.id,
+    workTitle: w.title,
+    reason,
+    description: String(description || '').slice(0, 500),
+    contact: String(contact || '').slice(0, 100),
+    status: '待处理',
+    createdAt: new Date().toISOString()
+  });
+  saveReports();
+  w.reports = (w.reports || 0) + 1;
+  saveWorks();
+  res.status(201).json({ ok: true, message: '投诉已提交，我们会在 1-3 个工作日内处理' });
+});
+
+// ================= 评论 =================
+
+// 评论列表（公开，新→旧）
+app.get('/api/works/:id/comments', (req, res) => {
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  const user = currentUser(req); // 可为空，用于标记自己的评论
+  const list = comments
+    .filter(c => c.workId === w.id)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map(c => ({
+      id: c.id,
+      username: c.username,
+      text: c.text,
+      createdAt: c.createdAt,
+      owned: !!user && (user.username === c.username || isAdmin(req))
+    }));
+  res.json(list);
+});
+
+// 发表评论（需登录）
+app.post('/api/works/:id/comments', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('comment:' + clientIp(req), 20, 600000)) {
+    return res.status(429).json({ error: '评论太频繁，请稍后再试' });
+  }
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  const text = String((req.body || {}).text || '').trim();
+  if (!text) return res.status(400).json({ error: '评论内容不能为空' });
+  if (text.length > 500) return res.status(400).json({ error: '评论最长 500 字' });
+  if (hitSensitive(text + user.username)) {
+    return res.status(400).json({ error: '评论包含违规词，请修改后重试' });
+  }
+  const c = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    workId: w.id,
+    userId: user.id,
+    username: user.username,
+    text,
+    createdAt: Date.now()
+  };
+  comments.push(c);
+  saveComments();
+  invalidateCommentCounts();
+  res.status(201).json({
+    id: c.id, username: c.username, text: c.text,
+    createdAt: c.createdAt, owned: true
+  });
+});
+
+// 删除评论（本人、管理员账号，或后台口令）
+app.delete('/api/comments/:id', (req, res) => {
+  const user = currentUser(req);
+  const admin = isAdmin(req);
+  if (!user && !admin) return res.status(401).json({ error: '请先登录' });
+  const idx = comments.findIndex(c => c.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: '评论不存在' });
+  const c = comments[idx];
+  if ((!user || c.username !== user.username) && !admin) {
+    return res.status(403).json({ error: '只能删除自己的评论' });
+  }
+  comments.splice(idx, 1);
+  saveComments();
+  invalidateCommentCounts();
+  res.json({ ok: true });
+});
+
+// 后台：最近评论（新→旧，限 200 条）
+app.get('/api/admin/comments', requireAdmin, (req, res) => {
+  const list = comments
+    .slice()
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 200)
+    .map(c => {
+      const w = works.find(x => x.id === c.workId);
+      return { ...c, workTitle: w ? w.title : '（作品已删除）' };
+    });
+  res.json(list);
+});
+
+// ================= 意见反馈 =================
+// 匿名也能提，登录用户自动带上用户名；后台可标记处理 / 删除
+app.post('/api/feedback', (req, res) => {
+  if (!rateLimit('feedback:' + clientIp(req), 5, 3600000)) {
+    return res.status(429).json({ error: '反馈提交太频繁了，休息一会儿再试' });
+  }
+  const { type, content, contact } = req.body || {};
+  const TYPES = ['功能建议', '遇到问题', '内容建议', '合作/其他'];
+  const text = String(content || '').trim();
+  if (text.length < 5) return res.status(400).json({ error: '多写两句吧，至少 5 个字' });
+  if (text.length > 1000) return res.status(400).json({ error: '内容太长了，1000 字以内' });
+  const me = currentUser(req);
+  feedback.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    type: TYPES.includes(type) ? type : '功能建议',
+    content: text,
+    contact: String(contact || '').trim().slice(0, 100),
+    username: me ? me.username : '',
+    page: String(req.headers.referer || '').slice(0, 200),
+    ua: String(req.headers['user-agent'] || '').slice(0, 200),
+    status: '待查看',
+    createdAt: new Date().toISOString()
+  });
+  saveFeedback();
+  if (feedback.length > 2000) { feedback = feedback.slice(-2000); saveFeedback(); } // 防止无限增长
+  res.status(201).json({ ok: true, message: '收到啦，谢谢你的反馈！' });
+});
+
+// ================= 管理端 =================
+
+app.get('/api/admin/stats', requireAdmin, (req, res) => {
+  res.json({
+    total: works.length,
+    approved: works.filter(w => (w.status || 'approved') === 'approved').length,
+    pending: works.filter(w => w.status === 'pending').length,
+    reports: reports.filter(r => r.status === '待处理').length,
+    feedback: feedback.filter(f => f.status === '待查看').length,
+    claims: claims.filter(c => c.status === 'pending').length,
+    views: works.reduce((s, w) => s + (w.views || 0), 0),
+    likes: works.reduce((s, w) => s + (w.likes || 0), 0),
+    ...visitStats()
+  });
+});
+
+app.get('/api/admin/works', requireAdmin, (req, res) => {
+  const status = req.query.status;
+  let list = works.slice();
+  if (status && status !== '全部') list = list.filter(w => (w.status || 'approved') === status);
+  list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  res.json(list.map(w => ({ ...publicWork(w), status: w.status || 'approved', reports: w.reports || 0, anon: !!w.anon, ...workVisitStats(w.id) })));
+});
+
+app.post('/api/admin/works/:id/approve', requireAdmin, (req, res) => {
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  w.status = 'approved';
+  saveWorks();
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/works/:id/reject', requireAdmin, (req, res) => {
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  w.status = 'rejected';
+  saveWorks();
+  res.json({ ok: true });
+});
+
+// 精选 / 置顶 切换
+app.post('/api/admin/works/:id/feature', requireAdmin, (req, res) => {
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  w.featured = !w.featured;
+  saveWorks();
+  res.json({ ok: true, featured: w.featured });
+});
+
+app.post('/api/admin/works/:id/pin', requireAdmin, (req, res) => {
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  w.pinned = !w.pinned;
+  saveWorks();
+  res.json({ ok: true, pinned: w.pinned });
+});
+
+// 开放 / 关闭认领（只有开放的作品，前台详情页才出现认领入口）
+app.post('/api/admin/works/:id/claim-open', requireAdmin, (req, res) => {
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  const raw = req.body && req.body.open;
+  const open = raw === undefined ? !isClaimable(w) : !!raw;
+  w.claimOpen = open;
+  if (!open) {
+    // 关闭时把待审申请一并关掉，避免挂在后台没人能处理
+    const now = new Date().toISOString();
+    claims.forEach(c => {
+      if (c.workId === w.id && c.status === 'pending') {
+        c.status = 'rejected'; c.handledAt = now; c.note = '管理员关闭了该作品的认领';
+      }
+    });
+    saveClaims();
+  }
+  saveWorks();
+  res.json({ ok: true, claimable: open });
+});
+
+// 管理员直接新增作品（可指定作者、状态、精选/置顶）
+app.post('/api/admin/works', requireAdmin, (req, res) => {
+  upload(req, res, err => {
+    if (err) return res.status(400).json({ error: '上传失败：' + err.message });
+    const { title, prompt, category, link, type, author, status } = req.body;
+    const types = normalizeTypes(req.body.types || type);
+    const image = req.files && req.files.image && req.files.image[0];
+    const thumb = req.files && req.files.thumb && req.files.thumb[0];
+    const qrcode = req.files && req.files.qrcode && req.files.qrcode[0];
+    if (!image) return res.status(400).json({ error: '请上传作品封面 / 截图' });
+    if (!title) return res.status(400).json({ error: '标题为必填项' });
+
+    let linkVal = String(link || '').trim();
+    if (linkVal && !/^https?:\/\//i.test(linkVal)) linkVal = 'https://' + linkVal;
+
+    const typeErr = validateTypeRequired(types, linkVal, qrcode ? qrcode.filename : '');
+    if (typeErr) return res.status(400).json({ error: typeErr });
+
+    const repoVal = normRepo(req.body.repo);
+    if (parseOpenSource(req.body.openSource) === true && !repoVal)
+      return res.status(400).json({ error: '标注开源时请填写源码仓库地址' });
+
+    const work = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      title: String(title).slice(0, 100),
+      author: String(author || '管理员').slice(0, 50),
+      userId: null,
+      prompt: String(prompt || '').slice(0, 1000),
+      category: categories.includes(category) ? category : '其他',
+      type: types[0],
+      types: types,
+      link: linkVal ? linkVal.slice(0, 500) : '',
+      image: '/uploads/' + image.filename,
+      thumb: thumb ? '/uploads/' + thumb.filename : '/uploads/' + image.filename,
+      qrcode: qrcode ? '/uploads/' + qrcode.filename : '',
+      images: ((req.files && req.files.images) || []).slice(0, 9).map(f => '/uploads/' + f.filename),
+      status: ['approved', 'pending', 'rejected'].includes(status) ? status : 'approved',
+      featured: false,
+      pinned: false,
+      openSource: parseOpenSource(req.body.openSource),
+      repo: repoVal,
+      paid: parsePaid(req.body.paid),
+      reports: 0,
+      likes: 0,
+      views: 0,
+      createdAt: new Date().toISOString()
+    };
+    works.push(work);
+    saveWorks();
+    res.status(201).json({ ...publicWork(work), status: work.status });
+  });
+});
+
+// 管理员编辑任意作品（可改作者、状态）
+app.put('/api/admin/works/:id', requireAdmin, (req, res) => {
+  upload(req, res, err => {
+    if (err) return res.status(400).json({ error: '上传失败：' + err.message });
+    const w = works.find(x => x.id === req.params.id);
+    if (!w) return res.status(404).json({ error: '作品不存在' });
+
+    const { title, prompt, category, link, type, author, status } = req.body;
+    // 形态必填校验：按「改动后的预期状态」校验，通过后才动字段与文件
+    const nextTypes = (req.body.types !== undefined || type) ? normalizeTypes(req.body.types || type) : typesOf(w);
+    const nextLink = link !== undefined ? String(link).trim() : (w.link || '');
+    const nextQr = (req.files && req.files.qrcode && req.files.qrcode[0]) ? 'new'
+      : (String(req.body.removeQrcode) === '1' ? '' : (w.qrcode || ''));
+    const typeErr = validateTypeRequired(nextTypes, nextLink, nextQr);
+    if (typeErr) return res.status(400).json({ error: typeErr });
+
+    if (title) w.title = String(title).slice(0, 100);
+    if (prompt !== undefined) w.prompt = String(prompt).slice(0, 1000);
+    if (category && categories.includes(category)) w.category = category;
+    if (req.body.types !== undefined || type) applyTypes(w, normalizeTypes(req.body.types || type));
+    if (author) w.author = String(author).slice(0, 50);
+    if (status && ['approved', 'pending', 'rejected'].includes(status)) w.status = status;
+    if (req.body.openSource !== undefined) w.openSource = parseOpenSource(req.body.openSource);
+    if (req.body.repo !== undefined) w.repo = normRepo(req.body.repo);
+    if (w.openSource === true && !w.repo) return res.status(400).json({ error: '标注开源时请填写源码仓库地址' });
+    if (req.body.paid !== undefined) w.paid = parsePaid(req.body.paid);
+    if (link !== undefined) {
+      let lv = String(link).trim();
+      if (lv && !/^https?:\/\//i.test(lv)) lv = 'https://' + lv;
+      w.link = lv.slice(0, 500);
+    }
+
+    applyImageChanges(w, req);
+
+    saveWorks();
+    res.json({ ...publicWork(w), status: w.status || 'approved' });
+  });
+});
+
+// 删除作品（同时删图）
+app.delete('/api/admin/works/:id', requireAdmin, (req, res) => {
+  const idx = works.findIndex(x => x.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: '作品不存在' });
+  const [removed] = works.splice(idx, 1);
+  saveWorks();
+  comments = comments.filter(c => c.workId !== removed.id); // 清理该作品的评论
+  saveComments();
+  invalidateCommentCounts();
+  [removed.image, removed.thumb, removed.qrcode].concat(removed.images || []).forEach(img => {
+    if (!img) return;
+    const p = path.join(UPLOAD_DIR, path.basename(img));
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+  });
+  res.json({ ok: true });
+});
+
+// 投诉列表 / 处理
+app.get('/api/admin/reports', requireAdmin, (req, res) => res.json(reports.slice().reverse()));
+app.post('/api/admin/reports/:id/resolve', requireAdmin, (req, res) => {
+  const r = reports.find(x => x.id === req.params.id) || reports[Number(req.params.id)];
+  if (!r) return res.status(404).json({ error: '投诉不存在' });
+  r.status = '已处理';
+  saveReports();
+  res.json({ ok: true });
+});
+
+// 意见反馈管理
+app.get('/api/admin/feedback', requireAdmin, (req, res) => res.json(feedback.slice().reverse()));
+app.post('/api/admin/feedback/:id/status', requireAdmin, (req, res) => {
+  const f = feedback.find(x => x.id === req.params.id);
+  if (!f) return res.status(404).json({ error: '反馈不存在' });
+  f.status = req.body && req.body.status === '待查看' ? '待查看' : '已处理';
+  saveFeedback();
+  res.json({ ok: true });
+});
+app.delete('/api/admin/feedback/:id', requireAdmin, (req, res) => {
+  const before = feedback.length;
+  feedback = feedback.filter(x => x.id !== req.params.id);
+  if (feedback.length === before) return res.status(404).json({ error: '反馈不存在' });
+  saveFeedback();
+  res.json({ ok: true });
+});
+
+// 分类管理
+app.get('/api/admin/categories', requireAdmin, (req, res) => {
+  const counts = {};
+  works.forEach(w => { if (w.category) counts[w.category] = (counts[w.category] || 0) + 1; });
+  res.json(orderedCategories().map(name => ({ name, count: counts[name] || 0 })));
+});
+app.post('/api/admin/categories/reorder', requireAdmin, (req, res) => {
+  const names = Array.isArray(req.body && req.body.names) ? req.body.names.map(String) : null;
+  if (!names) return res.status(400).json({ error: '缺少排序列表' });
+  const known = new Set(categories);
+  const next = names.filter(n => known.has(n) && n !== LAST_CATEGORY);
+  categories.forEach(c => { if (!next.includes(c) && c !== LAST_CATEGORY) next.push(c); });
+  if (categories.includes(LAST_CATEGORY)) next.push(LAST_CATEGORY); // 「其他」永远最后
+  categories = next;
+  saveCategories();
+  res.json(orderedCategories().map(name => ({ name })));
+});
+app.delete('/api/admin/categories/:name', requireAdmin, (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  if (name === LAST_CATEGORY) return res.status(400).json({ error: '「其他」是兜底分类，不能删除' });
+  const before = categories.length;
+  categories = categories.filter(c => c !== name);
+  if (categories.length === before) return res.status(404).json({ error: '分类不存在' });
+  saveCategories();
+  res.json({ ok: true, categories: orderedCategories() });
+});
+
+// 形态管理
+app.get('/api/admin/types', requireAdmin, (req, res) => {
+  const counts = {};
+  works.forEach(w => typesOf(w).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+  res.json(workTypes.map(t => ({ name: t.name, icon: t.icon, count: counts[t.name] || 0 })));
+});
+app.post('/api/admin/types', requireAdmin, (req, res) => {
+  const name = String((req.body && req.body.name) || '').trim().replace(/[<>]/g, '').slice(0, 10);
+  const icon = String((req.body && req.body.icon) || '').trim().slice(0, 4);
+  if (!name) return res.status(400).json({ error: '形态名不能为空' });
+  if (ALL_TYPES_LEGACY.includes(name)) return res.status(400).json({ error: '该形态已存在' });
+  workTypes.push({ name, icon: icon || '✨' });
+  saveTypes(); syncWorkTypes();
+  res.status(201).json(workTypes);
+});
+app.post('/api/admin/types/reorder', requireAdmin, (req, res) => {
+  const names = Array.isArray(req.body && req.body.names) ? req.body.names.map(String) : null;
+  if (!names) return res.status(400).json({ error: '缺少排序列表' });
+  const map = new Map(workTypes.map(t => [t.name, t]));
+  const next = names.map(n => map.get(n)).filter(Boolean);
+  workTypes.forEach(t => { if (names.indexOf(t.name) === -1) next.push(t); });
+  workTypes = next;
+  saveTypes(); syncWorkTypes();
+  res.json(workTypes);
+});
+app.delete('/api/admin/types/:name', requireAdmin, (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  if (name === '网站') return res.status(400).json({ error: '「网站」是默认形态，不能删除' });
+  const used = works.filter(w => typesOf(w).includes(name)).length;
+  if (used) return res.status(400).json({ error: `还有 ${used} 件作品在用「${name}」，先改成其他形态再删` });
+  const before = workTypes.length;
+  workTypes = workTypes.filter(t => t.name !== name);
+  if (workTypes.length === before) return res.status(404).json({ error: '形态不存在' });
+  saveTypes(); syncWorkTypes();
+  res.json(workTypes);
+});
+
+// 推荐位管理
+app.get('/api/admin/tools', requireAdmin, (req, res) => res.json(tools));
+app.post('/api/admin/tools', requireAdmin, (req, res) => {
+  const { name, desc, url } = req.body || {};
+  if (!name || !url) return res.status(400).json({ error: '名称和链接必填' });
+  tools.push({ id: Date.now().toString(36), name: String(name).slice(0, 40), desc: String(desc || '').slice(0, 120), url: String(url).slice(0, 300), active: true });
+  saveTools();
+  res.status(201).json(tools);
+});
+app.delete('/api/admin/tools/:id', requireAdmin, (req, res) => {
+  tools = tools.filter(t => t.id !== req.params.id);
+  saveTools();
+  res.json({ ok: true });
+});
+
+// 认证创作者
+app.get('/api/admin/creators', requireAdmin, (req, res) => res.json(creators));
+app.post('/api/admin/creators', requireAdmin, (req, res) => {
+  const { name, bio } = req.body || {};
+  if (!name) return res.status(400).json({ error: '创作者名称必填' });
+  if (!creators.find(c => c.name === name)) creators.push({ name: String(name).slice(0, 50), bio: String(bio || '').slice(0, 200) });
+  writeJSON('creators.json', creators);
+  res.status(201).json(creators);
+});
+app.delete('/api/admin/creators/:name', requireAdmin, (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  creators = creators.filter(c => c.name !== name);
+  writeJSON('creators.json', creators);
+  res.json({ ok: true });
+});
+
+// ---- 认领申请审核 ----
+app.get('/api/admin/claims', requireAdmin, (req, res) => {
+  const map = new Map(works.map(w => [w.id, w]));
+  const list = claims.map(c => {
+    const w = map.get(c.workId);
+    return {
+      ...c,
+      workTitle: w ? w.title : '(作品已删除)',
+      workThumb: w ? (w.thumb || w.image) : '',
+      workAuthor: w ? w.author : '',
+      workGone: !w
+    };
+  }).sort((a, b) => (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1)
+    || (a.createdAt < b.createdAt ? 1 : -1));
+  res.json(list);
+});
+
+app.post('/api/admin/claims/:id/approve', requireAdmin, (req, res) => {
+  const c = claims.find(x => x.id === req.params.id);
+  if (!c) return res.status(404).json({ error: '申请不存在' });
+  if (c.status !== 'pending') return res.status(400).json({ error: '该申请已处理过' });
+  const w = works.find(x => x.id === c.workId);
+  if (!w) return res.status(404).json({ error: '作品已被删除' });
+  const now = new Date().toISOString();
+  // 作品归到申请人名下：作者名同步改为用户名，之后就能在「我的作品」里编辑/管理
+  w.userId = c.userId;
+  w.author = c.username;
+  w.claimedAt = now;
+  w.claimOpen = false;   // 认领成功后自动关闭入口
+  c.status = 'approved';
+  c.handledAt = now;
+  // 同一作品的其它待审申请自动关闭，避免重复认领
+  claims.forEach(o => {
+    if (o.workId === w.id && o.id !== c.id && o.status === 'pending') {
+      o.status = 'rejected'; o.handledAt = now; o.note = '作品已被其他申请人认领';
+    }
+  });
+  saveWorks(); saveClaims();
+  res.json({ ok: true, work: publicWork(w), claim: c });
+});
+
+app.post('/api/admin/claims/:id/reject', requireAdmin, (req, res) => {
+  const c = claims.find(x => x.id === req.params.id);
+  if (!c) return res.status(404).json({ error: '申请不存在' });
+  if (c.status !== 'pending') return res.status(400).json({ error: '该申请已处理过' });
+  c.status = 'rejected';
+  c.handledAt = new Date().toISOString();
+  c.note = String((req.body && req.body.note) || '').slice(0, 200);
+  saveClaims();
+  res.json({ ok: true, claim: c });
+});
+
+// ================= 页面渲染（SEO 友好的服务端渲染外壳） =================
+const INDEX_TPL = path.join(__dirname, 'frontend', 'index.html');
+let tplCache = { mtime: 0, html: '' };
+
+// 静态资源版本号：HTML 里的 style.css / app.js 引用带上 ?v=<文件mtime>，
+// 文件一更新 URL 即变化，浏览器旧缓存（包括历史遗留的强缓存）自动失效
+const assetVerCache = {};
+function assetVer(name) {
+  try {
+    assetVerCache[name] = fs.statSync(path.join(__dirname, 'frontend', name)).mtimeMs;
+  } catch { assetVerCache[name] = assetVerCache[name] || Date.now(); }
+  return String(assetVerCache[name]);
+}
+function withAssetVer(html) {
+  return html
+    .replace('href="/style.css"', `href="/style.css?v=${assetVer('style.css')}"`)
+    .replace('src="/app.js"', `src="/app.js?v=${assetVer('app.js')}"`);
+}
+
+function template() {
+  try {
+    const st = fs.statSync(INDEX_TPL);
+    if (st.mtimeMs !== tplCache.mtime) {
+      tplCache = { mtime: st.mtimeMs, html: fs.readFileSync(INDEX_TPL, 'utf-8') };
+    }
+  } catch { /* 使用缓存 */ }
+  return withAssetVer(tplCache.html);
+}
+
+function shell(seoHead, bodyBlock) {
+  const html = template();
+  if (!html) return `<!DOCTYPE html><html lang="zh-CN"><head>${seoHead}</head><body>${bodyBlock || ''}</body></html>`;
+  return html.replace('<!--SEO_HEAD-->', seoHead).replace('<!--SEO_BODY-->', bodyBlock || '');
+}
+
+function sendHtml(res, html, status = 200) {
+  res.status(status)
+    .set('Content-Type', 'text/html; charset=utf-8')
+    .set('Cache-Control', 'public, max-age=0, must-revalidate')
+    .send(html);
+}
+
+function visibleWorks() { return works.filter(isVisible); }
+function byNewest(list) {
+  return list.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+function authorEntries() {
+  const map = new Map();
+  visibleWorks().forEach(w => {
+    const cur = map.get(w.author);
+    if (!cur || new Date(w.createdAt) > new Date(cur.lastmod)) {
+      map.set(w.author, { name: w.author, lastmod: w.createdAt });
+    }
+  });
+  return [...map.values()];
+}
+
+function notFoundBlock(base) {
+  return `<div id="seoContent" class="seo-wrap">
+  <div class="page-head"><h1>页面不存在</h1><p>你访问的作品可能已下架、未通过审核，或者链接有误。</p></div>
+  <p class="seo-more"><a class="btn-primary" href="/">返回首页浏览全部作品</a></p>
+  <div class="seo-links"><div class="seo-links-group"><span class="seo-links-title">你可能想看</span>
+    ${byNewest(visibleWorks()).slice(0, 6).map(w => `<a href="/w/${seo.esc(w.id)}">${seo.esc(w.title)}</a>`).join('')}
+  </div></div>
+</div>`;
+}
+
+// 首页
+app.get('/', (req, res) => {
+  const base = seo.baseUrl(req);
+  const q = String(req.query.q || '').trim();
+  const pool = byNewest(visibleWorks());
+  const list = q
+    ? pool.filter(w => [w.title, w.author, w.prompt, w.category].some(f => String(f || '').toLowerCase().includes(q.toLowerCase())))
+    : pool;
+
+  const description = truncateText(
+    `造梦橱窗收录社区提交的网站、小程序、App 与智能体作品，涵盖${orderedCategories().slice(0, 5).join('、')}等分类，` +
+    `支持搜索、分类浏览、作品榜单与免费投稿。`, 150);
+
+  const headHtml = seo.head({
+    title: q
+      ? `搜索「${q}」的结果 - ${seo.SITE_NAME}`
+      : `${seo.SITE_NAME} - ${seo.SITE_TAGLINE}`,
+    description,
+    keywords: [
+      '作品集', '作品展示', '工具导航', '网站推荐', '小程序', 'App', '智能体',
+      '作品投稿', ...orderedCategories().slice(0, 4)
+    ].join(','),
+    canonical: base + '/',
+    image: list[0] ? seo.absolute(base, list[0].image) : '',
+    type: 'website',
+    noindex: !!q,
+    jsonLd: seo.websiteLd(base)
+  });
+
+  const block = seo.homeBlock(base, {
+    works: list.slice(0, 24),
+    categories: orderedCategories(),
+    types: WORK_TYPES
+  });
+  sendHtml(res, shell(headHtml, block));
+});
+
+app.get('/index.html', (req, res) => res.redirect(301, '/'));
+
+// 作品详情页（可被搜索引擎收录的独立页面）
+app.get('/w/:id', (req, res) => {
+  const base = seo.baseUrl(req);
+  const raw = works.find(x => x.id === req.params.id);
+
+  if (!raw || !isVisible(raw)) {
+    const headHtml = seo.head({
+      title: `页面不存在 - ${seo.SITE_NAME}`,
+      description: '该作品可能已下架或未通过审核。',
+      canonical: base + '/',
+      noindex: true
+    });
+    return sendHtml(res, shell(headHtml, notFoundBlock(base)), 404);
+  }
+
+  const w = publicWork(raw);
+  const pageUrl = base + '/w/' + w.id;
+  const intro = String(w.intro || '').trim();
+  const description = truncateText(
+    intro || `${w.title}，由 ${w.author} 提交的${w.category}类${typesOf(w).join('/')}作品，来造梦橱窗查看截图与使用方式。`, 150);
+  const trail = [
+    { name: '首页', href: '/' },
+    { name: w.category, href: '/c/' + encodeURIComponent(w.category) },
+    { name: w.title }
+  ];
+  // 同类作品：增强内链，帮助爬虫发现更多页面
+  const related = byNewest(visibleWorks().filter(x => x.id !== w.id && x.category === w.category))
+    .slice(0, 6).map(publicWork);
+
+  const headHtml = seo.head({
+    title: `${w.title} - ${w.category}${typesOf(w).join('/')}作品 - ${seo.SITE_NAME}`,
+    description,
+    keywords: [w.title, w.author, w.category].concat(typesOf(w), ['作品', '工具']).join(','),
+    canonical: pageUrl,
+    image: seo.absolute(base, w.image),
+    imageAlt: `${w.title} 作品截图`,
+    type: 'article',
+    publishedTime: w.createdAt,
+    modifiedTime: w.createdAt,
+    jsonLd: [
+      seo.workLd(base, w, pageUrl),
+      seo.breadcrumbLd(base, trail)
+    ]
+  });
+
+  // ?full=1 → 完整页面形态（用于分享与搜索引擎收录，前端不再自动弹窗）
+  const fullPage = req.query.full === '1' || req.query.full === 'true';
+
+  sendHtml(res, shell(headHtml, seo.workArticle(base, w, trail, related, { full: fullPage })));
+});
+
+// 作者主页
+app.get('/u/:name', (req, res) => {
+  const base = seo.baseUrl(req);
+  const name = String(req.params.name || '').slice(0, 50);
+  const list = byNewest(visibleWorks().filter(w => w.author === name));
+  const creator = creators.find(c => c.name === name);
+  const totalLikes = list.reduce((s, w) => s + (w.likes || 0), 0);
+  const pageUrl = base + '/u/' + encodeURIComponent(name);
+
+  if (!list.length && !creator) {
+    const headHtml = seo.head({
+      title: `作者不存在 - ${seo.SITE_NAME}`,
+      description: '该创作者还没有提交作品。',
+      canonical: base + '/',
+      noindex: true
+    });
+    return sendHtml(res, shell(headHtml, notFoundBlock(base)), 404);
+  }
+
+  const bio = creator ? creator.bio || '' : '';
+  const headHtml = seo.head({
+    title: `${name} 的作品（${list.length} 件） - ${seo.SITE_NAME}`,
+    description: truncateText(
+      `${name}${creator ? '（认证创作者）' : ''}在造梦橱窗提交了 ${list.length} 件作品，` +
+      `累计获赞 ${totalLikes} 次。${bio}`, 150),
+    keywords: [name, `${name}的作品`, '创作者', '作品集'].join(','),
+    canonical: pageUrl,
+    image: list[0] ? seo.absolute(base, list[0].image) : '',
+    type: 'profile',
+    jsonLd: [{
+      '@context': 'https://schema.org',
+      '@type': 'ProfilePage',
+      url: pageUrl,
+      name: `${name} 的作品`,
+      isPartOf: { '@type': 'WebSite', name: seo.SITE_NAME, url: base + '/' },
+      mainEntity: {
+        '@type': 'Person',
+        name,
+        description: bio || `${name} 在 ${seo.SITE_NAME} 的创作者主页`,
+        url: pageUrl,
+        interactionStatistic: {
+          '@type': 'InteractionCounter',
+          interactionType: { '@type': 'LikeAction' },
+          userInteractionCount: totalLikes
+        }
+      }
+    }, seo.breadcrumbLd(base, [{ name: '首页', href: '/' }, { name }])]
+  });
+
+  const block = `<div id="seoContent" class="seo-wrap">
+  ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name }])}
+  <div class="author-card">
+    <div class="author-avatar">${seo.esc(name.slice(0, 1).toUpperCase())}</div>
+    <div class="author-info">
+      <h1>@${seo.esc(name)}</h1>
+      ${bio ? `<p class="author-bio">${seo.esc(bio)}</p>` : ''}
+      <p class="author-stats">
+        ${creator ? '<span class="verified-tag">✔ 认证创作者</span> ' : ''}
+        作品 ${list.length} · 累计获赞 ${totalLikes}
+      </p>
+    </div>
+  </div>
+  <div class="gallery">${list.map(seo.cardHtml).join('') || '<div class="empty"><p>该作者还没有公开作品</p></div>'}</div>
+</div>`;
+  sendHtml(res, shell(headHtml, block));
+});
+
+// 榜单页
+app.get('/rank', (req, res) => {
+  const base = seo.baseUrl(req);
+  const by = Object.prototype.hasOwnProperty.call(RANK_BY, req.query.by) ? req.query.by : 'hot';
+  const BY_TEXT = { hot: '综合热度', likes: '点赞', favs: '收藏' };
+  const list = visibleWorks().slice()
+    .sort((a, b) => RANK_BY[by](a, b))
+    .slice(0, 20);
+  const tabCls = k => (k === by ? 'rank-tab active' : 'rank-tab');
+  const tabHref = k => (k === 'hot' ? '/rank' : '/rank?by=' + k);
+
+  const headHtml = seo.head({
+    title: `作品榜单 - 热门网站、小程序与 App - ${seo.SITE_NAME}`,
+    description: truncateText(
+      `作品集热门榜单：支持按综合热度、点赞、收藏排序，实时更新最受欢迎的网站、小程序、App 与智能体作品。`, 150),
+    keywords: '作品榜单,热门工具,排行榜,小程序排行,网站排行,点赞榜,收藏榜',
+    canonical: base + '/rank',
+    image: list[0] ? seo.absolute(base, list[0].image) : '',
+    jsonLd: [
+      seo.breadcrumbLd(base, [{ name: '首页', href: '/' }, { name: '作品榜单' }]),
+      {
+        '@context': 'https://schema.org',
+        '@type': 'ItemList',
+        name: `作品榜单（${BY_TEXT[by]}）`,
+        url: base + '/rank',
+        itemListOrder: 'https://schema.org/ItemListOrderDescending',
+        numberOfItems: list.length,
+        itemListElement: list.map((w, i) => ({
+          '@type': 'ListItem',
+          position: i + 1,
+          url: base + '/w/' + w.id,
+          name: w.title
+        }))
+      }
+    ]
+  });
+
+  const block = `<div id="seoContent" class="seo-wrap">
+  ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name: '作品榜单' }])}
+  <div class="page-head">
+    <h1>作品榜单</h1>
+    <p>当前按${BY_TEXT[by]}排序，展示最受欢迎的作品</p>
+  </div>
+  <div class="rank-tabs">
+    <a class="${tabCls('hot')}" href="${tabHref('hot')}">综合</a>
+    <a class="${tabCls('likes')}" href="${tabHref('likes')}">按点赞</a>
+    <a class="${tabCls('favs')}" href="${tabHref('favs')}">按收藏</a>
+  </div>
+  <ol class="seo-rank">
+    ${list.map((w, i) => `<li>
+      <span class="rank-no">${i + 1}</span>
+      <a href="/w/${seo.esc(w.id)}"><img src="${seo.esc(w.thumb || w.image)}" alt="${seo.esc(w.title)}" loading="lazy" /></a>
+      <div class="rank-main">
+        <a class="rank-title" href="/w/${seo.esc(w.id)}">${seo.esc(w.title)}</a>
+        <div class="rank-meta">${typesOf(w).map(t => `${seo.TYPE_ICONS[t] || '✨'} ${seo.esc(t)}`).join(' · ')} · @${seo.esc(w.author)} · ${seo.esc(w.category || '')}</div>
+      </div>
+      <div class="rank-score">♥ ${w.likes || 0} · ★ ${w.favs || 0}<br><span>👁 ${w.views || 0}</span></div>
+    </li>`).join('') || '<li class="empty"><p>暂无上榜作品</p></li>'}
+  </ol>
+  <p class="seo-more"><a class="btn-ghost" href="/">← 返回首页</a></p>
+</div>`;
+  sendHtml(res, shell(headHtml, block));
+});
+
+// 分类页 /c/:name 与形态页 /t/:name（服务端渲染，利于收录）
+function listPageRoute(kind) {
+  return (req, res) => {
+    const base = seo.baseUrl(req);
+    const name = String(req.params.name || '');
+    const valid = kind === 'c' ? categories.includes(name) : ALL_TYPES_LEGACY.includes(name);
+    const pool = byNewest(visibleWorks().filter(w =>
+      kind === 'c' ? w.category === name : typesOf(w).includes(name)));
+
+    if (!valid) {
+      const headHtml = seo.head({
+        title: `分类不存在 - ${seo.SITE_NAME}`,
+        description: '该分类不存在。',
+        canonical: base + '/',
+        noindex: true
+      });
+      return sendHtml(res, shell(headHtml, notFoundBlock(base)), 404);
+    }
+
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const pageSize = 24;
+    const items = pool.slice((page - 1) * pageSize, page * pageSize);
+    const hasMore = page * pageSize < pool.length;
+    const pathBase = '/' + kind + '/' + encodeURIComponent(name);
+    const canonical = base + pathBase + (page > 1 ? `?page=${page}` : '');
+
+    const h1 = kind === 'c' ? `${name}类作品` : `${name}形态的作品`;
+    const desc = truncateText(
+      `共收录 ${pool.length} 件${kind === 'c' ? `「${name}」分类` : `「${name}」形态`}的作品，` +
+      `包含 ${pool.slice(0, 3).map(w => w.title).join('、')} 等，均可在线体验。`, 150);
+
+    const headHtml = seo.head({
+      title: `${h1}（共 ${pool.length} 件） - ${seo.SITE_NAME}`,
+      description: desc,
+      keywords: [name, `${name}作品`, `${name}工具`].join(','),
+      canonical,
+      image: items[0] ? seo.absolute(base, items[0].image) : '',
+      jsonLd: [
+        seo.breadcrumbLd(base, [{ name: '首页', href: '/' }, { name: h1 }]),
+        {
+          '@context': 'https://schema.org',
+          '@type': 'CollectionPage',
+          name: h1,
+          description: desc,
+          url: canonical,
+          isPartOf: { '@type': 'WebSite', name: seo.SITE_NAME, url: base + '/' },
+          mainEntity: {
+            '@type': 'ItemList',
+            numberOfItems: items.length,
+            itemListElement: items.map((w, i) => ({
+              '@type': 'ListItem',
+              position: (page - 1) * pageSize + i + 1,
+              url: base + '/w/' + w.id,
+              name: w.title
+            }))
+          }
+        }
+      ]
+    });
+
+    const prevHref = page > 1 ? pathBase + (page - 1 > 1 ? `?page=${page - 1}` : '') : '';
+    const nextHref = hasMore ? `${pathBase}?page=${page + 1}` : '';
+
+    sendHtml(res, seo.listPage(base, {
+      title: `${h1}（共 ${pool.length} 件） - ${seo.SITE_NAME}`,
+      description: desc,
+      h1,
+      activeName: name,
+      kind,
+      subtitle: `共 ${pool.length} 件${kind === 'c' ? '同分类' : '同形态'}作品，点击卡片查看详情与体验地址`,
+      items,
+      trail: [{ name: '首页', href: '/' }, { name: h1 }],
+      page,
+      hasMore,
+      prevHref,
+      nextHref,
+      canonical,
+      categories: kind === 'c' ? orderedCategories() : WORK_TYPES,
+      types: WORK_TYPES
+    }));
+  };
+}
+
+app.get('/c/:name', listPageRoute('c'));
+app.get('/t/:name', listPageRoute('t'));
+
+// sitemap / robots / rss
+app.get('/sitemap.xml', (req, res) => {
+  const base = seo.baseUrl(req);
+  res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(
+    seo.sitemapXml(base, {
+      works: byNewest(visibleWorks()),
+      categories: orderedCategories(),
+      types: WORK_TYPES,
+      authors: authorEntries()
+    })
+  );
+});
+
+app.get('/robots.txt', (req, res) => {
+  res.type('text/plain').set('Cache-Control', 'public, max-age=86400')
+    .send(seo.robotsTxt(seo.baseUrl(req)));
+});
+
+app.get('/feed.xml', (req, res) => {
+  res.type('application/rss+xml').set('Cache-Control', 'public, max-age=1800')
+    .send(seo.rssXml(seo.baseUrl(req), byNewest(visibleWorks()).slice(0, 30)));
+});
+
+app.get('/admin', (req, res) => {
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  res.set('Cache-Control', 'no-store');
+  let html;
+  try { html = fs.readFileSync(path.join(__dirname, 'frontend', 'admin.html'), 'utf-8'); }
+  catch { return res.status(500).send('admin.html 缺失'); }
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.send(withAssetVer(html));
+});
+
+// 兜底 404
+app.use((req, res) => {
+  if (req.path.startsWith('/api/')) return res.status(404).json({ error: '接口不存在' });
+  const base = seo.baseUrl(req);
+  const headHtml = seo.head({
+    title: `页面不存在 - ${seo.SITE_NAME}`,
+    description: '你访问的页面不存在。',
+    canonical: base + '/',
+    noindex: true
+  });
+  sendHtml(res, shell(headHtml, notFoundBlock(base)), 404);
+});
+
+function truncateText(s, n) {
+  const str = String(s || '').replace(/\s+/g, ' ').trim();
+  return str.length <= n ? str : str.slice(0, n - 1).replace(/[，,。.、\s]+$/, '') + '…';
+}
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`造梦橱窗已启动: http://localhost:${PORT}  (审核模式: ${REVIEW_MODE ? '开' : '关'})`);
+});
