@@ -1447,9 +1447,9 @@ function setupUploadForm() {
   function resetUploadForm() {
     editId = null;
     $('modalTitle').textContent = '提交作品';
-    $('formHint').textContent = state.user
-      ? `作者：${state.user.username}`
-      : '未登录投稿需人工审核；注册后可免审直接上线';
+    // 审核规则不在表单顶部唠叨，留到点「提交」时的选择弹窗里再说
+    $('formHint').textContent = state.user ? `作者：${state.user.username}` : '';
+    $('formHint').style.display = state.user ? 'block' : 'none';
     $('authorField').style.display = state.user ? 'none' : 'block';
     form.reset();
     form.image.required = true;
@@ -1538,6 +1538,7 @@ function setupUploadForm() {
     hideModal(detailModal);
     $('modalTitle').textContent = '编辑作品';
     $('formHint').textContent = `作者：${w.author} · 修改后立即生效`;
+    $('formHint').style.display = 'block';
     setSelectedTypes(typesOf(w));
     form.title.value = w.title;
     form.prompt.value = w.intro || '';
