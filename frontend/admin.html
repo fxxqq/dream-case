@@ -1054,7 +1054,11 @@
         panel.innerHTML = list.map(c => `
           <div class="row">
             <div class="row-main">
-              <div class="row-title">@${esc(c.username)} <span class="tag">${esc(c.workTitle)}</span></div>
+              <div class="row-title">@${esc(c.username)} <span class="tag">${esc(c.workTitle)}</span>
+                ${c.kind === 'question' ? '<span class="tag warn">提问</span>' : ''}
+                ${c.anon ? '<span class="tag">匿名</span>' : ''}
+                ${c.parentId ? '<span class="tag">回复</span>' : ''}
+              </div>
               <div class="row-meta">${esc(c.text)} · ${new Date(c.createdAt).toLocaleString('zh-CN')}</div>
             </div>
             <div class="row-actions">

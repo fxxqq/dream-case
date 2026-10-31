@@ -1042,55 +1042,116 @@ app.post('/api/works/:id/report', (req, res) => {
 });
 
 // ================= 评论 =================
+// 结构：{ id, workId, userId, username, text, createdAt, parentId, kind, anon }
+//   parentId  回复的顶级评论 id（只允许一层，回复的回复归到同一父级）
+//   kind      'question' 提问 / 'comment' 普通评论
+//   anon      匿名发言（未登录，只能由管理员删除）
 
-// 评论列表（公开，新→旧）
+// 把评论整理成前端需要的形状
+function shapeComment(c, w, user, admin, byId, answeredIds) {
+  return {
+    id: c.id,
+    username: c.username,
+    text: c.text,
+    createdAt: c.createdAt,
+    parentId: c.parentId || null,
+    kind: c.kind === 'question' ? 'question' : 'comment',
+    anon: !!c.anon,
+    // 评论者就是作品作者（作者答疑会打「作者」标签）
+    isAuthor: !!(c.username && w.author && c.username === w.author),
+    answered: c.kind === 'question' && answeredIds.has(c.id),
+    owned: !!user && (user.username === c.username || admin),
+    // 回复的对象：优先取具体被回复的那条，其次取楼层作者
+    replyToName: (() => {
+      const t = byId.get(c.replyToId || c.parentId);
+      return t ? t.username : '';
+    })()
+  };
+}
+
+// 评论列表（公开，含回复；未回答的提问排在前面）
 app.get('/api/works/:id/comments', (req, res) => {
   const w = works.find(x => x.id === req.params.id);
   if (!w) return res.status(404).json({ error: '作品不存在' });
   const user = currentUser(req); // 可为空，用于标记自己的评论
-  const list = comments
-    .filter(c => c.workId === w.id)
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .map(c => ({
-      id: c.id,
-      username: c.username,
-      text: c.text,
-      createdAt: c.createdAt,
-      owned: !!user && (user.username === c.username || isAdmin(req))
-    }));
-  res.json(list);
+  const admin = isAdmin(req);
+  const all = comments.filter(c => c.workId === w.id);
+  const byId = new Map(all.map(c => [c.id, c]));
+  // 作者回复过的提问 id（回复者是作品作者名）
+  const answered = new Set();
+  for (const c of all) {
+    if (!c.parentId) continue;
+    if (c.username && w.author && c.username === w.author) answered.add(c.parentId);
+  }
+  const top = all.filter(c => !c.parentId);
+  const replies = all.filter(c => c.parentId);
+  top.sort((a, b) => {
+    const pa = a.kind === 'question' && !answered.has(a.id) ? 0 : 1;
+    const pb = b.kind === 'question' && !answered.has(b.id) ? 0 : 1;
+    return pa - pb || b.createdAt - a.createdAt;
+  });
+  replies.sort((a, b) => a.createdAt - b.createdAt);
+  res.json([...top, ...replies].map(c => shapeComment(c, w, user, admin, byId, answered)));
 });
 
-// 发表评论（需登录）
+// 发表评论 / 提问（登录用户或匿名均可）
 app.post('/api/works/:id/comments', (req, res) => {
-  const user = requireUser(req, res);
-  if (!user) return;
-  if (!rateLimit('comment:' + clientIp(req), 20, 600000)) {
-    return res.status(429).json({ error: '评论太频繁，请稍后再试' });
+  const user = currentUser(req);
+  const ip = clientIp(req);
+  const anon = !user;
+  // 匿名额度更紧：10 分钟 5 条；登录用户 10 分钟 20 条
+  if (!rateLimit('comment:' + ip, anon ? 5 : 20, 600000)) {
+    return res.status(429).json({
+      error: anon ? '匿名发言太频繁了，登录后可继续评论' : '评论太频繁，请稍后再试'
+    });
   }
   const w = works.find(x => x.id === req.params.id);
   if (!w) return res.status(404).json({ error: '作品不存在' });
-  const text = String((req.body || {}).text || '').trim();
-  if (!text) return res.status(400).json({ error: '评论内容不能为空' });
-  if (text.length > 500) return res.status(400).json({ error: '评论最长 500 字' });
-  if (hitSensitive(text + user.username)) {
-    return res.status(400).json({ error: '评论包含违规词，请修改后重试' });
+
+  const body = req.body || {};
+  const text = String(body.text || '').trim();
+  if (!text) return res.status(400).json({ error: '内容不能为空' });
+  if (text.length > 500) return res.status(400).json({ error: '最多 500 字' });
+  if (anon && text.length < 2) return res.status(400).json({ error: '至少写 2 个字吧' });
+
+  let username = user
+    ? user.username
+    : String(body.nickname || '').replace(/[<>\r\n]/g, '').trim().slice(0, 20);
+  if (!username) username = '匿名';
+  if (hitSensitive(text + username)) {
+    return res.status(400).json({ error: '内容包含违规词，请修改后重试' });
   }
+
+  // 回复：必须挂在本作品的顶级评论下，只允许一层
+  let parentId = null;
+  let replyToId = null;
+  if (body.parentId) {
+    const p = comments.find(c => c.id === String(body.parentId) && c.workId === w.id);
+    if (!p) return res.status(400).json({ error: '要回复的评论不存在' });
+    parentId = p.parentId || p.id;
+    // 具体回复的是哪一条（可能是一楼本身，也可能是楼里的某条回复）
+    const t = comments.find(c => c.id === String(body.replyToId || '') && c.workId === w.id);
+    replyToId = t ? t.id : parentId;
+  }
+  const kind = !parentId && body.kind === 'question' ? 'question' : 'comment';
+
   const c = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     workId: w.id,
-    userId: user.id,
-    username: user.username,
+    userId: user ? user.id : null,
+    username,
     text,
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    parentId,
+    replyToId,
+    kind,
+    anon
   };
   comments.push(c);
   saveComments();
   invalidateCommentCounts();
-  res.status(201).json({
-    id: c.id, username: c.username, text: c.text,
-    createdAt: c.createdAt, owned: true
-  });
+  const byId = new Map(comments.filter(x => x.workId === w.id).map(x => [x.id, x]));
+  res.status(201).json(shapeComment(c, w, user, isAdmin(req), byId, new Set()));
 });
 
 // 删除评论（本人、管理员账号，或后台口令）
@@ -1104,10 +1165,15 @@ app.delete('/api/comments/:id', (req, res) => {
   if ((!user || c.username !== user.username) && !admin) {
     return res.status(403).json({ error: '只能删除自己的评论' });
   }
-  comments.splice(idx, 1);
+  // 删父评论时，挂在它下面的回复一并删除，避免留下孤儿回复
+  const doomed = new Set([c.id]);
+  comments.filter(x => x.parentId === c.id).forEach(x => doomed.add(x.id));
+  for (let i = comments.length - 1; i >= 0; i--) {
+    if (doomed.has(comments[i].id)) comments.splice(i, 1);
+  }
   saveComments();
   invalidateCommentCounts();
-  res.json({ ok: true });
+  res.json({ ok: true, removed: doomed.size });
 });
 
 // 后台：最近评论（新→旧，限 200 条）

@@ -273,11 +273,25 @@
         </div>
 
         <div class="detail-comments" id="detailComments">
-          <div class="comments-head">评论 <span id="commentCount"></span></div>
+          <div class="comments-head">评论与提问 <span id="commentCount"></span></div>
           <div class="comment-list" id="commentList"></div>
           <div class="comment-form" id="commentForm">
-            <textarea id="commentInput" rows="2" maxlength="500" placeholder="写下你的评论…（登录用户）"></textarea>
-            <button class="btn-primary comment-send" id="commentSend">发送</button>
+            <div class="comment-form-top">
+              <div class="comment-kind" id="commentKind">
+                <button type="button" class="ck-btn active" data-kind="comment">💬 评论</button>
+                <button type="button" class="ck-btn" data-kind="question">❓ 提问</button>
+              </div>
+              <input type="text" id="commentNickname" class="comment-nick" maxlength="20" placeholder="昵称（可不填）" />
+            </div>
+            <div class="comment-reply-tip" id="commentReplyTip" style="display:none">
+              回复 <b id="commentReplyName"></b>
+              <button type="button" class="reply-cancel" id="commentReplyCancel" title="取消回复">×</button>
+            </div>
+            <textarea id="commentInput" rows="2" maxlength="500" placeholder="说点什么，或提出你的问题…"></textarea>
+            <div class="comment-form-foot">
+              <span class="comment-hint" id="commentHint">无需登录，填个昵称就能发言</span>
+              <button class="btn-primary comment-send" id="commentSend">发送</button>
+            </div>
           </div>
         </div>
 

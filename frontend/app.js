@@ -16,6 +16,8 @@ const state = {
   hasMore: false,
   favoritesOnly: false,
   currentWork: null,
+  commentKind: 'comment', // 发言类型：comment 评论 / question 提问
+  replyTo: null,          // 正在回复的评论：{ rootId, targetId }
   tools: [],
   user: null,
   favs: [], // 当前登录用户收藏的作品 id（服务端存储，按收藏时间倒序）
@@ -1135,58 +1137,117 @@ async function openWork(id, push = true) {
   } catch { showToast('作品加载失败'); }
 }
 
-// ---------- 评论 ----------
-function bindOneCommentDelete(btn) {
-  if (!btn) return;
-  btn.onclick = async () => {
-    const item = btn.closest('.comment-item');
-    if (!confirm('确定删除这条评论吗？')) return;
-    const res = await fetch('/api/comments/' + item.dataset.id, { method: 'DELETE' });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { showToast(data.error || '删除失败'); return; }
-    const listEl = $('commentList');
-    item.remove();
-    const rest = listEl.querySelectorAll('.comment-item').length;
-    $('commentCount').textContent = rest ? `(${rest})` : '';
-    if (!rest) listEl.innerHTML = '<div class="comment-empty">还没有评论，来抢沙发～</div>';
-    paintCommentCount(state.currentWork ? state.currentWork.id : '', rest);
-    showToast('评论已删除');
-  };
+// ---------- 评论与提问 ----------
+const COMMENT_EMPTY = '<div class="comment-empty">还没有人说话，来问第一个问题吧～</div>';
+
+function commentBadges(c) {
+  const out = [];
+  if (c.isAuthor) out.push('<span class="cmt-badge author">作者</span>');
+  if (c.kind === 'question') out.push(`<span class="cmt-badge q">${c.answered ? '已回复' : '提问'}</span>`);
+  if (c.anon) out.push('<span class="cmt-badge anon">匿名</span>');
+  return out.join('');
+}
+
+function commentItemHtml(c, replies) {
+  return `
+    <div class="comment-item${c.kind === 'question' ? ' is-question' : ''}" data-id="${escapeHtml(c.id)}">
+      <span class="comment-avatar${c.anon ? ' anon' : ''}">${escapeHtml((c.username || '?').slice(0, 1).toUpperCase())}</span>
+      <div class="comment-body">
+        <div class="comment-meta">
+          <b>@${escapeHtml(c.username)}</b>${commentBadges(c)}
+          <span>${formatDate(c.createdAt)}</span>
+          <span class="comment-acts">
+            <button type="button" class="comment-reply" data-reply="${escapeHtml(c.id)}" data-rid="${escapeHtml(c.id)}">回复</button>
+            ${c.owned ? '<button type="button" class="comment-del">删除</button>' : ''}
+          </span>
+        </div>
+        <div class="comment-text">${escapeHtml(c.text)}</div>
+        ${(replies || []).length ? `<div class="comment-replies">${replies.map(r => commentReplyHtml(r, c.id)).join('')}</div>` : ''}
+      </div>
+    </div>`;
+}
+
+function commentReplyHtml(r, rootId) {
+  return `
+    <div class="comment-reply-item" data-id="${escapeHtml(r.id)}">
+      <span class="comment-avatar sm${r.anon ? ' anon' : ''}">${escapeHtml((r.username || '?').slice(0, 1).toUpperCase())}</span>
+      <div class="comment-body">
+        <div class="comment-meta">
+          <b>@${escapeHtml(r.username)}</b>${commentBadges(r)}
+          ${r.replyToName ? `<span class="reply-to">回复 @${escapeHtml(r.replyToName)}</span>` : ''}
+          <span>${formatDate(r.createdAt)}</span>
+          <span class="comment-acts">
+            <button type="button" class="comment-reply" data-reply="${escapeHtml(rootId)}" data-rid="${escapeHtml(r.id)}">回复</button>
+            ${r.owned ? '<button type="button" class="comment-del">删除</button>' : ''}
+          </span>
+        </div>
+        <div class="comment-text">${escapeHtml(r.text)}</div>
+      </div>
+    </div>`;
 }
 
 function renderCommentList(listEl, countEl, list) {
   countEl.textContent = list.length ? `(${list.length})` : '';
-  if (!list.length) {
-    listEl.innerHTML = '<div class="comment-empty">还没有评论，来抢沙发～</div>';
-    return;
-  }
-  listEl.innerHTML = list.map(c => `
-    <div class="comment-item" data-id="${escapeHtml(c.id)}">
-      <span class="comment-avatar">${escapeHtml((c.username || '?')[0].toUpperCase())}</span>
-      <div class="comment-body">
-        <div class="comment-meta"><b>@${escapeHtml(c.username)}</b><span>${formatDate(c.createdAt)}</span>
-          ${c.owned ? '<button type="button" class="comment-del">删除</button>' : ''}
-        </div>
-        <div class="comment-text">${escapeHtml(c.text)}</div>
-      </div>
-    </div>`).join('');
-  listEl.querySelectorAll('.comment-del').forEach(bindOneCommentDelete);
+  if (!list.length) { listEl.innerHTML = COMMENT_EMPTY; return; }
+  const tops = list.filter(c => !c.parentId);
+  const byParent = new Map();
+  list.filter(c => c.parentId).forEach(c => {
+    if (!byParent.has(c.parentId)) byParent.set(c.parentId, []);
+    byParent.get(c.parentId).push(c);
+  });
+  listEl.innerHTML = tops.map(c => commentItemHtml(c, byParent.get(c.id) || [])).join('');
+}
+
+// 切换「评论 / 提问」
+function syncCommentKindUI() {
+  document.querySelectorAll('#commentKind .ck-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.kind === state.commentKind));
+  const input = $('commentInput');
+  if (!input) return;
+  if (state.replyTo) return; // 回复模式下 placeholder 由 startReply 控制
+  input.placeholder = state.commentKind === 'question'
+    ? '把问题写清楚，作者更容易回答…'
+    : '说点什么，或提出你的问题…';
+}
+
+// 进入 / 退出「回复某条评论」
+function startReply(rootId, targetId) {
+  const listEl = $('commentList');
+  const el = listEl.querySelector(`[data-id="${CSS.escape(String(targetId))}"] b`);
+  const name = el ? el.textContent.replace(/^@/, '') : '这条评论';
+  state.replyTo = { rootId, targetId };
+  state.commentKind = 'comment'; // 回复只能是评论
+  syncCommentKindUI();
+  $('commentReplyTip').style.display = 'flex';
+  $('commentReplyName').textContent = '@' + name;
+  const input = $('commentInput');
+  input.placeholder = `回复 @${name}…`;
+  input.focus();
+}
+
+function cancelReply() {
+  state.replyTo = null;
+  const tip = $('commentReplyTip');
+  if (tip) tip.style.display = 'none';
+  syncCommentKindUI();
 }
 
 async function loadComments(workId) {
   const listEl = $('commentList');
   const countEl = $('commentCount');
   const input = $('commentInput');
+  const nick = $('commentNickname');
   input.value = '';
+  cancelReply();
   if (state.user) {
-    $('commentSend').textContent = '发送';
-    input.placeholder = `以 ${state.user.username} 的身份评论…`;
-    input.disabled = false;
+    nick.style.display = 'none';
+    $('commentHint').textContent = `以 @${state.user.username} 的身份发言`;
   } else {
-    $('commentSend').textContent = '去登录评论';
-    input.placeholder = '登录后才能评论（点右上角「登录 / 注册」）';
-    input.disabled = true;
+    nick.style.display = '';
+    nick.value = localStorage.getItem('cmtNick') || '';
+    $('commentHint').textContent = '无需登录，填个昵称就能发言';
   }
+  syncCommentKindUI();
   try {
     const list = await fetch(`/api/works/${workId}/comments`).then(r => r.json());
     renderCommentList(listEl, countEl, Array.isArray(list) ? list : []);
@@ -1876,43 +1937,76 @@ function setupDetailActions() {
     showToast('已屏蔽，可在顶部「🚫」里恢复');
   };
 
-  // 发表评论
+  // 评论 / 提问切换
+  document.querySelectorAll('#commentKind .ck-btn').forEach(btn => {
+    btn.onclick = () => {
+      if (state.replyTo) cancelReply();
+      state.commentKind = btn.dataset.kind;
+      syncCommentKindUI();
+      $('commentInput').focus();
+    };
+  });
+  $('commentReplyCancel').onclick = () => { cancelReply(); $('commentInput').focus(); };
+
+  // 评论列表内的「回复 / 删除」（事件委托，列表重渲染也不用重新绑定）
+  $('commentList').addEventListener('click', async e => {
+    const del = e.target.closest('.comment-del');
+    if (del) {
+      const item = del.closest('[data-id]');
+      if (!confirm('确定删除这条吗？它下面的回复会一起删除')) return;
+      const res = await fetch('/api/comments/' + item.dataset.id, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data.error || '删除失败'); return; }
+      const w = state.currentWork;
+      if (w) {
+        const draft = $('commentInput').value;
+        await loadComments(w.id);
+        $('commentInput').value = draft;
+        paintCommentCount(w.id, $('commentList').querySelectorAll('[data-id]').length);
+      }
+      showToast(data.removed > 1 ? `已删除，含 ${data.removed - 1} 条回复` : '已删除');
+      return;
+    }
+    const rep = e.target.closest('.comment-reply');
+    if (rep) startReply(rep.dataset.reply, rep.dataset.rid);
+  });
+
+  // 发表评论 / 提问（登录或匿名均可）
   $('commentSend').onclick = async () => {
     const w = state.currentWork;
     if (!w) return;
-    if (!state.user) { openAuth('login'); return; }
     const input = $('commentInput');
     const text = input.value.trim();
     if (!text) { showToast('先写点内容再发送吧'); return; }
+    if (!state.user && text.length < 2) { showToast('至少写 2 个字吧'); return; }
+
+    const payload = { text, kind: state.replyTo ? 'comment' : state.commentKind };
+    if (state.replyTo) {
+      payload.parentId = state.replyTo.rootId;
+      payload.replyToId = state.replyTo.targetId;
+    }
+    const nick = $('commentNickname');
+    if (!state.user && nick && nick.value.trim()) {
+      payload.nickname = nick.value.trim();
+      localStorage.setItem('cmtNick', nick.value.trim());
+    }
+
     const btn = $('commentSend');
     btn.disabled = true;
     btn.textContent = '发送中…';
     try {
       const res = await fetch(`/api/works/${w.id}/comments`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || '发送失败');
       input.value = '';
-      const listEl = $('commentList');
-      const empty = listEl.querySelector('.comment-empty');
-      if (empty) empty.remove();
-      listEl.insertAdjacentHTML('afterbegin', `
-        <div class="comment-item" data-id="${escapeHtml(data.id)}">
-          <span class="comment-avatar">${escapeHtml((data.username || '?')[0].toUpperCase())}</span>
-          <div class="comment-body">
-            <div class="comment-meta"><b>@${escapeHtml(data.username)}</b><span>刚刚</span>
-              <button type="button" class="comment-del">删除</button>
-            </div>
-            <div class="comment-text">${escapeHtml(data.text)}</div>
-          </div>
-        </div>`);
-      bindOneCommentDelete(listEl.querySelector(`[data-id="${data.id}"] .comment-del`));
-      const total = listEl.querySelectorAll('.comment-item').length;
-      $('commentCount').textContent = `(${total})`;
-      paintCommentCount(w.id, total);
-      showToast('评论已发布');
+      cancelReply();
+      // 重拉列表：提问要按「未回答置顶」重新排序，回复要挂到对应楼层
+      await loadComments(w.id);
+      paintCommentCount(w.id, $('commentList').querySelectorAll('[data-id]').length);
+      showToast(payload.kind === 'question' ? '提问已发布，等作者来答' : '已发布');
     } catch (err) {
       showToast(err.message);
     } finally {
