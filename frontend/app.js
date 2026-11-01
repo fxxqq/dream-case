@@ -641,7 +641,7 @@ function adHtml(a) {
       target="_blank" rel="noopener nofollow sponsored" data-ad="${escapeHtml(a.id)}">
       ${img}
       <span class="ad-body">
-        <span class="ad-badge">广告</span>
+        <span class="ad-badge">站内推广</span>
         ${a.title ? `<b class="ad-title">${escapeHtml(a.title)}</b>` : ''}
         ${a.desc ? `<span class="ad-desc">${escapeHtml(a.desc)}</span>` : ''}
         <span class="ad-cta">${escapeHtml(a.cta || '了解更多')} →</span>
@@ -2588,6 +2588,196 @@ function setupWish() {
   $('ideaDoneModal').onclick = e => { if (e.target === $('ideaDoneModal')) hideModal($('ideaDoneModal')); };
 }
 
+// ---------- 站内推广（积分兑换，展示 + 点击双计费） ----------
+// 规则：用分享积分买「被看到」的次数，每真实曝光一次扣 1 次，投完自动下线；
+// 内容只能取自自己名下、已过审的作品，不能自定义文案或挂站外链接。
+const REDEEM_STATUS = {
+  active: { text: '投放中', cls: 'on' },
+  used_up: { text: '展示完成', cls: 'done' },
+  expired: { text: '已到期', cls: 'done' },
+  cancelled: { text: '已撤下', cls: 'done' },
+  removed: { text: '后台下架', cls: 'done' }
+};
+let redeemSel = { workId: '', views: 0 };
+let redeemData = null;
+
+function redeemDate(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function redeemTotal() {
+  if (!redeemData) return { price: 0, views: 0 };
+  const views = redeemSel.views || (redeemData.packs || [])[0] || 0;
+  // 展示费 = 每 10 次展示 2 分；点击每次另扣 2 分（上限 = 展示费），在投放中实时结算
+  const sv = redeemData.showViews || 10, sp = redeemData.showPoints || 2;
+  return { price: Math.round(views / sv * sp), views };
+}
+
+async function openRedeem() {
+  if (!state.user) { openAuth('login'); return; }
+  const modal = document.getElementById('redeemModal');
+  const body = $('redeemBody');
+  body.innerHTML = '<div class="stats-loading">加载中…</div>';
+  $('closeRedeem').onclick = () => hideModal(modal);
+  modal.onclick = e => { if (e.target === modal) hideModal(modal); };
+  showModal(modal);
+  try {
+    const res = await fetch('/api/redeem/options', { cache: 'no-store' });
+    redeemData = await res.json();
+  } catch {
+    body.innerHTML = '<div class="stats-loading">加载失败，请稍后重试</div>';
+    return;
+  }
+  renderRedeem();
+}
+
+function renderRedeem() {
+  const body = $('redeemBody');
+  const d = redeemData;
+  if (!body || !d) return;
+  const slots = Array.isArray(d.slots) ? d.slots : [];
+  const works = Array.isArray(d.works) ? d.works : [];
+  const mine = Array.isArray(d.mine) ? d.mine : [];
+  const packs = (d.packs || []).slice();
+  if (!works.some(w => w.id === redeemSel.workId)) redeemSel.workId = works.length ? works[0].id : '';
+  if (!packs.includes(redeemSel.views)) redeemSel.views = packs[0] || 0;
+  const { price, views } = redeemTotal();
+  const enough = (d.points || 0) >= price;
+  const people = Math.max(1, Math.round(views / 2));
+  const noWork = !works.length;
+  const clickNote = `点击每次另扣 ${d.clickPoints} 分（上限 = 展示费）`;
+
+  const worksHtml = noWork
+    ? `<div class="redeem-empty">你还没有上线中的作品。推广位只能推自己的作品——先提交一件，通过后就能投放。</div>`
+    : `<div class="redeem-works">${works.map(w => `
+        <button type="button" class="redeem-work${w.id === redeemSel.workId ? ' is-on' : ''}" data-rwork="${escapeHtml(w.id)}">
+          ${w.thumb ? `<img src="${escapeHtml(w.thumb)}" alt="" loading="lazy" />` : '<span class="rw-noimg">无图</span>'}
+          <span class="rw-title">${escapeHtml(w.title)}</span>
+          ${w.id === redeemSel.workId ? '<span class="rw-check">✓</span>' : ''}
+        </button>`).join('')}</div>`;
+
+  const slotsHtml = `<div class="redeem-slots">${slots.map(s => `
+      <button type="button" class="redeem-slot is-on" data-rslot="${escapeHtml(s.key)}">
+        <span class="rs-main"><b>${escapeHtml(s.name)}</b><small>${escapeHtml(s.where || '')} · 每 ${s.showViews} 次展示 ${s.showPoints} 分 · ${clickNote}</small></span>
+        <span class="rs-price">${s.showPoints}<i>分 / ${s.showViews} 次</i></span>
+      </button>`).join('')}</div>`;
+
+  const packsHtml = `<div class="redeem-packs">${packs.map(v => `
+      <button type="button" class="redeem-pack${v === redeemSel.views ? ' is-on' : ''}" data-rviews="${v}">
+        <b>${v} 次展示</b><small>${Math.round(v / (d.showViews || 10) * (d.showPoints || 2))} 分</small>
+      </button>`).join('')}</div>`;
+
+  const mineHtml = mine.length ? `<div class="redeem-list">${mine.map(r => {
+    const st = REDEEM_STATUS[r.status] || { text: r.status, cls: 'done' };
+    const pct = r.views ? Math.min(100, Math.round(r.used / r.views * 100)) : 0;
+    const foot = r.status === 'active'
+      ? (r.endsAt ? `最长投放到 ${redeemDate(r.endsAt)}` : '')
+      : (r.refunded ? `已退回 ${r.refunded} 分` : '');
+    return `<div class="redeem-item">
+        <div class="ri-top">
+          <span class="ri-title">${escapeHtml(r.workTitle)}</span>
+          <span class="ri-status is-${st.cls}">${st.text}</span>
+        </div>
+        <div class="ri-meta">${escapeHtml(r.slotName)} · 已展示 ${r.used}/${r.views} 次 · 点击 ${r.clicks} 次${r.clickCost ? ` · 点击费 ${r.clickCost} 分` : ''}</div>
+        <div class="ri-bar"><span style="width:${pct}%"></span></div>
+        <div class="ri-foot">
+          <span>${foot}</span>
+          ${r.status === 'active' ? `<button type="button" class="ri-cancel" data-rcancel="${escapeHtml(r.id)}">撤下</button>` : ''}
+        </div>
+      </div>`;
+  }).join('')}</div>` : '<div class="redeem-empty">还没有投放记录。</div>';
+
+  body.innerHTML = `
+    <div class="redeem-hero">
+      <div class="rh-points"><b>${d.points || 0}</b><span>可用分享积分</span></div>
+      <p class="rh-tip">好友通过你的分享链接访问 +1 分，注册 +20 分。<br />
+        兑换后作品会出现在所选位置，<b>每被看到一次扣 1 次展示</b>，投完自动下线。</p>
+    </div>
+    <div class="redeem-sec">
+      <div class="redeem-sec-head">1. 选作品<span>只能推自己名下、已上线的作品</span></div>
+      ${worksHtml}
+    </div>
+    <div class="redeem-sec">
+      <div class="redeem-sec-head">2. 确认位置</div>
+      ${slotsHtml}
+    </div>
+    <div class="redeem-sec">
+      <div class="redeem-sec-head">3. 买多少次展示<span>每 ${d.showViews} 次展示 ${d.showPoints} 分</span></div>
+      ${packsHtml}
+    </div>
+    <div class="redeem-foot">
+      <div class="redeem-total">
+        <span>展示费合计</span><b>${price}</b><i>分</i>
+        <em>约 ${people} 位访客看到</em>
+      </div>
+      <button type="button" class="btn-primary" id="redeemGo"${noWork || !enough ? ' disabled' : ''}>
+        ${noWork ? '先提交作品' : (enough ? `花 ${price} 分推广` : `还差 ${price - (d.points || 0)} 分`)}
+      </button>
+    </div>
+    <p class="redeem-note">
+      每次被点击再扣 ${d.clickPoints} 分，一单点击费最多扣到 ${price} 分为止；每人同时最多 ${d.maxActive} 条在投；${d.maxDays} 天没投完也下线；撤下或后台下架按剩下的展示次数退分。
+    </p>
+    <div class="redeem-sec">
+      <div class="redeem-sec-head">我的投放</div>
+      ${mineHtml}
+    </div>`;
+
+  body.querySelectorAll('[data-rwork]').forEach(el => {
+    el.onclick = () => { redeemSel.workId = el.dataset.rwork; renderRedeem(); };
+  });
+  body.querySelectorAll('[data-rviews]').forEach(el => {
+    el.onclick = () => { redeemSel.views = parseInt(el.dataset.rviews, 10) || 0; renderRedeem(); };
+  });
+  body.querySelectorAll('[data-rcancel]').forEach(el => {
+    el.onclick = () => cancelRedeem(el.dataset.rcancel);
+  });
+  const go = $('redeemGo');
+  if (go) go.onclick = () => submitRedeem(go);
+}
+
+async function submitRedeem(btn) {
+  if (!redeemSel.workId) { showToast('先选一件作品'); return; }
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '兑换中…';
+  try {
+    const res = await fetch('/api/redeem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workId: redeemSel.workId, views: redeemSel.views })
+    });
+    const d = await res.json();
+    if (!res.ok) { showToast(d.error || '兑换失败，请稍后重试'); return; }
+    redeemData = d;
+    redeemSel.views = (d.packs || [])[0] || 0;
+    renderRedeem();
+    showToast('兑换成功，作品已经出现在详情页推广位上了');
+    loadAds();   // 立刻刷新页面上的广告位
+  } catch {
+    showToast('兑换失败，请检查网络后重试');
+  } finally {
+    if (btn.isConnected) { btn.disabled = false; btn.textContent = label; }
+  }
+}
+
+async function cancelRedeem(id) {
+  if (!confirm('撤下这条推广？剩余没投完的展示次数会按比例退回积分，已展示和已消耗的点击费不退。')) return;
+  try {
+    const res = await fetch('/api/me/ads/' + encodeURIComponent(id) + '/cancel', { method: 'POST' });
+    const d = await res.json();
+    if (!res.ok) { showToast(d.error || '撤下失败'); return; }
+    redeemData = d;
+    renderRedeem();
+    showToast(d.refunded ? `已撤下，退回 ${d.refunded} 分` : '已撤下');
+    loadAds();
+  } catch {
+    showToast('撤下失败，请检查网络后重试');
+  }
+}
+
 // ---------- 作者数据看板 ----------
 // 只看自己的作品（发布 + 认领后归属自己的）：累计数据 + 近 14 天浏览趋势
 function statsSparkline(values, w = 88, h = 24) {
@@ -2645,6 +2835,9 @@ async function openStats() {
   if (!works.length) {
     body.innerHTML = `
       <div class="stats-summary">${shareCards}</div>
+      <div class="stats-actions">
+        <button type="button" class="stats-redeem" id="goRedeem">🎯 用积分上「站内推广」</button>
+      </div>
       <div class="stats-empty">
         <div class="stats-empty-icon">📊</div>
         <p>你还没有归属自己的作品。</p>
@@ -2654,6 +2847,7 @@ async function openStats() {
       ${boardHtml}
       <p class="stats-tip">${shareTip}</p>`;
     $('statsGoSubmit').onclick = () => { hideModal(statsModal); $('openUpload').click(); };
+    $('goRedeem').onclick = () => { hideModal(statsModal); openRedeem(); };
     return;
   }
 
@@ -2691,6 +2885,9 @@ async function openStats() {
       <div class="stat-card"><b>${totals.comments}</b><span>评论</span></div>
       ${shareCards}
     </div>
+    <div class="stats-actions">
+      <button type="button" class="stats-redeem" id="goRedeem">🎯 用积分上「站内推广」</button>
+    </div>
     <div class="stats-chart">
       <div class="stats-chart-head">近 14 天浏览趋势</div>
       <div class="stats-bars">${bars}</div>
@@ -2702,6 +2899,8 @@ async function openStats() {
       数据统计包含弹窗与独立页面两种浏览方式；「访客」按登录账号 / IP 去重。<br />
       ${shareTip}
     </p>`;
+
+  $('goRedeem').onclick = () => { hideModal(statsModal); openRedeem(); };
 
   body.querySelectorAll('.sw-share').forEach(btn => {
     btn.onclick = async e => {
