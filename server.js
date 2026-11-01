@@ -2827,6 +2827,70 @@ app.get('/rank', (req, res) => {
   sendHtml(res, shell(headHtml, block));
 });
 
+// 许愿墙：说出想要的作品，社区创作者来认领实现（服务端渲染，利于收录）
+app.get('/wish', (req, res) => {
+  const base = seo.baseUrl(req);
+  const list = ideas.filter(i => !i.hidden).slice().sort((a, b) => {
+    const d = (b.wants || 0) - (a.wants || 0);
+    return d !== 0 ? d : new Date(b.createdAt) - new Date(a.createdAt);
+  });
+  const top = list.slice(0, 30);
+  const doneCount = list.filter(i => i.status === 'done' || i.workId).length;
+  const desc = truncateText(
+    `许愿墙：说出你想要但还没人做的工具，社区里的创作者来接单实现。目前共有 ${list.length} 个想法，` +
+    `其中 ${doneCount} 个已被实现。最受期待的有 ${top.slice(0, 3).map(i => i.title).join('、')} 等。`, 150);
+
+  const headHtml = seo.head({
+    title: `许愿墙 - 说出你想要的作品，让社区帮你实现 - ${seo.SITE_NAME}`,
+    description: desc,
+    keywords: '许愿墙,想要的功能,求工具,需求征集,作品定制,社区共创',
+    canonical: base + '/wish',
+    type: 'website',
+    jsonLd: [
+      seo.breadcrumbLd(base, [{ name: '首页', href: '/' }, { name: '许愿墙' }]),
+      {
+        '@context': 'https://schema.org',
+        '@type': 'ItemList',
+        name: '许愿墙 · 大家想要的作品',
+        url: base + '/wish',
+        itemListOrder: 'https://schema.org/ItemListOrderDescending',
+        numberOfItems: top.length,
+        itemListElement: top.map((i, idx) => ({
+          '@type': 'ListItem',
+          position: idx + 1,
+          name: i.title
+        }))
+      }
+    ]
+  });
+
+  const block = `<div id="seoContent" class="seo-wrap">
+  ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name: '许愿墙' }])}
+  <div class="page-head">
+    <h1>💡 许愿墙</h1>
+    <p>想要什么作品，写在这儿——社区里的高手会来接；被认领、被实现的想法会挂上作品链接</p>
+  </div>
+  <p class="seo-wish-stat">共 ${list.length} 个想法 · 已被实现 ${doneCount} 个 · 按「想要的人最多」排序</p>
+  <ol class="seo-rank seo-wish">
+    ${top.map((i, idx) => `<li>
+      <span class="rank-no">${idx + 1}</span>
+      <div class="rank-main">
+        <div class="rank-title">${seo.esc(i.title)}</div>
+        <div class="rank-meta">
+          🔥 ${i.wants || 0} 人想要 · @${seo.esc(i.author || '匿名')}
+          ${i.category ? ' · ' + seo.esc(i.category) : ''}
+          ${i.workId ? ' · ✅ 已实现' : (i.status === 'claimed' ? ' · 🤝 已被认领' : '')}
+        </div>
+      </div>
+      ${i.workId ? `<a class="rank-score" href="/w/${seo.esc(i.workId)}">看作品 →</a>` : ''}
+    </li>`).join('') || '<li class="empty"><p>还没有人提想法，来做第一个吧</p></li>'}
+  </ol>
+  <p class="seo-more"><a class="btn-ghost" href="/">← 返回首页</a></p>
+</div>`;
+  sendHtml(res, shell(headHtml, block));
+});
+
+
 // 分类页 /c/:name 与形态页 /t/:name（服务端渲染，利于收录）
 function listPageRoute(kind) {
   return (req, res) => {

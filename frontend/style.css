@@ -1008,8 +1008,11 @@ body.scroll-locked { overflow: hidden; }
 }
 .seo-links-group a:hover { border-color: var(--primary); color: var(--primary); }
 .seo-h2 { font-size: 16px; margin: 22px 0 12px; }
-.seo-more { font-size: 14px; padding: 12px 0 32px; }
-.seo-more a { color: var(--primary); text-decoration: none; }
+.seo-more { font-size: 14px; padding: 12px 0 32px; }.seo-more a { color: var(--primary); text-decoration: none; }
+/* 许愿墙 SEO 页 */
+.seo-wish-stat { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+.seo-rank.seo-wish .rank-title { padding-right: 0; }
+.seo-rank.seo-wish .rank-score { flex: none; font-size: 13px; color: var(--primary); text-decoration: none; }
 
 .gallery a.card { text-decoration: none; color: inherit; display: block; }
 .seo-card .card-body { pointer-events: none; }
@@ -1170,6 +1173,7 @@ body.on-work .load-more-wrap { display: none !important; }
 /* ---------- 许愿墙：你有什么想法，让大家实现吗 ---------- */
 .wish-section { margin: 36px 0 6px; padding-top: 26px; border-top: 1px solid #f0f0f8; scroll-margin-top: 76px; }
 .wish-section.wish-flash { animation: wishFlash 1.6s ease; }
+.wish-page-head { margin-bottom: 16px; }
 @keyframes wishFlash {
   0% { background: rgba(124, 92, 255, 0.10); border-radius: 14px; }
   70% { background: rgba(124, 92, 255, 0.10); }

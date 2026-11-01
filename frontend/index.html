@@ -19,7 +19,7 @@
       <nav class="main-nav">
         <a class="nav-btn" href="/rank" data-nav>榜单</a>
         <button class="nav-btn" id="favBtn">⭐ 收藏</button>
-        <button class="nav-btn" id="wishNavBtn" title="你的想法，等有人来实现">✨ 许愿墙</button>
+        <a class="nav-btn" href="/wish" data-nav>✨ 许愿墙</a>
       </nav>
 
       <div id="authBox" class="auth-box"></div>
@@ -85,27 +85,6 @@
         <button class="btn-ghost" id="loadMore" style="display:none">加载更多</button>
       </div>
 
-      <!-- 许愿墙：说出你想要的作品，社区里的创作者来认领实现 -->
-      <section class="wish-section" id="wishSection" style="display:none">
-        <div class="section-head wish-head">
-          <h2>💡 你有什么想法，让大家实现吗？</h2>
-          <span class="section-sub">一句话说出你想要的作品，社区里的高手来接</span>
-        </div>
-        <div class="wish-compose">
-          <input id="wishInput" maxlength="80" autocomplete="off"
-                 placeholder="我想要一个……（比如：能自动整理下载文件夹的小工具）" />
-          <button class="btn-primary" id="wishSubmit">发布想法</button>
-        </div>
-        <div class="wish-bar">
-          <div class="wish-tabs" id="wishTabs" role="group" aria-label="想法排序">
-            <button class="wish-tab active" data-sort="hot">🔥 最多人想要</button>
-            <button class="wish-tab" data-sort="new">🕒 最新想法</button>
-          </div>
-          <span class="wish-count" id="wishCount"></span>
-        </div>
-        <div class="wish-list" id="wishList"></div>
-        <button class="wish-more" id="wishMore" style="display:none">查看全部想法 →</button>
-      </section>
     </section>
 
     <!-- 榜单 -->
@@ -128,6 +107,28 @@
       </div>
       <div class="ad-slot" data-ad-slot="rank"></div>
       <div class="rank-list" id="rankList"></div>
+    </section>
+
+    <!-- 许愿墙：说出你想要的作品，社区里的创作者来认领实现 -->
+    <section id="wishView" style="display:none">
+      <div class="page-head wish-page-head">
+        <h2 class="page-title">💡 许愿墙</h2>
+        <p>想要什么作品，写在这儿——社区里的高手会来接；被认领、被实现的想法会挂上作品链接</p>
+      </div>
+      <div class="wish-compose">
+        <input id="wishInput" maxlength="80" autocomplete="off"
+               placeholder="我想要一个……（比如：能自动整理下载文件夹的小工具）" />
+        <button class="btn-primary" id="wishSubmit">发布想法</button>
+      </div>
+      <div class="wish-bar">
+        <div class="wish-tabs" id="wishTabs" role="group" aria-label="想法排序">
+          <button class="wish-tab active" data-sort="hot">🔥 最多人想要</button>
+          <button class="wish-tab" data-sort="new">🕒 最新想法</button>
+        </div>
+        <span class="wish-count" id="wishCount"></span>
+      </div>
+      <div class="wish-list" id="wishList"></div>
+      <button class="wish-more" id="wishMore" style="display:none">加载更多想法 →</button>
     </section>
 
     <!-- 作者主页 -->
@@ -159,6 +160,7 @@
       </div>
       <span class="footer-links">
         <a href="/rank" data-nav class="footer-link">作品榜单</a>
+        <a href="/wish" data-nav class="footer-link">许愿墙</a>
         <a href="/?feedback=1" class="footer-link">意见反馈</a>
         <a href="/feed.xml" class="footer-link">RSS 订阅</a>
         <a href="/sitemap.xml" class="footer-link">站点地图</a>

@@ -381,6 +381,7 @@ function sitemapXml(base, { works, categories, types, authors }) {
 
   add('/', new Date().toISOString(), '1.0', 'daily');
   add('/rank', new Date().toISOString(), '0.8', 'daily');
+  add('/wish', new Date().toISOString(), '0.7', 'daily');
   categories.forEach(c => add('/c/' + encodeURIComponent(c), new Date().toISOString(), '0.7', 'weekly'));
   types.forEach(t => add('/t/' + encodeURIComponent(t), new Date().toISOString(), '0.6', 'weekly'));
   works.forEach(w => add('/w/' + w.id, w.createdAt, '0.9', 'monthly', w.image));

@@ -1053,18 +1053,21 @@ function navigate(path) {
 }
 
 function closeAllViews() {
-  ['homeView', 'rankView', 'authorView'].forEach(id => { $(id).style.display = 'none'; });
+  ['homeView', 'rankView', 'wishView', 'authorView'].forEach(id => { $(id).style.display = 'none'; });
   hideModal(detailModal);
 }
 
-// 导航高亮：榜单页亮「榜单」，其余按当前排序/收藏态亮对应按钮
+// 导航高亮：榜单页亮「榜单」，许愿墙页亮「许愿墙」，其余按当前排序/收藏态亮对应按钮
 function updateNavActive() {
   const onRank = location.pathname === '/rank';
+  const onWish = location.pathname === '/wish';
   const rankLink = document.querySelector('.nav-btn[href="/rank"]');
   if (rankLink) rankLink.classList.toggle('active', onRank);
+  const wishLink = document.querySelector('.nav-btn[href="/wish"]');
+  if (wishLink) wishLink.classList.toggle('active', onWish);
   document.querySelectorAll('#sortToggle .st-btn').forEach(b =>
-    b.classList.toggle('active', !onRank && b.dataset.sort === state.sort));
-  $('favBtn').classList.toggle('active', !onRank && state.favoritesOnly);
+    b.classList.toggle('active', !onRank && !onWish && b.dataset.sort === state.sort));
+  $('favBtn').classList.toggle('active', !onRank && !onWish && state.favoritesOnly);
 }
 
 // ---------- 分享归因：?ref= 落地 ----------
@@ -1193,6 +1196,15 @@ function route() {
     $('rankView').style.display = 'block';
     setTitle('作品榜单');
     if (!keepList) loadRank(); // 不强制回「本周」，保留用户上次选的周期/排序
+    updateNavActive();
+    restoreScroll();
+    return;
+  }
+  if (path === '/wish') {
+    $('wishView').style.display = 'block';
+    setTitle('许愿墙');
+    setupWish();
+    if (!keepList) loadIdeas(30);
     updateNavActive();
     restoreScroll();
     return;
@@ -2406,7 +2418,7 @@ function setupDetailActions() {
 // ---------- 许愿墙 ----------
 // 「你有什么想法，让大家实现吗」：一句话发想法 → 别人点「我也想要」→ 创作者认领 → 做完挂作品
 let wishSort = 'hot';
-let wishShown = 8;
+let wishShown = 30;
 let ideaDoneId = '';
 
 function wishStatusHtml(i) {
@@ -2543,15 +2555,15 @@ async function submitWish() {
     showToast('想法已发布，等着有人来接 🚀');
     wishSort = 'new';
     document.querySelectorAll('.wish-tab').forEach(b => b.classList.toggle('active', b.dataset.sort === 'new'));
-    loadIdeas(8);
+    loadIdeas(30);
   } catch (err) { showToast(err.message); }
   finally { btn.disabled = false; }
 }
 
 function setupWish() {
-  const sec = $('wishSection');
-  if (!sec) return;
-  sec.style.display = '';
+  const sec = $('wishView');
+  if (!sec || sec._init) return;
+  sec._init = 1;
   $('wishSubmit').onclick = submitWish;
   $('wishInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitWish(); });
   $('wishTabs').addEventListener('click', e => {
@@ -2559,7 +2571,7 @@ function setupWish() {
     if (!b) return;
     document.querySelectorAll('.wish-tab').forEach(x => x.classList.toggle('active', x === b));
     wishSort = b.dataset.sort;
-    loadIdeas(8);
+    loadIdeas(30);
   });
   $('wishList').addEventListener('click', e => {
     const btn = e.target.closest('button');
@@ -2574,7 +2586,6 @@ function setupWish() {
   $('ideaDoneCancel').onclick = () => hideModal($('ideaDoneModal'));
   $('ideaDoneSave').onclick = saveWishDone;
   $('ideaDoneModal').onclick = e => { if (e.target === $('ideaDoneModal')) hideModal($('ideaDoneModal')); };
-  loadIdeas(8);
 }
 
 // ---------- 作者数据看板 ----------
@@ -2806,19 +2817,6 @@ function setupHeader() {
   };
 
   // 许愿墙：回首页并平滑滚到许愿墙区块，短暂高亮提示位置
-  $('wishNavBtn').onclick = () => {
-    const go = () => {
-      const sec = $('wishSection');
-      if (!sec) return;
-      sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      sec.classList.remove('wish-flash');
-      void sec.offsetWidth; // 重启动画
-      sec.classList.add('wish-flash');
-      setTimeout(() => sec.classList.remove('wish-flash'), 1800);
-    };
-    if (location.pathname !== '/') { navigate('/'); setTimeout(go, 420); } else go();
-  };
-
   // 展示方式切换：卡片网格 / 一行一个的列表（选择存 localStorage）
   document.querySelectorAll('#viewToggle .vt-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === state.view);
@@ -2988,7 +2986,7 @@ async function init() {
   setupAuthForms();
   setupSubmitChoice();
   setupFeedback();
-  setupWish();
+  // 许愿墙是独立页面，进入 /wish 时再初始化（见 route）
   // 本周精选：滚动/窗口变化时同步箭头状态
   $('featRow').addEventListener('scroll', updateFeatNav, { passive: true });
   window.addEventListener('resize', updateFeatNav);
