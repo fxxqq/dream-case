@@ -1424,7 +1424,8 @@ function publicAd(a) {
     id: a.id, slot: a.slot,
     kind: a.kind || (a.image ? 'image' : 'text'),
     title: a.title || '', desc: a.desc || '',
-    image: a.image || '', url: a.url, cta: a.cta || '', sort: a.sort || 0
+    image: a.image || '', url: a.url, cta: a.cta || '', sort: a.sort || 0,
+    source: a.source || 'admin'   // 前台据此区分「广告」（运营）和「站内推广」（积分兑换）
   };
 }
 function activeAds() {

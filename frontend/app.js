@@ -641,7 +641,7 @@ function adHtml(a) {
       target="_blank" rel="noopener nofollow sponsored" data-ad="${escapeHtml(a.id)}">
       ${img}
       <span class="ad-body">
-        <span class="ad-badge">站内推广</span>
+        <span class="ad-badge${a.source === 'redeem' ? ' is-redeem' : ''}">${a.source === 'redeem' ? '站内推广' : '广告'}</span>
         ${a.title ? `<b class="ad-title">${escapeHtml(a.title)}</b>` : ''}
         ${a.desc ? `<span class="ad-desc">${escapeHtml(a.desc)}</span>` : ''}
         <span class="ad-cta">${escapeHtml(a.cta || '了解更多')} →</span>

@@ -1462,6 +1462,11 @@ body.on-work .load-more-wrap { display: none !important; }
   border-radius: 4px; background: rgba(255, 255, 255, .22); letter-spacing: .04em;
   flex: none;
 }
+/* 积分兑换来的「站内推广」用暖色徽标，和运营的「广告」区分开 */
+.ad-badge.is-redeem { background: rgba(255, 196, 92, .92); color: #5c4200; }
+.ad-card.ad-text-card .ad-badge.is-redeem {
+  background: #fff7e8; color: #a86e00; border-color: #f2dfb6;
+}
 .ad-title {
   font-size: 15px; line-height: 1.3; font-weight: 700; flex: none; max-width: 40%;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
