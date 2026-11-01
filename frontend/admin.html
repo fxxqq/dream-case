@@ -25,6 +25,8 @@
     .login h1 { font-size:18px; margin-bottom:6px; }
     .login p { color:var(--muted); font-size:13px; margin-bottom:20px; }
     .login input { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px; margin-bottom:12px; font-size:14px; background:#fafafe; }
+    .login input[type=checkbox] { width:auto; margin:0; accent-color:#5b5bd6; }
+    .login .remember { display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--muted); margin:-2px 0 16px; cursor:pointer; user-select:none; }
 
     .stats { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }
     .stat { background:#fff; border:1px solid var(--border); border-radius:8px; padding:6px 14px; display:flex; align-items:baseline; gap:6px; }
@@ -164,6 +166,7 @@
       <h1>管理员登录</h1>
       <p>请输入管理口令（服务端环境变量 ADMIN_KEY）</p>
       <input type="password" id="keyInput" placeholder="管理口令" />
+      <label class="remember"><input type="checkbox" id="rememberKey" checked /> 在这台电脑上记住口令，下次免输</label>
       <button class="btn btn-primary" id="loginBtn" style="width:100%">进入后台</button>
     </div>
 
@@ -326,7 +329,9 @@
   </div>
 
   <script>
-    let KEY = sessionStorage.getItem('adminKey') || '';
+    // 口令保存：勾「记住」存 localStorage（关浏览器/换标签页都在），不勾只存 sessionStorage（关了就没）
+    let KEY = '';
+    try { KEY = localStorage.getItem('adminKey') || sessionStorage.getItem('adminKey') || ''; } catch { /* ignore */ }
     let currentTab = 'pending';
     const $ = id => document.getElementById(id);
     const panel = $('panel');
@@ -336,7 +341,7 @@
       const url = path + (path.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(KEY);
       return fetch(url, opts).then(async r => {
         const data = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(data.error || '请求失败');
+        if (!r.ok) { const err = new Error(data.error || '请求失败'); err.status = r.status; throw err; }
         return data;
       });
     };
@@ -360,11 +365,19 @@
       KEY = key;
       try {
         await api('/api/admin/stats');
-        sessionStorage.setItem('adminKey', KEY);
+        const keep = $('rememberKey') && $('rememberKey').checked;
+        try {
+          (keep ? localStorage : sessionStorage).setItem('adminKey', KEY);
+          (keep ? sessionStorage : localStorage).removeItem('adminKey');   // 另一边别留旧口令
+        } catch { /* ignore */ }
         enter();
       } catch (e) { toast(e.message || '口令错误'); }
     };
-    $('logoutBtn').onclick = () => { sessionStorage.removeItem('adminKey'); location.reload(); };
+    $('logoutBtn').onclick = () => {
+      try { localStorage.removeItem('adminKey'); } catch { /* ignore */ }
+      try { sessionStorage.removeItem('adminKey'); } catch { /* ignore */ }
+      location.reload();
+    };
 
     function enter() {
       $('loginBox').style.display = 'none';
@@ -372,6 +385,17 @@
       $('logoutBtn').style.display = 'inline-block';
       loadStats();
       renderTab(currentTab);
+    }
+
+    // 记住的口令失效了（比如服务端改过 ADMIN_KEY）→ 退回登录框
+    function backToLogin(msg) {
+      KEY = '';
+      try { localStorage.removeItem('adminKey'); } catch { /* ignore */ }
+      try { sessionStorage.removeItem('adminKey'); } catch { /* ignore */ }
+      $('loginBox').style.display = 'block';
+      $('adminBox').style.display = 'none';
+      $('logoutBtn').style.display = 'none';
+      if (msg) toast(msg);
     }
 
     async function loadStats() {
@@ -384,7 +408,10 @@
           ['累计 PV', s.pv || 0], ['累计 UV', s.uv || 0],
           ['总浏览', s.views], ['总点赞', s.likes]
         ].map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
-      } catch (e) { toast(e.message); }
+      } catch (e) {
+        if (e.status === 401 || e.status === 403) backToLogin('口令已失效，请重新输入');
+        else toast(e.message);
+      }
     }
 
     // ---- Tab 切换 ----
@@ -1519,8 +1546,8 @@
       }
     });
 
-    // 自动登录
-    if (KEY) enter();
+    // 自动登录：记住的口令先静默校验一次，有效直接进后台，无效（改过口令）退回登录框
+    if (KEY) api('/api/admin/stats').then(enter).catch(() => backToLogin());
   </script>
 </body>
 </html>
