@@ -1256,30 +1256,36 @@ body.on-work .load-more-wrap { display: none !important; }
 /* 纯文字广告：白底浅边框、深色字，和图文横幅明显区分；不发图片请求 */
 .ad-card.ad-text-card {
   min-height: 0;
-  background: #fff; color: var(--text);
-  border: 1px solid #e9e9f4; border-left: 3px solid var(--primary);
-  box-shadow: 0 1px 6px rgba(31, 35, 48, .04);
+  background: transparent; color: var(--muted);
+  border: 0; border-radius: 8px;
+  box-shadow: none;
 }
-.ad-card.ad-text-card:hover { box-shadow: 0 8px 22px rgba(91, 91, 214, .14); }
-.ad-card.ad-text-card .ad-badge { background: #eef0ff; color: var(--primary); }
-.ad-card.ad-text-card .ad-title { color: var(--text); }
-.ad-card.ad-text-card .ad-desc { color: var(--muted); opacity: 1; }
-.ad-card.ad-text-card .ad-cta { background: var(--primary); color: #fff; }
+.ad-card.ad-text-card:hover { box-shadow: none; }
+.ad-card.ad-text-card .ad-badge {
+  background: transparent; color: #a0a4ba;
+  font-size: 10.5px; border: 1px solid #e3e5f0; padding: 0 5px; line-height: 1.5;
+}
+.ad-card.ad-text-card .ad-title { color: #565b72; font-weight: 500; }
+.ad-card.ad-text-card .ad-desc { color: #a0a4ba; opacity: 1; }
+.ad-card.ad-text-card .ad-cta {
+  background: transparent; color: #8b8fd8;
+  font-weight: 500; padding: 0;
+}
 /* 浅色卡片上的关闭按钮换成浅底深字，免得一块黑饼太扎眼 */
-.ad-card-wrap:has(.ad-text-card) .ad-close { background: rgba(31, 35, 48, .08); color: #5a5f78; top: 50%; margin-top: -13px; }
-.ad-card-wrap:has(.ad-text-card) .ad-close:hover { background: rgba(31, 35, 48, .18); color: #2b2f40; }
+.ad-card-wrap:has(.ad-text-card) .ad-close { background: transparent; color: #b8bccd; top: 50%; margin-top: -13px; }
+.ad-card-wrap:has(.ad-text-card) .ad-close:hover { background: rgba(31, 35, 48, .07); color: #7a7f96; }
 
 /* 纯文字广告桌面端收成一细行：徽标 | 标题 | 描述 | 按钮，整条约 40px 高 */
 .ad-card.ad-text-card .ad-body {
-  flex-direction: row; align-items: center; gap: 12px;
-  padding: 8px 42px 8px 14px; max-width: 100%;
+  flex-direction: row; align-items: center; gap: 10px;
+  padding: 5px 38px 5px 10px; max-width: 100%;
 }
 .ad-card.ad-text-card .ad-title {
-  font-size: 14px; flex: none; max-width: 42%;
+  font-size: 13px; flex: none; max-width: 42%;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.ad-card.ad-text-card .ad-desc { font-size: 12.5px; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ad-card.ad-text-card .ad-cta { margin: 0; flex: none; font-size: 12px; padding: 3px 11px; white-space: nowrap; }
+.ad-card.ad-text-card .ad-desc { font-size: 12px; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ad-card.ad-text-card .ad-cta { margin: 0; flex: none; font-size: 12px; padding: 0; white-space: nowrap; }
 
 @media (max-width: 640px) {
   /* 窄屏放不下一行，退回上下两行 */
