@@ -1174,9 +1174,9 @@ body.on-work .load-more-wrap { display: none !important; }
 
 .ad-card {
   position: relative; display: flex; align-items: center; overflow: hidden;
-  min-height: 118px; border-radius: 16px; text-decoration: none; color: #fff;
+  min-height: 0; border-radius: 12px; text-decoration: none; color: #fff;
   background: linear-gradient(120deg, #5b5bd6 0%, #7c5cf0 55%, #a855f7 100%);
-  box-shadow: 0 6px 20px rgba(91, 91, 214, .16);
+  box-shadow: 0 2px 10px rgba(31, 35, 48, .06);
   transition: transform .18s ease, box-shadow .18s ease;
 }
 .ad-card:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(91, 91, 214, .24); }
@@ -1187,38 +1187,48 @@ body.on-work .load-more-wrap { display: none !important; }
   background: linear-gradient(90deg, rgba(16, 18, 28, .88) 0%, rgba(16, 18, 28, .64) 46%, rgba(16, 18, 28, .16) 100%);
 }
 .ad-body {
-  position: relative; z-index: 1; display: flex; flex-direction: column;
-  gap: 6px; padding: 18px 24px; max-width: 76%;
+  position: relative; z-index: 1; display: flex;
+  flex-direction: row; align-items: center; gap: 12px;
+  padding: 10px 46px 10px 16px; max-width: 100%;
 }
 .ad-badge {
-  align-self: flex-start; font-size: 11px; line-height: 1.6; padding: 0 7px;
+  align-self: center; font-size: 11px; line-height: 1.6; padding: 0 7px;
   border-radius: 4px; background: rgba(255, 255, 255, .22); letter-spacing: .04em;
+  flex: none;
 }
-.ad-title { font-size: 19px; line-height: 1.3; font-weight: 700; }
-.ad-desc { font-size: 13px; line-height: 1.5; opacity: .88; }
+.ad-title {
+  font-size: 15px; line-height: 1.3; font-weight: 700; flex: none; max-width: 40%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ad-desc {
+  font-size: 12.5px; line-height: 1.5; opacity: .88; flex: 1 1 auto; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .ad-cta {
-  align-self: flex-start; margin-top: 2px; font-size: 12.5px; font-weight: 600;
-  padding: 5px 12px; border-radius: 999px; background: rgba(255, 255, 255, .94); color: #33356b;
+  align-self: center; margin: 0; flex: none; font-size: 12px; font-weight: 600;
+  padding: 4px 12px; border-radius: 999px; background: rgba(255, 255, 255, .94); color: #33356b;
+  white-space: nowrap;
 }
 .ad-dots { display: flex; gap: 6px; justify-content: center; margin-top: 9px; }
 .ad-dot { width: 6px; height: 6px; border-radius: 50%; background: #cfd2e4; transition: background .2s, width .2s; }
 .ad-dot.active { width: 16px; border-radius: 4px; background: var(--primary); }
 
 /* 详情页内的广告位窄一些，字号也要跟着收 */
-.ad-slot-detail .ad-card { min-height: 96px; border-radius: 14px; }
-.ad-slot-detail .ad-body { padding: 14px 16px; max-width: 100%; }
-.ad-slot-detail .ad-title { font-size: 16px; }
+.ad-slot-detail .ad-card { border-radius: 12px; }
+.ad-slot-detail .ad-body { padding: 9px 42px 9px 14px; }
+.ad-slot-detail .ad-title { font-size: 14px; }
 
 @media (max-width: 640px) {
   .ad-slot { margin: 18px 0 2px; }
-  .ad-card { min-height: 96px; border-radius: 14px; }
-  .ad-body { gap: 5px; padding: 14px 16px; max-width: 100%; }
-  .ad-title { font-size: 16px; }
+  .ad-card { border-radius: 12px; }
+  /* 窄屏放不下一行，退回上下两行 */
+  .ad-body { flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 40px 10px 14px; }
+  .ad-title { font-size: 14.5px; max-width: 100%; white-space: normal; }
   .ad-desc {
     font-size: 12px; display: -webkit-box; -webkit-line-clamp: 2;
     -webkit-box-orient: vertical; overflow: hidden;
   }
-  .ad-cta { font-size: 12px; padding: 4px 10px; }
+  .ad-cta { font-size: 12px; padding: 4px 10px; align-self: flex-start; }
 }
 
 /* 关闭按钮：访客不想看可以自己关掉，关掉的广告本地记住不再出现 */
