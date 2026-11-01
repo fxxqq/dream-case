@@ -651,15 +651,18 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .fn-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); background: #f4f4ff; }
 .fn-btn:disabled { opacity: .3; cursor: default; }
 
-/* 横向滑动轨道：卡片小尺寸、可拖拽、隐藏滚动条 */
+/* 横向滑动轨道：卡片小尺寸、可拖拽，底部带细滚动条提示可横滑 */
 .featured-row {
   display: flex; gap: 14px;
   overflow-x: auto; scroll-snap-type: x mandatory;
   padding: 4px 2px 8px;
-  scrollbar-width: none; -ms-overflow-style: none;
+  scrollbar-width: thin; scrollbar-color: #cfd2e2 transparent;
   cursor: grab;
 }
-.featured-row::-webkit-scrollbar { display: none; }
+.featured-row::-webkit-scrollbar { height: 6px; }
+.featured-row::-webkit-scrollbar-thumb { background: #cfd2e2; border-radius: 3px; }
+.featured-row::-webkit-scrollbar-thumb:hover { background: #b4b8cd; }
+.featured-row::-webkit-scrollbar-track { background: transparent; }
 .featured-row.dragging { cursor: grabbing; scroll-snap-type: none; }
 .featured-row.dragging .featured-card { pointer-events: none; }
 
