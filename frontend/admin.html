@@ -154,6 +154,12 @@
     }
     .ad-empty { padding:14px 18px; color:var(--muted); font-size:13px; border-top:1px dashed var(--border); }
     .ad-stat { font-variant-numeric:tabular-nums; }
+    /* 刷新按钮：图标随请求旋转，请求结束就停 */
+    #refreshBtn { display:none; align-items:center; gap:6px; }
+    .refresh-ico { width:14px; height:14px; }
+    #refreshBtn.show { display:inline-flex; }
+    #refreshBtn.busy .refresh-ico { animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
@@ -162,6 +168,10 @@
       <span class="logo">✦ 造梦橱窗 · 后台</span>
       <a class="btn btn-ghost" href="/">返回网站</a>
       <span class="spacer"></span>
+      <button class="btn btn-ghost" id="refreshBtn" title="刷新数据和当前列表">
+        <svg class="refresh-ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.8v2.7h-2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        刷新
+      </button>
       <button class="btn btn-ghost" id="logoutBtn" style="display:none">退出</button>
     </div>
   </header>
@@ -386,6 +396,16 @@
         enter();
       } catch (e) { toast(e.message || '口令错误'); }
     };
+    // 刷新：统计卡片 + 当前标签内容一起重拉；请求中图标转圈且防重复点击
+    $('refreshBtn').onclick = () => {
+      const btn = $('refreshBtn');
+      if (btn.classList.contains('busy')) return;
+      btn.classList.add('busy');
+      Promise.allSettled([loadStats(), renderTab(currentTab)]).finally(() => {
+        btn.classList.remove('busy');
+      });
+    };
+
     $('logoutBtn').onclick = () => {
       try { localStorage.removeItem('adminKey'); } catch { /* ignore */ }
       try { sessionStorage.removeItem('adminKey'); } catch { /* ignore */ }
@@ -396,6 +416,7 @@
       $('loginBox').style.display = 'none';
       $('adminBox').style.display = 'block';
       $('logoutBtn').style.display = 'inline-block';
+      $('refreshBtn').classList.add('show');
       loadStats();
       renderTab(currentTab);
     }
@@ -408,6 +429,7 @@
       $('loginBox').style.display = 'block';
       $('adminBox').style.display = 'none';
       $('logoutBtn').style.display = 'none';
+      $('refreshBtn').classList.remove('show', 'busy');
       if (msg) toast(msg);
     }
 
@@ -455,17 +477,17 @@
 
     function renderTab(tab) {
       panel.innerHTML = '<div class="empty">加载中…</div>';
-      if (tab === 'pending') loadWorks('pending');
-      if (tab === 'all') loadWorks('全部');
-      if (tab === 'reports') loadReports();
-      if (tab === 'claims') loadClaims();
-      if (tab === 'feedback') loadFeedback();
-      if (tab === 'comments') loadComments();
-      if (tab === 'categories') loadCategories();
-      if (tab === 'types') loadTypes();
-      if (tab === 'tools') loadTools();
-      if (tab === 'ads') loadAds();
-      if (tab === 'creators') loadCreators();
+      if (tab === 'pending') return loadWorks('pending');
+      if (tab === 'all') return loadWorks('全部');
+      if (tab === 'reports') return loadReports();
+      if (tab === 'claims') return loadClaims();
+      if (tab === 'feedback') return loadFeedback();
+      if (tab === 'comments') return loadComments();
+      if (tab === 'categories') return loadCategories();
+      if (tab === 'types') return loadTypes();
+      if (tab === 'tools') return loadTools();
+      if (tab === 'ads') return loadAds();
+      if (tab === 'creators') return loadCreators();
     }
 
     // ---- 作品 ----
