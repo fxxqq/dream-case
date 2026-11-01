@@ -378,6 +378,21 @@ function workVisitStats(workId) {
   };
 }
 
+// 榜单用：作品在周期内的 PV / UV（days=36500 表示全部）
+function workPvUv(workId, days) {
+  const rec = workVisits[workId];
+  if (!rec) return { pv: 0, uv: 0 };
+  if (days >= 36500) return { pv: rec.pv || 0, uv: Object.keys(rec.uv || {}).length };
+  const from = dateKey(new Date(Date.now() - days * 86400000));
+  let pv = 0; const uvSet = new Set();
+  Object.entries(rec.days || {}).forEach(([k, d]) => {
+    if (k < from) return;
+    pv += d.pv || 0;
+    Object.keys(d.uv || {}).forEach(x => uvSet.add(x));
+  });
+  return { pv, uv: uvSet.size };
+}
+
 // ---------- 分享归因与积分奖励 ----------
 // 分享链接形如 /w/<id>?ref=<账号名>。访客打开后按「IP + 分享者 + 作品 + 当天」去重，
 // 计一次有效分享访问；被邀请人注册再计一次邀请注册。
@@ -1479,11 +1494,14 @@ app.get('/api/featured', (req, res) => {
   res.json(list);
 });
 
-// 榜单：period = week / month / all；by = hot（综合）/ likes（点赞）/ favs（收藏）
+// 榜单：period = week / month / all；by = hot（综合）/ likes（点赞）/ favs（收藏）/ pv / uv
 const RANK_BY = {
   hot: (a, b) => score(b) - score(a),
   likes: (a, b) => (b.likes || 0) - (a.likes || 0) || (b.favs || 0) - (a.favs || 0),
-  favs: (a, b) => (b.favs || 0) - (a.favs || 0) || (b.likes || 0) - (a.likes || 0)
+  favs: (a, b) => (b.favs || 0) - (a.favs || 0) || (b.likes || 0) - (a.likes || 0),
+  // PV / UV 默认按全部口径（/api/rank 里会按 period 覆盖）
+  pv: (a, b) => workPvUv(b.id, 36500).pv - workPvUv(a.id, 36500).pv || score(b) - score(a),
+  uv: (a, b) => workPvUv(b.id, 36500).uv - workPvUv(a.id, 36500).uv || score(b) - score(a)
 };
 app.get('/api/rank', (req, res) => {
   const period = ['week', 'month', 'all'].includes(req.query.period) ? req.query.period : 'week';
@@ -1492,10 +1510,15 @@ app.get('/api/rank', (req, res) => {
   const days = period === 'week' ? 7 : period === 'month' ? 30 : 36500;
   const since = Date.now() - days * 86400000;
   const user = currentUser(req);
+  const usePvUv = by === 'pv' || by === 'uv';
+  const metric = w => workPvUv(w.id, days)[by];
   const list = filterBlocked(works.filter(w => isVisible(w) && new Date(w.createdAt).getTime() >= since), user)
-    .sort((a, b) => RANK_BY[by](a, b) || new Date(b.createdAt) - new Date(a.createdAt))
+    .sort((a, b) => (usePvUv ? metric(b) - metric(a) : RANK_BY[by](a, b)) || new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, limit)
-    .map((w, i) => ({ ...publicWork(w, user), rank: i + 1 }));
+    .map((w, i) => {
+      const m = workPvUv(w.id, days);
+      return { ...publicWork(w, user), rank: i + 1, pv: m.pv, uv: m.uv };
+    });
   res.json(list);
 });
 
@@ -2665,7 +2688,7 @@ app.get('/u/:name', (req, res) => {
 app.get('/rank', (req, res) => {
   const base = seo.baseUrl(req);
   const by = Object.prototype.hasOwnProperty.call(RANK_BY, req.query.by) ? req.query.by : 'hot';
-  const BY_TEXT = { hot: '综合热度', likes: '点赞', favs: '收藏' };
+  const BY_TEXT = { hot: '综合热度', likes: '点赞', favs: '收藏', pv: 'PV 浏览量', uv: 'UV 访客数' };
   const list = visibleWorks().slice()
     .sort((a, b) => RANK_BY[by](a, b))
     .slice(0, 20);
@@ -2675,8 +2698,8 @@ app.get('/rank', (req, res) => {
   const headHtml = seo.head({
     title: `作品榜单 - 热门网站、小程序与 App - ${seo.SITE_NAME}`,
     description: truncateText(
-      `作品集热门榜单：支持按综合热度、点赞、收藏排序，实时更新最受欢迎的网站、小程序、桌面客户端、机器人等作品。`, 150),
-    keywords: '作品榜单,热门工具,排行榜,小程序排行,网站排行,点赞榜,收藏榜',
+      `作品集热门榜单：支持按综合热度、点赞、收藏、PV、UV 排序，实时更新最受欢迎的网站、小程序、桌面客户端、机器人等作品。`, 150),
+    keywords: '作品榜单,热门工具,排行榜,小程序排行,网站排行,点赞榜,收藏榜,PV榜,UV榜',
     canonical: base + '/rank',
     image: list[0] ? seo.absolute(base, list[0].image) : '',
     jsonLd: [
@@ -2708,6 +2731,8 @@ app.get('/rank', (req, res) => {
     <a class="${tabCls('hot')}" href="${tabHref('hot')}">综合</a>
     <a class="${tabCls('likes')}" href="${tabHref('likes')}">按点赞</a>
     <a class="${tabCls('favs')}" href="${tabHref('favs')}">按收藏</a>
+    <a class="${tabCls('pv')}" href="${tabHref('pv')}">按 PV</a>
+    <a class="${tabCls('uv')}" href="${tabHref('uv')}">按 UV</a>
   </div>
   <ol class="seo-rank">
     ${list.map((w, i) => `<li>

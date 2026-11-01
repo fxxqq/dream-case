@@ -1302,6 +1302,8 @@ async function loadRank(period, by) {
           <span class="${cur === 'likes' ? 'on' : ''}">♥ ${w.likes || 0}</span>
           <span class="${cur === 'favs' ? 'on' : ''}">★ ${w.favs || 0}</span>
           <span class="${cur === 'hot' ? 'on' : ''}">👁 ${w.views || 0}</span>
+          <span class="${cur === 'pv' ? 'on' : ''}" title="页面浏览量（Page Views）">📊 ${w.pv || 0}</span>
+          <span class="${cur === 'uv' ? 'on' : ''}" title="独立访客数（Unique Visitors）">🧑 ${w.uv || 0}</span>
         </div>
       </div>`).join('') : '<div class="empty"><p>暂无上榜作品</p></div>';
     $('rankList').querySelectorAll('.rank-item').forEach(el =>
