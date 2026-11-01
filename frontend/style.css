@@ -1455,5 +1455,3 @@ body.on-work .load-more-wrap { display: none !important; }
 .nick-msg.err { color: var(--danger); }
 .nick-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 2px; }
 .nick-actions .btn-ghost { margin-right: auto; }
-.nick-entry { color: var(--muted); font-size: 13px; }
-.nick-entry:hover { color: var(--primary); }
