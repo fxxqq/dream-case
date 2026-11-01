@@ -36,6 +36,11 @@
     .tabs { display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap; }
     .tab { padding:8px 18px; border-radius:999px; border:1px solid var(--border); background:#fff; cursor:pointer; font-size:14px; }
     .tab.active { background:#1f2330; border-color:#1f2330; color:#fff; }
+    .tab-badge {
+      display:inline-block; margin-left:7px; padding:1px 7px; border-radius:999px;
+      background:#e5484d; color:#fff; font-size:11px; line-height:1.5; font-weight:600;
+      vertical-align:1px;
+    }
 
     .panel { background:#fff; border:1px solid var(--border); border-radius:14px; overflow:hidden; }
     .row { display:flex; align-items:center; gap:14px; padding:14px 18px; border-bottom:1px solid var(--border); }
@@ -408,10 +413,27 @@
           ['累计 PV', s.pv || 0], ['累计 UV', s.uv || 0],
           ['总浏览', s.views], ['总点赞', s.likes]
         ].map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
+        // 待处理数直接标在对应标签上，一眼看到哪里有活
+        updateTabBadges({ pending: s.pending, reports: s.reports, claims: s.claims || 0, feedback: s.feedback });
       } catch (e) {
         if (e.status === 401 || e.status === 403) backToLogin('口令已失效，请重新输入');
         else toast(e.message);
       }
+    }
+
+    function updateTabBadges(map) {
+      document.querySelectorAll('#tabs .tab').forEach(btn => {
+        const key = btn.dataset.tab;
+        const n = map[key];
+        const old = btn.querySelector('.tab-badge');
+        if (old) old.remove();
+        if (typeof n === 'number' && n > 0) {
+          const b = document.createElement('span');
+          b.className = 'tab-badge';
+          b.textContent = n > 99 ? '99+' : n;
+          btn.appendChild(b);
+        }
+      });
     }
 
     // ---- Tab 切换 ----
