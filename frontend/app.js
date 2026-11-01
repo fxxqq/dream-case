@@ -27,6 +27,10 @@ const state = {
   view: localStorage.getItem('dm_view') === 'list' ? 'list' : 'card'
 };
 
+// 从作品详情弹窗退回列表页时置为 true：列表 DOM 仍然完整，route() 不要重新拉取，
+// 否则已加载的分页会丢失、「展示更多」按钮重新出现，看起来像整页刷新
+let skipNextListReload = false;
+
 const $ = id => document.getElementById(id);
 const gallery = $('gallery');
 const detailModal = $('detailModal');
@@ -932,6 +936,11 @@ function trackWorkView(id) {
 function route() {
   trackPageView();
   const path = location.pathname;
+  // 从详情弹窗退回：列表视图原样保留，不重新拉数据（分页、滚动位置、「展示更多」都不动）
+  const keepList = skipNextListReload;
+  skipNextListReload = false;
+  const keepScrollY = keepList ? window.scrollY : 0; // 视图隐藏再显示会把滚动位置钳回顶部，这里记下来还原
+  const restoreScroll = () => { if (keepList) requestAnimationFrame(() => window.scrollTo(0, keepScrollY)); };
   closeAllViews();
 
   const isWorkPage = path.startsWith('/w/');
@@ -954,22 +963,27 @@ function route() {
   }
   if (path.startsWith('/u/')) {
     $('authorView').style.display = 'block';
-    loadAuthor(decodeURIComponent(path.slice(3)));
+    if (!keepList) loadAuthor(decodeURIComponent(path.slice(3)));
     updateNavActive();
+    restoreScroll();
     return;
   }
   if (path === '/rank') {
     $('rankView').style.display = 'block';
     setTitle('作品榜单');
-    loadRank(); // 不强制回「本周」，保留用户上次选的周期/排序
+    if (!keepList) loadRank(); // 不强制回「本周」，保留用户上次选的周期/排序
     updateNavActive();
+    restoreScroll();
     return;
   }
   $('homeView').style.display = 'block';
   setTitle(state.q ? `搜索「${state.q}」` : '');
-  loadFeatured();
-  loadWorks();
+  if (!keepList) {
+    loadFeatured();
+    loadWorks();
+  }
   updateNavActive();
+  restoreScroll();
 }
 
 // ---------- 作者主页 ----------
@@ -1820,8 +1834,10 @@ function setupDetailActions() {
     // 弹窗是从首页/榜单/作者页打开的（history.state.dm === 'work'）就回退到原页面，
     // 只有从 /w/xxx 直链打开时才回首页
     if (location.pathname.startsWith('/w/')) {
-      if (history.state && history.state.dm === 'work') history.back();
-      else { history.pushState({}, '', '/'); route(); }
+      if (history.state && history.state.dm === 'work') {
+        skipNextListReload = true; // 列表还在页面上，退回时别重载
+        history.back();
+      } else { history.pushState({}, '', '/'); route(); }
     }
   };
   detailModal.onclick = e => {
@@ -1930,10 +1946,17 @@ function setupDetailActions() {
     state.blocked = Array.isArray(data.blocked) ? data.blocked : state.blocked;
     renderAuthBox();
     hideModal(detailModal);
-    // 回到上一页（首页/榜单/作者页），由 popstate 触发列表重载；直接从链接打开则回首页
+    // 就地移除被屏蔽作品的卡片，避免整页重载把已加载的分页清空
+    document.querySelectorAll(`.card[data-id="${w.id}"], .work-row[data-id="${w.id}"]`).forEach(el => el.remove());
+    const cnt = $('workCount');
+    const cur = parseInt((cnt.textContent.match(/\d+/) || [0])[0], 10) || 0;
+    if (cur > 0) cnt.textContent = `共 ${cur - 1} 件`;
+    // 回到上一页（首页/榜单/作者页），由 popstate 触发；列表 DOM 已更新，不再重载
     if (location.pathname.startsWith('/w/')) {
-      if (history.state && history.state.dm === 'work') history.back();
-      else { history.pushState({}, '', '/'); route(); }
+      if (history.state && history.state.dm === 'work') {
+        skipNextListReload = true;
+        history.back();
+      } else { history.pushState({}, '', '/'); route(); }
     }
     showToast('已屏蔽，可在顶部「🚫」里恢复');
   };
@@ -2176,7 +2199,13 @@ function setupHeader() {
     }
   });
 
-  window.addEventListener('popstate', route);
+  // 浏览器后退键关闭详情：此时弹窗还开着、地址还是 /w/xxx，同样保留列表不重载
+  window.addEventListener('popstate', () => {
+    if (detailModal.style.display === 'flex' && !location.pathname.startsWith('/w/')) {
+      skipNextListReload = true;
+    }
+    route();
+  });
 }
 
 // ---------- 意见反馈 ----------
