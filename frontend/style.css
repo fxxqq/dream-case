@@ -806,7 +806,9 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   background: rgba(255,255,255,.9); color: #b9bdd0;
 }
 .fav-star.active { color: #f5a524; }
-.card-author { display: inline-flex; align-items: center; gap: 3px; }
+.card-author { display: inline-flex; align-items: center; gap: 3px; min-width: 0; }
+/* 昵称太长时在卡片内截断成省略号，不能盖住/挤掉右侧的分类标签 */
+.card-author .author-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .verified { color: #2f9e44; font-style: normal; font-size: 12px; }
 .verified-tag {
   display: inline-block; background: #e7f8ec; color: #2f9e44;

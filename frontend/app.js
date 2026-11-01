@@ -465,7 +465,7 @@ function cardHtml(w, opts = {}) {
       <div class="card-body">
         <div class="card-title">${escapeHtml(w.title)}</div>
         <div class="card-meta">
-          <span class="card-author">${w.verified ? '<i class="verified">✔</i>' : ''}@${escapeHtml(dname(w))}</span>
+          <span class="card-author">${w.verified ? '<i class="verified">✔</i>' : ''}<span class="author-name">@${escapeHtml(dname(w))}</span></span>
           <span class="card-tags"><span class="card-cat">${escapeHtml(w.category)}</span>${osBadgeHtml(w)}${paidBadgeHtml(w)}</span>
         </div>
         <div class="card-meta" style="margin-top:6px">
