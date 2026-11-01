@@ -38,6 +38,7 @@ const uploadModal = $('uploadModal');
 const submitChoiceModal = $('submitChoiceModal');
 const reportModal = $('reportModal');
 const blockedModal = $('blockedModal');
+const statsModal = $('statsModal');
 const toast = $('toast');
 
 const TYPE_ICONS = { '网站': '🌐', '小程序': '📱', 'App': '📲', '智能体': '🤖', '桌面应用': '🖥️', '浏览器扩展': '🧩', '工具': '🛠️', '游戏': '🎮', '其他': '✨' };
@@ -258,9 +259,11 @@ function renderAuthBox() {
     const n = (state.blocked || []).length;
     box.innerHTML =
       `<a class="user-chip" href="/u/${encodeURIComponent(state.user.username)}" data-nav title="我的主页">👤 ${escapeHtml(state.user.username)}</a>` +
+      `<button class="link-btn stats-entry" id="statsBtn" title="我的作品数据">📊 数据</button>` +
       (n ? `<button class="link-btn blocked-entry" id="blockedBtn" title="查看已屏蔽的作品">🚫 ${n}</button>` : '') +
       `<button class="link-btn" id="logoutBtn">退出</button>`;
     $('logoutBtn').onclick = doLogout;
+    $('statsBtn').onclick = openStats;
     const bb = $('blockedBtn');
     if (bb) bb.onclick = openBlockedList;
   } else {
@@ -2081,6 +2084,99 @@ function setupDetailActions() {
 }
 
 // ---------- 已屏蔽作品 ----------
+// ---------- 作者数据看板 ----------
+// 只看自己的作品（发布 + 认领后归属自己的）：累计数据 + 近 14 天浏览趋势
+function statsSparkline(values, w = 88, h = 24) {
+  if (!values.length) return '';
+  const max = Math.max(...values, 1);
+  const step = values.length > 1 ? w / (values.length - 1) : w;
+  const pts = values.map((v, i) =>
+    `${(i * step).toFixed(1)},${(h - (v / max) * (h - 3) - 1.5).toFixed(1)}`).join(' ');
+  return `<svg class="sw-spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">
+    <polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.6"
+      stroke-linejoin="round" stroke-linecap="round" /></svg>`;
+}
+
+async function openStats() {
+  if (!state.user) { openAuth('login'); return; }
+  const body = $('statsBody');
+  body.innerHTML = '<div class="stats-loading">加载中…</div>';
+  $('closeStats').onclick = () => hideModal(statsModal);
+  statsModal.onclick = e => { if (e.target === statsModal) hideModal(statsModal); };
+  showModal(statsModal);
+
+  let data;
+  try {
+    data = await (await fetch('/api/me/stats')).json();
+  } catch {
+    body.innerHTML = '<div class="stats-loading">加载失败，请稍后重试</div>';
+    return;
+  }
+  if (!Array.isArray(data.works)) {
+    body.innerHTML = '<div class="stats-loading">加载失败，请稍后重试</div>';
+    return;
+  }
+  const { totals, days, trend, works } = data;
+
+  if (!works.length) {
+    body.innerHTML = `
+      <div class="stats-empty">
+        <div class="stats-empty-icon">📊</div>
+        <p>你还没有归属自己的作品。</p>
+        <p class="stats-empty-sub">提交新作品，或对已收录的作品发起「认领」，通过后这里就会显示它的浏览、点赞与收藏数据。</p>
+        <button class="btn-primary" id="statsGoSubmit">＋ 去提交作品</button>
+      </div>`;
+    $('statsGoSubmit').onclick = () => { hideModal(statsModal); $('openUpload').click(); };
+    return;
+  }
+
+  const max = Math.max(...trend, 1);
+  const bars = trend.map((v, i) => {
+    const hPct = v ? Math.max(6, Math.round((v / max) * 100)) : 2;
+    return `<div class="stats-bar-wrap" title="${days[i]}：${v} 次浏览">
+      <div class="stats-bar ${v ? '' : 'empty'}" style="height:${hPct}%"></div>
+      <span class="stats-bar-x">${i % 3 === 0 || i === trend.length - 1 ? days[i].slice(5).replace('-', '/') : ''}</span>
+    </div>`;
+  }).join('');
+
+  const rows = works.map(w => `
+    <div class="stats-work" data-id="${escapeHtml(w.id)}">
+      <img src="${escapeHtml(w.thumb)}" alt="" loading="lazy" />
+      <div class="sw-main">
+        <div class="sw-title">${escapeHtml(w.title)}${w.online ? '' : '<span class="sw-badge">审核中</span>'}</div>
+        <div class="sw-meta">浏览 ${w.views} · 访客 ${w.uv} · ♥ ${w.likes} · ★ ${w.favs} · 💬 ${w.comments}</div>
+      </div>
+      <div class="sw-right">
+        ${statsSparkline(w.trend)}
+        <span class="sw-7d">7 天 ${w.pv7}</span>
+      </div>
+    </div>`).join('');
+
+  body.innerHTML = `
+    <div class="stats-summary">
+      <div class="stat-card"><b>${totals.works}</b><span>作品</span></div>
+      <div class="stat-card"><b>${totals.views}</b><span>累计浏览</span></div>
+      <div class="stat-card"><b>${totals.pv7}</b><span>近 7 天</span></div>
+      <div class="stat-card"><b>${totals.likes}</b><span>点赞</span></div>
+      <div class="stat-card"><b>${totals.favs}</b><span>收藏</span></div>
+      <div class="stat-card"><b>${totals.comments}</b><span>评论</span></div>
+    </div>
+    <div class="stats-chart">
+      <div class="stats-chart-head">近 14 天浏览趋势</div>
+      <div class="stats-bars">${bars}</div>
+    </div>
+    <div class="stats-works-head">作品明细</div>
+    <div class="stats-works">${rows}</div>
+    <p class="stats-tip">数据统计包含弹窗与独立页面两种浏览方式；「访客」按登录账号 / IP 去重。</p>`;
+
+  body.querySelectorAll('.stats-work').forEach(row => {
+    row.onclick = () => {
+      hideModal(statsModal);
+      openWork(row.dataset.id);
+    };
+  });
+}
+
 async function openBlockedList() {
   if (!state.user) { openAuth('login'); return; }
   const box = $('blockedList');

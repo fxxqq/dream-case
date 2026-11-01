@@ -677,6 +677,48 @@ app.get('/api/me/claims', (req, res) => {
     .map(c => ({ id: c.id, workId: c.workId, status: c.status, createdAt: c.createdAt })));
 });
 
+// 作者数据看板：我发布 / 已认领的作品，含累计数据与近 14 天浏览趋势
+app.get('/api/me/stats', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const days = [];
+  const now = new Date();
+  for (let i = 13; i >= 0; i--) days.push(dateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)));
+
+  const mine = works.filter(w => w.userId === user.id && !w.deleted);
+  const items = mine.map(w => {
+    const rec = workVisits[w.id] || {};
+    const trend = days.map(k => (rec.days && rec.days[k] && rec.days[k].pv) || 0);
+    return {
+      id: w.id,
+      title: w.title,
+      thumb: w.thumb || w.image || '',
+      category: w.category,
+      createdAt: w.createdAt,
+      online: isVisible(w),                       // false = 审核中/未上线
+      views: w.views || 0,
+      likes: w.likes || 0,
+      favs: w.favs || 0,
+      comments: countComments(w.id),
+      uv: rec.uv ? Object.keys(rec.uv).length : 0,
+      pv7: trend.slice(-7).reduce((a, b) => a + b, 0),
+      trend
+    };
+  });
+
+  const totals = items.reduce((a, it) => ({
+    works: a.works + 1,
+    views: a.views + it.views,
+    likes: a.likes + it.likes,
+    favs: a.favs + it.favs,
+    comments: a.comments + it.comments,
+    pv7: a.pv7 + it.pv7
+  }), { works: 0, views: 0, likes: 0, favs: 0, comments: 0, pv7: 0 });
+
+  const trend = days.map((_, i) => items.reduce((s, it) => s + it.trend[i], 0));
+  res.json({ totals, days, trend, works: items.sort((a, b) => b.views - a.views) });
+});
+
 // 分类
 // 前端每次页面浏览上报一次（PV +1；UV 按账号/IP 去重）
 app.post('/api/track', (req, res) => {
