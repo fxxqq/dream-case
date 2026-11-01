@@ -1544,13 +1544,17 @@ app.get('/api/authors/:name', (req, res) => {
   });
 });
 
-// 作品详情（浏览量 +1）
+// 作品详情（浏览量 +1；作者/管理员可用 ?nopv=1 跳过计数，比如自己生成分享卡片时）
 app.get('/api/works/:id', (req, res) => {
   const w = works.find(x => x.id === req.params.id);
   if (!w || (!isVisible(w) && !isAdmin(req))) return res.status(404).json({ error: '作品不存在或未通过审核' });
-  w.views = (w.views || 0) + 1;
-  saveWorks();
-  res.json(publicWork(w, currentUser(req)));
+  const user = currentUser(req);
+  const skipPv = req.query.nopv === '1' && (isAdmin(req) || (user && w.userId === user.id));
+  if (!skipPv) {
+    w.views = (w.views || 0) + 1;
+    saveWorks();
+  }
+  res.json(publicWork(w, user));
 });
 
 // 发布作品：登录用户免审直接上线；未登录（匿名）投稿先进入待审核

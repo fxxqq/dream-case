@@ -2708,7 +2708,7 @@ async function openStats() {
       <div class="sw-right">
         ${statsSparkline(w.trend)}
         <span class="sw-7d">7 天 ${w.pv7}</span>
-        <button type="button" class="sw-share" data-share="${escapeHtml(w.id)}" title="复制带分享码的链接">分享</button>
+        <button type="button" class="sw-share" data-share="${escapeHtml(w.id)}" title="生成带二维码的分享卡片图片">分享</button>
       </div>
     </div>`).join('');
 
@@ -2737,12 +2737,18 @@ async function openStats() {
   body.querySelectorAll('.sw-share').forEach(btn => {
     btn.onclick = async e => {
       e.stopPropagation();
-      const url = withRef(location.origin + '/w/' + btn.dataset.share);
+      const id = btn.dataset.share;
+      // 和详情弹窗的「分享卡片」一样：拉取作品完整信息后现场生成分享图片
       try {
-        await navigator.clipboard.writeText(url);
-        showToast('带分享码的链接已复制，好友访问/注册都会算到你名下');
+        btn.disabled = true;
+        const w = await (await fetch('/api/works/' + encodeURIComponent(id) + '?nopv=1')).json();
+        if (w.error) { showToast(w.error); return; }
+        if (window.ShareCard) window.ShareCard.open(w);
+        else showToast('分享卡片加载中，稍后再试');
       } catch {
-        showToast(url);
+        showToast('分享卡片生成失败，请重试');
+      } finally {
+        btn.disabled = false;
       }
     };
   });
