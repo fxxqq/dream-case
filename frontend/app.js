@@ -560,6 +560,51 @@ let ADS = [];
 const adSeen = new Set();   // 本次浏览已上报过曝光的广告 id
 let adObserver = null;
 
+// 访客可以关掉不想看的广告：只记在本地，不影响后台统计。
+// 按「内容指纹」记而不是只记 id——后台改了这条广告的文案/图片，就算新内容，会重新出现。
+const AD_CLOSED_KEY = 'dm_ads_closed';
+const AD_CLOSED_TTL = 90 * 24 * 3600e3;   // 90 天后自动过期，免得永久看不见
+let adClosedMem = null;                   // localStorage 不可用时的兜底
+
+function adFingerprint(a) {
+  const s = [a.title, a.desc, a.url, a.image, a.cta].join('|');
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
+function adClosedMap() {
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(AD_CLOSED_KEY) || '{}'); }
+  catch (e) { raw = adClosedMem; }
+  if (!raw || typeof raw !== 'object') raw = {};
+  const now = Date.now();
+  Object.keys(raw).forEach(k => {
+    if (!raw[k] || now - (raw[k].ts || 0) > AD_CLOSED_TTL) delete raw[k];
+  });
+  return raw;
+}
+
+function saveAdClosed(map) {
+  try { localStorage.setItem(AD_CLOSED_KEY, JSON.stringify(map)); }
+  catch (e) { adClosedMem = map; }   // 隐私模式等写入失败，退回内存
+}
+
+function isAdClosed(a, map) {
+  const rec = map[a.id];
+  return !!rec && rec.fp === adFingerprint(a);
+}
+
+function closeAd(id) {
+  const a = ADS.find(x => x.id === id);
+  if (!a) return;
+  const map = adClosedMap();
+  map[id] = { fp: adFingerprint(a), ts: Date.now() };
+  saveAdClosed(map);
+  renderAdSlot(document.querySelector(`[data-ad-slot="${a.slot}"]`), a.slot);
+  showToast('已关闭这条广告，之后不再显示');
+}
+
 async function loadAds() {
   try {
     const data = await (await fetch('/api/ads')).json();
@@ -572,7 +617,8 @@ function adHtml(a) {
   const img = a.image
     ? `<img class="ad-bg" src="${escapeHtml(a.image)}" alt="" loading="lazy" />`
     : '';
-  return `<a class="ad-card${a.image ? ' has-img' : ''}" href="${escapeHtml(a.url)}"
+  return `<div class="ad-card-wrap">
+    <a class="ad-card${a.image ? ' has-img' : ''}" href="${escapeHtml(a.url)}"
       target="_blank" rel="noopener nofollow sponsored" data-ad="${escapeHtml(a.id)}">
       ${img}
       <span class="ad-body">
@@ -581,7 +627,12 @@ function adHtml(a) {
         ${a.desc ? `<span class="ad-desc">${escapeHtml(a.desc)}</span>` : ''}
         <span class="ad-cta">${escapeHtml(a.cta || '了解更多')} →</span>
       </span>
-    </a>`;
+    </a>
+    <button class="ad-close" type="button" data-ad-close="${escapeHtml(a.id)}"
+      aria-label="关闭这条广告" title="不想看，关掉">
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" /></svg>
+    </button>
+  </div>`;
 }
 
 // 曝光埋点：真正滚到视野里（露出一半）并且是当前轮播到的那条，才计一次曝光；
@@ -624,7 +675,8 @@ function renderAdSlot(el, slot) {
   if (!el) return;
   clearInterval(el._adTimer);           // 重新渲染前先停掉旧的轮播
   el._adTimer = null;
-  const list = ADS.filter(a => a.slot === slot);
+  const closed = adClosedMap();
+  const list = ADS.filter(a => a.slot === slot && !isAdClosed(a, closed));
   if (!list.length) {
     el.innerHTML = '';
     el.style.display = 'none';
@@ -660,6 +712,14 @@ function renderAllAdSlots() {
 
 // 点击埋点：用事件委托，广告是新渲染出来的也能记到
 document.addEventListener('click', e => {
+  // 关闭按钮（不在 a 里，不会被算成点击广告）
+  const x = e.target.closest && e.target.closest('[data-ad-close]');
+  if (x) {
+    e.preventDefault();
+    e.stopPropagation();
+    closeAd(x.dataset.adClose);
+    return;
+  }
   const a = e.target.closest && e.target.closest('a.ad-card');
   if (!a || !a.dataset.ad) return;
   sendBeaconSafe('/api/ads/' + encodeURIComponent(a.dataset.ad) + '/click');

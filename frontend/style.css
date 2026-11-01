@@ -1215,3 +1215,25 @@ body.on-work .load-more-wrap { display: none !important; }
   }
   .ad-cta { font-size: 12px; padding: 4px 10px; }
 }
+
+/* 关闭按钮：访客不想看可以自己关掉，关掉的广告本地记住不再出现 */
+.ad-card-wrap { position: relative; }
+.ad-close {
+  position: absolute; top: 8px; right: 8px; z-index: 3;
+  width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  background: rgba(18, 20, 32, .38); color: #fff; opacity: .7;
+  transition: opacity .18s ease, background .18s ease, transform .18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.ad-close:hover, .ad-close:focus-visible {
+  opacity: 1; background: rgba(18, 20, 32, .74); transform: scale(1.06);
+}
+.ad-close svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; }
+.ad-card-wrap:hover .ad-close { opacity: 1; }
+
+@media (max-width: 640px) {
+  /* 移动端没有 hover，按钮常显并且给足点击尺寸 */
+  .ad-close { top: 6px; right: 6px; width: 30px; height: 30px; opacity: .86; }
+  .ad-close svg { width: 12px; height: 12px; }
+}
