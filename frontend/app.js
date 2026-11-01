@@ -272,19 +272,72 @@ function renderAuthBox() {
   const box = $('authBox');
   if (state.user) {
     const n = (state.blocked || []).length;
+    const ck = state.user.checkin || {};
+    const ckDone = !!ck.done;
     box.innerHTML =
       `<a class="user-chip" href="/u/${encodeURIComponent(state.user.username)}" data-nav title="我的主页">👤 ${escapeHtml(state.user.nickname || state.user.username)}</a>` +
+      `<button class="link-btn checkin-entry${ckDone ? ' is-done' : ''}" id="checkinBtn"
+         title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天` : `每日签到领 ${ck.todayPoints || 2} 分`}"><span class="lb-ico">📅</span>${ckDone ? `已签${ck.streak > 1 ? ' ' + ck.streak + '天' : ''}` : '签到'}</button>` +
       `<button class="link-btn stats-entry" id="statsBtn" title="我的作品数据与站内推广"><span class="lb-ico">📊</span>数据与推广</button>` +
       (n ? `<button class="link-btn blocked-entry" id="blockedBtn" title="查看已屏蔽的作品">🚫 ${n}</button>` : '') +
       `<button class="link-btn" id="logoutBtn">退出</button>`;
     $('logoutBtn').onclick = doLogout;
     $('statsBtn').onclick = openStats;
+    $('checkinBtn').onclick = doCheckin;
     const bb = $('blockedBtn');
     if (bb) bb.onclick = openBlockedList;
   } else {
     box.innerHTML = '<button class="btn-ghost auth-open" id="loginEntry">登录 / 注册</button>';
     $('loginEntry').onclick = () => openAuth('login');
   }
+}
+
+// 每日签到：领积分（连续第 7 天有额外奖励），成功后原地刷新顶部按钮状态
+async function doCheckin(after) {
+  if (!state.user) { openAuth('login'); return; }
+  if (state.user.checkin && state.user.checkin.done) { showToast('今天已经签过了，明天再来'); return; }
+  const btn = $('checkinBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch('/api/me/checkin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || '签到失败');
+    state.user.checkin = d;
+    renderAuthBox();
+    showToast(d.dayInCycle === d.cycle
+      ? `签到成功 +${d.reward} 分（连续 ${d.streak} 天，含 ${d.bonusPoints} 分全勤奖励）`
+      : `签到成功 +${d.reward} 分 · 连续 ${d.streak} 天`);
+    if (typeof after === 'function') after(d);
+  } catch (err) {
+    if (btn) btn.disabled = false;
+    showToast(err.message || '签到失败，请稍后再试');
+  }
+}
+
+// 签到卡片（数据看板顶部那一块）：7 天进度 + 一键签到
+function checkinCardHtml(ck) {
+  const cycle = ck.cycle || 7;
+  const day = ck.dayInCycle || 1;
+  const done = !!ck.done;
+  const filled = done ? day : day - 1;
+  const dots = Array.from({ length: cycle }, (_, i) => {
+    const n = i + 1;
+    const cls = ['ck-dot'];
+    if (n <= filled) cls.push('is-filled');
+    if (n === day) cls.push('is-today');
+    if (n === cycle) cls.push('is-bonus');
+    const tip = n === cycle ? `第 ${cycle} 天额外 +${ck.bonusPoints || 6} 分` : `第 ${n} 天`;
+    return `<span class="${cls.join(' ')}" title="${tip}">${n <= filled ? '✓' : (n === cycle ? '🎁' : n)}</span>`;
+  }).join('');
+  return `
+    <div class="checkin-card${done ? ' is-done' : ''}">
+      <div class="ck-head">
+        <div class="ck-title">📅 每日签到${ck.streak ? `<span class="ck-streak">连续 ${ck.streak} 天</span>` : ''}</div>
+        <button type="button" class="ck-btn" id="checkinGo"${done ? ' disabled' : ''}>${done ? '今日已签 ✓' : `签到 +${ck.todayPoints || 2} 分`}</button>
+      </div>
+      <div class="ck-days">${dots}</div>
+      <div class="ck-tip">每天 +2 分，连续第 ${cycle} 天额外 +${ck.bonusPoints || 6} 分；断签从头算。积分可直接兑换「站内推广」。</div>
+    </div>`;
 }
 
 function openAuth(mode = 'login', thenPublish = false) {
@@ -2839,7 +2892,24 @@ async function openStats() {
   const shareCards = `
       <div class="stat-card is-share"><b>${share.visits || 0}</b><span>分享带来访问</span></div>
       <div class="stat-card is-share"><b>${share.regs || 0}</b><span>邀请注册</span></div>
-      <div class="stat-card is-share"><b>${share.points || 0}</b><span>分享积分${share.rank ? ` · 第 ${share.rank} 名` : ''}</span></div>`;
+      <div class="stat-card is-share" id="pointsCard"><b>${share.points || 0}</b><span>积分余额${share.rank ? ` · 分享第 ${share.rank} 名` : ''}</span></div>`;
+  // 签到卡：7 天进度 + 一键签到（签到后原地刷新卡片和积分数字）
+  const ckCard = checkinCardHtml(data.checkin || state.user.checkin || {});
+  const bindCheckin = () => {
+    const b = $('checkinGo');
+    if (!b) return;
+    b.onclick = () => doCheckin(d => {
+      const card = document.querySelector('#statsBody .checkin-card');
+      if (card) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = checkinCardHtml(d);
+        card.replaceWith(tmp.firstElementChild);
+        bindCheckin();
+      }
+      const pc = $('pointsCard');
+      if (pc) pc.querySelector('b').textContent = d.points;
+    });
+  };
   const boardHtml = board.length ? `
     <div class="stats-works-head">分享达人榜</div>
     <div class="board-list">
@@ -2857,6 +2927,7 @@ async function openStats() {
   // 没有作品也要能看分享成绩：分享是「帮别人推广」，不依赖自己有没有作品
   if (!works.length) {
     body.innerHTML = `
+      ${ckCard}
       <div class="stats-summary">${shareCards}</div>
       <div class="stats-actions">
         <button type="button" class="stats-redeem" id="goRedeem">🎯 用积分上「站内推广」</button>
@@ -2871,6 +2942,7 @@ async function openStats() {
       <p class="stats-tip">${shareTip}</p>`;
     $('statsGoSubmit').onclick = () => { hideModal(statsModal); $('openUpload').click(); };
     $('goRedeem').onclick = () => { hideModal(statsModal); openRedeem(); };
+    bindCheckin();
     return;
   }
 
@@ -2899,6 +2971,7 @@ async function openStats() {
     </div>`).join('');
 
   body.innerHTML = `
+    ${ckCard}
     <div class="stats-summary">
       <div class="stat-card"><b>${totals.works}</b><span>作品</span></div>
       <div class="stat-card"><b>${totals.views}</b><span>累计浏览</span></div>
@@ -2924,6 +2997,7 @@ async function openStats() {
     </p>`;
 
   $('goRedeem').onclick = () => { hideModal(statsModal); openRedeem(); };
+  bindCheckin();
 
   body.querySelectorAll('.sw-share').forEach(btn => {
     btn.onclick = async e => {

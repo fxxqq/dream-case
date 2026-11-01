@@ -1397,6 +1397,43 @@ body.on-work .load-more-wrap { display: none !important; }
   .install-body { flex-direction: column; align-items: center; text-align: left; }
 }
 
+/* ========== 每日签到 ========== */
+/* 顶部入口：未签到是主色，签过转灰 */
+.checkin-entry { color: var(--primary); }
+.checkin-entry.is-done { color: var(--muted); }
+
+/* 数据看板里的签到卡 */
+.checkin-card {
+  border: 1px solid #e4e1ff; border-radius: 14px;
+  background: linear-gradient(135deg, #f6f4ff, #fbfaff);
+  padding: 12px 14px 10px; margin-bottom: 14px;
+}
+.checkin-card.is-done { background: linear-gradient(135deg, #f5fafe, #fbfdff); border-color: #e2eef8; }
+.ck-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; flex-wrap: wrap; }
+.ck-title { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.ck-streak {
+  font-size: 11.5px; font-weight: 500; color: #a2600a;
+  background: #fff3d9; border-radius: 999px; padding: 1px 8px;
+}
+.ck-btn {
+  flex: none; font-size: 12.5px; font-weight: 600; color: #fff; cursor: pointer;
+  background: var(--primary); border: none; border-radius: 999px; padding: 6px 14px;
+  transition: background .15s, opacity .15s;
+}
+.ck-btn:hover:not(:disabled) { background: var(--primary-dark); }
+.ck-btn:disabled { background: #dfe1ec; color: var(--muted); cursor: default; }
+.ck-days { display: flex; gap: 6px; margin: 10px 0 8px; }
+.ck-dot {
+  flex: 1; height: 24px; border-radius: 7px; font-size: 11.5px;
+  display: flex; align-items: center; justify-content: center;
+  background: #fff; border: 1px solid #e7e5f7; color: var(--muted);
+}
+.ck-dot.is-filled { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+.ck-dot.is-today:not(.is-filled) { border-color: var(--primary); color: var(--primary); font-weight: 600; }
+.ck-dot.is-bonus { background: #fff8e8; border-color: #f3e2b8; color: #a2600a; }
+.ck-dot.is-bonus.is-filled { background: #f0a020; border-color: #f0a020; color: #fff; }
+.ck-tip { font-size: 11.5px; color: var(--muted); line-height: 1.6; }
+
 /* 标记已实现弹窗 */
 .modal.modal-idea { max-width: 440px; }
 .idea-done-tip { font-size: 12.5px; color: var(--muted); line-height: 1.7; margin: 2px 0 12px; }

@@ -1034,7 +1034,8 @@ app.get('/api/me', (req, res) => {
         displayName: displayNameOf(user.username),
         nicknameNextAt: nickNextAt(user),
         blocked: Array.isArray(user.blocked) ? user.blocked : [],
-        favs: Array.isArray(user.favs) ? user.favs : []
+        favs: Array.isArray(user.favs) ? user.favs : [],
+        checkin: checkinView(user)
       }
     : { user: null });
 });
@@ -1206,6 +1207,7 @@ app.get('/api/me/stats', (req, res) => {
     totals: { ...totals, shareRegs: share.regs, points: share.points },
     days, trend,
     share: { points: share.points, visits: share.visits, regs: share.regs, rank: share.rank, totalRanked: share.totalRanked },
+    checkin: checkinView(user),
     board: shareBoard(10),
     works: items.sort((a, b) => b.views - a.views)
   });
@@ -1563,6 +1565,62 @@ function addPoints(uid, delta, kind, workId) {
   saveShareSoon();
   return rec.points;
 }
+
+// ---------- 每日签到 ----------
+// 连续签到：基础每天 2 分，连续第 7 天额外 +6（一轮 7 天，第 8 天重新算第 1 天）
+// 断签（昨天没签）从头开始；积分账本同样走 share.json，签到记录写进「分享明细」
+const CHECKIN_BASE = 2;
+const CHECKIN_BONUS = 6;
+const CHECKIN_CYCLE = 7;
+
+function cycleDayOf(streak) { return ((Math.max(1, streak) - 1) % CHECKIN_CYCLE) + 1; }
+
+// 签到的展示状态：今天签没签、连续几天、下一签能拿几分
+function checkinView(user) {
+  const rec = shareRecOf(user.id);
+  const ck = rec.checkin || { last: '', streak: 0, total: 0 };
+  const today = dateKey();
+  const yest = dateKey(new Date(Date.now() - 86400e3));
+  const done = ck.last === today;
+  const alive = done || ck.last === yest;          // 连续还挂着（今天已签或昨天签过）
+  const streak = alive ? (ck.streak || 0) : 0;     // 断签就把连续天数归零
+  const dayInCycle = done ? cycleDayOf(streak) : cycleDayOf(streak + 1);
+  const reward = CHECKIN_BASE + (dayInCycle === CHECKIN_CYCLE ? CHECKIN_BONUS : 0);
+  const tomorrow = new Date();
+  tomorrow.setHours(24, 0, 0, 0);
+  return {
+    done, streak, dayInCycle, cycle: CHECKIN_CYCLE,
+    todayPoints: reward, bonusPoints: CHECKIN_BONUS, total: ck.total || 0,
+    nextAt: tomorrow.getTime()
+  };
+}
+
+app.get('/api/me/checkin', (req, res) => {
+  const user = currentUser(req);
+  if (!user) return res.status(401).json({ error: '请先登录' });
+  res.set('Cache-Control', 'no-store');
+  res.json({ ...checkinView(user), points: shareStatsOf(user.id).points });
+});
+
+app.post('/api/me/checkin', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('checkin:' + user.id, 10, 60000)) return res.status(429).json({ error: '操作太频繁，稍等一下' });
+  const rec = shareRecOf(user.id);
+  const ck = rec.checkin || (rec.checkin = { last: '', streak: 0, total: 0 });
+  const today = dateKey();
+  const yest = dateKey(new Date(Date.now() - 86400e3));
+  if (ck.last === today) return res.status(400).json({ error: '今天已经签过了，明天再来', ...checkinView(user) });
+
+  const streak = ck.last === yest ? (ck.streak || 0) + 1 : 1;   // 断签从 1 重新数
+  const dayInCycle = cycleDayOf(streak);
+  const reward = CHECKIN_BASE + (dayInCycle === CHECKIN_CYCLE ? CHECKIN_BONUS : 0);
+  ck.last = today;
+  ck.streak = streak;
+  ck.total = (ck.total || 0) + reward;
+  const points = addPoints(user.id, reward, 'checkin');
+  res.json({ ok: true, reward, streak, dayInCycle, cycle: CHECKIN_CYCLE, points, ...checkinView(user) });
+});
 
 // 订单收尾：只处理还在进行中的，避免重复结账
 function finishRedemption(redemptionId, status) {
