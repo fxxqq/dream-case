@@ -2328,7 +2328,7 @@ async function openStats() {
   const bars = trend.map((v, i) => {
     const hPct = v ? Math.max(6, Math.round((v / max) * 100)) : 2;
     return `<div class="stats-bar-wrap" title="${days[i]}：${v} 次浏览">
-      <div class="stats-bar ${v ? '' : 'empty'}" style="height:${hPct}%"></div>
+      <div class="stats-bar ${v ? '' : 'is-empty'}" style="height:${hPct}%"></div>
       <span class="stats-bar-x">${i % 3 === 0 || i === trend.length - 1 ? days[i].slice(5).replace('-', '/') : ''}</span>
     </div>`;
   }).join('');

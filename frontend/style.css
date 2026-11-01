@@ -1078,7 +1078,7 @@ body.on-work .load-more-wrap { display: none !important; }
   background: linear-gradient(180deg, #8b8bf0, var(--primary)); min-height: 2px;
   transition: filter .15s;
 }
-.stats-bar.empty { background: #e8e8f4; }
+.stats-bar.is-empty { background: #e8e8f4; }
 .stats-bar-wrap:hover .stats-bar { filter: brightness(1.08); }
 .stats-bar-x { font-size: 10px; color: var(--muted); height: 14px; line-height: 14px; white-space: nowrap; }
 
