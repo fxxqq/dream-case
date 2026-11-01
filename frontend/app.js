@@ -3202,6 +3202,61 @@ function setupFeedback() {
   }
 }
 
+// ---------- 安装到桌面（PWA） ----------
+// Chrome/Edge/安卓会派发 beforeinstallprompt，攒起来给「一键安装」按钮用；
+// iOS Safari 不派发，只能走扫码 + 手动添加到主屏幕的指引
+let installPromptEvent = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  installPromptEvent = e;
+});
+
+function setupInstall() {
+  const modal = $('installModal');
+  if (!modal) return;
+
+  function openInstall() {
+    // 二维码指向当前站点地址：线上就是 https://idea.v5pc.com，扫码直达
+    const box = $('installQrBox');
+    if (!box.dataset.done && typeof qrcode === 'function') {
+      try {
+        const qr = qrcode(0, 'M');
+        qr.addData(location.origin);
+        qr.make();
+        box.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0 });
+        box.dataset.done = '1';
+      } catch { box.innerHTML = '<div class="install-qr-err">二维码生成失败，直接在浏览器输入网址也可以</div>'; }
+    }
+    // 本设备支持原生安装（桌面 Chrome/Edge、安卓）就亮出一键安装
+    const native = $('installNative');
+    native.style.display = installPromptEvent ? '' : 'none';
+    native.onclick = async () => {
+      if (!installPromptEvent) return;
+      installPromptEvent.prompt();
+      try {
+        const { outcome } = await installPromptEvent.userChoice;
+        if (outcome === 'accepted') showToast('装好了，桌面见 👋');
+      } catch { /* 用户关闭选择框，不用管 */ }
+      installPromptEvent = null;
+      native.style.display = 'none';
+    };
+    showModal(modal);
+  }
+  function closeInstall() { hideModal(modal); }
+
+  // 页脚入口
+  document.addEventListener('click', e => {
+    const a = e.target.closest && e.target.closest('#installEntry');
+    if (!a) return;
+    e.preventDefault();
+    openInstall();
+  });
+
+  $('closeInstall').onclick = closeInstall;
+  $('installKnow').onclick = closeInstall;
+  modal.onclick = e => { if (e.target === modal) closeInstall(); };
+}
+
 // ---------- 启动 ----------
 async function init() {
   captureRef();   // 先处理 ?ref=：记下分享者并上报，再把参数从地址栏摘掉
@@ -3222,6 +3277,7 @@ async function init() {
   setupAuthForms();
   setupSubmitChoice();
   setupFeedback();
+  setupInstall();
   // 许愿墙是独立页面，进入 /wish 时再初始化（见 route）
   // 本周精选：滚动/窗口变化时同步箭头状态
   $('featRow').addEventListener('scroll', updateFeatNav, { passive: true });

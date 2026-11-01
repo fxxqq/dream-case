@@ -162,6 +162,7 @@
         <a href="/rank" data-nav class="footer-link">作品榜单</a>
         <a href="/wish" data-nav class="footer-link">许愿墙</a>
         <a href="/?feedback=1" class="footer-link">意见反馈</a>
+        <a href="#install" class="footer-link" id="installEntry">📱 安装到桌面</a>
         <a href="/feed.xml" class="footer-link">RSS 订阅</a>
         <a href="/sitemap.xml" class="footer-link">站点地图</a>
         <a href="/admin" class="footer-link">管理入口</a>
@@ -550,6 +551,31 @@
     </div>
   </div>
 
+  <!-- 安装到桌面：扫码在手机上加到主屏幕，桌面设备支持一键安装 -->
+  <div class="modal-mask" id="installModal" style="display:none">
+    <div class="modal modal-install">
+      <div class="modal-head">
+        <h2>📱 安装造梦橱窗到桌面</h2>
+        <button class="close-btn" id="closeInstall" title="关闭">✕</button>
+      </div>
+      <div class="install-body">
+        <div class="install-qr">
+          <div class="install-qr-box" id="installQrBox"></div>
+          <span class="install-qr-tip">📱 手机扫码打开本站</span>
+        </div>
+        <div class="install-steps">
+          <div class="install-note">💡 添加到主屏幕后，像 App 一样直达，无需下载、不占应用商店</div>
+          <ol class="install-list">
+            <li>用手机浏览器打开本站（微信里可点右上角「…」选「在浏览器打开」）</li>
+            <li>iOS：点分享按钮 →「添加到主屏幕」；安卓：菜单 →「添加到主屏幕 / 安装应用」</li>
+          </ol>
+          <button type="button" class="btn-primary install-native" id="installNative" style="display:none">⚡ 一键安装（本设备支持）</button>
+        </div>
+      </div>
+      <button type="button" class="btn-primary btn-block install-know" id="installKnow">知道了</button>
+    </div>
+  </div>
+
   <!-- 分享卡片：Canvas 现场生成的 1080×1350 分享图 -->
   <div class="modal-mask" id="shareModal" style="display:none">
     <div class="modal share-modal">
@@ -574,6 +600,7 @@
     </div>
   </div>
 
+  <script src="/vendor/qrcode.js"></script>
   <script src="/sharecard.js"></script>
   <script src="/app.js"></script>
 </body>

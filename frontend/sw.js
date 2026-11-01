@@ -7,7 +7,7 @@
  *  - /api、/admin、跨域请求：完全不拦截
  * 发版时把 VERSION 常量 +1，旧缓存会在 activate 阶段自动清理。
  */
-const VERSION = 'v17';
+const VERSION = 'v18';
 const SHELL_CACHE = `shell-${VERSION}`;
 const STATIC_CACHE = `static-${VERSION}`;
 const IMG_CACHE = `img-${VERSION}`;
@@ -19,6 +19,7 @@ const PRECACHE_URLS = [
   OFFLINE_URL,
   '/style.css',
   '/app.js',
+  '/vendor/qrcode.js',
   '/favicon.svg',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
