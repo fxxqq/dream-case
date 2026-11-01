@@ -2280,6 +2280,15 @@ app.post('/api/feedback', (req, res) => {
 // ================= 管理端 =================
 
 app.get('/api/admin/stats', requireAdmin, (req, res) => {
+  // 注册用户：累计 / 今日新增 / 近 7 天新增（按本地日期算）
+  const today = dateKey();
+  const weekAgo = dateKey(new Date(Date.now() - 6 * 86400e3));
+  let usersToday = 0, users7 = 0;
+  users.forEach(u => {
+    const d = u.createdAt ? dateKey(new Date(u.createdAt)) : '';
+    if (d === today) usersToday += 1;
+    if (d && d >= weekAgo) users7 += 1;
+  });
   res.json({
     total: works.length,
     approved: works.filter(w => (w.status || 'approved') === 'approved').length,
@@ -2289,6 +2298,9 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
     claims: claims.filter(c => c.status === 'pending').length,
     views: works.reduce((s, w) => s + (w.views || 0), 0),
     likes: works.reduce((s, w) => s + (w.likes || 0), 0),
+    users: users.length,
+    usersToday,
+    users7,
     ...visitStats()
   });
 });

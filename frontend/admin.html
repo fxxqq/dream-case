@@ -444,6 +444,7 @@
       try {
         const s = await api('/api/admin/stats');
         $('stats').innerHTML = [
+          ['注册用户', s.users || 0], ['今日新增', s.usersToday || 0], ['近 7 天新增', s.users7 || 0],
           ['作品总数', s.total], ['已通过', s.approved], ['待审核', s.pending],
           ['待处理投诉', s.reports], ['待看反馈', s.feedback], ['待审认领', s.claims || 0],
           ['今日 PV', s.pvToday || 0], ['今日 UV', s.uvToday || 0],
