@@ -2849,6 +2849,20 @@ function setupHeader() {
     if (location.pathname !== '/') navigate('/'); else loadWorks();
   };
 
+  // 许愿墙：回首页并平滑滚到许愿墙区块，短暂高亮提示位置
+  $('wishNavBtn').onclick = () => {
+    const go = () => {
+      const sec = $('wishSection');
+      if (!sec) return;
+      sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      sec.classList.remove('wish-flash');
+      void sec.offsetWidth; // 重启动画
+      sec.classList.add('wish-flash');
+      setTimeout(() => sec.classList.remove('wish-flash'), 1800);
+    };
+    if (location.pathname !== '/') { navigate('/'); setTimeout(go, 420); } else go();
+  };
+
   // 展示方式切换：卡片网格 / 一行一个的列表（选择存 localStorage）
   document.querySelectorAll('#viewToggle .vt-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === state.view);
