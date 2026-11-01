@@ -134,6 +134,8 @@ function showToast(msg) {
 // 展示名：作品带 authorName（服务端按账号查昵称），评论带 displayName；
 // 账号（author/username）只用于链接和身份判定，界面上尽量不直接露出来
 const dname = w => (w && (w.authorName || w.author)) || '';
+// 作品作者行的展示文本：匿名发布的作品不带 @ 前缀，只显示「匿名」
+const aname = w => (w && w.anonymous ? '匿名' : '@' + dname(w));
 const cname = c => (c && (c.displayName || c.username)) || '';
 
 function escapeHtml(s) {
@@ -465,7 +467,7 @@ function cardHtml(w, opts = {}) {
       <div class="card-body">
         <div class="card-title">${escapeHtml(w.title)}</div>
         <div class="card-meta">
-          <span class="card-author">${w.verified ? '<i class="verified">✔</i>' : ''}<span class="author-name">@${escapeHtml(dname(w))}</span></span>
+          <span class="card-author">${w.verified ? '<i class="verified">✔</i>' : ''}<span class="author-name">${escapeHtml(aname(w))}</span></span>
           <span class="card-tags"><span class="card-cat">${escapeHtml(w.category)}</span>${osBadgeHtml(w)}${paidBadgeHtml(w)}</span>
         </div>
         <div class="card-meta" style="margin-top:6px">
@@ -486,7 +488,7 @@ function listHtml(w) {
       <div class="row-main">
         <div class="row-title">${w.pinned ? '<span class="pin-badge row-pin">置顶</span>' : ''}${escapeHtml(w.title)}</div>
         ${w.intro ? `<div class="row-intro">${escapeHtml(w.intro)}</div>` : ''}
-        <div class="row-meta">${escapeHtml(typeText(w))} · ${w.verified ? '<i class="verified">✔</i>' : ''}@${escapeHtml(dname(w))} · ${escapeHtml(w.category)}${w.openSource === true ? ' · 🔓 开源' : w.openSource === false ? ' · 🔒 闭源' : ''}${w.paid ? ' · 💰 付费' : ''}</div>
+        <div class="row-meta">${escapeHtml(typeText(w))} · ${w.verified ? '<i class="verified">✔</i>' : ''}${escapeHtml(aname(w))} · ${escapeHtml(w.category)}${w.openSource === true ? ' · 🔓 开源' : w.openSource === false ? ' · 🔒 闭源' : ''}${w.paid ? ' · 💰 付费' : ''}</div>
       </div>
       <div class="row-stats">
         <span class="row-stat">♥ <b>${w.likes}</b></span>
@@ -1266,7 +1268,7 @@ async function loadRank(period, by) {
         <img src="${w.thumb}" alt="" loading="lazy" />
         <div class="rank-main">
           <div class="rank-title">${escapeHtml(w.title)}</div>
-          <div class="rank-meta">${escapeHtml(typeText(w))} · @${escapeHtml(dname(w))} · ${escapeHtml(w.category)}</div>
+          <div class="rank-meta">${escapeHtml(typeText(w))} · ${escapeHtml(aname(w))} · ${escapeHtml(w.category)}</div>
         </div>
         <div class="rank-score">
           <span class="${cur === 'likes' ? 'on' : ''}">♥ ${w.likes || 0}</span>
@@ -1304,7 +1306,7 @@ async function openWork(id, push = true) {
       osBadgeHtml(w) +
       paidBadgeHtml(w) +
       (w.featured ? '<span class="badge-featured">✨ 精选</span>' : '');
-    $('detailAuthor').innerHTML = `${w.verified ? '<i class="verified">✔</i> ' : ''}@${escapeHtml(dname(w))}`;
+    $('detailAuthor').innerHTML = `${w.verified ? '<i class="verified">✔</i> ' : ''}${escapeHtml(aname(w))}`;
     $('detailStats').innerHTML = `♥ ${w.likes} 点赞 · ★ <span class="fav-num" data-fav-count="${w.id}" data-count="${w.favs || 0}" data-prefix="">${w.favs || 0}</span> 人收藏 · 💬 <span class="cmt-num" data-comment-count="${w.id}" data-count="${w.commentCount || 0}" data-prefix="">${w.commentCount || 0}</span> 评论 · 👁 ${w.views} 浏览 · ${formatDate(w.createdAt)}`;
     $('detailPrompt').textContent = w.intro || '';
     $('detailLikes').textContent = w.likes;
@@ -2944,7 +2946,7 @@ async function openBlockedList() {
         <img src="${escapeHtml(w.thumb)}" alt="${escapeHtml(w.title)}" loading="lazy" />
         <div class="blocked-main">
           <div class="blocked-title">${escapeHtml(w.title)}</div>
-          <div class="blocked-meta">${escapeHtml(typeText(w))} · @${escapeHtml(dname(w))}</div>
+          <div class="blocked-meta">${escapeHtml(typeText(w))} · ${escapeHtml(aname(w))}</div>
         </div>
         <button type="button" class="btn-ghost blocked-undo" data-id="${escapeHtml(w.id)}">恢复显示</button>
       </div>`).join('');

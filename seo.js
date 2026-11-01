@@ -170,7 +170,7 @@ function paidBadgeHtml(w) {
 }
 
 // 展示名：有昵称用昵称，没有就用账号名（链接/作者页仍按账号）
-function nameOf(w) { return w.authorName || w.author; }
+function nameOf(w) { return w.anonymous ? '匿名' : (w.authorName || w.author); }
 
 function cardHtml(w, suffix = '') {
   return `<a class="card seo-card" href="/w/${esc(w.id)}${suffix}">
@@ -215,7 +215,9 @@ function workArticle(base, w, trail, related = [], opts = {}) {
       ${paidBadgeHtml(w)}
       ${w.featured ? '<span class="badge-featured">✨ 精选</span>' : ''}
     </div>
-    <p class="seo-author">作者：<a href="/u/${encodeURIComponent(w.author)}" rel="author">@${esc(nameOf(w))}</a>
+    <p class="seo-author">作者：${w.anonymous
+      ? '<span rel="author">匿名</span>'
+      : `<a href="/u/${encodeURIComponent(w.author)}" rel="author">@${esc(nameOf(w))}</a>`}
       · ${w.likes || 0} 点赞 · ${w.favs || 0} 人收藏 · ${w.commentCount || 0} 评论 · ${w.views || 0} 浏览${date ? ' · ' + esc(date) : ''}</p>
     <img class="seo-cover" src="${esc(w.image)}" alt="${esc(w.title)} 作品截图" />
     ${gallery}
@@ -244,7 +246,9 @@ function workLd(base, w, pageUrl) {
     operatingSystem: OS_BY_TYPE[typesOf(w)[0]] || 'Web',
     inLanguage: 'zh-CN',
     datePublished: w.createdAt,
-    author: { '@type': 'Person', name: nameOf(w), url: absolute(base, '/u/' + encodeURIComponent(w.author)) },
+    author: w.anonymous
+      ? { '@type': 'Person', name: '匿名' }
+      : { '@type': 'Person', name: nameOf(w), url: absolute(base, '/u/' + encodeURIComponent(w.author)) },
     interactionStatistic: [
       {
         '@type': 'InteractionCounter',

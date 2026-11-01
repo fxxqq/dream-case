@@ -934,6 +934,7 @@ function publicWork(w, user) {
   const types = typesOf(w);
   return {
     id: w.id, title: w.title, author: w.author, authorName: displayNameOf(w.author), category: w.category,
+    anonymous: w.anonymous === true,   // 匿名发布：前台不显示真实作者
     categories: catsOf(w),
     type: types[0], types: types,
     intro: w.prompt || '', link: w.link || '',
@@ -960,6 +961,7 @@ function withAuthorName(w) {
 const withAuthorNames = list => list.map(withAuthorName);
 // 认领开关：管理员显式设过就按设置走；没设过时「无归属作品」（匿名投稿 / 后台代传）默认可认领
 function isClaimable(w) {
+  if (w.anonymous === true) return true;   // 匿名发布：默认开放认领，让真正的作者能认回去
   if (w.claimOpen === true) return true;
   if (w.claimOpen === false) return false;
   return !w.userId;
@@ -2311,7 +2313,12 @@ app.get('/api/admin/works', requireAdmin, (req, res) => {
   let list = works.slice();
   if (status && status !== '全部') list = list.filter(w => (w.status || 'approved') === status);
   list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  res.json(list.map(w => ({ ...publicWork(w), status: w.status || 'approved', reports: w.reports || 0, anon: !!w.anon, ...workVisitStats(w.id) })));
+  res.json(list.map(w => ({
+    ...publicWork(w), status: w.status || 'approved', reports: w.reports || 0, anon: !!w.anon,
+    authorReal: w.authorReal || '',
+    ownerReal: w.ownerReal ? ((users.find(u => u.id === w.ownerReal) || {}).username || '') : '',
+    ...workVisitStats(w.id)
+  })));
 });
 
 app.post('/api/admin/works/:id/approve', requireAdmin, (req, res) => {
@@ -2366,6 +2373,37 @@ app.post('/api/admin/works/:id/claim-open', requireAdmin, (req, res) => {
   }
   saveWorks();
   res.json({ ok: true, claimable: open });
+});
+
+// 匿名发布：作品脱离原账号，看起来就是一件「没有归属的匿名投稿」——
+// · 前台不再显示是谁发的（作者名换成「匿名」）
+// · userId 摘掉，作者的「我的作品 / 数据看板 / 积分推广」里都不再出现它
+// · 自动开放认领，真正的作者提交证据就能认回去（认领通过后归到申请人名下）
+// 真实提交人只记在后台字段里（authorReal / ownerReal），方便你自己事后核对或取消匿名。
+app.post('/api/admin/works/:id/anonymous', requireAdmin, (req, res) => {
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  const raw = req.body && req.body.anonymous;
+  const anon = raw === undefined ? !w.anonymous : !!raw;
+  if (anon) {
+    if (!w.anonymous) {
+      w.authorReal = w.author || '';
+      w.ownerReal = w.userId || '';
+      delete w.userId;
+      w.author = '匿名';
+      w.anonymous = true;
+    }
+    w.claimOpen = true;
+  } else if (w.anonymous) {
+    if (w.authorReal) w.author = w.authorReal;
+    if (w.ownerReal && users.some(u => u.id === w.ownerReal)) w.userId = w.ownerReal;
+    delete w.authorReal;
+    delete w.ownerReal;
+    delete w.anonymous;
+    if (w.claimOpen === true) w.claimOpen = false;
+  }
+  saveWorks();
+  res.json({ ok: true, anonymous: w.anonymous === true, claimable: isClaimable(w), author: w.author });
 });
 
 // 管理员直接新增作品（可指定作者、状态、精选/置顶）
@@ -2448,7 +2486,17 @@ app.put('/api/admin/works/:id', requireAdmin, (req, res) => {
       if (Array.isArray(w.categories) && w.categories.length) w.categories = [category, ...w.categories.slice(1)];
     }
     if (req.body.types !== undefined || type) applyTypes(w, normalizeTypes(req.body.types || type));
-    if (author) w.author = String(author).slice(0, 50);
+    if (author) {
+      const nextAuthor = String(author).slice(0, 50);
+      // 编辑框里把「匿名」改成真实作者名 → 视为取消匿名（账号归属一并还原）
+      if (w.anonymous && nextAuthor !== w.author) {
+        if (w.ownerReal && users.some(u => u.id === w.ownerReal)) w.userId = w.ownerReal;
+        delete w.ownerReal;
+        delete w.authorReal;
+        delete w.anonymous;
+        w.author = nextAuthor;
+      }
+    }
     if (status && ['approved', 'pending', 'rejected'].includes(status)) w.status = status;
     if (req.body.openSource !== undefined) w.openSource = parseOpenSource(req.body.openSource);
     if (req.body.repo !== undefined) w.repo = normRepo(req.body.repo);
@@ -2775,6 +2823,8 @@ app.post('/api/admin/claims/:id/approve', requireAdmin, (req, res) => {
   // 作品归到申请人名下：作者名同步改为用户名，之后就能在「我的作品」里编辑/管理
   w.userId = c.userId;
   w.author = c.username;
+  delete w.anonymous;        // 认领成功后翻牌成实名作者
+  delete w.authorReal;
   w.claimedAt = now;
   w.claimOpen = false;   // 认领成功后自动关闭入口
   c.status = 'approved';
@@ -2849,6 +2899,7 @@ function byNewest(list) {
 function authorEntries() {
   const map = new Map();
   visibleWorks().forEach(w => {
+    if (w.anonymous === true) return;   // 匿名作品不进作者页 / sitemap
     const cur = map.get(w.author);
     if (!cur || new Date(w.createdAt) > new Date(cur.lastmod)) {
       map.set(w.author, { name: w.author, lastmod: w.createdAt });
@@ -2962,7 +3013,7 @@ app.get('/w/:id', (req, res) => {
 app.get('/u/:name', (req, res) => {
   const base = seo.baseUrl(req);
   const name = String(req.params.name || '').slice(0, 50);
-  const list = byNewest(visibleWorks().filter(w => w.author === name));
+  const list = byNewest(visibleWorks().filter(w => w.author === name && w.anonymous !== true));
   const creator = creators.find(c => c.name === name);
   const totalLikes = list.reduce((s, w) => s + (w.likes || 0), 0);
   const pageUrl = base + '/u/' + encodeURIComponent(name);

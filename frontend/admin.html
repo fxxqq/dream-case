@@ -520,6 +520,7 @@
                 <span class="tag">${esc((w.types && w.types.length ? w.types : [w.type || '网站']).join(' / '))}</span>
                 ${w.status === 'pending' ? '<span class="tag warn">待审核</span>' : ''}
                 ${w.anon ? '<span class="tag">匿名投稿</span>' : ''}
+                ${w.anonymous ? '<span class="tag">匿名发布</span>' : ''}
                 ${w.status === 'rejected' ? '<span class="tag bad">已拒绝</span>' : ''}
                 ${w.featured ? '<span class="tag ok">精选</span>' : ''}
                 ${w.pinned ? '<span class="tag">置顶</span>' : ''}
@@ -527,7 +528,7 @@
                 ${w.paid ? '<span class="tag warn">付费</span>' : ''}
                 ${w.claimable ? `<span class="tag warn" title="${w.claimed ? '已开放认领，审核通过会转移归属' : '无归属作品（匿名投稿 / 后台代传）默认可认领'}">可认领</span>` : ''}
               </div>
-              <div class="row-meta">@${esc(w.author)} · ${esc(w.category)} · ♥${w.likes} · 👁${w.views}
+              <div class="row-meta">@${esc(w.author)}${w.anonymous && (w.authorReal || w.ownerReal) ? `（原提交：${esc(w.authorReal || '')}${w.ownerReal ? ' / @' + esc(w.ownerReal) : ''}）` : ''} · ${esc(w.category)} · ♥${w.likes} · 👁${w.views}
                 · <span class="pvuv" title="今日 PV ${w.pvToday || 0} · UV ${w.uvToday || 0}">PV ${w.pv || 0} · UV ${w.uv || 0}</span>
                 ${w.reports ? `· <span style="color:#e5484d">投诉 ${w.reports}</span>` : ''}
                 ${w.link ? `· <a href="${esc(w.link)}" target="_blank" rel="noopener" class="row-link" title="${esc(w.link)}">${esc(shortUrl(w.link))}</a>` : ''}
@@ -540,6 +541,7 @@
               <button class="btn btn-ghost btn-sm" data-act="feature" data-id="${w.id}">${w.featured ? '取消精选' : '设为精选'}</button>
               <button class="btn btn-ghost btn-sm" data-act="pin" data-id="${w.id}">${w.pinned ? '取消置顶' : '置顶'}</button>
               <button class="btn btn-ghost btn-sm" data-act="claimopen" data-id="${w.id}">${w.claimable ? '关闭认领' : '开放认领'}</button>
+              <button class="btn btn-ghost btn-sm" data-act="anonymous" data-id="${w.id}">${w.anonymous ? '取消匿名' : '设为匿名'}</button>
               <button class="btn btn-danger btn-sm" data-act="del" data-id="${w.id}">删除</button>
             </div>
           </div>`;
@@ -1065,6 +1067,22 @@
           const r = await api(`/api/admin/works/${id}/pin`, { method: 'POST' });
           w.pinned = r.pinned;
           toast(r.pinned ? '已置顶' : '已取消置顶');
+        } else if (act === 'anonymous') {
+          const anon = !w.anonymous;
+          const real = w.authorReal || w.author;
+          if (anon) {
+            if (!confirm(`设为匿名发布后：\n· 前台所有位置都显示作者「匿名」，别人看不到是 @${real} 发的\n· 作品会从 @${real} 的「我的作品 / 数据看板」里移出，变成无归属的匿名投稿\n· 自动开放认领，真正的作者可以提交证据认领走\n· 后台仍可正常编辑 / 删除，真实提交人会记在这一行里\n\n确定匿名？`)) return;
+          } else if (!confirm(`取消匿名后，前台会重新显示真实作者 @${real}，作品回到原账号名下，同时关闭认领入口。\n\n确定？`)) return;
+          const r = await api(`/api/admin/works/${id}/anonymous`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ anonymous: anon })
+          });
+          w.anonymous = r.anonymous;
+          w.author = r.author;
+          w.claimable = r.claimable;
+          if (r.anonymous) { w.authorReal = real; } else { w.authorReal = ''; }
+          toast(r.anonymous ? '已设为匿名，前台显示「匿名」并开放认领' : '已恢复实名显示，认领已关闭');
         } else if (act === 'claimopen') {
           const open = !w.claimable;
           if (open && !confirm(`开放认领后，访客可以提交创作证据申请认领这个作品；\n审核通过会把作品归属改为申请人（现在是 @${w.author}）。\n\n确定开放？`)) return;
