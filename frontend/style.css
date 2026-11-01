@@ -1237,3 +1237,42 @@ body.on-work .load-more-wrap { display: none !important; }
   .ad-close { top: 6px; right: 6px; width: 30px; height: 30px; opacity: .86; }
   .ad-close svg { width: 12px; height: 12px; }
 }
+
+/* 纯文字广告：白底浅边框、深色字，和图文横幅明显区分；不发图片请求 */
+.ad-card.ad-text-card {
+  min-height: 84px;
+  background: #fff; color: var(--text);
+  border: 1px solid #e9e9f4; border-left: 3px solid var(--primary);
+  box-shadow: 0 2px 10px rgba(31, 35, 48, .045);
+}
+.ad-card.ad-text-card:hover { box-shadow: 0 8px 22px rgba(91, 91, 214, .14); }
+.ad-card.ad-text-card .ad-badge { background: #eef0ff; color: var(--primary); }
+.ad-card.ad-text-card .ad-title { color: var(--text); }
+.ad-card.ad-text-card .ad-desc { color: var(--muted); opacity: 1; }
+.ad-card.ad-text-card .ad-cta { background: var(--primary); color: #fff; }
+/* 浅色卡片上的关闭按钮换成浅底深字，免得一块黑饼太扎眼 */
+.ad-card-wrap:has(.ad-text-card) .ad-close { background: rgba(31, 35, 48, .08); color: #5a5f78; }
+.ad-card-wrap:has(.ad-text-card) .ad-close:hover { background: rgba(31, 35, 48, .18); color: #2b2f40; }
+
+@media (max-width: 640px) {
+  .ad-card.ad-text-card { min-height: 76px; }
+}
+
+/* 纯文字广告桌面端收成一行：徽标 | 标题 | 描述 | 按钮，高度约 64px 更轻盈 */
+.ad-card.ad-text-card .ad-body {
+  flex-direction: row; align-items: center; gap: 14px;
+  padding: 14px 46px 14px 20px; max-width: 100%;
+}
+.ad-card.ad-text-card .ad-title {
+  font-size: 15.5px; flex: none; max-width: 42%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ad-card.ad-text-card .ad-desc { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ad-card.ad-text-card .ad-cta { margin: 0; flex: none; }
+
+@media (max-width: 640px) {
+  /* 窄屏放不下一行，退回上下两行 */
+  .ad-card.ad-text-card .ad-body { flex-direction: column; align-items: flex-start; gap: 5px; padding: 12px 40px 12px 16px; }
+  .ad-card.ad-text-card .ad-title { max-width: 100%; white-space: normal; }
+  .ad-card.ad-text-card .ad-cta { align-self: flex-start; }
+}

@@ -111,6 +111,8 @@ const AD_SLOTS = [
 ];
 const AD_SLOT_KEYS = AD_SLOTS.map(s => s.key);
 if (!Array.isArray(ads)) ads = [];
+// 广告形式：image = 图文（图片铺底），text = 纯文字卡片。老数据没有 kind 的按有没有图推断
+ads.forEach(a => { if (a && a.kind !== 'image' && a.kind !== 'text') a.kind = a.image ? 'image' : 'text'; });
 
 // ---------- 用户 / 会话 ----------
 const REMEMBER_TTL = 30 * 86400e3;   // 勾选「记住我」：30 天
@@ -822,7 +824,9 @@ function adUrlOf(v) {
 }
 function publicAd(a) {
   return {
-    id: a.id, slot: a.slot, title: a.title || '', desc: a.desc || '',
+    id: a.id, slot: a.slot,
+    kind: a.kind || (a.image ? 'image' : 'text'),
+    title: a.title || '', desc: a.desc || '',
     image: a.image || '', url: a.url, cta: a.cta || '', sort: a.sort || 0
   };
 }
@@ -1711,9 +1715,12 @@ function adsOfSlot(slot) {
 function renumberAds(slot) {
   adsOfSlot(slot).forEach((a, i) => { a.sort = i; });
 }
-function adPayload(body) {
+function adPayload(body, fallbackKind) {
+  const rawKind = String(body.kind || '').toLowerCase();
   return {
     slot: String(body.slot || ''),
+    // 图文 / 纯文字；没传就沿用原来的（新建默认图文）
+    kind: rawKind === 'text' ? 'text' : (rawKind === 'image' ? 'image' : (fallbackKind || 'image')),
     title: String(body.title || '').trim().slice(0, 60),
     desc: String(body.desc || '').trim().slice(0, 120),
     url: adUrlOf(body.url),
@@ -1739,15 +1746,18 @@ app.get('/api/admin/ads', requireAdmin, (req, res) => res.json(adListJson()));
 app.post('/api/admin/ads', requireAdmin, (req, res) => {
   upload(req, res, err => {
     if (err) return res.status(400).json({ error: '上传失败：' + err.message });
-    const p = adPayload(req.body || {});
+    const p = adPayload(req.body || {}, 'image');
     if (!AD_SLOT_KEYS.includes(p.slot)) return res.status(400).json({ error: '请选择投放的广告位' });
     if (!p.url) return res.status(400).json({ error: '跳转链接必填' });
     const img = req.files && req.files.image && req.files.image[0];
+    if (p.kind === 'text' && !p.title) return res.status(400).json({ error: '纯文字广告必须填标题' });
     if (!p.title && !img) return res.status(400).json({ error: '标题和图片至少填一个' });
+    if (p.kind === 'text' && img) removeUpload('/uploads/' + img.filename);   // 纯文字不存图
     const ad = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       ...p,
-      image: img ? '/uploads/' + img.filename : '',
+      // 纯文字广告不存图
+      image: (p.kind !== 'text' && img) ? '/uploads/' + img.filename : '',
       sort: adsOfSlot(p.slot).length,
       clicks: 0,
       createdAt: new Date().toISOString()
@@ -1763,13 +1773,17 @@ app.put('/api/admin/ads/:id', requireAdmin, (req, res) => {
     if (err) return res.status(400).json({ error: '上传失败：' + err.message });
     const a = ads.find(x => x.id === req.params.id);
     if (!a) return res.status(404).json({ error: '广告不存在' });
-    const p = adPayload(req.body || {});
+    const p = adPayload(req.body || {}, a.kind || (a.image ? 'image' : 'text'));
     if (!AD_SLOT_KEYS.includes(p.slot)) return res.status(400).json({ error: '请选择投放的广告位' });
     if (!p.url) return res.status(400).json({ error: '跳转链接必填' });
     const img = req.files && req.files.image && req.files.image[0];
     const removeImg = String(req.body && req.body.removeImage) === '1';
     const oldImage = a.image || '';
-    const nextImage = img ? '/uploads/' + img.filename : (removeImg ? '' : oldImage);
+    const wantText = p.kind === 'text';
+    // 纯文字形式不留图片：切成文字时旧图直接清掉；误传的新图也不要
+    if (wantText && img) removeUpload('/uploads/' + img.filename);
+    const nextImage = wantText ? '' : (img ? '/uploads/' + img.filename : (removeImg ? '' : oldImage));
+    if (wantText && !p.title) return res.status(400).json({ error: '纯文字广告必须填标题' });
     if (!p.title && !nextImage) return res.status(400).json({ error: '标题和图片至少填一个' });
 
     const slotChanged = a.slot !== p.slot;

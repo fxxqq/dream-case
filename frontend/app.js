@@ -614,11 +614,14 @@ async function loadAds() {
 }
 
 function adHtml(a) {
-  const img = a.image
+  // 两种形式：图文（图片铺底）｜纯文字（浅色卡片，不发图片请求）
+  const isText = a.kind === 'text';
+  const hasImg = !isText && a.image;
+  const img = hasImg
     ? `<img class="ad-bg" src="${escapeHtml(a.image)}" alt="" loading="lazy" />`
     : '';
   return `<div class="ad-card-wrap">
-    <a class="ad-card${a.image ? ' has-img' : ''}" href="${escapeHtml(a.url)}"
+    <a class="ad-card${hasImg ? ' has-img' : ''}${isText ? ' ad-text-card' : ''}" href="${escapeHtml(a.url)}"
       target="_blank" rel="noopener nofollow sponsored" data-ad="${escapeHtml(a.id)}">
       ${img}
       <span class="ad-body">

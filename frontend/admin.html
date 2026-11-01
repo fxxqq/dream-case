@@ -298,8 +298,16 @@
           <select name="slot" id="adSlotSel"></select>
         </div>
         <div class="field">
-          <label>标题</label>
-          <input name="title" maxlength="60" placeholder="例如：用 XX 一键做出小程序（标题和图片至少填一个）" />
+          <label>广告形式 *</label>
+          <select name="kind" id="adKindSel">
+            <option value="image">图文 —— 图片铺底 + 标题文案（横幅广告）</option>
+            <option value="text">纯文字 —— 浅色卡片，只用文字，不配图</option>
+          </select>
+          <div class="hint" style="padding:6px 0 0;font-size:12px">图文适合品牌曝光；纯文字更轻、加载更快，适合公告、规则、站内提醒。</div>
+        </div>
+        <div class="field">
+          <label>标题 <span id="adTitleReq" style="color:#e5484d;display:none">*</span></label>
+          <input name="title" maxlength="60" placeholder="例如：用 XX 一键做出小程序（图文形式标题和图片至少填一个）" />
         </div>
         <div class="field">
           <label>一句话描述（选填）</label>
@@ -313,7 +321,7 @@
           <label>按钮文字（选填）</label>
           <input name="cta" maxlength="20" placeholder="了解更多" />
         </div>
-        <div class="field">
+        <div class="field" id="adImageField">
           <label>横幅图片（选填，横图效果最好） <em class="paste-tip">建议 1400×280，2MB 内</em></label>
           <input type="file" name="image" accept="image/*" id="adImageInput" />
           <div class="file-preview" id="adImagePreview"></div>
@@ -1388,6 +1396,7 @@
           <div class="hint" style="padding:16px 18px">
             广告位是页面里的固定空位：在这里挂上内容，前台对应位置就会显示；一个位置挂多支时自动轮流播放，
             没有广告的位置完全不占地方。<br />
+            每条广告有两种形式：<b>图文</b>（图片铺底 + 标题文案，适合品牌曝光）、<b>纯文字</b>（浅色卡片只用文字，加载更快，适合公告/规则/站内提醒）。<br />
             PV = 被展示的次数（每次展示 +1）；UV = 去重访客（登录用户按账号、未登录按 IP，与站点 UV 口径一致）。
             点击率 = 点击 ÷ PV。<br />
             访客可以点广告右上角的 × 关掉不想看的广告：关掉后本地记住 90 天内不再出现，改了这条广告的文案或图片会重新出现。
@@ -1416,12 +1425,14 @@
     function adRowHtml(a, i, total) {
       const on = a.active !== false;
       const st = a.stats || { pv: 0, uv: 0, todayPv: 0, todayUv: 0, clicks: 0, ctr: 0 };
+      const isText = a.kind === 'text';
       return `<div class="ad-row" data-adrow="${a.id}">
-        ${a.image
-          ? `<img class="ad-thumb" src="${esc(a.image)}" alt="" />`
-          : '<div class="ad-thumb-none">纯文字广告</div>'}
+        ${isText
+          ? '<div class="ad-thumb-none">纯文字</div>'
+          : (a.image ? `<img class="ad-thumb" src="${esc(a.image)}" alt="" />` : '<div class="ad-thumb-none">图文·未配图</div>')}
         <div class="row-main">
           <div class="row-title">${esc(a.title || '(无标题)')}
+            <span class="tag">${isText ? '文字' : '图文'}</span>
             ${on ? '<span class="tag ok">展示中</span>' : '<span class="tag bad">已停用</span>'}
             ${total > 1 ? `<span class="tag">第 ${i + 1} 位</span>` : ''}
           </div>
@@ -1452,6 +1463,7 @@
         .map(s => `<option value="${esc(s.key)}">${esc(s.name)}</option>`).join('');
       $('adSlotSel').value = a ? a.slot : (slotKey || (AD_SLOTS[0] && AD_SLOTS[0].key) || '');
       const el = $('adForm').elements;
+      el.kind.value = a ? (a.kind || (a.image ? 'image' : 'text')) : 'image';
       el.title.value = a ? (a.title || '') : '';
       el.desc.value = a ? (a.desc || '') : '';
       el.url.value = a ? (a.url || '') : '';
@@ -1461,8 +1473,18 @@
       $('adImagePreview').innerHTML = a && a.image
         ? `<div class="thumb"><img src="${esc(a.image)}" alt="" /><button type="button" class="thumb-del" id="adImgDel" title="移除图片">✕</button></div>`
         : '';
+      syncAdKind();
       $('adMask').style.display = 'flex';
     }
+
+    // 纯文字形式：隐藏图片上传（已经传的图会被后端清掉）
+    function syncAdKind() {
+      const text = $('adKindSel').value === 'text';
+      $('adImageField').style.display = text ? 'none' : '';
+      $('adTitleReq').style.display = text ? 'inline' : 'none';
+      if (text) { $('adImageInput').value = ''; $('adImagePreview').innerHTML = ''; }
+    }
+    $('adKindSel').onchange = syncAdKind;
 
     $('adImageInput').onchange = () => {
       const file = $('adImageInput').files[0];
