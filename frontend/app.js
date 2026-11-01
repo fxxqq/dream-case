@@ -1198,6 +1198,11 @@ async function loadAuthor(name) {
     $('authorName').textContent = '@' + shown;
     $('authorAvatar').textContent = shown.slice(0, 1).toUpperCase();
     setTitle(`@${shown} 的作品`);
+    // 自己的主页：名字旁显示「修改昵称」入口
+    const isMe = state.user && state.user.username === name;
+    const nickBtn = $('authorNickBtn');
+    nickBtn.style.display = isMe ? 'inline-flex' : 'none';
+    if (isMe) nickBtn.onclick = openNickModal;
     $('authorBio').textContent = data.bio || '';
     $('authorStats').innerHTML =
       `${data.verified ? '<span class="verified-tag">✔ 认证创作者</span> ' : ''}` +
@@ -2643,6 +2648,8 @@ async function submitNick(reset) {
     showToast(data.nickname ? `昵称已改成「${data.nickname}」` : '已恢复默认，显示账号名');
     // 自己的作品署名跟着换，重新拉一次当前列表
     if (location.pathname === '/') loadWorks();
+    // 在自己主页改的：作者页标题同步刷新
+    if (location.pathname.startsWith('/u/')) loadAuthor(decodeURIComponent(location.pathname.slice(3)));
   } catch {
     setNickMsg('网络异常，稍后再试', 'err');
   } finally {
