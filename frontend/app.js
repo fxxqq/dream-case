@@ -4,7 +4,8 @@
 let CATEGORIES = ['全部'];
 let typeCounts = {}, catCounts = {}, totalWorks = 0; let osCounts = { open: 0, closed: 0 }; // 筛选下拉选项的计数
 let TYPES = ['全部', '网站', '小程序', 'App', '智能体', '桌面应用', '浏览器扩展', '其他'];
-let CUSTOM_MODE = false;
+let renderCatPickerFn = null; // 投稿表单的分类胶囊渲染（loadCategories 后刷新）
+const MAX_CATS = 3;           // 应用分类最多可选个数
 
 const state = {
   sort: 'latest',
@@ -540,13 +541,15 @@ async function loadCategories() {
     CATEGORIES = ['全部', '效率工具', '生活助手', '内容创作', '学习教育', '娱乐游戏', '开发工具', '其他'];
   }
   if (!CATEGORIES.includes(state.category)) state.category = '全部';
+  if (renderCatPickerFn) renderCatPickerFn(); // 表单里的分类胶囊同步刷新
   // 统计各形态/分类的作品数，筛选下拉选项后面带数字
   try {
     // 全量拉取统计各分类/形态数量（pageSize=all 表示不分页）
     const list = (await (await fetch('/api/works?pageSize=all')).json()).items || [];
     typeCounts = {}; catCounts = {}; osCounts = { open: 0, closed: 0 };
     list.forEach(w => {
-      if (w.category) catCounts[w.category] = (catCounts[w.category] || 0) + 1;
+      const cats = Array.isArray(w.categories) && w.categories.length ? w.categories : (w.category ? [w.category] : []);
+      cats.forEach(c => { catCounts[c] = (catCounts[c] || 0) + 1; }); // 多分类各计一次
       typesOf(w).forEach(t => { typeCounts[t] = (typeCounts[t] || 0) + 1; });
       if (w.openSource === true) osCounts.open++; else osCounts.closed++;
     });
@@ -1060,10 +1063,7 @@ function renderFilters() {
 document.addEventListener('click', closeAllDD);
 
 function renderCategorySelect() {
-  const select = $('categorySelect');
-  select.innerHTML = CATEGORIES.filter(c => c !== '全部')
-    .map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')
-    + `<option value="__new__">＋ 新增分类...</option>`;
+  if (renderCatPickerFn) renderCatPickerFn(); // 分类已改为表单内胶囊多选，这里只负责同步刷新
 }
 
 // ---------- 路由 ----------
@@ -1492,6 +1492,78 @@ function setupUploadForm() {
     if (!selectedTypes().length) form.querySelector('input[name="types"]').checked = true; // 至少留一个
     applyTypeFields();
   }
+  // ---- 应用分类（多选，最多 3 个）----
+  const catPicker = $('catPicker');
+  const catHint = $('catHint');
+  function selectedCats() {
+    return [...form.querySelectorAll('input[name="cats"]:checked')].map(i => i.value);
+  }
+  function updateCatHint() {
+    if (!catHint) return;
+    const n = selectedCats().length;
+    catHint.textContent = n ? `已选 ${n}/${MAX_CATS} 个，第一个是主分类` : `最多选择 ${MAX_CATS} 个，第一个是主分类`;
+  }
+  function renderCatPicker() {
+    if (!catPicker) return;
+    const checked = selectedCats();
+    catPicker.innerHTML = CATEGORIES.filter(c => c !== '全部').map(c =>
+      `<label class="type-opt"><input type="checkbox" name="cats" value="${escapeHtml(c)}"${checked.includes(c) ? ' checked' : ''} /><span>${escapeHtml(c)}</span></label>`
+    ).join('')
+    + `<button type="button" class="type-opt cat-add" id="catAddBtn" title="创建并选择新分类"><span>＋ 新分类</span></button>`;
+    const addBtn = $('catAddBtn');
+    if (addBtn) addBtn.onclick = e => {
+      e.preventDefault();
+      newCatInput.style.display = 'block';
+      newCatInput.focus();
+    };
+  }
+  function setCats(list) {
+    const want = (list || []).filter(c => CATEGORIES.includes(c)).slice(0, MAX_CATS);
+    form.querySelectorAll('input[name="cats"]').forEach(i => { i.checked = want.includes(i.value); });
+    updateCatHint();
+  }
+  catPicker.addEventListener('change', e => {
+    if (e.target.name !== 'cats') return;
+    if (selectedCats().length > MAX_CATS) {
+      e.target.checked = false;
+      showToast(`最多选择 ${MAX_CATS} 个应用分类`);
+    }
+    updateCatHint();
+  });
+  // 新分类：回车确认后先创建，再自动勾选
+  newCatInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); confirmNewCat(); }
+  });
+  newCatInput.addEventListener('blur', () => { if (!newCatInput.value.trim()) newCatInput.style.display = 'none'; });
+  async function confirmNewCat() {
+    const name = newCatInput.value.trim();
+    if (!name) { newCatInput.style.display = 'none'; return; }
+    try {
+      const r = await fetch('/api/categories', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        if (err.error !== '分类已存在') { showToast(err.error || '新增分类失败'); return; }
+      }
+      await loadCategories(); // 内部会重新渲染胶囊
+      const box = [...form.querySelectorAll('input[name="cats"]')].find(i => i.value === name);
+      if (box) {
+        if (!box.checked && selectedCats().length >= MAX_CATS) {
+          showToast(`最多选择 ${MAX_CATS} 个应用分类`);
+        } else {
+          box.checked = true;
+        }
+      }
+      updateCatHint();
+      newCatInput.style.display = 'none';
+      newCatInput.value = '';
+    } catch { showToast('新增分类失败'); }
+  }
+  renderCatPickerFn = renderCatPicker;
+  renderCatPicker();
+
   // 宣传图统一为一个「有序列表」，支持拖拽/箭头调整顺序：
   //   { kind:'old', url }  编辑模式下服务器上已有的图
   //   { kind:'new', file, src }  本次新选/粘贴的图
@@ -1672,8 +1744,9 @@ function setupUploadForm() {
     $('authorField').style.display = state.user ? 'none' : 'block';
     form.reset();
     form.image.required = true;
-    CUSTOM_MODE = false;
     newCatInput.style.display = 'none';
+    newCatInput.value = '';
+    setCats([]);
     $('previewBox').style.display = 'none';
     $('qrPreviewBox').style.display = 'none';
     $('submitBtn').textContent = '提交';
@@ -1704,7 +1777,7 @@ function setupUploadForm() {
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({
         types: selectedTypes(), title: form.title.value,
-        category: form.category.value, customCat: CUSTOM_MODE ? newCatInput.value.trim() : '',
+        cats: selectedCats(), customCat: newCatInput.style.display !== 'none' ? newCatInput.value.trim() : '',
         openSource: (form.querySelector('input[name="openSource"]:checked') || {}).value || '',
         repo: form.repo.value,
         paid: (form.querySelector('input[name="paid"]:checked') || {}).value || '',
@@ -1721,10 +1794,9 @@ function setupUploadForm() {
       if (Array.isArray(d.types) && d.types.length) setSelectedTypes(d.types);
       else if (d.type) setSelectedTypes([d.type]);
       form.title.value = d.title || '';
-      if ([...form.category.options].some(o => o.value === d.category)) form.category.value = d.category;
-      CUSTOM_MODE = !!d.customCat;
-      newCatInput.style.display = CUSTOM_MODE ? 'block' : 'none';
-      if (CUSTOM_MODE) newCatInput.value = d.customCat;
+      setCats(Array.isArray(d.cats) && d.cats.length ? d.cats : (d.category ? [d.category] : []));
+      if (d.customCat) { newCatInput.style.display = 'block'; newCatInput.value = d.customCat; }
+      else { newCatInput.style.display = 'none'; newCatInput.value = ''; }
       form.prompt.value = d.prompt || '';
       form.link.value = d.link || '';
       const osDraft = form.querySelector(`input[name="openSource"][value="${d.openSource || ''}"]`);
@@ -1762,7 +1834,7 @@ function setupUploadForm() {
     form.title.value = w.title;
     form.prompt.value = w.intro || '';
     form.link.value = w.link || '';
-    if ([...form.category.options].some(o => o.value === w.category)) form.category.value = w.category;
+    setCats(Array.isArray(w.categories) && w.categories.length ? w.categories : [w.category].filter(Boolean));
     const osVal = w.openSource === true ? '1' : w.openSource === false ? '0' : '';
     const osInput = form.querySelector(`input[name="openSource"][value="${osVal}"]`);
     if (osInput) osInput.checked = true;
@@ -1807,12 +1879,6 @@ function setupUploadForm() {
   };
   $('closeUpload').onclick = tryCloseUpload;
   uploadModal.onclick = e => { if (e.target === uploadModal) tryCloseUpload(); };
-
-  $('categorySelect').addEventListener('change', e => {
-    CUSTOM_MODE = e.target.value === '__new__';
-    newCatInput.style.display = CUSTOM_MODE ? 'block' : 'none';
-    if (CUSTOM_MODE) newCatInput.focus();
-  });
 
   $('typePicker').addEventListener('change', e => {
     if (e.target.name !== 'types') return;
@@ -1899,6 +1965,14 @@ function setupUploadForm() {
       return;
     }
 
+    // 应用分类：至少选 1 个，最多 3 个
+    const selCats = selectedCats();
+    if (!selCats.length) {
+      showToast('请至少选择一个应用分类');
+      $('catPicker').scrollIntoView({ block: 'center', behavior: 'smooth' });
+      return;
+    }
+
     // 封面：新建时必须上传（编辑时保留原封面即可）
     if (!editId && !form.image.files.length) {
       showToast('请上传作品封面 / 截图');
@@ -1922,25 +1996,31 @@ function setupUploadForm() {
     btn.disabled = true;
     btn.textContent = '提交中...';
     try {
-      let category = form.category.value;
-      if (CUSTOM_MODE) {
+      // 自定义分类：填了就先创建，再并入所选（服务器最多收 3 个）
+      let cats = selCats.slice();
+      if (newCatInput.style.display !== 'none') {
         const name = newCatInput.value.trim();
-        if (!name) throw new Error('请输入新分类名称');
-        const r = await fetch('/api/categories', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name })
-        });
-        if (!r.ok) {
-          const err = await r.json().catch(() => ({}));
-          if (err.error !== '分类已存在') throw new Error(err.error || '新增分类失败');
+        if (name && !cats.includes(name)) {
+          const r = await fetch('/api/categories', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+          });
+          if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            if (err.error !== '分类已存在') throw new Error(err.error || '新增分类失败');
+          }
+          await loadCategories();
+          cats.push(name);
         }
-        await loadCategories();
-        category = name;
+        newCatInput.style.display = 'none';
+        newCatInput.value = '';
       }
+      if (cats.length > MAX_CATS) cats = cats.slice(0, MAX_CATS);
 
       // 客户端压缩 + 生成缩略图，避免上传原图过大
       const fd = new FormData(form);
-      fd.set('category', category);
+      fd.set('categories', JSON.stringify(cats)); // 多分类（第一个是主分类）
+      fd.set('category', cats[0]);                // 兼容老字段
       fd.delete('newCategory');
       fd.delete('images'); // 宣传图单独压缩后追加
 

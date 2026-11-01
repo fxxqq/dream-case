@@ -87,6 +87,24 @@ function saveWorks() { writeJSON('works.json', works); }
 function saveReports() { writeJSON('reports.json', reports); }
 function saveTools() { writeJSON('tools.json', tools); }
 function saveCategories() { writeJSON('categories.json', categories); }
+
+// 作品的分类列表：新数据用 categories 数组（1-3 个），老数据只有 category 单值
+function catsOf(w) {
+  if (Array.isArray(w.categories) && w.categories.length) return w.categories.filter(c => categories.includes(c));
+  return w.category && categories.includes(w.category) ? [w.category] : [];
+}
+// 解析请求里的分类（JSON 字符串 / 数组 / 逗号分隔），只保留已知分类，去重后最多 3 个
+function parseCats(raw) {
+  let arr;
+  if (Array.isArray(raw)) arr = raw;
+  else { try { arr = JSON.parse(String(raw || '[]')); } catch { arr = String(raw || '').split(','); } }
+  if (!Array.isArray(arr)) arr = [];
+  const seen = [];
+  arr.map(c => String(c || '').trim()).forEach(c => {
+    if (c && categories.includes(c) && !seen.includes(c)) seen.push(c);
+  });
+  return seen.slice(0, 3);
+}
 function saveTypes() { writeJSON('types.json', workTypes); }
 function typeIconMap() {
   const map = {};
@@ -592,6 +610,7 @@ function publicWork(w, user) {
   const types = typesOf(w);
   return {
     id: w.id, title: w.title, author: w.author, authorName: displayNameOf(w.author), category: w.category,
+    categories: catsOf(w),
     type: types[0], types: types,
     intro: w.prompt || '', link: w.link || '',
     image: w.image, thumb: w.thumb || w.image, qrcode: w.qrcode || '',
@@ -1004,7 +1023,7 @@ app.get('/api/works', (req, res) => {
 
   const user = currentUser(req);
   let list = filterBlocked(works.filter(isVisible), user);
-  if (category && category !== '全部') list = list.filter(w => w.category === category);
+  if (category && category !== '全部') list = list.filter(w => catsOf(w).includes(category));
   if (type && type !== '全部') list = list.filter(w => typesOf(w).includes(type));
   // 是否开源筛选：open → 标注开源；closed → 非开源（含未标注的老作品）
   if (req.query.os === 'open') list = list.filter(w => w.openSource === true);
@@ -1017,7 +1036,7 @@ app.get('/api/works', (req, res) => {
   if (q) {
     const kw = String(q).toLowerCase().trim();
     list = list.filter(w =>
-      [w.title, w.author, w.prompt, w.category].some(f => String(f || '').toLowerCase().includes(kw))
+      [w.title, w.author, w.prompt, catsOf(w).join(' ')].some(f => String(f || '').toLowerCase().includes(kw))
     );
   }
 
@@ -1136,7 +1155,8 @@ app.post('/api/works', (req, res) => {
       userId: user ? user.id : null,
       anon: !user,
       prompt: String(prompt || '').slice(0, 1000),
-      category: categories.includes(category) ? category : '其他',
+      category: (cats => cats[0] || '其他')(parseCats(req.body.categories)),
+      categories: (cats => cats.length ? cats : ['其他'])(parseCats(req.body.categories)),
       type: types[0],
       types: types,
       link: linkVal ? linkVal.slice(0, 500) : '',
@@ -1187,7 +1207,14 @@ app.put('/api/works/:id', (req, res) => {
 
     if (title) w.title = String(title).slice(0, 100);
     if (prompt !== undefined) w.prompt = String(prompt).slice(0, 1000);
-    if (category && categories.includes(category)) w.category = category;
+    if (req.body.categories !== undefined) {
+      const cats = parseCats(req.body.categories);
+      if (cats.length) { w.categories = cats; w.category = cats[0]; }
+    } else if (category && categories.includes(category)) {
+      // 老客户端只传单值：更新主分类，其余分类保留
+      w.category = category;
+      if (Array.isArray(w.categories) && w.categories.length) w.categories = [category, ...w.categories.slice(1)];
+    }
     if (req.body.types !== undefined || type) applyTypes(w, normalizeTypes(req.body.types || type));
     if (req.body.openSource !== undefined) w.openSource = parseOpenSource(req.body.openSource);
     if (req.body.repo !== undefined) w.repo = normRepo(req.body.repo);
@@ -1596,7 +1623,8 @@ app.post('/api/admin/works', requireAdmin, (req, res) => {
       author: String(author || '管理员').slice(0, 50),
       userId: null,
       prompt: String(prompt || '').slice(0, 1000),
-      category: categories.includes(category) ? category : '其他',
+      category: (cats => cats[0] || '其他')(parseCats(req.body.categories)),
+      categories: (cats => cats.length ? cats : ['其他'])(parseCats(req.body.categories)),
       type: types[0],
       types: types,
       link: linkVal ? linkVal.slice(0, 500) : '',
@@ -1639,7 +1667,13 @@ app.put('/api/admin/works/:id', requireAdmin, (req, res) => {
 
     if (title) w.title = String(title).slice(0, 100);
     if (prompt !== undefined) w.prompt = String(prompt).slice(0, 1000);
-    if (category && categories.includes(category)) w.category = category;
+    if (req.body.categories !== undefined) {
+      const cats = parseCats(req.body.categories);
+      if (cats.length) { w.categories = cats; w.category = cats[0]; }
+    } else if (category && categories.includes(category)) {
+      w.category = category;
+      if (Array.isArray(w.categories) && w.categories.length) w.categories = [category, ...w.categories.slice(1)];
+    }
     if (req.body.types !== undefined || type) applyTypes(w, normalizeTypes(req.body.types || type));
     if (author) w.author = String(author).slice(0, 50);
     if (status && ['approved', 'pending', 'rejected'].includes(status)) w.status = status;
@@ -1707,7 +1741,7 @@ app.delete('/api/admin/feedback/:id', requireAdmin, (req, res) => {
 // 分类管理
 app.get('/api/admin/categories', requireAdmin, (req, res) => {
   const counts = {};
-  works.forEach(w => { if (w.category) counts[w.category] = (counts[w.category] || 0) + 1; });
+  works.forEach(w => catsOf(w).forEach(c => { counts[c] = (counts[c] || 0) + 1; }));
   res.json(orderedCategories().map(name => ({ name, count: counts[name] || 0 })));
 });
 app.post('/api/admin/categories/reorder', requireAdmin, (req, res) => {
@@ -2113,7 +2147,8 @@ app.get('/w/:id', (req, res) => {
     { name: w.title }
   ];
   // 同类作品：增强内链，帮助爬虫发现更多页面
-  const related = byNewest(visibleWorks().filter(x => x.id !== w.id && x.category === w.category))
+  const wCats = catsOf(w);
+  const related = byNewest(visibleWorks().filter(x => x.id !== w.id && catsOf(x).some(c => wCats.includes(c))))
     .slice(0, 6).map(publicWork);
 
   const headHtml = seo.head({
@@ -2277,7 +2312,7 @@ function listPageRoute(kind) {
     const name = String(req.params.name || '');
     const valid = kind === 'c' ? categories.includes(name) : ALL_TYPES_LEGACY.includes(name);
     const pool = byNewest(visibleWorks().filter(w =>
-      kind === 'c' ? w.category === name : typesOf(w).includes(name)));
+      kind === 'c' ? catsOf(w).includes(name) : typesOf(w).includes(name)));
 
     if (!valid) {
       const headHtml = seo.head({
