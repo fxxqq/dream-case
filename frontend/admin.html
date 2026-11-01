@@ -1329,7 +1329,6 @@
       try { if (notifyCh) notifyCh.postMessage('ads-changed'); } catch { /* ignore */ }
       try { localStorage.setItem('dm_ads_changed', String(Date.now())); } catch { /* ignore */ }
     };
-    const adCtr = a => (a.impressions ? (a.clicks || 0) / a.impressions * 100 : 0);
 
     async function loadAds() {
       try {
@@ -1339,7 +1338,9 @@
         panel.innerHTML = `
           <div class="hint" style="padding:16px 18px">
             广告位是页面里的固定空位：在这里挂上内容，前台对应位置就会显示；一个位置挂多支时自动轮流播放，
-            没有广告的位置完全不占地方。前台会记录曝光与点击，方便看效果。
+            没有广告的位置完全不占地方。<br />
+            PV = 被展示的次数（每次展示 +1）；UV = 去重访客（登录用户按账号、未登录按 IP，与站点 UV 口径一致）。
+            点击率 = 点击 ÷ PV。
           </div>
           ${AD_SLOTS.map(adGroupHtml).join('')}`;
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
@@ -1347,11 +1348,12 @@
 
     function adGroupHtml(s) {
       const list = AD_LIST.filter(a => a.slot === s.key);
+      const pv = list.reduce((n, a) => n + ((a.stats && a.stats.pv) || 0), 0);
       return `<div class="ad-group">
         <div class="ad-group-head">
           <div class="grow">
             <div class="ad-group-name">${esc(s.name)}<span class="tag">${esc(s.key)}</span></div>
-            <div class="ad-group-where">${esc(s.where)} · ${esc(s.size)} · 共 ${list.length} 支</div>
+            <div class="ad-group-where">${esc(s.where)} · ${esc(s.size)} · 共 ${list.length} 支 · 本组累计 PV ${pv}</div>
           </div>
           <button class="btn btn-primary btn-sm" data-adnew="${esc(s.key)}">＋ 挂一条</button>
         </div>
@@ -1362,6 +1364,7 @@
 
     function adRowHtml(a, i, total) {
       const on = a.active !== false;
+      const st = a.stats || { pv: 0, uv: 0, todayPv: 0, todayUv: 0, clicks: 0, ctr: 0 };
       return `<div class="ad-row" data-adrow="${a.id}">
         ${a.image
           ? `<img class="ad-thumb" src="${esc(a.image)}" alt="" />`
@@ -1372,7 +1375,12 @@
             ${total > 1 ? `<span class="tag">第 ${i + 1} 位</span>` : ''}
           </div>
           <div class="row-meta">${a.desc ? esc(a.desc) + ' · ' : ''}<a class="row-link" href="${esc(a.url)}" target="_blank" rel="noopener">${esc(shortUrl(a.url))}</a></div>
-          <div class="row-meta ad-stat">曝光 ${a.impressions || 0} · 点击 ${a.clicks || 0} · 点击率 ${adCtr(a).toFixed(1)}%</div>
+          <div class="row-meta ad-stat">
+            <span title="累计曝光次数">PV ${st.pv}</span> ·
+            <span title="累计独立访客（登录按账号、未登录按 IP 去重）">UV ${st.uv}</span> ·
+            今日 PV ${st.todayPv} / UV ${st.todayUv} ·
+            点击 ${st.clicks} · 点击率 ${(st.ctr || 0).toFixed(1)}%
+          </div>
         </div>
         <div class="row-actions">
           <button class="btn btn-ghost btn-sm" data-admove="up" data-id="${a.id}" ${i === 0 ? 'disabled' : ''} title="上移">↑</button>

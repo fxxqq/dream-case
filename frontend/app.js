@@ -584,21 +584,30 @@ function adHtml(a) {
     </a>`;
 }
 
-// 曝光埋点：真正滚到视野里（露出一半）才计一次，同一次浏览不重复上报
+// 曝光埋点：真正滚到视野里（露出一半）并且是当前轮播到的那条，才计一次曝光；
+// 同一次浏览里同一支广告只报一次（服务端按访客去重算 UV，每次上报算 1 个 PV）。
+function adInView(el) {
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < (window.innerHeight || 0);
+}
+
+function maybeReportAd(el) {
+  if (!el || el.dataset.adSeen === '1') return;
+  const slide = el.closest ? el.closest('.ad-slide') : null;
+  if (slide && !slide.classList.contains('show')) return; // 轮播里还没轮到它，先不算
+  if (!adInView(el)) return;
+  el.dataset.adSeen = '1';
+  const id = el.dataset.ad;
+  if (!id || adSeen.has(id)) return;
+  adSeen.add(id);
+  sendBeaconSafe('/api/ads/' + encodeURIComponent(id) + '/impression');
+}
+
 function observeAds(root) {
   if (!('IntersectionObserver' in window)) return;
   if (!adObserver) {
     adObserver = new IntersectionObserver(entries => {
-      entries.forEach(en => {
-        if (!en.isIntersecting) return;
-        const el = en.target;
-        if (el.dataset.adSeen === '1') return;
-        el.dataset.adSeen = '1';
-        const id = el.dataset.ad;
-        if (!id || adSeen.has(id)) return;
-        adSeen.add(id);
-        sendBeaconSafe('/api/ads/' + encodeURIComponent(id) + '/impression');
-      });
+      entries.forEach(en => { if (en.isIntersecting) maybeReportAd(en.target); });
     }, { threshold: 0.5 });
   }
   root.querySelectorAll('a.ad-card').forEach(el => adObserver.observe(el));
@@ -639,6 +648,7 @@ function renderAdSlot(el, slot) {
       idx = (idx + 1) % slides.length;
       slides[idx].classList.add('show');
       dots[idx].classList.add('active');
+      maybeReportAd(slides[idx].querySelector('a.ad-card')); // 轮到的这条才算曝光
     }, AD_ROTATE_MS);
   }
   observeAds(el);

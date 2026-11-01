@@ -53,6 +53,10 @@ let comments = readJSON('comments.json', []);  // 作品评论
 let feedback = readJSON('feedback.json', []);  // 意见反馈
 let claims = readJSON('claims.json', []);      // 作品认领申请（提交证据 → 管理员审核）
 let ads = readJSON('ads.json', []);            // 广告（固定几个广告位，后台往里挂）
+// 广告曝光明细：{ 'YYYY-MM-DD': { <adId>: { pv: 3, uv: { 'ip:1.2.3.4': 1, 'u:xxx': 1 } } } }
+// PV = 展示次数；UV = 去重访客（登录按账号、未登录按 IP，与站点 UV 口径一致）
+let adStats = readJSON('ad-stats.json', {});
+if (!adStats || typeof adStats !== 'object' || Array.isArray(adStats)) adStats = {};
 const DEFAULT_CATEGORIES = ['效率工具', '生活助手', '内容创作', '学习教育', '娱乐游戏', '开发工具', '其他'];
 let categories = readJSON('categories.json', DEFAULT_CATEGORIES);
 if (!Array.isArray(categories) || !categories.length) categories = DEFAULT_CATEGORIES.slice();
@@ -837,20 +841,67 @@ function scheduleAdSave() {
   }, 3000);
 }
 
+// ---------- 广告 PV / UV 统计 ----------
+const AD_STATS_RETENTION_DAYS = 90;   // 明细保留 90 天，超出按天淘汰
+const AD_UV_MAX_PER_DAY = 20000;      // 单支广告单日 UV 上限，防止异常流量把文件撑爆
+let adStatsSaveTimer = null;
+function scheduleAdStatsSave() {
+  if (adStatsSaveTimer) return;
+  adStatsSaveTimer = setTimeout(() => {
+    adStatsSaveTimer = null;
+    try { writeJSON('ad-stats.json', adStats); } catch (e) { /* 统计失败不影响主流程 */ }
+  }, 3000);
+}
+
+// 访客身份：登录用户按账号（多设备算 1 人），未登录按 IP —— 与站点 UV 一致
+function adVisitorKey(req) {
+  const user = currentUser(req);
+  return user ? 'u:' + user.id : 'ip:' + clientIp(req);
+}
+
+function trackAdShow(adId, req) {
+  const day = dateKey();
+  const bucket = adStats[day] || (adStats[day] = {});
+  const st = bucket[adId] || (bucket[adId] = { pv: 0, uv: {} });
+  st.pv = (st.pv || 0) + 1;
+  if (!st.uv) st.uv = {};
+  const k = adVisitorKey(req);
+  if (!st.uv[k] && Object.keys(st.uv).length < AD_UV_MAX_PER_DAY) st.uv[k] = 1;
+  const days = Object.keys(adStats).sort();
+  while (days.length > AD_STATS_RETENTION_DAYS) delete adStats[days.shift()];
+  scheduleAdStatsSave();
+}
+
+// 单支广告的统计：累计 PV / UV、今日 PV / UV、近 7 天每天 PV
+function adStatsOf(adId) {
+  const today = dateKey();
+  let pv = 0;
+  const uv = new Set();
+  let todayPv = 0, todayUv = 0;
+  Object.keys(adStats).forEach(d => {
+    const st = adStats[d] && adStats[d][adId];
+    if (!st) return;
+    pv += st.pv || 0;
+    Object.keys(st.uv || {}).forEach(k => uv.add(k));
+    if (d === today) { todayPv = st.pv || 0; todayUv = Object.keys(st.uv || {}).length; }
+  });
+  return { pv, uv: uv.size, todayPv, todayUv };
+}
+
 app.get('/api/ads', (req, res) => {
   res.set('Cache-Control', 'no-cache');
   res.json({ slots: AD_SLOTS, ads: activeAds().map(publicAd) });
 });
 
-// 曝光：同一 IP 对同一支广告 6 小时内只记一次，避免刷新刷量
+// 曝光上报：每次展示都记 PV，UV 由访客身份去重。
+// 只做一个很宽松的防刷（同 IP 同广告 60 秒最多记 3 次），正常浏览完全不受影响。
 app.post('/api/ads/:id/impression', (req, res) => {
   const a = ads.find(x => x.id === req.params.id);
   if (!a) return res.status(404).json({ error: '广告不存在' });
-  if (!rateLimit('ad-imp:' + clientIp(req) + ':' + a.id, 1, 6 * 3600e3)) {
+  if (!rateLimit('ad-pv:' + clientIp(req) + ':' + a.id, 3, 60000)) {
     return res.json({ ok: true, counted: false });
   }
-  a.impressions = (a.impressions || 0) + 1;
-  scheduleAdSave();
+  trackAdShow(a.id, req);
   res.json({ ok: true, counted: true });
 });
 
@@ -1675,6 +1726,11 @@ function adListJson() {
     slots: AD_SLOTS,
     ads: ads.slice().sort((a, b) => AD_SLOT_KEYS.indexOf(a.slot) - AD_SLOT_KEYS.indexOf(b.slot)
       || (a.sort || 0) - (b.sort || 0))
+      .map(a => {
+        const st = adStatsOf(a.id);
+        const clicks = a.clicks || 0;
+        return { ...a, stats: { ...st, clicks, ctr: st.pv ? clicks / st.pv * 100 : 0 } };
+      })
   };
 }
 
@@ -1693,7 +1749,6 @@ app.post('/api/admin/ads', requireAdmin, (req, res) => {
       ...p,
       image: img ? '/uploads/' + img.filename : '',
       sort: adsOfSlot(p.slot).length,
-      impressions: 0,
       clicks: 0,
       createdAt: new Date().toISOString()
     };
@@ -1759,6 +1814,9 @@ app.delete('/api/admin/ads/:id', requireAdmin, (req, res) => {
   const [removed] = ads.splice(idx, 1);
   removeUpload(removed.image);
   renumberAds(removed.slot);
+  // 清掉已删广告的 PV/UV 明细，不让统计文件无限膨胀
+  Object.keys(adStats).forEach(d => { if (adStats[d]) delete adStats[d][removed.id]; });
+  scheduleAdStatsSave();
   saveAds();
   res.json(adListJson());
 });
