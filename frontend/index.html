@@ -37,6 +37,9 @@
         <p>每一个认真做出的想法，都值得被看见。</p>
       </div>
 
+      <!-- 广告位：首页顶部（位置固定，内容在后台「广告位」里挂；没有广告时自动隐藏不占位） -->
+      <div class="ad-slot" data-ad-slot="home-top"></div>
+
       <section class="featured-section" id="featuredSection" style="display:none">
         <div class="section-head featured-head">
           <h2>✨ 本周精选</h2>
@@ -75,6 +78,7 @@
         <p>没有找到作品，换个关键词或分类试试？</p>
       </div>
       <div class="load-more-wrap">
+        <div class="ad-slot" data-ad-slot="home-bottom"></div>
         <button class="btn-ghost" id="loadMore" style="display:none">加载更多</button>
       </div>
     </section>
@@ -95,6 +99,7 @@
         <button class="rank-tab rank-tab-by" data-by="likes">♥ 按点赞</button>
         <button class="rank-tab rank-tab-by" data-by="favs">★ 按收藏</button>
       </div>
+      <div class="ad-slot" data-ad-slot="rank"></div>
       <div class="rank-list" id="rankList"></div>
     </section>
 
@@ -111,6 +116,10 @@
       <div class="gallery" id="authorGallery"></div>
     </section>
   </main>
+
+  <div class="container">
+    <div class="ad-slot ad-slot-footer" data-ad-slot="footer"></div>
+  </div>
 
   <footer class="site-footer">
     <div class="container footer-inner">
@@ -305,6 +314,8 @@
             </div>
           </div>
         </div>
+
+        <div class="ad-slot ad-slot-detail" data-ad-slot="detail"></div>
 
         <div class="detail-tools" id="detailTools" style="display:none">
           <div class="detail-tools-head">同类工具推荐</div>

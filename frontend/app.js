@@ -552,6 +552,122 @@ async function loadTools() {
   try { state.tools = await (await fetch('/api/tools')).json(); } catch { state.tools = []; }
 }
 
+// ---------- 广告位 ----------
+// 页面上有 5 个固定的空位（data-ad-slot），内容全部来自后台「广告位」。
+// 同一位置挂多支广告时前台自动轮播；一个都没有就保持隐藏，不留白。
+const AD_ROTATE_MS = 7000;
+let ADS = [];
+const adSeen = new Set();   // 本次浏览已上报过曝光的广告 id
+let adObserver = null;
+
+async function loadAds() {
+  try {
+    const data = await (await fetch('/api/ads')).json();
+    ADS = Array.isArray(data.ads) ? data.ads : [];
+  } catch { ADS = []; }
+  renderAllAdSlots();
+}
+
+function adHtml(a) {
+  const img = a.image
+    ? `<img class="ad-bg" src="${escapeHtml(a.image)}" alt="" loading="lazy" />`
+    : '';
+  return `<a class="ad-card${a.image ? ' has-img' : ''}" href="${escapeHtml(a.url)}"
+      target="_blank" rel="noopener nofollow sponsored" data-ad="${escapeHtml(a.id)}">
+      ${img}
+      <span class="ad-body">
+        <span class="ad-badge">广告</span>
+        ${a.title ? `<b class="ad-title">${escapeHtml(a.title)}</b>` : ''}
+        ${a.desc ? `<span class="ad-desc">${escapeHtml(a.desc)}</span>` : ''}
+        <span class="ad-cta">${escapeHtml(a.cta || '了解更多')} →</span>
+      </span>
+    </a>`;
+}
+
+// 曝光埋点：真正滚到视野里（露出一半）才计一次，同一次浏览不重复上报
+function observeAds(root) {
+  if (!('IntersectionObserver' in window)) return;
+  if (!adObserver) {
+    adObserver = new IntersectionObserver(entries => {
+      entries.forEach(en => {
+        if (!en.isIntersecting) return;
+        const el = en.target;
+        if (el.dataset.adSeen === '1') return;
+        el.dataset.adSeen = '1';
+        const id = el.dataset.ad;
+        if (!id || adSeen.has(id)) return;
+        adSeen.add(id);
+        sendBeaconSafe('/api/ads/' + encodeURIComponent(id) + '/impression');
+      });
+    }, { threshold: 0.5 });
+  }
+  root.querySelectorAll('a.ad-card').forEach(el => adObserver.observe(el));
+}
+
+function sendBeaconSafe(url) {
+  try {
+    if (navigator.sendBeacon) { navigator.sendBeacon(url); return; }
+    fetch(url, { method: 'POST', keepalive: true }).catch(() => {});
+  } catch { /* 埋点失败不影响浏览 */ }
+}
+
+function renderAdSlot(el, slot) {
+  if (!el) return;
+  clearInterval(el._adTimer);           // 重新渲染前先停掉旧的轮播
+  el._adTimer = null;
+  const list = ADS.filter(a => a.slot === slot);
+  if (!list.length) {
+    el.innerHTML = '';
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = 'block';
+  if (list.length === 1) {
+    el.innerHTML = adHtml(list[0]);
+  } else {
+    el.innerHTML =
+      `<div class="ad-carousel">${list.map((a, i) =>
+        `<div class="ad-slide${i === 0 ? ' show' : ''}">${adHtml(a)}</div>`).join('')}</div>` +
+      `<div class="ad-dots">${list.map((_, i) =>
+        `<span class="ad-dot${i === 0 ? ' active' : ''}"></span>`).join('')}</div>`;
+    const slides = el.querySelectorAll('.ad-slide');
+    const dots = el.querySelectorAll('.ad-dot');
+    let idx = 0;
+    el._adTimer = setInterval(() => {
+      slides[idx].classList.remove('show');
+      dots[idx].classList.remove('active');
+      idx = (idx + 1) % slides.length;
+      slides[idx].classList.add('show');
+      dots[idx].classList.add('active');
+    }, AD_ROTATE_MS);
+  }
+  observeAds(el);
+}
+
+function renderAllAdSlots() {
+  document.querySelectorAll('[data-ad-slot]').forEach(el => renderAdSlot(el, el.dataset.adSlot));
+}
+
+// 点击埋点：用事件委托，广告是新渲染出来的也能记到
+document.addEventListener('click', e => {
+  const a = e.target.closest && e.target.closest('a.ad-card');
+  if (!a || !a.dataset.ad) return;
+  sendBeaconSafe('/api/ads/' + encodeURIComponent(a.dataset.ad) + '/click');
+});
+
+// 后台改了广告 → 前台静默换掉（不用手动刷新）
+(function watchAdChanges() {
+  const refresh = () => loadAds();
+  if ('BroadcastChannel' in window) {
+    try {
+      const bc = new BroadcastChannel('dm-sync');
+      bc.onmessage = e => { if (e.data === 'ads-changed') refresh(); };
+    } catch { /* ignore */ }
+  }
+  window.addEventListener('storage', e => { if (e.key === 'dm_ads_changed') refresh(); });
+})();
+
+
 // 形态由后台管理：从接口拿名称 + 图标，动态渲染投稿 chips 与筛选下拉
 async function loadTypeMeta() {
   try {
@@ -2375,6 +2491,7 @@ async function init() {
   await loadTypeMeta();
   await loadCategories();
   await loadTools();
+  await loadAds();
   setupHeader();
   setupUploadForm();
   setupDetailActions();

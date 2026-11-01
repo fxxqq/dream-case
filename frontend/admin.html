@@ -130,6 +130,23 @@
     .paste-tip { font-style:normal; font-size:11px; color:#a0a3b5; margin-left:6px; }
     .field.paste-active { background:#fbfbff; box-shadow: inset 3px 0 0 #5b5bd6; border-radius:6px; }
     @media (max-width:560px) { .grid2 { grid-template-columns:1fr; } }
+
+    /* 广告位：按位置分组，组内一行一支广告 */
+    .ad-group { border-bottom:1px solid var(--border); }
+    .ad-group:last-child { border-bottom:none; }
+    .ad-group-head { display:flex; align-items:flex-start; gap:12px; padding:14px 18px; background:#fbfbfe; }
+    .ad-group-head .grow { flex:1; min-width:0; }
+    .ad-group-name { font-weight:600; font-size:14px; }
+    .ad-group-where { font-size:12px; color:var(--muted); margin-top:3px; }
+    .ad-row { display:flex; align-items:center; gap:14px; padding:12px 18px; border-top:1px dashed var(--border); }
+    .ad-thumb { width:120px; height:60px; border-radius:8px; object-fit:cover; background:#eceef5; flex:none; }
+    .ad-thumb-none {
+      width:120px; height:60px; border-radius:8px; flex:none;
+      display:flex; align-items:center; justify-content:center;
+      background:#f1f2f8; color:#a0a3b5; font-size:11px;
+    }
+    .ad-empty { padding:14px 18px; color:var(--muted); font-size:13px; border-top:1px dashed var(--border); }
+    .ad-stat { font-variant-numeric:tabular-nums; }
   </style>
 </head>
 <body>
@@ -163,6 +180,7 @@
         <button class="tab" data-tab="categories">分类管理</button>
         <button class="tab" data-tab="types">形态管理</button>
         <button class="tab" data-tab="tools">推荐位</button>
+        <button class="tab" data-tab="ads">广告位</button>
         <button class="tab" data-tab="creators">认证创作者</button>
       </div>
 
@@ -262,6 +280,51 @@
     </div>
   </div>
 
+  <!-- 广告位：新建 / 编辑单支广告 -->
+  <div class="modal-mask" id="adMask">
+    <div class="modal">
+      <h2 id="adFormTitle">挂一支广告</h2>
+      <form id="adForm">
+        <div class="field">
+          <label>投放到哪个广告位 *</label>
+          <select name="slot" id="adSlotSel"></select>
+        </div>
+        <div class="field">
+          <label>标题</label>
+          <input name="title" maxlength="60" placeholder="例如：用 XX 一键做出小程序（标题和图片至少填一个）" />
+        </div>
+        <div class="field">
+          <label>一句话描述（选填）</label>
+          <input name="desc" maxlength="120" placeholder="补充卖点，展示在标题下方" />
+        </div>
+        <div class="field">
+          <label>跳转链接 *</label>
+          <input name="url" maxlength="500" placeholder="https://..." />
+        </div>
+        <div class="field">
+          <label>按钮文字（选填）</label>
+          <input name="cta" maxlength="20" placeholder="了解更多" />
+        </div>
+        <div class="field">
+          <label>横幅图片（选填，横图效果最好） <em class="paste-tip">建议 1400×280，2MB 内</em></label>
+          <input type="file" name="image" accept="image/*" id="adImageInput" />
+          <div class="file-preview" id="adImagePreview"></div>
+        </div>
+        <div class="field">
+          <label>状态</label>
+          <select name="active" id="adActiveSel">
+            <option value="1">投放中</option>
+            <option value="0">先停用（保存但不展示）</option>
+          </select>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" id="adCancel">取消</button>
+          <button type="submit" class="btn btn-primary" id="adSaveBtn">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     let KEY = sessionStorage.getItem('adminKey') || '';
     let currentTab = 'pending';
@@ -344,6 +407,7 @@
       if (tab === 'categories') loadCategories();
       if (tab === 'types') loadTypes();
       if (tab === 'tools') loadTools();
+      if (tab === 'ads') loadAds();
       if (tab === 'creators') loadCreators();
     }
 
@@ -1254,6 +1318,153 @@
           toast('已删除'); loadTools();
         } catch (err) { toast(err.message); }
       }
+    });
+
+    // ---- 广告位 ----
+    // 广告位（位置）写死在前端页面里，后台只负责往某个位置挂内容；
+    // 同一位置挂多支时前台按这里的顺序轮流播放。
+    let AD_SLOTS = [], AD_LIST = [], AD_EDIT = null, AD_IMG_REMOVED = false;
+
+    const notifyAds = () => {
+      try { if (notifyCh) notifyCh.postMessage('ads-changed'); } catch { /* ignore */ }
+      try { localStorage.setItem('dm_ads_changed', String(Date.now())); } catch { /* ignore */ }
+    };
+    const adCtr = a => (a.impressions ? (a.clicks || 0) / a.impressions * 100 : 0);
+
+    async function loadAds() {
+      try {
+        const data = await api('/api/admin/ads');
+        AD_SLOTS = data.slots || [];
+        AD_LIST = data.ads || [];
+        panel.innerHTML = `
+          <div class="hint" style="padding:16px 18px">
+            广告位是页面里的固定空位：在这里挂上内容，前台对应位置就会显示；一个位置挂多支时自动轮流播放，
+            没有广告的位置完全不占地方。前台会记录曝光与点击，方便看效果。
+          </div>
+          ${AD_SLOTS.map(adGroupHtml).join('')}`;
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    function adGroupHtml(s) {
+      const list = AD_LIST.filter(a => a.slot === s.key);
+      return `<div class="ad-group">
+        <div class="ad-group-head">
+          <div class="grow">
+            <div class="ad-group-name">${esc(s.name)}<span class="tag">${esc(s.key)}</span></div>
+            <div class="ad-group-where">${esc(s.where)} · ${esc(s.size)} · 共 ${list.length} 支</div>
+          </div>
+          <button class="btn btn-primary btn-sm" data-adnew="${esc(s.key)}">＋ 挂一条</button>
+        </div>
+        ${list.length ? list.map((a, i) => adRowHtml(a, i, list.length)).join('')
+          : '<div class="ad-empty">还没有广告</div>'}
+      </div>`;
+    }
+
+    function adRowHtml(a, i, total) {
+      const on = a.active !== false;
+      return `<div class="ad-row" data-adrow="${a.id}">
+        ${a.image
+          ? `<img class="ad-thumb" src="${esc(a.image)}" alt="" />`
+          : '<div class="ad-thumb-none">纯文字广告</div>'}
+        <div class="row-main">
+          <div class="row-title">${esc(a.title || '(无标题)')}
+            ${on ? '<span class="tag ok">展示中</span>' : '<span class="tag bad">已停用</span>'}
+            ${total > 1 ? `<span class="tag">第 ${i + 1} 位</span>` : ''}
+          </div>
+          <div class="row-meta">${a.desc ? esc(a.desc) + ' · ' : ''}<a class="row-link" href="${esc(a.url)}" target="_blank" rel="noopener">${esc(shortUrl(a.url))}</a></div>
+          <div class="row-meta ad-stat">曝光 ${a.impressions || 0} · 点击 ${a.clicks || 0} · 点击率 ${adCtr(a).toFixed(1)}%</div>
+        </div>
+        <div class="row-actions">
+          <button class="btn btn-ghost btn-sm" data-admove="up" data-id="${a.id}" ${i === 0 ? 'disabled' : ''} title="上移">↑</button>
+          <button class="btn btn-ghost btn-sm" data-admove="down" data-id="${a.id}" ${i === total - 1 ? 'disabled' : ''} title="下移">↓</button>
+          <button class="btn btn-ghost btn-sm" data-adedit="${a.id}">编辑</button>
+          <button class="btn ${on ? 'btn-ghost' : 'btn-ok'} btn-sm" data-adtoggle="${a.id}">${on ? '停用' : '启用'}</button>
+          <button class="btn btn-danger btn-sm" data-addel="${a.id}">删除</button>
+        </div>
+      </div>`;
+    }
+
+    function openAdEditor(id, slotKey) {
+      const a = id ? AD_LIST.find(x => x.id === id) : null;
+      AD_EDIT = a ? a.id : null;
+      AD_IMG_REMOVED = false;
+      $('adFormTitle').textContent = a ? '编辑广告' : '挂一支广告';
+      $('adSlotSel').innerHTML = AD_SLOTS
+        .map(s => `<option value="${esc(s.key)}">${esc(s.name)}</option>`).join('');
+      $('adSlotSel').value = a ? a.slot : (slotKey || (AD_SLOTS[0] && AD_SLOTS[0].key) || '');
+      const el = $('adForm').elements;
+      el.title.value = a ? (a.title || '') : '';
+      el.desc.value = a ? (a.desc || '') : '';
+      el.url.value = a ? (a.url || '') : '';
+      el.cta.value = a ? (a.cta || '') : '';
+      el.active.value = a && a.active === false ? '0' : '1';
+      $('adImageInput').value = '';
+      $('adImagePreview').innerHTML = a && a.image
+        ? `<div class="thumb"><img src="${esc(a.image)}" alt="" /><button type="button" class="thumb-del" id="adImgDel" title="移除图片">✕</button></div>`
+        : '';
+      $('adMask').style.display = 'flex';
+    }
+
+    $('adImageInput').onchange = () => {
+      const file = $('adImageInput').files[0];
+      if (!file) return;
+      AD_IMG_REMOVED = false;
+      $('adImagePreview').innerHTML =
+        `<div class="thumb"><img src="${URL.createObjectURL(file)}" alt="" /><button type="button" class="thumb-del" id="adImgDel" title="移除图片">✕</button></div>`;
+    };
+    $('adImagePreview').addEventListener('click', e => {
+      if (e.target.id !== 'adImgDel') return;
+      AD_IMG_REMOVED = true;
+      $('adImageInput').value = '';
+      $('adImagePreview').innerHTML = '';
+    });
+    $('adCancel').onclick = () => { $('adMask').style.display = 'none'; };
+    $('adMask').onclick = e => { if (e.target === $('adMask')) $('adMask').style.display = 'none'; };
+
+    $('adForm').onsubmit = async e => {
+      e.preventDefault();
+      const fd = new FormData($('adForm'));
+      if (AD_IMG_REMOVED) fd.set('removeImage', '1');
+      const btn = $('adSaveBtn');
+      btn.disabled = true;
+      try {
+        const data = await api('/api/admin/ads' + (AD_EDIT ? '/' + AD_EDIT : ''), {
+          method: AD_EDIT ? 'PUT' : 'POST', body: fd
+        });
+        AD_SLOTS = data.slots; AD_LIST = data.ads;
+        $('adMask').style.display = 'none';
+        toast(AD_EDIT ? '已保存' : '已挂上');
+        notifyAds();
+        loadAds();
+      } catch (err) { toast(err.message); }
+      finally { btn.disabled = false; }
+    };
+
+    panel.addEventListener('click', async e => {
+      const t = e.target;
+      const id = t.dataset.id;
+      if (t.dataset.adnew) return openAdEditor(null, t.dataset.adnew);
+      if (t.dataset.adedit) return openAdEditor(t.dataset.adedit);
+      try {
+        if (t.dataset.admove) {
+          const data = await api('/api/admin/ads/' + id + '/move', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dir: t.dataset.admove })
+          });
+          AD_LIST = data.ads; notifyAds(); return loadAds();
+        }
+        if (t.dataset.adtoggle) {
+          const data = await api('/api/admin/ads/' + id + '/toggle', { method: 'POST' });
+          AD_LIST = data.ads; notifyAds(); return loadAds();
+        }
+        if (t.dataset.addel) {
+          const a = AD_LIST.find(x => x.id === id);
+          if (!confirm('删除这条广告？删除后前台立即不再展示。')) return;
+          const data = await api('/api/admin/ads/' + id, { method: 'DELETE' });
+          AD_LIST = data.ads; notifyAds(); loadAds();
+          toast('已删除');
+        }
+      } catch (err) { toast(err.message); }
     });
 
     // ---- 认证创作者 ----

@@ -52,6 +52,7 @@ let sessions = readJSON('sessions.json', {});  // sid -> { uid, exp }
 let comments = readJSON('comments.json', []);  // 作品评论
 let feedback = readJSON('feedback.json', []);  // 意见反馈
 let claims = readJSON('claims.json', []);      // 作品认领申请（提交证据 → 管理员审核）
+let ads = readJSON('ads.json', []);            // 广告（固定几个广告位，后台往里挂）
 const DEFAULT_CATEGORIES = ['效率工具', '生活助手', '内容创作', '学习教育', '娱乐游戏', '开发工具', '其他'];
 let categories = readJSON('categories.json', DEFAULT_CATEGORIES);
 if (!Array.isArray(categories) || !categories.length) categories = DEFAULT_CATEGORIES.slice();
@@ -92,6 +93,20 @@ function saveSessions() { writeJSON('sessions.json', sessions); }
 function saveComments() { writeJSON('comments.json', comments); }
 function saveFeedback() { writeJSON('feedback.json', feedback); }
 function saveClaims() { writeJSON('claims.json', claims); }
+function saveAds() { writeJSON('ads.json', ads); }
+
+// ---------- 广告位定义 ----------
+// 广告位（位置）是写死在前端页面里的固定空位，后台只能选择「把这支广告挂到哪个位置」，
+// 这样版式可控，不会因为运营乱挂把页面撑坏。key 必须和 index.html 里的 data-ad-slot 一致。
+const AD_SLOTS = [
+  { key: 'home-top', name: '首页顶部横幅', where: '首页 Hero 下方、本周精选上方', size: '建议 1400 × 280' },
+  { key: 'home-bottom', name: '首页列表底部', where: '作品列表末尾、加载更多上方', size: '建议 1400 × 240' },
+  { key: 'detail', name: '作品详情页', where: '详情弹窗内、评论区下方', size: '建议 1200 × 240' },
+  { key: 'rank', name: '榜单页顶部', where: '榜单标题下方', size: '建议 1400 × 240' },
+  { key: 'footer', name: '全站页脚上方', where: '所有页面底部通栏', size: '建议 1400 × 200' }
+];
+const AD_SLOT_KEYS = AD_SLOTS.map(s => s.key);
+if (!Array.isArray(ads)) ads = [];
 
 // ---------- 用户 / 会话 ----------
 const REMEMBER_TTL = 30 * 86400e3;   // 勾选「记住我」：30 天
@@ -791,6 +806,65 @@ app.get('/api/type-meta', (req, res) => {
 });
 // 推荐位（工具/资源）
 app.get('/api/tools', (req, res) => res.json(tools.filter(t => t.active !== false)));
+
+// ---------- 广告（公开） ----------
+// 前台一次拿全量启用中的广告，自己按 slot 分发；返回体很小（每支广告只有几十字节）。
+function adUrlOf(v) {
+  let s = String(v || '').trim();
+  if (!s) return '';
+  if (s.startsWith('/')) return s.slice(0, 500);   // 站内相对路径（比如 /?feedback=1）原样保留
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+  return s.slice(0, 500);
+}
+function publicAd(a) {
+  return {
+    id: a.id, slot: a.slot, title: a.title || '', desc: a.desc || '',
+    image: a.image || '', url: a.url, cta: a.cta || '', sort: a.sort || 0
+  };
+}
+function activeAds() {
+  return ads
+    .filter(a => a && a.active !== false && a.url && AD_SLOT_KEYS.includes(a.slot))
+    .sort((a, b) => (a.sort || 0) - (b.sort || 0));
+}
+// 曝光/点击都是高频写入，攒一下再落盘，避免每来一个曝光就写一次文件
+let adSaveTimer = null;
+function scheduleAdSave() {
+  if (adSaveTimer) return;
+  adSaveTimer = setTimeout(() => {
+    adSaveTimer = null;
+    try { saveAds(); } catch (e) { /* 统计失败不影响主流程 */ }
+  }, 3000);
+}
+
+app.get('/api/ads', (req, res) => {
+  res.set('Cache-Control', 'no-cache');
+  res.json({ slots: AD_SLOTS, ads: activeAds().map(publicAd) });
+});
+
+// 曝光：同一 IP 对同一支广告 6 小时内只记一次，避免刷新刷量
+app.post('/api/ads/:id/impression', (req, res) => {
+  const a = ads.find(x => x.id === req.params.id);
+  if (!a) return res.status(404).json({ error: '广告不存在' });
+  if (!rateLimit('ad-imp:' + clientIp(req) + ':' + a.id, 1, 6 * 3600e3)) {
+    return res.json({ ok: true, counted: false });
+  }
+  a.impressions = (a.impressions || 0) + 1;
+  scheduleAdSave();
+  res.json({ ok: true, counted: true });
+});
+
+// 点击：同一 IP 对同一支广告 60 秒内只记一次
+app.post('/api/ads/:id/click', (req, res) => {
+  const a = ads.find(x => x.id === req.params.id);
+  if (!a) return res.status(404).json({ error: '广告不存在' });
+  if (rateLimit('ad-clk:' + clientIp(req) + ':' + a.id, 1, 60000)) {
+    a.clicks = (a.clicks || 0) + 1;
+    scheduleAdSave();
+  }
+  res.json({ ok: true });
+});
+
 
 // 作品列表：搜索 + 筛选 + 分页 + 排序
 app.get('/api/works', (req, res) => {
@@ -1576,6 +1650,119 @@ app.delete('/api/admin/tools/:id', requireAdmin, (req, res) => {
   saveTools();
   res.json({ ok: true });
 });
+
+// ---------- 广告位管理 ----------
+// 同一广告位可以挂多支广告，sort 决定先后（前台按 sort 顺序轮流播放）
+function adsOfSlot(slot) {
+  return ads.filter(a => a.slot === slot)
+    .sort((a, b) => (a.sort || 0) - (b.sort || 0) || String(a.createdAt).localeCompare(String(b.createdAt)));
+}
+function renumberAds(slot) {
+  adsOfSlot(slot).forEach((a, i) => { a.sort = i; });
+}
+function adPayload(body) {
+  return {
+    slot: String(body.slot || ''),
+    title: String(body.title || '').trim().slice(0, 60),
+    desc: String(body.desc || '').trim().slice(0, 120),
+    url: adUrlOf(body.url),
+    cta: String(body.cta || '').trim().slice(0, 20),
+    active: String(body.active) !== '0'
+  };
+}
+function adListJson() {
+  return {
+    slots: AD_SLOTS,
+    ads: ads.slice().sort((a, b) => AD_SLOT_KEYS.indexOf(a.slot) - AD_SLOT_KEYS.indexOf(b.slot)
+      || (a.sort || 0) - (b.sort || 0))
+  };
+}
+
+app.get('/api/admin/ads', requireAdmin, (req, res) => res.json(adListJson()));
+
+app.post('/api/admin/ads', requireAdmin, (req, res) => {
+  upload(req, res, err => {
+    if (err) return res.status(400).json({ error: '上传失败：' + err.message });
+    const p = adPayload(req.body || {});
+    if (!AD_SLOT_KEYS.includes(p.slot)) return res.status(400).json({ error: '请选择投放的广告位' });
+    if (!p.url) return res.status(400).json({ error: '跳转链接必填' });
+    const img = req.files && req.files.image && req.files.image[0];
+    if (!p.title && !img) return res.status(400).json({ error: '标题和图片至少填一个' });
+    const ad = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      ...p,
+      image: img ? '/uploads/' + img.filename : '',
+      sort: adsOfSlot(p.slot).length,
+      impressions: 0,
+      clicks: 0,
+      createdAt: new Date().toISOString()
+    };
+    ads.push(ad);
+    saveAds();
+    res.status(201).json(adListJson());
+  });
+});
+
+app.put('/api/admin/ads/:id', requireAdmin, (req, res) => {
+  upload(req, res, err => {
+    if (err) return res.status(400).json({ error: '上传失败：' + err.message });
+    const a = ads.find(x => x.id === req.params.id);
+    if (!a) return res.status(404).json({ error: '广告不存在' });
+    const p = adPayload(req.body || {});
+    if (!AD_SLOT_KEYS.includes(p.slot)) return res.status(400).json({ error: '请选择投放的广告位' });
+    if (!p.url) return res.status(400).json({ error: '跳转链接必填' });
+    const img = req.files && req.files.image && req.files.image[0];
+    const removeImg = String(req.body && req.body.removeImage) === '1';
+    const oldImage = a.image || '';
+    const nextImage = img ? '/uploads/' + img.filename : (removeImg ? '' : oldImage);
+    if (!p.title && !nextImage) return res.status(400).json({ error: '标题和图片至少填一个' });
+
+    const slotChanged = a.slot !== p.slot;
+    Object.assign(a, p);                 // 注意：p 里没有 image，图片单独处理
+    if (slotChanged) a.sort = adsOfSlot(p.slot).filter(x => x.id !== a.id).length;
+    if (nextImage !== oldImage) {
+      a.image = nextImage;
+      removeUpload(oldImage);            // 换图/删图后再清理旧文件
+    }
+    if (slotChanged) renumberAds(a.slot);
+    saveAds();
+    res.json(adListJson());
+  });
+});
+
+app.post('/api/admin/ads/:id/toggle', requireAdmin, (req, res) => {
+  const a = ads.find(x => x.id === req.params.id);
+  if (!a) return res.status(404).json({ error: '广告不存在' });
+  a.active = a.active === false;
+  saveAds();
+  res.json(adListJson());
+});
+
+// 同一位内上移 / 下移
+app.post('/api/admin/ads/:id/move', requireAdmin, (req, res) => {
+  const a = ads.find(x => x.id === req.params.id);
+  if (!a) return res.status(404).json({ error: '广告不存在' });
+  const dir = (req.body && req.body.dir) === 'down' ? 1 : -1;
+  const list = adsOfSlot(a.slot);
+  const i = list.findIndex(x => x.id === a.id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= list.length) return res.json(adListJson());
+  [list[i], list[j]] = [list[j], list[i]];
+  list.forEach((x, k) => { x.sort = k; });
+  saveAds();
+  res.json(adListJson());
+});
+
+app.delete('/api/admin/ads/:id', requireAdmin, (req, res) => {
+  const idx = ads.findIndex(x => x.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: '广告不存在' });
+  const [removed] = ads.splice(idx, 1);
+  removeUpload(removed.image);
+  renumberAds(removed.slot);
+  saveAds();
+  res.json(adListJson());
+});
+
 
 // 认证创作者
 app.get('/api/admin/creators', requireAdmin, (req, res) => res.json(creators));
