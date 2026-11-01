@@ -918,7 +918,7 @@ body.scroll-locked { overflow: hidden; }
 
 /* 意见反馈浮动入口（低调白色胶囊版，用户指定用回这一版） */
 .feedback-fab {
-  position: fixed; right: 20px; bottom: 24px; z-index: 90;
+  position: fixed; right: 20px; bottom: 44px; z-index: 90;
   display: flex; align-items: center; gap: 6px;
   padding: 10px 16px; border: 1px solid var(--border); border-radius: 999px;
   background: var(--card); color: var(--text); font-size: 13px; cursor: pointer;
@@ -931,7 +931,8 @@ body.scroll-locked { overflow: hidden; }
 }
 .feedback-fab:active { transform: translateY(0); }
 @media (max-width: 640px) {
-  .feedback-fab { right: 14px; bottom: 16px; padding: 9px 14px; font-size: 12px; }
+  /* 手机上避开系统手势条 / 刘海屏底部安全区 */
+  .feedback-fab { right: 14px; bottom: calc(30px + env(safe-area-inset-bottom, 0px)); padding: 9px 14px; font-size: 12px; }
 }
 
 /* ========== SEO / 服务端渲染区块 ========== */
