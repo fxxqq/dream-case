@@ -935,6 +935,27 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   .main-nav { order: 4; width: 100%; overflow-x: auto; }
 }
 
+/* 手机端头部紧凑版：logo+提交按钮一行 / 搜索一行 / 导航+用户一行 */
+@media (max-width: 640px) {
+  .header-inner { flex-wrap: wrap; height: auto; padding: 8px 0; gap: 8px 10px; }
+  .logo { font-size: 16px; }
+  .header-inner > .btn-primary { order: 1; margin-left: auto; padding: 7px 13px; font-size: 13px; border-radius: 8px; }
+  .search-box { flex: 1 1 100%; order: 2; }
+  .search-box input { padding: 7px 12px 7px 30px; font-size: 13px; }
+  .main-nav { order: 3; flex: 0 0 auto; width: auto; gap: 2px; margin-right: auto; }
+  .main-nav .nav-btn { padding: 5px 10px; font-size: 13px; }
+  .auth-box { order: 4; margin-left: auto; gap: 1px; justify-content: flex-end; flex-wrap: wrap; min-width: 0; }
+  .user-chip { max-width: 96px; overflow: hidden; text-overflow: ellipsis; padding: 5px 10px; font-size: 13px; gap: 4px; }
+  .auth-box .link-btn { font-size: 12px; padding: 5px 4px; white-space: nowrap; }
+  .auth-box .lb-ico { display: none; }
+  .auth-box .auth-open { padding: 6px 12px; font-size: 13px; }
+
+  /* 「本周精选」标题不再被副标题挤换行 */
+  .section-head { gap: 8px; }
+  .section-head h2 { flex: none; white-space: nowrap; font-size: 16.5px; }
+  .featured-head .section-sub { flex: 1 1 auto; min-width: 0; }
+}
+
 body.scroll-locked { overflow: hidden; }
 
 /* 意见反馈浮动入口（低调白色胶囊版，用户指定用回这一版） */
