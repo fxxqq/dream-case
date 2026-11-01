@@ -81,6 +81,28 @@
         <div class="ad-slot" data-ad-slot="home-bottom"></div>
         <button class="btn-ghost" id="loadMore" style="display:none">加载更多</button>
       </div>
+
+      <!-- 许愿墙：说出你想要的作品，社区里的创作者来认领实现 -->
+      <section class="wish-section" id="wishSection" style="display:none">
+        <div class="section-head wish-head">
+          <h2>💡 你有什么想法，让大家实现吗？</h2>
+          <span class="section-sub">一句话说出你想要的作品，社区里的高手来接</span>
+        </div>
+        <div class="wish-compose">
+          <input id="wishInput" maxlength="80" autocomplete="off"
+                 placeholder="我想要一个……（比如：能自动整理下载文件夹的小工具）" />
+          <button class="btn-primary" id="wishSubmit">发布想法</button>
+        </div>
+        <div class="wish-bar">
+          <div class="wish-tabs" id="wishTabs" role="group" aria-label="想法排序">
+            <button class="wish-tab active" data-sort="hot">🔥 最多人想要</button>
+            <button class="wish-tab" data-sort="new">🕒 最新想法</button>
+          </div>
+          <span class="wish-count" id="wishCount"></span>
+        </div>
+        <div class="wish-list" id="wishList"></div>
+        <button class="wish-more" id="wishMore" style="display:none">查看全部想法 →</button>
+      </section>
     </section>
 
     <!-- 榜单 -->
@@ -262,6 +284,25 @@
         <div class="nick-actions">
           <button type="button" class="btn-ghost" id="nickReset">恢复默认</button>
           <button type="button" class="btn-primary" id="nickSave">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 许愿墙：认领者把做好的作品挂上来 -->
+  <div class="modal-mask" id="ideaDoneModal" style="display:none">
+    <div class="modal modal-idea">
+      <div class="modal-head">
+        <h2>标记已实现</h2>
+        <button class="close-btn" id="closeIdeaDone" title="关闭">✕</button>
+      </div>
+      <div class="idea-done-body">
+        <p class="idea-done-tip">把做好的作品链接贴进来（<code>/w/xxx</code> 或完整网址），这张许愿卡就会变成「已实现」。</p>
+        <input id="ideaDoneInput" maxlength="200" autocomplete="off" placeholder="https://idea.v5pc.com/w/xxxx" />
+        <p class="idea-done-msg" id="ideaDoneMsg"></p>
+        <div class="idea-done-actions">
+          <button type="button" class="btn-ghost" id="ideaDoneCancel">取消</button>
+          <button type="button" class="btn-primary" id="ideaDoneSave">确定</button>
         </div>
       </div>
     </div>

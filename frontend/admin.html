@@ -199,6 +199,7 @@
         <button class="tab" data-tab="claims">认领申请</button>
         <button class="tab" data-tab="feedback">意见反馈</button>
         <button class="tab" data-tab="comments">评论管理</button>
+        <button class="tab" data-tab="ideas">想法墙</button>
         <button class="tab" data-tab="categories">分类管理</button>
         <button class="tab" data-tab="types">形态管理</button>
         <button class="tab" data-tab="tools">推荐位</button>
@@ -489,6 +490,7 @@
       if (tab === 'claims') return loadClaims();
       if (tab === 'feedback') return loadFeedback();
       if (tab === 'comments') return loadComments();
+      if (tab === 'ideas') return loadIdeasAdmin();
       if (tab === 'categories') return loadCategories();
       if (tab === 'types') return loadTypes();
       if (tab === 'tools') return loadTools();
@@ -1158,6 +1160,54 @@
               ${r.status === '待处理' ? `<button class="btn btn-ok btn-sm" data-report="${r.id}">标记已处理</button>` : ''}
             </div>
           </div>`).join('');
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    // ---- 许愿墙（想法） ----
+    async function loadIdeasAdmin() {
+      try {
+        const list = await api('/api/admin/ideas');
+        if (!list.length) { panel.innerHTML = '<div class="empty">还没有人提想法</div>'; return; }
+        const label = i => i.hidden ? '已隐藏'
+          : i.status === 'done' ? '已实现'
+          : i.status === 'claimed' ? '实现中' : '征集中';
+        panel.innerHTML = `<div class="row-meta" style="margin-bottom:10px">共 ${list.length} 个想法 · 隐藏后前台不再展示</div>`
+          + list.map(i => `
+          <div class="row">
+            <div class="row-main">
+              <div class="row-title">
+                <span class="tag ${i.hidden ? 'warn' : 'ok'}">${esc(label(i))}</span>
+                <span style="color:var(--muted);font-size:12px;margin-left:6px">@${esc(i.author)} · ${new Date(i.createdAt).toLocaleString('zh-CN')}</span>
+              </div>
+              <div class="row-meta" style="font-size:13.5px;font-weight:600;color:var(--text)">${esc(i.title)}</div>
+              <div class="row-meta">👍 ${i.wants} 人想要${i.claimer ? ` · 🔧 ${esc(i.claimer.name)} 在做` : ''}${i.work ? ` · ✓ 已实现：${esc(i.work.title)}` : ''}</div>
+            </div>
+            <div class="row-actions">
+              <button class="btn btn-sm" data-idea-hide="${i.id}" data-next="${i.hidden ? '0' : '1'}">${i.hidden ? '恢复展示' : '隐藏'}</button>
+              <button class="btn btn-danger btn-sm" data-idea-del="${i.id}">删除</button>
+            </div>
+          </div>`).join('');
+        panel.querySelectorAll('[data-idea-hide]').forEach(b => {
+          b.onclick = async () => {
+            b.disabled = true;
+            try {
+              await api('/api/admin/ideas/' + b.dataset.ideaHide, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hidden: b.dataset.next === '1' })
+              });
+              loadIdeasAdmin();
+            } catch (e) { toast(e.message); b.disabled = false; }
+          };
+        });
+        panel.querySelectorAll('[data-idea-del]').forEach(b => {
+          b.onclick = async () => {
+            if (!confirm('删除这个想法？')) return;
+            try {
+              await api('/api/ideas/' + b.dataset.ideaDel, { method: 'DELETE' });
+              loadIdeasAdmin();
+            } catch (e) { toast(e.message); }
+          };
+        });
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
 

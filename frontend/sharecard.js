@@ -325,7 +325,9 @@
   }
 
   function cardUrl(work) {
-    return location.origin + '/w/' + encodeURIComponent(work.id);
+    // 分享卡片上的链接 / 二维码同样带分享者 ref（页面里定义了 withRef 就用它）
+    const base = location.origin + '/w/' + encodeURIComponent(work.id);
+    return typeof withRef === 'function' ? withRef(base) : base;
   }
 
   // ---------- 渲染（含图片/二维码加载） ----------

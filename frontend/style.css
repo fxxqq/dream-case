@@ -1081,7 +1081,7 @@ body.on-work .load-more-wrap { display: none !important; }
 .stats-loading { padding: 32px 0; text-align: center; font-size: 13px; color: var(--muted); }
 
 .stats-summary {
-  display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 18px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 8px; margin-bottom: 18px;
 }
 .stat-card {
   background: #f7f7fd; border: 1px solid #eeeef8; border-radius: 12px;
@@ -1089,6 +1089,9 @@ body.on-work .load-more-wrap { display: none !important; }
 }
 .stat-card b { display: block; font-size: 18px; line-height: 1.25; color: var(--text); }
 .stat-card span { font-size: 11.5px; color: var(--muted); }
+/* 分享相关的三项单独标色，和浏览/点赞等常规指标区分开 */
+.stat-card.is-share { background: linear-gradient(180deg, #f5f3ff, #fcfbff); border-color: #e7e2ff; }
+.stat-card.is-share b { color: var(--primary); }
 
 .stats-chart { margin-bottom: 20px; }
 .stats-chart-head { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
@@ -1122,7 +1125,105 @@ body.on-work .load-more-wrap { display: none !important; }
 .sw-right { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; color: var(--primary); }
 .sw-spark { display: block; opacity: .85; }
 .sw-7d { font-size: 11px; color: var(--muted); }
+.sw-share {
+  margin-top: 3px; font-size: 11px; line-height: 1.6; padding: 1px 10px; border-radius: 999px;
+  border: 1px solid #dcdcf0; background: #fff; color: #5a5fd8; cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.sw-share:hover { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+/* 分享达人榜 */
+.board-list { display: flex; flex-direction: column; margin-bottom: 2px; }
+.board-row {
+  display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 10px; font-size: 13px;
+}
+.board-row + .board-row { margin-top: 2px; }
+.board-row:nth-child(odd) { background: #fafaff; }
+.board-row.is-me { background: #f1eeff; box-shadow: inset 0 0 0 1px #e2dcff; }
+.board-rank { width: 22px; flex: none; text-align: center; font-size: 12px; font-weight: 700; color: #b9b9cc; }
+.board-rank.top { color: var(--primary); }
+.board-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-num { flex: none; font-size: 11.5px; color: var(--muted); }
+.board-pts { flex: none; min-width: 44px; text-align: right; font-size: 13px; color: var(--primary); }
+.board-pts i { font-style: normal; font-size: 10px; color: var(--muted); margin-left: 1px; }
 .stats-tip { margin: 12px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.6; }
+
+/* ---------- 许愿墙：你有什么想法，让大家实现吗 ---------- */
+.wish-section { margin: 36px 0 6px; padding-top: 26px; border-top: 1px solid #f0f0f8; }
+.wish-head h2 { font-size: 19px; }
+.wish-compose { display: flex; gap: 8px; margin: 14px 0 12px; }
+.wish-compose input {
+  flex: 1; min-width: 0; padding: 10px 14px; font-size: 13.5px; color: var(--text);
+  border: 1px solid #e6e6f2; border-radius: 12px; background: #fbfbfe;
+  transition: border-color .18s, box-shadow .18s, background .18s;
+}
+.wish-compose input:focus {
+  outline: none; border-color: var(--primary); background: #fff;
+  box-shadow: 0 0 0 3px rgba(91, 91, 214, .1);
+}
+.wish-compose .btn-primary { flex: none; padding: 0 18px; font-size: 13.5px; border-radius: 12px; }
+.wish-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.wish-tabs { display: flex; gap: 6px; }
+.wish-tab {
+  font-size: 12px; line-height: 1.8; padding: 1px 11px; border-radius: 999px; cursor: pointer;
+  border: 1px solid #e8e8f4; background: #fff; color: var(--muted);
+}
+.wish-tab.active { background: #f1eeff; border-color: #ddd6ff; color: var(--primary); font-weight: 600; }
+.wish-count { font-size: 11.5px; color: var(--muted); }
+.wish-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.wish-card {
+  background: #fff; border: 1px solid #eeeef8; border-radius: 14px; padding: 12px 14px 10px;
+  transition: box-shadow .16s, border-color .16s;
+}
+.wish-card:hover { border-color: #ded9ff; box-shadow: 0 6px 18px rgba(91, 91, 214, .08); }
+.wish-card.is-done { background: #fbfdfb; border-color: #e3f0e6; }
+.wish-card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; flex-wrap: wrap; }
+.wish-cat { font-size: 11px; line-height: 1.7; padding: 0 8px; border-radius: 999px; background: #f3f3fb; color: #6a6f8a; }
+.wish-status { font-size: 11px; }
+.wish-status.is-open { color: var(--muted); }
+.wish-status.is-claimed { color: #a2600a; }
+.wish-status.is-done { color: #1f8a4c; text-decoration: none; }
+.wish-status.is-done:hover { text-decoration: underline; }
+.wish-card-title { font-size: 14px; font-weight: 600; line-height: 1.55; margin: 0 0 10px; }
+.wish-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wish-author { font-size: 11.5px; color: var(--muted); flex: none; }
+.wish-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.wish-want, .wish-claim {
+  font-size: 11.5px; line-height: 1.8; padding: 0 9px; border-radius: 999px; cursor: pointer;
+  border: 1px solid #e6e6f2; background: #fff; color: #5a5f78;
+}
+.wish-want b { font-weight: 700; }
+.wish-want:hover { border-color: var(--primary); color: var(--primary); }
+.wish-want.is-on { background: #f1eeff; border-color: #d9d2ff; color: var(--primary); }
+.wish-claim { border-color: #ddd6ff; color: var(--primary); }
+.wish-claim:hover { background: var(--primary); border-color: var(--primary); color: #fff; }
+.wish-claim.is-mine { background: var(--primary); border-color: var(--primary); color: #fff; }
+.wish-del { border: none; background: none; padding: 0 2px; font-size: 12px; color: #c4c7d6; cursor: pointer; }
+.wish-del:hover { color: #e05b5b; }
+.wish-empty { grid-column: 1 / -1; padding: 22px 0; text-align: center; font-size: 13px; color: var(--muted); }
+.wish-more {
+  display: block; margin: 12px auto 0; padding: 0; border: none; background: none;
+  font-size: 12.5px; color: var(--primary); cursor: pointer;
+}
+.wish-more:hover { text-decoration: underline; }
+
+/* 标记已实现弹窗 */
+.modal.modal-idea { max-width: 440px; }
+.idea-done-tip { font-size: 12.5px; color: var(--muted); line-height: 1.7; margin: 2px 0 12px; }
+.idea-done-tip code { background: #f3f3fb; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+#ideaDoneInput {
+  width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 13px; color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px; background: #fafafe;
+}
+#ideaDoneInput:focus { outline: none; border-color: var(--primary); background: #fff; box-shadow: 0 0 0 3px rgba(91, 91, 214, .1); }
+.idea-done-msg { min-height: 16px; margin: 6px 0 0; font-size: 12px; color: #d9534f; }
+.idea-done-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+
+@media (max-width: 640px) {
+  .wish-list { grid-template-columns: 1fr; }
+  .wish-compose { flex-direction: column; }
+  .wish-compose .btn-primary { padding: 9px; }
+}
 
 .stats-empty { padding: 26px 6px 10px; text-align: center; }
 .stats-empty-icon { font-size: 34px; margin-bottom: 6px; }

@@ -378,6 +378,243 @@ function workVisitStats(workId) {
   };
 }
 
+// ---------- 分享归因与积分奖励 ----------
+// 分享链接形如 /w/<id>?ref=<账号名>。访客打开后按「IP + 分享者 + 作品 + 当天」去重，
+// 计一次有效分享访问；被邀请人注册再计一次邀请注册。
+// 所有去重都落在 IP 维度：换浏览器、清缓存、开无痕都不会重复加分（这是防刷的关键）。
+const SHARE_VISIT_POINTS = 1;        // 一次有效分享访问
+const SHARE_REG_POINTS = 20;         // 一个有效邀请注册
+const SHARE_DAILY_VISIT_POINTS = 50; // 每人每天「访问」奖励上限
+const SHARE_DAILY_REG_POINTS = 100;  // 每人每天「邀请注册」奖励上限
+const SHARE_IP_PER_REF_DAY = 3;      // 同一 IP 对同一分享者：每天最多计 3 次访问
+const SHARE_IP_TOTAL_DAY = 10;       // 同一 IP 在全站：每天最多计 10 次访问
+const SHARE_IP_MAX_REGS = 2;         // 同一 IP 最多计 2 个邀请注册（防同屋批量注册）
+const SHARE_IP_REF_MAX_REGS = 1;     // 同一 IP 对同一分享者最多计 1 个邀请注册
+const SHARE_ATTR_DAYS = 7;           // 点击后 7 天内注册才算归因
+const SHARE_LOG_MAX = 60;
+const SHARE_RETENTION_DAYS = 120;    // IP 明细保留天数（只留去重用的近期记录）
+
+let shareData = readJSON('share.json', null);
+if (!shareData || typeof shareData !== 'object' || Array.isArray(shareData)) shareData = {};
+if (!shareData.users || typeof shareData.users !== 'object') shareData.users = {};
+if (!shareData.ips || typeof shareData.ips !== 'object') shareData.ips = {};
+
+let shareSaveTimer = null;
+function saveShareSoon() {
+  if (shareSaveTimer) return;
+  shareSaveTimer = setTimeout(() => {
+    shareSaveTimer = null;
+    try { writeJSON('share.json', shareData); } catch (e) { /* 奖励落盘失败不阻塞主流程 */ }
+  }, 2000);
+}
+
+// IP 只存哈希：既要按 IP 去重，又不在文件里留明文地址
+function ipKeyOf(req) {
+  return crypto.createHash('sha256').update('share:' + clientIp(req)).digest('hex').slice(0, 16);
+}
+function shareRecOf(uid) {
+  const r = shareData.users[uid] || (shareData.users[uid] = { points: 0, visits: 0, regs: 0, works: {}, byDay: {}, pairs: {}, log: [] });
+  if (!r.works) r.works = {};
+  if (!r.byDay) r.byDay = {};
+  if (!r.pairs) r.pairs = {};
+  if (!Array.isArray(r.log)) r.log = [];
+  return r;
+}
+function ipRecOf(ipk) {
+  const r = shareData.ips[ipk] || (shareData.ips[ipk] = { v: {}, d: {}, t: {}, regs: 0, refRegs: {}, regIpUsers: [] });
+  if (!r.v) r.v = {};
+  if (!r.d) r.d = {};
+  if (!r.t) r.t = {};
+  if (!r.regs) r.regs = 0;
+  if (!r.refRegs) r.refRegs = {};
+  if (!Array.isArray(r.regIpUsers)) r.regIpUsers = [];
+  return r;
+}
+function dayOf(rec) {
+  const k = dateKey();
+  if (!rec.byDay[k]) rec.byDay[k] = { visits: 0, regs: 0, vp: 0, rp: 0 };
+  return rec.byDay[k];
+}
+function pushShareLog(rec, kind, workId, points) {
+  rec.log.unshift({ t: Date.now(), kind, workId: workId || '', points });
+  if (rec.log.length > SHARE_LOG_MAX) rec.log.length = SHARE_LOG_MAX;
+}
+// 清理：IP 明细只保留最近 N 天，避免文件无限膨胀
+function pruneShare() {
+  const cutoff = dateKey(new Date(Date.now() - SHARE_RETENTION_DAYS * 86400e3));
+  Object.keys(shareData.ips).forEach(ipk => {
+    const r = shareData.ips[ipk];
+    ['v', 'd', 't'].forEach(f => {
+      Object.keys(r[f] || {}).forEach(k => {
+        const m = k.match(/(\d{4}-\d{2}-\d{2})$/);
+        if (m && m[1] < cutoff) delete r[f][k];
+      });
+    });
+    if (r.attr && r.attr.at && Date.now() - r.attr.at > SHARE_ATTR_DAYS * 86400e3) delete r.attr;
+    const empty = !Object.keys(r.v).length && !Object.keys(r.d).length && !Object.keys(r.t).length
+      && !r.attr && !r.regs;
+    if (empty) delete shareData.ips[ipk];
+  });
+  Object.keys(shareData.users).forEach(uid => {
+    const r = shareData.users[uid];
+    const keys = Object.keys(r.byDay || {}).sort();
+    while (keys.length > SHARE_RETENTION_DAYS) delete r.byDay[keys.shift()];
+  });
+}
+
+// 记录一次分享访问。返回 { credited, points, reason }
+function creditShareVisit(req, refName, workId) {
+  const refUser = userByName(String(refName || '').trim());
+  if (!refUser) return { credited: false, reason: 'no_ref' };
+  const me = currentUser(req);
+  if (me && me.id === refUser.id) return { credited: false, reason: 'self' }; // 自己点自己的链接不算
+  const day = dateKey();
+  const wk = String(workId || '-');
+  const ipk = ipKeyOf(req);
+  const ip = ipRecOf(ipk);
+
+  // 记录首次触达（注册归因用）；新的分享者或已过期则覆盖
+  if (!ip.attr || ip.attr.uid !== refUser.id || Date.now() - ip.attr.at > SHARE_ATTR_DAYS * 86400e3) {
+    ip.attr = { uid: refUser.id, at: Date.now() };
+  }
+
+  const rec = shareRecOf(refUser.id);
+  // 登录用户：同一作品终身只计一次（换设备也刷不动）
+  const pairKey = me ? `u:${me.id}|${wk}` : '';
+  if (pairKey && rec.pairs[pairKey]) return { credited: false, reason: 'dup_user' };
+  // 游客：同 IP + 同分享者 + 同作品 + 当天只计一次
+  const visitKey = `${refUser.id}|${wk}|${day}`;
+  if (ip.v[visitKey]) return { credited: false, reason: 'dup_ip' };
+
+  // 同一 IP 对同一分享者、以及全站当天的总量上限
+  const perRefKey = `${refUser.id}|${day}`;
+  if ((ip.d[perRefKey] || 0) >= SHARE_IP_PER_REF_DAY) return { credited: false, reason: 'limit_ip_ref' };
+  if ((ip.t[day] || 0) >= SHARE_IP_TOTAL_DAY) return { credited: false, reason: 'limit_ip_day' };
+
+  // 分享者当天访问奖励封顶
+  const d = dayOf(rec);
+  if (d.vp >= SHARE_DAILY_VISIT_POINTS) return { credited: false, reason: 'limit_daily' };
+
+  ip.v[visitKey] = 1;
+  ip.d[perRefKey] = (ip.d[perRefKey] || 0) + 1;
+  ip.t[day] = (ip.t[day] || 0) + 1;
+  if (pairKey) rec.pairs[pairKey] = 1;
+
+  rec.visits = (rec.visits || 0) + 1;
+  rec.works[wk] = (rec.works[wk] || 0) + 1;
+  rec.points = (rec.points || 0) + SHARE_VISIT_POINTS;
+  d.visits += 1;
+  d.vp += SHARE_VISIT_POINTS;
+  pushShareLog(rec, 'visit', wk, SHARE_VISIT_POINTS);
+  saveShareSoon();
+  return { credited: true, points: SHARE_VISIT_POINTS };
+}
+
+// 记录一次邀请注册。refName 来自注册请求 body 或该 IP 的首次触达
+function creditShareRegister(req, newUser, refName) {
+  const ipk = ipKeyOf(req);
+  const ip = ipRecOf(ipk);
+  if (newUser && !newUser.regIp) newUser.regIp = ipk;
+
+  let refUser = userByName(String(refName || '').trim());
+  // 没有显式 ref 就用 7 天内的首次触达兜底
+  if (!refUser && ip.attr && Date.now() - ip.attr.at <= SHARE_ATTR_DAYS * 86400e3) {
+    refUser = users.find(u => u.id === ip.attr.uid) || null;
+  }
+  if (!refUser || !newUser) return { credited: false, reason: 'no_ref' };
+  if (refUser.id === newUser.id) return { credited: false, reason: 'self' };
+  // 同一台机器/同一出口 IP 上的账号互相邀请，不算（防小号互刷）
+  if (refUser.regIp && refUser.regIp === ipk) return { credited: false, reason: 'same_ip' };
+
+  if (ip.regs >= SHARE_IP_MAX_REGS) return { credited: false, reason: 'limit_ip' };
+  if ((ip.refRegs[refUser.id] || 0) >= SHARE_IP_REF_MAX_REGS) return { credited: false, reason: 'limit_ip_ref' };
+
+  const rec = shareRecOf(refUser.id);
+  const d = dayOf(rec);
+  if (d.rp >= SHARE_DAILY_REG_POINTS) return { credited: false, reason: 'limit_daily' };
+
+  ip.regs += 1;
+  ip.refRegs[refUser.id] = (ip.refRegs[refUser.id] || 0) + 1;
+  if (!ip.regIpUsers.includes(newUser.id)) ip.regIpUsers.push(newUser.id);
+
+  rec.regs = (rec.regs || 0) + 1;
+  rec.points = (rec.points || 0) + SHARE_REG_POINTS;
+  d.regs += 1;
+  d.rp += SHARE_REG_POINTS;
+  pushShareLog(rec, 'reg', '', SHARE_REG_POINTS);
+  newUser.invitedBy = refUser.username;
+  saveUsers();
+  saveShareSoon();
+  return { credited: true, points: SHARE_REG_POINTS, inviter: displayNameOf(refUser.username) };
+}
+
+// 分享榜：按积分排序，只展示昵称与公开数字
+function shareBoard(limit = 10) {
+  const rows = Object.keys(shareData.users).map(uid => {
+    const u = users.find(x => x.id === uid);
+    if (!u) return null;
+    const r = shareData.users[uid];
+    if (!r || !(r.points > 0)) return null;
+    return {
+      username: u.username,
+      name: displayNameOf(u.username),
+      points: r.points || 0,
+      visits: r.visits || 0,
+      regs: r.regs || 0
+    };
+  }).filter(Boolean).sort((a, b) => b.points - a.points || b.visits - a.visits);
+  return rows.slice(0, limit).map((row, i) => ({ ...row, rank: i + 1 }));
+}
+function shareStatsOf(userId) {
+  const r = shareData.users[userId] || { points: 0, visits: 0, regs: 0, works: {}, byDay: {} };
+  const board = shareBoard(1000);
+  const idx = board.findIndex(b => b.username === (users.find(u => u.id === userId) || {}).username);
+  return {
+    points: r.points || 0,
+    visits: r.visits || 0,
+    regs: r.regs || 0,
+    works: r.works || {},
+    byDay: r.byDay || {},
+    rank: idx >= 0 ? idx + 1 : 0,
+    totalRanked: board.length
+  };
+}
+
+// ---------- 许愿墙 ----------
+// 一句话说出「我想要一个……」，别人点「我也想要」表达需求热度；
+// 有本事的创作者点「我来实现」认领，做完把作品挂上来，卡片自动变「已实现」。
+let ideas = readJSON('ideas.json', []);
+if (!Array.isArray(ideas)) ideas = [];
+const IDEA_TITLE_MAX = 80;
+const IDEA_KEEP_MAX = 2000;      // 最多保留条数
+function saveIdeas() {
+  if (ideas.length > IDEA_KEEP_MAX) ideas.length = IDEA_KEEP_MAX;
+  writeJSON('ideas.json', ideas);
+}
+function ideaById(id) { return ideas.find(i => i.id === id) || null; }
+// 点「我也想要」的身份：登录按账号，未登录按 IP，都终身只计一次
+function ideaWantKey(req, user) {
+  if (user) return 'u:' + user.id;
+  return 'ip:' + crypto.createHash('sha256').update('idea:' + clientIp(req)).digest('hex').slice(0, 16);
+}
+function publicIdea(i, req, user) {
+  const key = ideaWantKey(req, user);
+  const w = i.workId ? works.find(x => x.id === i.workId) : null;
+  return {
+    id: i.id,
+    title: i.title,
+    category: i.category || '',
+    author: displayNameOf(i.author),
+    mine: !!(user && i.userId && i.userId === user.id),
+    wants: i.wants || 0,
+    wanted: Array.isArray(i.wantKeys) && i.wantKeys.includes(key),
+    status: i.status || 'open',
+    claimer: i.claimer ? { name: i.claimer.name, mine: !!(user && i.claimer.userId === user.id) } : null,
+    work: w ? { id: w.id, title: w.title } : null,
+    createdAt: i.createdAt
+  };
+}
+
 // ---------- 应用 ----------
 const app = express();
 app.set('trust proxy', true);
@@ -661,10 +898,17 @@ app.post('/api/register', (req, res) => {
   if (users.find(u => u.username === name)) return res.status(400).json({ error: '用户名已被占用' });
 
   const user = makeUser(name, String(password));
+  user.regIp = ipKeyOf(req);
   users.push(user);
   saveUsers();
+  // 邀请奖励：带上 ref 或者该 IP 7 天内有分享落地记录才计入（同 IP 有严格上限，见 creditShareRegister）
+  const invite = creditShareRegister(req, user, (req.body && req.body.ref) || '');
   setSession(res, user, isRemember(req.body));
-  res.status(201).json({ username: user.username });
+  res.status(201).json({
+    username: user.username,
+    invited: !!invite.credited,
+    invitePoints: invite.credited ? SHARE_REG_POINTS : 0
+  });
 });
 
 app.post('/api/login', (req, res) => {
@@ -827,6 +1071,8 @@ app.get('/api/me/stats', (req, res) => {
   for (let i = 13; i >= 0; i--) days.push(dateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)));
 
   const mine = works.filter(w => w.userId === user.id && !w.deleted);
+  const shareRec = shareData.users[user.id] || { points: 0, visits: 0, regs: 0, works: {} };
+  const myShareWorks = shareRec.works || {};
   const items = mine.map(w => {
     const rec = workVisits[w.id] || {};
     const trend = days.map(k => (rec.days && rec.days[k] && rec.days[k].pv) || 0);
@@ -842,6 +1088,7 @@ app.get('/api/me/stats', (req, res) => {
       favs: w.favs || 0,
       comments: countComments(w.id),
       uv: rec.uv ? Object.keys(rec.uv).length : 0,
+      shareVisits: myShareWorks[w.id] || 0,       // 这件作品被分享后带来的有效访问
       pv7: trend.slice(-7).reduce((a, b) => a + b, 0),
       trend
     };
@@ -853,11 +1100,19 @@ app.get('/api/me/stats', (req, res) => {
     likes: a.likes + it.likes,
     favs: a.favs + it.favs,
     comments: a.comments + it.comments,
+    shareVisits: a.shareVisits + it.shareVisits,
     pv7: a.pv7 + it.pv7
-  }), { works: 0, views: 0, likes: 0, favs: 0, comments: 0, pv7: 0 });
+  }), { works: 0, views: 0, likes: 0, favs: 0, comments: 0, shareVisits: 0, pv7: 0 });
 
   const trend = days.map((_, i) => items.reduce((s, it) => s + it.trend[i], 0));
-  res.json({ totals, days, trend, works: items.sort((a, b) => b.views - a.views) });
+  const share = shareStatsOf(user.id);
+  res.json({
+    totals: { ...totals, shareRegs: share.regs, points: share.points },
+    days, trend,
+    share: { points: share.points, visits: share.visits, regs: share.regs, rank: share.rank, totalRanked: share.totalRanked },
+    board: shareBoard(10),
+    works: items.sort((a, b) => b.views - a.views)
+  });
 });
 
 // 分类
@@ -876,6 +1131,168 @@ app.post('/api/track', (req, res) => {
   }
   if (wid) trackWorkVisit(req, wid);
   res.json({ ok: true });
+});
+
+// ---- 分享归因：访客带着 ?ref= 落地时上报一次 ----
+// 前端只在「首次落地 + 本机没记过这条 ref/work」时调，所以请求量很小；这里仍做限流兜底。
+app.post('/api/ref/visit', (req, res) => {
+  const ref = String((req.body && req.body.ref) || '').trim().slice(0, 30);
+  const workId = String((req.body && req.body.workId) || '').trim().slice(0, 40);
+  if (!ref) return res.json({ ok: true, credited: false });
+  if (!rateLimit('refvisit:' + clientIp(req), 120, 3600e3)) return res.json({ ok: true, credited: false });
+  const r = creditShareVisit(req, ref, workId);
+  res.json({ ok: true, credited: !!r.credited, points: r.points || 0 });
+});
+
+// 分享达人榜（公开，只给昵称和公开数字）
+app.get('/api/shareboard', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ board: shareBoard(10) });
+});
+
+// ---- 许愿墙 ----
+// 列表：默认按「想要的人多」排序，可按最新；支持 limit
+app.get('/api/ideas', (req, res) => {
+  const sort = req.query.sort === 'new' ? 'new' : 'hot';
+  const limit = Math.min(60, Math.max(1, parseInt(req.query.limit, 10) || 12));
+  const user = currentUser(req);
+  const list = ideas.filter(i => !i.hidden);
+  const sorted = list.slice().sort((a, b) => {
+    if (sort === 'new') return new Date(b.createdAt) - new Date(a.createdAt);
+    const d = (b.wants || 0) - (a.wants || 0);
+    return d !== 0 ? d : new Date(b.createdAt) - new Date(a.createdAt);
+  });
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ total: list.length, items: sorted.slice(0, limit).map(i => publicIdea(i, req, user)) });
+});
+
+// 发布想法：需登录，每人每天最多 5 条
+app.post('/api/ideas', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('idea:' + user.id, 5, 86400e3)) {
+    return res.status(429).json({ error: '今天发的想法有点多了，明天再来吧' });
+  }
+  const title = String((req.body && req.body.title) || '').replace(/\s+/g, ' ').trim();
+  if (title.length < 4) return res.status(400).json({ error: '想法至少 4 个字，说清楚一点' });
+  if (title.length > IDEA_TITLE_MAX) return res.status(400).json({ error: `想法最多 ${IDEA_TITLE_MAX} 个字` });
+  if (hitSensitive(title)) return res.status(400).json({ error: '内容包含敏感词，改一下再发' });
+  // 同一句话不许重复刷屏
+  if (ideas.some(i => i.userId === user.id && i.title === title)) {
+    return res.status(400).json({ error: '你已经发过一样的想法了' });
+  }
+  let category = String((req.body && req.body.category) || '').trim();
+  if (category && !categories.includes(category)) category = '';
+
+  const idea = {
+    id: 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    title,
+    category,
+    userId: user.id,
+    author: user.username,
+    wants: 0,
+    wantKeys: [],
+    status: 'open',
+    claimer: null,
+    workId: '',
+    createdAt: new Date().toISOString()
+  };
+  ideas.unshift(idea);
+  saveIdeas();
+  res.status(201).json(publicIdea(idea, req, user));
+});
+
+// 我也想要：登录按账号 / 未登录按 IP，终身只计一次
+app.post('/api/ideas/:id/want', (req, res) => {
+  const idea = ideaById(req.params.id);
+  if (!idea) return res.status(404).json({ error: '想法不存在' });
+  if (!rateLimit('ideawant:' + clientIp(req), 120, 3600e3)) {
+    return res.status(429).json({ error: '点太快了，歇一会儿' });
+  }
+  const user = currentUser(req);
+  const key = ideaWantKey(req, user);
+  if (!Array.isArray(idea.wantKeys)) idea.wantKeys = [];
+  const wanted = idea.wantKeys.includes(key);
+  if (wanted) {
+    idea.wantKeys = idea.wantKeys.filter(k => k !== key);
+  } else {
+    idea.wantKeys.push(key);
+  }
+  idea.wants = idea.wantKeys.length;
+  saveIdeas();
+  res.json({ ok: true, wants: idea.wants, wanted: !wanted });
+});
+
+// 我来实现：认领（已认领的不能再抢，除非是自己的）
+app.post('/api/ideas/:id/claim', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const idea = ideaById(req.params.id);
+  if (!idea) return res.status(404).json({ error: '想法不存在' });
+  if (idea.userId === user.id) return res.status(400).json({ error: '这是你自己提的想法' });
+  if (idea.claimer && idea.claimer.userId !== user.id && idea.status !== 'open') {
+    return res.status(400).json({ error: `已经有 @${idea.claimer.name} 在做了` });
+  }
+  idea.claimer = { userId: user.id, name: displayNameOf(user.username), at: new Date().toISOString() };
+  idea.status = 'claimed';
+  saveIdeas();
+  res.json(publicIdea(idea, req, user));
+});
+
+// 标记已实现：只有认领者 / 提出者 / 管理员能挂作品
+app.post('/api/ideas/:id/done', (req, res) => {
+  const idea = ideaById(req.params.id);
+  if (!idea) return res.status(404).json({ error: '想法不存在' });
+  const user = currentUser(req);
+  const isClaimer = !!(user && idea.claimer && idea.claimer.userId === user.id);
+  const isAuthor = !!(user && idea.userId === user.id);
+  if (!isClaimer && !isAuthor && !isAdmin(req)) return res.status(403).json({ error: '只有认领者或提出者可以标记' });
+
+  let wid = String((req.body && req.body.workId) || '').trim();
+  const m = wid.match(/\/w\/([A-Za-z0-9_-]+)/);
+  if (m) wid = m[1];
+  if (!wid) { // 没填作品就退回「征集中」
+    idea.status = 'open';
+    idea.workId = '';
+    saveIdeas();
+    return res.json(publicIdea(idea, req, user));
+  }
+  if (!works.some(w => w.id === wid)) return res.status(400).json({ error: '没找到这个作品，检查一下链接' });
+  idea.workId = wid;
+  idea.status = 'done';
+  saveIdeas();
+  res.json(publicIdea(idea, req, user));
+});
+
+// 删除：提出者本人或管理员
+app.delete('/api/ideas/:id', (req, res) => {
+  const idea = ideaById(req.params.id);
+  if (!idea) return res.status(404).json({ error: '想法不存在' });
+  const user = currentUser(req);
+  if (!(user && idea.userId === user.id) && !isAdmin(req)) return res.status(403).json({ error: '无权删除' });
+  ideas = ideas.filter(i => i.id !== idea.id);
+  saveIdeas();
+  res.json({ ok: true });
+});
+
+// 后台：全部想法（含被隐藏的）
+app.get('/api/admin/ideas', requireAdmin, (req, res) => {
+  const user = currentUser(req);
+  res.json(ideas.map(i => ({
+    ...publicIdea(i, req, user),
+    hidden: !!i.hidden,
+    authorAccount: i.author,
+    account: i.userId || ''
+  })));
+});
+
+// 后台：隐藏 / 恢复
+app.put('/api/admin/ideas/:id', requireAdmin, (req, res) => {
+  const idea = ideaById(req.params.id);
+  if (!idea) return res.status(404).json({ error: '想法不存在' });
+  if (req.body && req.body.hidden !== undefined) idea.hidden = !!req.body.hidden;
+  saveIdeas();
+  res.json({ ok: true, hidden: !!idea.hidden });
 });
 
 // 分类：对外顺序固定把「其他」放最后
@@ -2444,6 +2861,12 @@ function truncateText(s, n) {
   const str = String(s || '').replace(/\s+/g, ' ').trim();
   return str.length <= n ? str : str.slice(0, n - 1).replace(/[，,。.、\s]+$/, '') + '…';
 }
+
+// 分享去重明细定期瘦身（只留最近 120 天），并顺手把内存里的积分落盘
+pruneShare();
+setInterval(() => {
+  try { pruneShare(); writeJSON('share.json', shareData); } catch (e) { /* 忽略 */ }
+}, 2 * 3600e3).unref();
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`造梦橱窗已启动: http://localhost:${PORT}  (审核模式: ${REVIEW_MODE ? '开' : '关'})`);

@@ -323,7 +323,9 @@ async function afterAuth(data) {
   state.favs = Array.isArray(data.favs) ? data.favs : [];
   renderAuthBox();
   hideModal(authModal);
-  showToast(`欢迎，${data.nickname || data.username}！`);
+  showToast(data.invited
+    ? `欢迎，${data.nickname || data.username}！你的邀请人获得了 +${data.invitePoints} 分享积分`
+    : `欢迎，${data.nickname || data.username}！`);
   // 先把本机旧收藏并入账号，再补上登录前点的那颗星
   await mergeLocalFavs();
   if (pendingFavId) {
@@ -423,6 +425,8 @@ function setupAuthForms() {
       const fd = new FormData(e.target);
       const payload = Object.fromEntries(fd);
       payload.remember = !!fd.get('remember');
+      // 带上来路分享者：注册后由服务端判断是否给邀请人加分（同 IP 有严格上限）
+      payload.ref = (refStore() || {}).ref || '';
       const res = await fetch('/api/register', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -1107,6 +1111,61 @@ function updateNavActive() {
   document.querySelectorAll('#sortToggle .st-btn').forEach(b =>
     b.classList.toggle('active', !onRank && b.dataset.sort === state.sort));
   $('favBtn').classList.toggle('active', !onRank && state.favoritesOnly);
+}
+
+// ---------- 分享归因：?ref= 落地 ----------
+// 分享链接形如 /w/xxx?ref=账号名。落地时把 ref 记在本机（7 天有效），
+// 并向服务端报一次「有效访问」——是否真加分由服务端按 IP 去重后决定，前端说了不算。
+const REF_KEY = 'dm_ref';
+const REF_TTL = 7 * 24 * 3600e3;
+function refStore() {
+  try {
+    const r = JSON.parse(localStorage.getItem(REF_KEY) || 'null');
+    if (!r || !r.ref) return null;
+    if (Date.now() - Number(r.at || 0) > REF_TTL) return null;
+    return r;
+  } catch { return null; }
+}
+// 当前用户自己的账号：自己分享自己的作品时，链接不带 ref（避免自点）
+function myRefName() { return state.user ? state.user.username : ''; }
+// 给链接挂上分享者身份
+function withRef(url) {
+  const me = myRefName();
+  if (!me) return url;
+  try {
+    const u = new URL(url, location.origin);
+    u.searchParams.set('ref', me);
+    return u.toString();
+  } catch { return url; }
+}
+let refReported = '';
+function reportRefVisit(ref, workId) {
+  const key = ref + '|' + (workId || '');
+  if (refReported === key) return;   // 同一次页面生命周期内只报一次
+  refReported = key;
+  try {
+    fetch('/api/ref/visit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref, workId: workId || '' }), keepalive: true
+    }).catch(() => {});
+  } catch { /* 归因失败不影响访问 */ }
+}
+function captureRef() {
+  let url;
+  try { url = new URL(location.href); } catch { return; }
+  const ref = String(url.searchParams.get('ref') || '').trim();
+  if (!ref) return;
+  const workId = (location.pathname.match(/^\/w\/([A-Za-z0-9_-]+)/) || [])[1] || '';
+  const ok = /^[\w\u4e00-\u9fa5·]{2,20}$/.test(ref);
+  if (ok) {
+    try {
+      localStorage.setItem(REF_KEY, JSON.stringify({ ref, workId, at: Date.now() }));
+    } catch { /* 隐私模式写不进就算了 */ }
+    reportRefVisit(ref, workId);
+  }
+  // 地址栏里的 ref 用完就摘掉：不污染统计路径，也不会被二次转发放大
+  url.searchParams.delete('ref');
+  history.replaceState(null, '', url.pathname + (url.search || '') + (url.hash || ''));
 }
 
 // ---------- 访问统计：页面浏览上报（PV；UV 由后端按账号/IP 去重） ----------
@@ -2178,10 +2237,11 @@ function setupDetailActions() {
     navigate('/u/' + encodeURIComponent(w.author));  };
 
   $('copyLinkBtn').onclick = async () => {
-    const url = location.origin + '/w/' + state.currentWork.id;
+    // 登录用户分享时带上自己的 ref：好友通过它访问 / 注册，会算到你的分享成绩里
+    const url = withRef(location.origin + '/w/' + state.currentWork.id);
     try {
       await navigator.clipboard.writeText(url);
-      showToast('链接已复制，可以分享给朋友了');
+      showToast(state.user ? '链接已复制（带你的分享码，好友访问会计入你的分享）' : '链接已复制，可以分享给朋友了');
     } catch {
       showToast(url);
     }
@@ -2385,6 +2445,180 @@ function setupDetailActions() {
 }
 
 // ---------- 已屏蔽作品 ----------
+// ---------- 许愿墙 ----------
+// 「你有什么想法，让大家实现吗」：一句话发想法 → 别人点「我也想要」→ 创作者认领 → 做完挂作品
+let wishSort = 'hot';
+let wishShown = 8;
+let ideaDoneId = '';
+
+function wishStatusHtml(i) {
+  if (i.status === 'done' && i.work) {
+    return `<a class="wish-status is-done" href="/w/${encodeURIComponent(i.work.id)}"
+      onclick="event.stopPropagation()">✓ 已实现「${escapeHtml(i.work.title)}」</a>`;
+  }
+  if (i.status === 'claimed' && i.claimer) {
+    return `<span class="wish-status is-claimed">🔧 @${escapeHtml(i.claimer.name)} 正在做</span>`;
+  }
+  return '<span class="wish-status is-open">🙋 征集中</span>';
+}
+
+function wishCardHtml(i) {
+  const acts = [];
+  acts.push(`<button type="button" class="wish-want${i.wanted ? ' is-on' : ''}" data-want="${escapeHtml(i.id)}"
+    title="想要的人越多，越容易被做出来">👍 我也想要 <b>${i.wants || 0}</b></button>`);
+  if (i.status !== 'done') {
+    if (i.claimer && i.claimer.mine) {
+      acts.push(`<button type="button" class="wish-claim is-mine" data-done="${escapeHtml(i.id)}">我来标记已实现</button>`);
+    } else if (!i.claimer && !i.mine) {
+      acts.push(`<button type="button" class="wish-claim" data-claim="${escapeHtml(i.id)}">我来实现</button>`);
+    }
+  }
+  if (i.mine) acts.push(`<button type="button" class="wish-del" data-del="${escapeHtml(i.id)}" title="删除这个想法">✕</button>`);
+  return `<article class="wish-card${i.status === 'done' ? ' is-done' : ''}">
+    <div class="wish-card-top">
+      ${i.category ? `<span class="wish-cat">${escapeHtml(i.category)}</span>` : ''}
+      ${wishStatusHtml(i)}
+    </div>
+    <p class="wish-card-title">${escapeHtml(i.title)}</p>
+    <div class="wish-card-foot">
+      <span class="wish-author">@${escapeHtml(i.author)}</span>
+      <span class="wish-actions">${acts.join('')}</span>
+    </div>
+  </article>`;
+}
+
+async function loadIdeas(limit = wishShown) {
+  const list = $('wishList');
+  if (!list) return;
+  wishShown = limit;
+  try {
+    const data = await (await fetch(`/api/ideas?sort=${wishSort}&limit=${limit}`)).json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    const total = data.total || items.length;
+    $('wishCount').textContent = total ? `${total} 个想法` : '';
+    if (!items.length) {
+      list.innerHTML = '<div class="wish-empty">还没有人提想法——第一个说出你想要的吧 👆</div>';
+      $('wishMore').style.display = 'none';
+      return;
+    }
+    list.innerHTML = items.map(wishCardHtml).join('');
+    $('wishMore').style.display = total > items.length ? '' : 'none';
+  } catch {
+    list.innerHTML = '<div class="wish-empty">想法加载失败，稍后再试</div>';
+  }
+}
+
+async function toggleWishWant(id, btn) {
+  try {
+    const r = await fetch(`/api/ideas/${encodeURIComponent(id)}/want`, { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) return showToast(d.error || '操作失败');
+    const b = btn.querySelector('b');
+    if (b) b.textContent = d.wants;
+    btn.classList.toggle('is-on', !!d.wanted);
+    if (d.wanted && !state.user) showToast('已记下你想要 👍 登录后这个支持会算在你账号上');
+  } catch { showToast('网络不太好，再试一次'); }
+}
+
+async function claimWish(id) {
+  if (!state.user) { openAuth('login'); return; }
+  try {
+    const r = await fetch(`/api/ideas/${encodeURIComponent(id)}/claim`, { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) return showToast(d.error || '认领失败');
+    showToast('认领成功！做完记得回来点「我来标记已实现」🎉');
+    loadIdeas();
+  } catch { showToast('网络不太好，再试一次'); }
+}
+
+async function deleteWish(id) {
+  if (!confirm('删除这个想法？')) return;
+  try {
+    const r = await fetch(`/api/ideas/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const d = await r.json();
+    if (!r.ok) return showToast(d.error || '删除失败');
+    loadIdeas();
+  } catch { showToast('网络不太好，再试一次'); }
+}
+
+function openWishDone(id) {
+  ideaDoneId = id;
+  $('ideaDoneInput').value = '';
+  $('ideaDoneMsg').textContent = '';
+  showModal($('ideaDoneModal'));
+  setTimeout(() => { try { $('ideaDoneInput').focus(); } catch { /* 忽略 */ } }, 80);
+}
+
+async function saveWishDone() {
+  const btn = $('ideaDoneSave');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`/api/ideas/${encodeURIComponent(ideaDoneId)}/done`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workId: $('ideaDoneInput').value.trim() })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || '保存失败');
+    hideModal($('ideaDoneModal'));
+    showToast(d.status === 'done' ? '已标记实现，谢谢你把想法做出来 🎉' : '已退回「征集中」');
+    loadIdeas();
+  } catch (err) {
+    $('ideaDoneMsg').textContent = err.message;
+  } finally { btn.disabled = false; }
+}
+
+async function submitWish() {
+  const input = $('wishInput');
+  const title = input.value.trim();
+  if (title.length < 4) return showToast('想法至少 4 个字，说清楚一点');
+  if (!state.user) { openAuth('login'); return; }
+  const btn = $('wishSubmit');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/ideas', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || '发布失败');
+    input.value = '';
+    showToast('想法已发布，等着有人来接 🚀');
+    wishSort = 'new';
+    document.querySelectorAll('.wish-tab').forEach(b => b.classList.toggle('active', b.dataset.sort === 'new'));
+    loadIdeas(8);
+  } catch (err) { showToast(err.message); }
+  finally { btn.disabled = false; }
+}
+
+function setupWish() {
+  const sec = $('wishSection');
+  if (!sec) return;
+  sec.style.display = '';
+  $('wishSubmit').onclick = submitWish;
+  $('wishInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitWish(); });
+  $('wishTabs').addEventListener('click', e => {
+    const b = e.target.closest('.wish-tab');
+    if (!b) return;
+    document.querySelectorAll('.wish-tab').forEach(x => x.classList.toggle('active', x === b));
+    wishSort = b.dataset.sort;
+    loadIdeas(8);
+  });
+  $('wishList').addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    if (btn.dataset.want) toggleWishWant(btn.dataset.want, btn);
+    else if (btn.dataset.claim) claimWish(btn.dataset.claim);
+    else if (btn.dataset.done) openWishDone(btn.dataset.done);
+    else if (btn.dataset.del) deleteWish(btn.dataset.del);
+  });
+  $('wishMore').onclick = () => { $('wishMore').style.display = 'none'; loadIdeas(60); };
+  $('closeIdeaDone').onclick = () => hideModal($('ideaDoneModal'));
+  $('ideaDoneCancel').onclick = () => hideModal($('ideaDoneModal'));
+  $('ideaDoneSave').onclick = saveWishDone;
+  $('ideaDoneModal').onclick = e => { if (e.target === $('ideaDoneModal')) hideModal($('ideaDoneModal')); };
+  loadIdeas(8);
+}
+
 // ---------- 作者数据看板 ----------
 // 只看自己的作品（发布 + 认领后归属自己的）：累计数据 + 近 14 天浏览趋势
 function statsSparkline(values, w = 88, h = 24) {
@@ -2418,15 +2652,38 @@ async function openStats() {
     return;
   }
   const { totals, days, trend, works } = data;
+  const share = data.share || { points: 0, visits: 0, regs: 0, rank: 0 };
+  const board = Array.isArray(data.board) ? data.board : [];
+  const shareCards = `
+      <div class="stat-card is-share"><b>${share.visits || 0}</b><span>分享带来访问</span></div>
+      <div class="stat-card is-share"><b>${share.regs || 0}</b><span>邀请注册</span></div>
+      <div class="stat-card is-share"><b>${share.points || 0}</b><span>分享积分${share.rank ? ` · 第 ${share.rank} 名` : ''}</span></div>`;
+  const boardHtml = board.length ? `
+    <div class="stats-works-head">分享达人榜</div>
+    <div class="board-list">
+      ${board.map(b => `
+        <div class="board-row${b.username === state.user.username ? ' is-me' : ''}">
+          <span class="board-rank${b.rank <= 3 ? ' top' : ''}">${b.rank}</span>
+          <span class="board-name">${escapeHtml(b.name)}</span>
+          <span class="board-num">${b.visits} 访问 · ${b.regs} 邀请</span>
+          <b class="board-pts">${b.points}<i>分</i></b>
+        </div>`).join('')}
+    </div>` : '';
+  const shareTip = `分享奖励：好友通过你的链接访问 +1 分，好友注册 +20 分。同一 IP 对同一分享者每天最多计 3 次、
+      同一 IP 全站每天最多 10 次、同一 IP 最多计入 2 个邀请注册——换浏览器或清缓存都刷不动。`;
 
+  // 没有作品也要能看分享成绩：分享是「帮别人推广」，不依赖自己有没有作品
   if (!works.length) {
     body.innerHTML = `
+      <div class="stats-summary">${shareCards}</div>
       <div class="stats-empty">
         <div class="stats-empty-icon">📊</div>
         <p>你还没有归属自己的作品。</p>
         <p class="stats-empty-sub">提交新作品，或对已收录的作品发起「认领」，通过后这里就会显示它的浏览、点赞与收藏数据。</p>
         <button class="btn-primary" id="statsGoSubmit">＋ 去提交作品</button>
-      </div>`;
+      </div>
+      ${boardHtml}
+      <p class="stats-tip">${shareTip}</p>`;
     $('statsGoSubmit').onclick = () => { hideModal(statsModal); $('openUpload').click(); };
     return;
   }
@@ -2445,11 +2702,13 @@ async function openStats() {
       <img src="${escapeHtml(w.thumb)}" alt="" loading="lazy" />
       <div class="sw-main">
         <div class="sw-title">${escapeHtml(w.title)}${w.online ? '' : '<span class="sw-badge">审核中</span>'}</div>
-        <div class="sw-meta">浏览 ${w.views} · 访客 ${w.uv} · ♥ ${w.likes} · ★ ${w.favs} · 💬 ${w.comments}</div>
+        <div class="sw-meta">浏览 ${w.views} · 访客 ${w.uv} · ♥ ${w.likes} · ★ ${w.favs} · 💬 ${w.comments}${
+          w.shareVisits ? ` · 🔗 分享 ${w.shareVisits}` : ''}</div>
       </div>
       <div class="sw-right">
         ${statsSparkline(w.trend)}
         <span class="sw-7d">7 天 ${w.pv7}</span>
+        <button type="button" class="sw-share" data-share="${escapeHtml(w.id)}" title="复制带分享码的链接">分享</button>
       </div>
     </div>`).join('');
 
@@ -2461,6 +2720,7 @@ async function openStats() {
       <div class="stat-card"><b>${totals.likes}</b><span>点赞</span></div>
       <div class="stat-card"><b>${totals.favs}</b><span>收藏</span></div>
       <div class="stat-card"><b>${totals.comments}</b><span>评论</span></div>
+      ${shareCards}
     </div>
     <div class="stats-chart">
       <div class="stats-chart-head">近 14 天浏览趋势</div>
@@ -2468,8 +2728,24 @@ async function openStats() {
     </div>
     <div class="stats-works-head">作品明细</div>
     <div class="stats-works">${rows}</div>
-    <p class="stats-tip">数据统计包含弹窗与独立页面两种浏览方式；「访客」按登录账号 / IP 去重。</p>`;
+    ${boardHtml}
+    <p class="stats-tip">
+      数据统计包含弹窗与独立页面两种浏览方式；「访客」按登录账号 / IP 去重。<br />
+      ${shareTip}
+    </p>`;
 
+  body.querySelectorAll('.sw-share').forEach(btn => {
+    btn.onclick = async e => {
+      e.stopPropagation();
+      const url = withRef(location.origin + '/w/' + btn.dataset.share);
+      try {
+        await navigator.clipboard.writeText(url);
+        showToast('带分享码的链接已复制，好友访问/注册都会算到你名下');
+      } catch {
+        showToast(url);
+      }
+    };
+  });
   body.querySelectorAll('.stats-work').forEach(row => {
     row.onclick = () => {
       hideModal(statsModal);
@@ -2716,6 +2992,7 @@ function setupFeedback() {
 
 // ---------- 启动 ----------
 async function init() {
+  captureRef();   // 先处理 ?ref=：记下分享者并上报，再把参数从地址栏摘掉
   // 支持 /?q=关键词 直接进入搜索结果（与站点搜索结构化数据一致）
   const q = (new URLSearchParams(location.search).get('q') || '').trim();
   if (q) {
@@ -2733,6 +3010,7 @@ async function init() {
   setupAuthForms();
   setupSubmitChoice();
   setupFeedback();
+  setupWish();
   // 精选轮播：滚动/窗口变化时同步箭头与进度条状态
   $('featuredRow').addEventListener('scroll', updateFeatNav, { passive: true });
   window.addEventListener('resize', updateFeatNav);
