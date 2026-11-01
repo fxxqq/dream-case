@@ -271,7 +271,7 @@ function renderAuthBox() {
     const n = (state.blocked || []).length;
     box.innerHTML =
       `<a class="user-chip" href="/u/${encodeURIComponent(state.user.username)}" data-nav title="我的主页">👤 ${escapeHtml(state.user.nickname || state.user.username)}</a>` +
-      `<button class="link-btn stats-entry" id="statsBtn" title="我的作品数据"><span class="lb-ico">📊</span>数据</button>` +
+      `<button class="link-btn stats-entry" id="statsBtn" title="我的作品数据与站内推广"><span class="lb-ico">📊</span>数据与推广</button>` +
       (n ? `<button class="link-btn blocked-entry" id="blockedBtn" title="查看已屏蔽的作品">🚫 ${n}</button>` : '') +
       `<button class="link-btn" id="logoutBtn">退出</button>`;
     $('logoutBtn').onclick = doLogout;
