@@ -11,6 +11,11 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* 滚动条槽位恒定：短页面（如许愿墙）和长页面（首页/榜单）之间切换时，
+   滚动条出现/消失不会再让内容横向抖动。
+   注意：不能动 html 的 overflow（会破坏 body.scroll-locked 的视口传播锁滚动）。 */
+html { scrollbar-gutter: stable; }
+
 body {
   font-family: "PingFang SC", "Microsoft YaHei", -apple-system, sans-serif;
   background: var(--bg);

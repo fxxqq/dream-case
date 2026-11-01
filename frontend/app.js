@@ -53,7 +53,10 @@ let scrollLockY = 0;
 function lockScroll() {
   if (++scrollLockCount > 1) return;
   scrollLockY = window.scrollY;
-  const gap = window.innerWidth - document.documentElement.clientWidth;
+  // html 上有 scrollbar-gutter: stable 时，滚动条隐藏后槽位仍然保留，内容宽度不变，
+  // 不需要再补 padding-right（补了反而会让居中内容左移一个槽位宽）
+  const hasGutter = window.CSS && CSS.supports && CSS.supports('scrollbar-gutter', 'stable');
+  const gap = hasGutter ? 0 : (window.innerWidth - document.documentElement.clientWidth);
   document.body.classList.add('scroll-locked');
   if (gap > 0) document.body.style.paddingRight = gap + 'px';
 }
