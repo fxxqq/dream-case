@@ -168,6 +168,9 @@ function paidBadgeHtml(w) {
   return w.paid ? '<span class="os-badge paid" title="需要付费或含付费版本">💰 付费</span>' : '';
 }
 
+// 展示名：有昵称用昵称，没有就用账号名（链接/作者页仍按账号）
+function nameOf(w) { return w.authorName || w.author; }
+
 function cardHtml(w, suffix = '') {
   return `<a class="card seo-card" href="/w/${esc(w.id)}${suffix}">
   <div class="card-img-wrap">
@@ -176,7 +179,7 @@ function cardHtml(w, suffix = '') {
   </div>
   <div class="card-body">
     <div class="card-title">${esc(w.title)}</div>
-    <div class="card-meta"><span>@${esc(w.author)}</span><span class="card-tags"><span class="card-cat">${esc(w.category || '')}</span>${osBadgeHtml(w)}${paidBadgeHtml(w)}</span></div>
+    <div class="card-meta"><span>@${esc(nameOf(w))}</span><span class="card-tags"><span class="card-cat">${esc(w.category || '')}</span>${osBadgeHtml(w)}${paidBadgeHtml(w)}</span></div>
   </div>
 </a>`;
 }
@@ -211,7 +214,7 @@ function workArticle(base, w, trail, related = [], opts = {}) {
       ${paidBadgeHtml(w)}
       ${w.featured ? '<span class="badge-featured">✨ 精选</span>' : ''}
     </div>
-    <p class="seo-author">作者：<a href="/u/${encodeURIComponent(w.author)}" rel="author">@${esc(w.author)}</a>
+    <p class="seo-author">作者：<a href="/u/${encodeURIComponent(w.author)}" rel="author">@${esc(nameOf(w))}</a>
       · ${w.likes || 0} 点赞 · ${w.favs || 0} 人收藏 · ${w.commentCount || 0} 评论 · ${w.views || 0} 浏览${date ? ' · ' + esc(date) : ''}</p>
     <img class="seo-cover" src="${esc(w.image)}" alt="${esc(w.title)} 作品截图" />
     ${gallery}
@@ -233,14 +236,14 @@ function workLd(base, w, pageUrl) {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
     name: w.title,
-    description: truncate(w.intro || `${w.title}，由 ${w.author} 提交的${w.category}类${typesOf(w).join('/')}作品。`, 300),
+    description: truncate(w.intro || `${w.title}，由 ${nameOf(w)} 提交的${w.category}类${typesOf(w).join('/')}作品。`, 300),
     url: pageUrl,
     image: absolute(base, w.image),
     applicationCategory: APP_CATEGORY[w.category] || 'UtilitiesApplication',
     operatingSystem: OS_BY_TYPE[typesOf(w)[0]] || 'Web',
     inLanguage: 'zh-CN',
     datePublished: w.createdAt,
-    author: { '@type': 'Person', name: w.author, url: absolute(base, '/u/' + encodeURIComponent(w.author)) },
+    author: { '@type': 'Person', name: nameOf(w), url: absolute(base, '/u/' + encodeURIComponent(w.author)) },
     interactionStatistic: [
       {
         '@type': 'InteractionCounter',
@@ -416,7 +419,7 @@ function rssXml(base, works) {
       <guid isPermaLink="true">${esc(absolute(base, '/w/' + w.id))}</guid>
       <description>${esc(truncate(w.intro || w.title, 200))}</description>
       <category>${esc(w.category || '')}</category>
-      <author>${esc(w.author)}</author>
+      <author>${esc(nameOf(w))}</author>
       <pubDate>${new Date(w.createdAt).toUTCString()}</pubDate>
     </item>`).join('\n');
 

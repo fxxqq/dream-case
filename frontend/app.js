@@ -39,6 +39,7 @@ const submitChoiceModal = $('submitChoiceModal');
 const reportModal = $('reportModal');
 const blockedModal = $('blockedModal');
 const statsModal = $('statsModal');
+const nickModal = $('nickModal');
 const toast = $('toast');
 
 const TYPE_ICONS = { '网站': '🌐', '小程序': '📱', 'App': '📲', '智能体': '🤖', '桌面应用': '🖥️', '浏览器扩展': '🧩', '工具': '🛠️', '游戏': '🎮', '其他': '✨' };
@@ -126,6 +127,11 @@ function showToast(msg) {
   clearTimeout(showToast._t);
   showToast._t = setTimeout(() => toast.classList.remove('show'), 2400);
 }
+// 展示名：作品带 authorName（服务端按账号查昵称），评论带 displayName；
+// 账号（author/username）只用于链接和身份判定，界面上尽量不直接露出来
+const dname = w => (w && (w.authorName || w.author)) || '';
+const cname = c => (c && (c.displayName || c.username)) || '';
+
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, m => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -258,12 +264,14 @@ function renderAuthBox() {
   if (state.user) {
     const n = (state.blocked || []).length;
     box.innerHTML =
-      `<a class="user-chip" href="/u/${encodeURIComponent(state.user.username)}" data-nav title="我的主页">👤 ${escapeHtml(state.user.username)}</a>` +
+      `<a class="user-chip" href="/u/${encodeURIComponent(state.user.username)}" data-nav title="我的主页">👤 ${escapeHtml(state.user.nickname || state.user.username)}</a>` +
+      `<button class="link-btn nick-entry" id="nickBtn" title="修改昵称">✏️ 昵称</button>` +
       `<button class="link-btn stats-entry" id="statsBtn" title="我的作品数据">📊 数据</button>` +
       (n ? `<button class="link-btn blocked-entry" id="blockedBtn" title="查看已屏蔽的作品">🚫 ${n}</button>` : '') +
       `<button class="link-btn" id="logoutBtn">退出</button>`;
     $('logoutBtn').onclick = doLogout;
     $('statsBtn').onclick = openStats;
+    $('nickBtn').onclick = openNickModal;
     const bb = $('blockedBtn');
     if (bb) bb.onclick = openBlockedList;
   } else {
@@ -307,11 +315,11 @@ function setupSubmitChoice() {
 }
 
 async function afterAuth(data) {
-  state.user = { username: data.username };
+  state.user = { username: data.username, nickname: data.nickname || '' };
   state.favs = Array.isArray(data.favs) ? data.favs : [];
   renderAuthBox();
   hideModal(authModal);
-  showToast(`欢迎，${data.username}！`);
+  showToast(`欢迎，${data.nickname || data.username}！`);
   // 先把本机旧收藏并入账号，再补上登录前点的那颗星
   await mergeLocalFavs();
   if (pendingFavId) {
@@ -357,7 +365,7 @@ async function doLogout() {
 async function loadMe() {
   try {
     const data = await (await fetch('/api/me')).json();
-    state.user = data.username ? { username: data.username } : null;
+    state.user = data.username ? { username: data.username, nickname: data.nickname || '' } : null;
     state.favs = Array.isArray(data.favs) ? data.favs : [];
     state.blocked = Array.isArray(data.blocked) ? data.blocked : [];
   } catch { state.user = null; state.favs = []; state.blocked = []; }
@@ -451,7 +459,7 @@ function cardHtml(w, opts = {}) {
       <div class="card-body">
         <div class="card-title">${escapeHtml(w.title)}</div>
         <div class="card-meta">
-          <span class="card-author">${w.verified ? '<i class="verified">✔</i>' : ''}@${escapeHtml(w.author)}</span>
+          <span class="card-author">${w.verified ? '<i class="verified">✔</i>' : ''}@${escapeHtml(dname(w))}</span>
           <span class="card-tags"><span class="card-cat">${escapeHtml(w.category)}</span>${osBadgeHtml(w)}${paidBadgeHtml(w)}</span>
         </div>
         <div class="card-meta" style="margin-top:6px">
@@ -472,7 +480,7 @@ function listHtml(w) {
       <div class="row-main">
         <div class="row-title">${w.pinned ? '<span class="pin-badge row-pin">置顶</span>' : ''}${escapeHtml(w.title)}</div>
         ${w.intro ? `<div class="row-intro">${escapeHtml(w.intro)}</div>` : ''}
-        <div class="row-meta">${escapeHtml(typeText(w))} · ${w.verified ? '<i class="verified">✔</i>' : ''}@${escapeHtml(w.author)} · ${escapeHtml(w.category)}${w.openSource === true ? ' · 🔓 开源' : w.openSource === false ? ' · 🔒 闭源' : ''}${w.paid ? ' · 💰 付费' : ''}</div>
+        <div class="row-meta">${escapeHtml(typeText(w))} · ${w.verified ? '<i class="verified">✔</i>' : ''}@${escapeHtml(dname(w))} · ${escapeHtml(w.category)}${w.openSource === true ? ' · 🔓 开源' : w.openSource === false ? ' · 🔒 闭源' : ''}${w.paid ? ' · 💰 付费' : ''}</div>
       </div>
       <div class="row-stats">
         <span class="row-stat">♥ <b>${w.likes}</b></span>
@@ -1185,6 +1193,11 @@ async function loadAuthor(name) {
   setTitle(`@${name} 的作品`);
   try {
     const data = await (await fetch('/api/authors/' + encodeURIComponent(name))).json();
+    // 有昵称就显示昵称（地址栏仍是 /u/账号，链接不会失效）
+    const shown = data.displayName || name;
+    $('authorName').textContent = '@' + shown;
+    $('authorAvatar').textContent = shown.slice(0, 1).toUpperCase();
+    setTitle(`@${shown} 的作品`);
     $('authorBio').textContent = data.bio || '';
     $('authorStats').innerHTML =
       `${data.verified ? '<span class="verified-tag">✔ 认证创作者</span> ' : ''}` +
@@ -1215,7 +1228,7 @@ async function loadRank(period, by) {
         <img src="${w.thumb}" alt="" loading="lazy" />
         <div class="rank-main">
           <div class="rank-title">${escapeHtml(w.title)}</div>
-          <div class="rank-meta">${escapeHtml(typeText(w))} · @${escapeHtml(w.author)} · ${escapeHtml(w.category)}</div>
+          <div class="rank-meta">${escapeHtml(typeText(w))} · @${escapeHtml(dname(w))} · ${escapeHtml(w.category)}</div>
         </div>
         <div class="rank-score">
           <span class="${cur === 'likes' ? 'on' : ''}">♥ ${w.likes || 0}</span>
@@ -1251,7 +1264,7 @@ async function openWork(id, push = true) {
       osBadgeHtml(w) +
       paidBadgeHtml(w) +
       (w.featured ? '<span class="badge-featured">✨ 精选</span>' : '');
-    $('detailAuthor').innerHTML = `${w.verified ? '<i class="verified">✔</i> ' : ''}@${escapeHtml(w.author)}`;
+    $('detailAuthor').innerHTML = `${w.verified ? '<i class="verified">✔</i> ' : ''}@${escapeHtml(dname(w))}`;
     $('detailStats').innerHTML = `♥ ${w.likes} 点赞 · ★ <span class="fav-num" data-fav-count="${w.id}" data-count="${w.favs || 0}" data-prefix="">${w.favs || 0}</span> 人收藏 · 💬 <span class="cmt-num" data-comment-count="${w.id}" data-count="${w.commentCount || 0}" data-prefix="">${w.commentCount || 0}</span> 评论 · 👁 ${w.views} 浏览 · ${formatDate(w.createdAt)}`;
     $('detailPrompt').textContent = w.intro || '';
     $('detailLikes').textContent = w.likes;
@@ -1357,10 +1370,10 @@ function commentBadges(c) {
 function commentItemHtml(c, replies) {
   return `
     <div class="comment-item${c.kind === 'question' ? ' is-question' : ''}" data-id="${escapeHtml(c.id)}">
-      <span class="comment-avatar${c.anon ? ' anon' : ''}">${escapeHtml((c.username || '?').slice(0, 1).toUpperCase())}</span>
+      <span class="comment-avatar${c.anon ? ' anon' : ''}">${escapeHtml((cname(c) || '?').slice(0, 1).toUpperCase())}</span>
       <div class="comment-body">
         <div class="comment-meta">
-          <b>@${escapeHtml(c.username)}</b>${commentBadges(c)}
+          <b>@${escapeHtml(cname(c))}</b>${commentBadges(c)}
           <span>${formatDate(c.createdAt)}</span>
           <span class="comment-acts">
             <button type="button" class="comment-reply" data-reply="${escapeHtml(c.id)}" data-rid="${escapeHtml(c.id)}">回复</button>
@@ -1376,10 +1389,10 @@ function commentItemHtml(c, replies) {
 function commentReplyHtml(r, rootId) {
   return `
     <div class="comment-reply-item" data-id="${escapeHtml(r.id)}">
-      <span class="comment-avatar sm${r.anon ? ' anon' : ''}">${escapeHtml((r.username || '?').slice(0, 1).toUpperCase())}</span>
+      <span class="comment-avatar sm${r.anon ? ' anon' : ''}">${escapeHtml((cname(r) || '?').slice(0, 1).toUpperCase())}</span>
       <div class="comment-body">
         <div class="comment-meta">
-          <b>@${escapeHtml(r.username)}</b>${commentBadges(r)}
+          <b>@${escapeHtml(cname(r))}</b>${commentBadges(r)}
           ${r.replyToName ? `<span class="reply-to">回复 @${escapeHtml(r.replyToName)}</span>` : ''}
           <span>${formatDate(r.createdAt)}</span>
           <span class="comment-acts">
@@ -1447,7 +1460,7 @@ async function loadComments(workId) {
   cancelReply();
   if (state.user) {
     nick.style.display = 'none';
-    $('commentHint').textContent = `以 @${state.user.username} 的身份发言`;
+    $('commentHint').textContent = `以 @${state.user.nickname || state.user.username} 的身份发言`;
   } else {
     nick.style.display = '';
     nick.value = localStorage.getItem('cmtNick') || '';
@@ -1654,7 +1667,7 @@ function setupUploadForm() {
     editId = null;
     $('modalTitle').textContent = '提交作品';
     // 审核规则不在表单顶部唠叨，留到点「提交」时的选择弹窗里再说
-    $('formHint').textContent = state.user ? `作者：${state.user.username}` : '';
+    $('formHint').textContent = state.user ? `作者：${state.user.nickname || state.user.username}` : '';
     $('formHint').style.display = state.user ? 'block' : 'none';
     $('authorField').style.display = state.user ? 'none' : 'block';
     form.reset();
@@ -1743,7 +1756,7 @@ function setupUploadForm() {
     editId = w.id;
     hideModal(detailModal);
     $('modalTitle').textContent = '编辑作品';
-    $('formHint').textContent = `作者：${w.author} · 修改后立即生效`;
+    $('formHint').textContent = `作者：${dname(w)} · 修改后立即生效`;
     $('formHint').style.display = 'block';
     setSelectedTypes(typesOf(w));
     form.title.value = w.title;
@@ -2390,7 +2403,7 @@ async function openBlockedList() {
         <img src="${escapeHtml(w.thumb)}" alt="${escapeHtml(w.title)}" loading="lazy" />
         <div class="blocked-main">
           <div class="blocked-title">${escapeHtml(w.title)}</div>
-          <div class="blocked-meta">${escapeHtml(typeText(w))} · @${escapeHtml(w.author)}</div>
+          <div class="blocked-meta">${escapeHtml(typeText(w))} · @${escapeHtml(dname(w))}</div>
         </div>
         <button type="button" class="btn-ghost blocked-undo" data-id="${escapeHtml(w.id)}">恢复显示</button>
       </div>`).join('');
@@ -2501,6 +2514,62 @@ function setupHeader() {
   });
 }
 
+// ---------- 修改昵称 ----------
+// 只改「显示成什么」，登录账号不变：作品归属、收藏、作者主页、作者徽章都不受影响
+function setNickMsg(text, kind) {
+  const el = $('nickMsg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'nick-msg' + (kind ? ' ' + kind : '');
+}
+
+function openNickModal() {
+  if (!state.user) { openAuth('login'); return; }
+  const inp = $('nickInput');
+  inp.value = state.user.nickname || '';
+  $('nickAccount').textContent = '@' + state.user.username;
+  setNickMsg('');
+  $('closeNick').onclick = () => hideModal(nickModal);
+  nickModal.onclick = e => { if (e.target === nickModal) hideModal(nickModal); };
+  $('nickSave').onclick = () => submitNick(false);
+  $('nickReset').onclick = () => submitNick(true);
+  inp.onkeydown = e => { if (e.key === 'Enter') submitNick(false); };
+  showModal(nickModal);
+  setTimeout(() => { inp.focus(); inp.select(); }, 60);
+}
+
+async function submitNick(reset) {
+  const inp = $('nickInput');
+  const val = reset ? '' : inp.value.trim();
+  if (!reset) {
+    if (val.length < 2) return setNickMsg('昵称至少 2 个字', 'err');
+    if (val === state.user.username) return submitNick(true);   // 填回账号名 = 恢复默认
+    if (val === state.user.nickname) return setNickMsg('这就是你现在的昵称');
+  }
+  const btn = $('nickSave');
+  btn.disabled = true;
+  setNickMsg('保存中…');
+  try {
+    const r = await fetch('/api/me/nickname', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nickname: val })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) { setNickMsg(data.error || '保存失败，稍后再试', 'err'); return; }
+    state.user.nickname = data.nickname || '';
+    renderAuthBox();
+    hideModal(nickModal);
+    showToast(data.nickname ? `昵称已改成「${data.nickname}」` : '已恢复默认，显示账号名');
+    // 自己的作品署名跟着换，重新拉一次当前列表
+    if (location.pathname === '/') loadWorks();
+  } catch {
+    setNickMsg('网络异常，稍后再试', 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- 意见反馈 ----------
 function setupFeedback() {
   const modal = $('feedbackModal');
@@ -2509,7 +2578,7 @@ function setupFeedback() {
 
   function openFeedback() {
     $('feedbackHint').innerHTML = state.user
-      ? `用着不顺手、想要什么功能、发现 bug，都可以说一句。当前身份：<b>@${escapeHtml(state.user.username)}</b>`
+      ? `用着不顺手、想要什么功能、发现 bug，都可以说一句。当前身份：<b>@${escapeHtml(state.user.nickname || state.user.username)}</b>`
       : '用着不顺手、想要什么功能、发现 bug，都可以说一句。匿名也能提。';
     showModal(modal);
     setTimeout(() => form.content.focus(), 60);

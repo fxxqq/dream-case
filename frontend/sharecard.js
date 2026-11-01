@@ -254,7 +254,7 @@
     // 作者
     ctx.fillStyle = t.sub;
     ctx.font = `400 28px ${FONT}`;
-    const authorText = `${work.verified ? '✔ ' : ''}@${work.author || '匿名'}${work.category ? ' · ' + work.category : ''}`;
+    const authorText = `${work.verified ? '✔ ' : ''}@${work.authorName || work.author || '匿名'}${work.category ? ' · ' + work.category : ''}`;
     ctx.fillText(clipLines(ctx, wrap(ctx, authorText, maxTextW), 1, maxTextW)[0] || '', PAD, titleBottom + 18);
 
     // 标签胶囊（紧跟作者行，随标题行数自适应）
@@ -393,7 +393,7 @@
       const intro = String(current.intro || '').replace(/\s+/g, ' ').trim();
       const text = [
         `【${current.title}】${intro ? '—— ' + intro.slice(0, 60) : ''}`,
-        `作者 @${current.author || '匿名'}${types ? ' · ' + types : ''}${current.category ? ' · ' + current.category : ''}`,
+        `作者 @${current.authorName || current.author || '匿名'}${types ? ' · ' + types : ''}${current.category ? ' · ' + current.category : ''}`,
         `👉 ${cardUrl(current)}`,
         '来自「造梦橱窗」：每一个认真做出的想法，都值得被看见'
       ].filter(Boolean).join('\n');

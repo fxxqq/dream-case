@@ -240,6 +240,29 @@
     </div>
   </div>
 
+  <!-- 修改昵称：只改展示名，登录账号 / 作品归属不变 -->
+  <div class="modal-mask" id="nickModal" style="display:none">
+    <div class="modal modal-nick">
+      <div class="modal-head">
+        <h2>修改昵称</h2>
+        <button class="close-btn" id="closeNick" title="关闭">✕</button>
+      </div>
+      <div class="nick-body">
+        <label class="nick-label" for="nickInput">昵称（2–16 个字）</label>
+        <input id="nickInput" class="nick-input" maxlength="16" placeholder="例如：做小程序的老张" />
+        <p class="nick-tip">
+          登录账号 <b id="nickAccount"></b> 不会变——作品、收藏、作者主页都还是你的，
+          只是页面上显示成这个昵称。<br />昵称 7 天可以改一次。
+        </p>
+        <p class="nick-msg" id="nickMsg"></p>
+        <div class="nick-actions">
+          <button type="button" class="btn-ghost" id="nickReset">恢复默认</button>
+          <button type="button" class="btn-primary" id="nickSave">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 未登录投稿时的选择弹窗：注册免审 or 匿名等审核 -->
   <div class="modal-mask" id="submitChoiceModal" style="display:none">
     <div class="modal modal-choice">

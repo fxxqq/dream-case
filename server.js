@@ -48,6 +48,7 @@ let reports = readJSON('reports.json', []);
 let tools = readJSON('tools.json', []);
 let creators = readJSON('creators.json', []); // 认证创作者
 let users = readJSON('users.json', []);        // 注册用户
+let userIndex = null;                          // 账号 → 用户对象（懒建缓存，改动用户时置空）
 let sessions = readJSON('sessions.json', {});  // sid -> { uid, exp }
 let comments = readJSON('comments.json', []);  // 作品评论
 let feedback = readJSON('feedback.json', []);  // 意见反馈
@@ -92,7 +93,7 @@ function typeIconMap() {
   workTypes.forEach(t => { map[t.name] = t.icon || '✨'; });
   return map;
 }
-function saveUsers() { writeJSON('users.json', users); }
+function saveUsers() { userIndex = null; writeJSON('users.json', users); }
 function saveSessions() { writeJSON('sessions.json', sessions); }
 function saveComments() { writeJSON('comments.json', comments); }
 function saveFeedback() { writeJSON('feedback.json', feedback); }
@@ -127,6 +128,7 @@ function makeUser(username, password) {
   return {
     id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     username,
+    nickname: '',      // 展示用昵称（空 = 用账号名）
     salt,
     pass: hashPassword(password, salt),
     favs: [],          // 收藏的作品 id（按收藏时间倒序）
@@ -138,6 +140,24 @@ function checkPassword(user, password) {
   const a = Buffer.from(h), b = Buffer.from(user.pass);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
+// ================= 展示名（昵称） =================
+// 账号名（username）是身份主键：登录、作品归属、/u/ 作者页、作者徽章都认它。
+// 昵称只影响「显示成什么」，改了不动任何历史数据：
+//   作品存的是账号名 → 展示时动态换成昵称；作者页仍按账号名访问。
+function userByName(name) {
+  if (!name) return null;
+  if (!userIndex) {
+    userIndex = new Map();
+    for (const u of users) userIndex.set(u.username, u);
+  }
+  return userIndex.get(name) || null;
+}
+function displayNameOf(name) {
+  if (!name) return '';
+  const u = userByName(name);
+  return (u && u.nickname) ? u.nickname : name;
+}
+
 function parseCookies(req) {
   const out = {};
   (req.headers.cookie || '').split(';').forEach(p => {
@@ -571,7 +591,7 @@ function publicWork(w, user) {
   const creator = creators.find(c => c.name === w.author);
   const types = typesOf(w);
   return {
-    id: w.id, title: w.title, author: w.author, category: w.category,
+    id: w.id, title: w.title, author: w.author, authorName: displayNameOf(w.author), category: w.category,
     type: types[0], types: types,
     intro: w.prompt || '', link: w.link || '',
     image: w.image, thumb: w.thumb || w.image, qrcode: w.qrcode || '',
@@ -589,6 +609,12 @@ function publicWork(w, user) {
   };
 }
 function isVisible(w) { return (w.status || 'approved') === 'approved'; }
+// SSR 用：带上展示名，页面显示昵称，作者页链接仍用账号
+function withAuthorName(w) {
+  const n = displayNameOf(w.author);
+  return n === w.author ? w : { ...w, authorName: n };
+}
+const withAuthorNames = list => list.map(withAuthorName);
 // 认领开关：管理员显式设过就按设置走；没设过时「无归属作品」（匿名投稿 / 后台代传）默认可认领
 function isClaimable(w) {
   if (w.claimOpen === true) return true;
@@ -642,10 +668,57 @@ app.get('/api/me', (req, res) => {
   res.json(user
     ? {
         username: user.username, createdAt: user.createdAt,
+        nickname: user.nickname || '',
+        displayName: displayNameOf(user.username),
+        nicknameNextAt: nickNextAt(user),
         blocked: Array.isArray(user.blocked) ? user.blocked : [],
         favs: Array.isArray(user.favs) ? user.favs : []
       }
     : { user: null });
+});
+
+// ================= 改昵称 =================
+const NICK_COOLDOWN_MS = 7 * 24 * 3600e3;   // 昵称 7 天才能改一次，防改名刷屏
+const NICK_RE = /^[\w\u4e00-\u9fa5·\- ]{2,16}$/;
+
+// 下次可改时间（毫秒时间戳，0 表示现在就能改）
+function nickNextAt(user) {
+  const last = user && Number(user.nicknameChangedAt || 0);
+  if (!last) return 0;
+  const next = last + NICK_COOLDOWN_MS;
+  return next > Date.now() ? next : 0;
+}
+
+app.post('/api/me/nickname', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('nick:' + clientIp(req), 10, 3600e3)) {
+    return res.status(429).json({ error: '改得太频繁了，稍后再试' });
+  }
+  const raw = String((req.body && req.body.nickname) || '').replace(/[<>\r\n\t]/g, '').trim();
+  // 传空 = 恢复默认（显示账号名），随时可以恢复，不受冷却限制
+  const back = !raw || raw === user.username;
+  if (!back) {
+    if (!NICK_RE.test(raw)) {
+      return res.status(400).json({ error: '昵称需 2-16 个字，可用中文、字母、数字、下划线、短横线、空格' });
+    }
+    if (RESERVED_NAMES.includes(raw.toLowerCase())) {
+      return res.status(400).json({ error: '这个昵称不可用，换一个吧' });
+    }
+    if (hitSensitive(raw)) return res.status(400).json({ error: '昵称包含敏感词，换一个吧' });
+    // 昵称不能跟别人的账号名一模一样，否则在页面上分不清是谁（防冒名）
+    const clash = users.find(u => u.id !== user.id && u.username === raw);
+    if (clash) return res.status(400).json({ error: '这个昵称和别人的账号名重了，换一个吧' });
+    const next = nickNextAt(user);
+    if (next) {
+      const days = Math.ceil((next - Date.now()) / 864e5);
+      return res.status(429).json({ error: `昵称 7 天只能改一次，还有 ${days} 天可以再改`, nextAt: next });
+    }
+  }
+  user.nickname = back ? '' : raw;
+  user.nicknameChangedAt = back ? (user.nicknameChangedAt || 0) : Date.now();
+  saveUsers();
+  res.json({ ok: true, nickname: user.nickname, displayName: displayNameOf(user.username), nicknameNextAt: nickNextAt(user) });
 });
 
 // 屏蔽 / 取消屏蔽某个作品（仅影响当前登录用户看到的列表）
@@ -999,6 +1072,7 @@ app.get('/api/authors/:name', (req, res) => {
   const creator = creators.find(c => c.name === name);
   res.json({
     name,
+    displayName: displayNameOf(name),
     verified: !!creator,
     bio: creator ? creator.bio || '' : '',
     total: list.length,
@@ -1245,9 +1319,12 @@ app.post('/api/works/:id/report', (req, res) => {
 
 // 把评论整理成前端需要的形状
 function shapeComment(c, w, user, admin, byId, answeredIds) {
+  // 匿名评论的 username 就是访客自己填的昵称，不能再拿它去对账号（可能撞名）
+  const showName = c.anon ? c.username : displayNameOf(c.username);
   return {
     id: c.id,
     username: c.username,
+    displayName: showName,
     text: c.text,
     createdAt: c.createdAt,
     parentId: c.parentId || null,
@@ -1260,7 +1337,7 @@ function shapeComment(c, w, user, admin, byId, answeredIds) {
     // 回复的对象：优先取具体被回复的那条，其次取楼层作者
     replyToName: (() => {
       const t = byId.get(c.replyToId || c.parentId);
-      return t ? t.username : '';
+      return t ? (t.anon ? t.username : displayNameOf(t.username)) : '';
     })()
   };
 }
@@ -2001,7 +2078,7 @@ app.get('/', (req, res) => {
   });
 
   const block = seo.homeBlock(base, {
-    works: list.slice(0, 24),
+    works: withAuthorNames(list.slice(0, 24)),
     categories: orderedCategories(),
     types: WORK_TYPES
   });
@@ -2050,7 +2127,7 @@ app.get('/w/:id', (req, res) => {
     publishedTime: w.createdAt,
     modifiedTime: w.createdAt,
     jsonLd: [
-      seo.workLd(base, w, pageUrl),
+      seo.workLd(base, withAuthorName(w), pageUrl),
       seo.breadcrumbLd(base, trail)
     ]
   });
@@ -2058,7 +2135,7 @@ app.get('/w/:id', (req, res) => {
   // ?full=1 → 完整页面形态（用于分享与搜索引擎收录，前端不再自动弹窗）
   const fullPage = req.query.full === '1' || req.query.full === 'true';
 
-  sendHtml(res, shell(headHtml, seo.workArticle(base, w, trail, related, { full: fullPage })));
+  sendHtml(res, shell(headHtml, seo.workArticle(base, withAuthorName(w), trail, withAuthorNames(related), { full: fullPage })));
 });
 
 // 作者主页
@@ -2069,6 +2146,7 @@ app.get('/u/:name', (req, res) => {
   const creator = creators.find(c => c.name === name);
   const totalLikes = list.reduce((s, w) => s + (w.likes || 0), 0);
   const pageUrl = base + '/u/' + encodeURIComponent(name);
+  const shown = displayNameOf(name);   // 页面显示昵称，URL / 作者匹配仍用账号名
 
   if (!list.length && !creator) {
     const headHtml = seo.head({
@@ -2082,11 +2160,11 @@ app.get('/u/:name', (req, res) => {
 
   const bio = creator ? creator.bio || '' : '';
   const headHtml = seo.head({
-    title: `${name} 的作品（${list.length} 件） - ${seo.SITE_NAME}`,
+    title: `${shown} 的作品（${list.length} 件） - ${seo.SITE_NAME}`,
     description: truncateText(
-      `${name}${creator ? '（认证创作者）' : ''}在造梦橱窗提交了 ${list.length} 件作品，` +
+      `${shown}${creator ? '（认证创作者）' : ''}在造梦橱窗提交了 ${list.length} 件作品，` +
       `累计获赞 ${totalLikes} 次。${bio}`, 150),
-    keywords: [name, `${name}的作品`, '创作者', '作品集'].join(','),
+    keywords: [shown, `${shown}的作品`, '创作者', '作品集'].join(','),
     canonical: pageUrl,
     image: list[0] ? seo.absolute(base, list[0].image) : '',
     type: 'profile',
@@ -2094,12 +2172,12 @@ app.get('/u/:name', (req, res) => {
       '@context': 'https://schema.org',
       '@type': 'ProfilePage',
       url: pageUrl,
-      name: `${name} 的作品`,
+      name: `${shown} 的作品`,
       isPartOf: { '@type': 'WebSite', name: seo.SITE_NAME, url: base + '/' },
       mainEntity: {
         '@type': 'Person',
-        name,
-        description: bio || `${name} 在 ${seo.SITE_NAME} 的创作者主页`,
+        name: shown,
+        description: bio || `${shown} 在 ${seo.SITE_NAME} 的创作者主页`,
         url: pageUrl,
         interactionStatistic: {
           '@type': 'InteractionCounter',
@@ -2107,15 +2185,15 @@ app.get('/u/:name', (req, res) => {
           userInteractionCount: totalLikes
         }
       }
-    }, seo.breadcrumbLd(base, [{ name: '首页', href: '/' }, { name }])]
+    }, seo.breadcrumbLd(base, [{ name: '首页', href: '/' }, { name: shown }])]
   });
 
   const block = `<div id="seoContent" class="seo-wrap">
-  ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name }])}
+  ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name: shown }])}
   <div class="author-card">
-    <div class="author-avatar">${seo.esc(name.slice(0, 1).toUpperCase())}</div>
+    <div class="author-avatar">${seo.esc(shown.slice(0, 1).toUpperCase())}</div>
     <div class="author-info">
-      <h1>@${seo.esc(name)}</h1>
+      <h1>@${seo.esc(shown)}</h1>
       ${bio ? `<p class="author-bio">${seo.esc(bio)}</p>` : ''}
       <p class="author-stats">
         ${creator ? '<span class="verified-tag">✔ 认证创作者</span> ' : ''}
@@ -2123,7 +2201,7 @@ app.get('/u/:name', (req, res) => {
       </p>
     </div>
   </div>
-  <div class="gallery">${list.map(seo.cardHtml).join('') || '<div class="empty"><p>该作者还没有公开作品</p></div>'}</div>
+  <div class="gallery">${withAuthorNames(list).map(seo.cardHtml).join('') || '<div class="empty"><p>该作者还没有公开作品</p></div>'}</div>
 </div>`;
   sendHtml(res, shell(headHtml, block));
 });
@@ -2262,7 +2340,7 @@ function listPageRoute(kind) {
       activeName: name,
       kind,
       subtitle: `共 ${pool.length} 件${kind === 'c' ? '同分类' : '同形态'}作品，点击卡片查看详情与体验地址`,
-      items,
+      items: withAuthorNames(items),
       trail: [{ name: '首页', href: '/' }, { name: h1 }],
       page,
       hasMore,
@@ -2298,7 +2376,7 @@ app.get('/robots.txt', (req, res) => {
 
 app.get('/feed.xml', (req, res) => {
   res.type('application/rss+xml').set('Cache-Control', 'public, max-age=1800')
-    .send(seo.rssXml(seo.baseUrl(req), byNewest(visibleWorks()).slice(0, 30)));
+    .send(seo.rssXml(seo.baseUrl(req), withAuthorNames(byNewest(visibleWorks()).slice(0, 30))));
 });
 
 app.get('/admin', (req, res) => {
