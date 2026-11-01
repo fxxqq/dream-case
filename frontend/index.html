@@ -317,6 +317,7 @@
           <button class="btn-report" id="blockWork" style="display:none" title="不再在列表里看到这个作品">🚫 屏蔽</button>
           <button class="btn-report" id="openReport">⚠ 投诉</button>
           <button class="btn-report" id="copyLinkBtn">🔗 复制链接</button>
+          <button class="btn-report" id="shareCardBtn" title="生成一张带二维码的分享图，发朋友圈/小红书都行">🖼 分享卡片</button>
           <a class="btn-report" id="fullPageBtn" target="_blank" rel="noopener"
              title="在新标签打开完整页面：可分享给朋友，也能被搜索引擎收录">↗ 查看完整主页</a>
         </div>
@@ -452,6 +453,31 @@
     </div>
   </div>
 
+  <!-- 分享卡片：Canvas 现场生成的 1080×1350 分享图 -->
+  <div class="modal-mask" id="shareModal" style="display:none">
+    <div class="modal share-modal">
+      <div class="modal-head">
+        <h2>分享卡片</h2>
+        <button class="close-btn" id="closeShare">✕</button>
+      </div>
+      <div class="share-tpls">
+        <span class="share-tpls-label">配色</span>
+        <button type="button" class="tpl-btn active" data-tpl="light">浅色</button>
+        <button type="button" class="tpl-btn" data-tpl="dark">深色</button>
+        <button type="button" class="tpl-btn" data-tpl="grad">渐变</button>
+      </div>
+      <div class="share-preview">
+        <canvas id="shareCanvas" width="1080" height="1350"></canvas>
+      </div>
+      <p class="share-tip">会自动带上作品截图、简介和二维码，扫码就能打开这个作品</p>
+      <div class="share-actions">
+        <button class="btn-primary" id="shareDownload">⬇ 保存图片</button>
+        <button class="btn-report" id="shareCopyText">📋 复制文案</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/sharecard.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

@@ -1894,6 +1894,14 @@ function setupDetailActions() {
     }
   };
 
+  // 分享卡片：Canvas 现场生成，带截图/简介/二维码
+  $('shareCardBtn').onclick = () => {
+    const w = state.currentWork;
+    if (!w) return;
+    if (window.ShareCard) window.ShareCard.open(w);
+    else showToast('分享卡片加载中，稍后再试');
+  };
+
   $('openReport').onclick = () => { showModal(reportModal); };
   $('closeReport').onclick = () => { hideModal(reportModal); };
   reportModal.onclick = e => { if (e.target === reportModal) hideModal(reportModal); };

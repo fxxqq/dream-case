@@ -5,6 +5,7 @@
  */
 const express = require('express');
 const multer = require('multer');
+const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -326,6 +327,30 @@ app.use((req, res, next) => {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   if (req.path.startsWith('/admin')) res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   next();
+});
+
+// 二维码图片：给分享卡片用。同一文本指纹命中后长缓存，省得重复计算
+const qrCache = new Map();
+app.get('/api/qr', (req, res) => {
+  const text = String(req.query.text || '').slice(0, 600).trim();
+  const size = Math.min(1024, Math.max(120, parseInt(req.query.size, 10) || 480));
+  if (!text) return res.status(400).json({ error: '缺少 text 参数' });
+  if (!rateLimit('qr:' + clientIp(req), 120, 60000)) return res.status(429).json({ error: '请求过于频繁' });
+  const key = size + '|' + text;
+  const hit = qrCache.get(key);
+  const send = buf => {
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.end(buf);
+  };
+  if (hit) return send(hit);
+  QRCode.toBuffer(text, { type: 'png', width: size, margin: 1, errorCorrectionLevel: 'M' })
+    .then(buf => {
+      if (qrCache.size > 500) qrCache.clear();
+      qrCache.set(key, buf);
+      send(buf);
+    })
+    .catch(() => res.status(500).json({ error: '二维码生成失败' }));
 });
 
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '30d', immutable: true }));
