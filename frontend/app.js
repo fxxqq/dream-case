@@ -2253,4 +2253,18 @@ async function init() {
   window.addEventListener('resize', updateFeatNav);
   route();
 }
+
+// ---------- PWA：注册 Service Worker ----------
+// localhost 与 https 下才可用；admin 页面用的是独立 admin.html，不会执行到这里
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  if (location.protocol !== 'https:' && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {
+      // 注册失败（如隐私模式、存储被禁）不影响正常浏览
+    });
+  });
+}
+registerServiceWorker();
+
 init();
