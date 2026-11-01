@@ -922,12 +922,8 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .tool-item:last-child { border-bottom: none; }
 .tool-item b { font-size: 13px; color: var(--primary); }
 .tool-item span { font-size: 12px; color: var(--muted); }
-.detail-foot { display: flex; gap: 12px; margin-top: 18px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-.detail-foot::-webkit-scrollbar { display: none; }
-/* 极窄屏（<380px）才允许换行 */
-@media (max-width: 380px) {
-  .detail-foot { flex-wrap: wrap; row-gap: 6px; }
-}
+.detail-foot { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 18px; align-items: center; }
+.detail-foot > * { flex: none; }
 
 @media (max-width: 820px) {
   .header-inner { flex-wrap: wrap; height: auto; padding: 10px 0; }
