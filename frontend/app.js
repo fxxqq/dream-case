@@ -3,7 +3,7 @@
 
 let CATEGORIES = ['全部'];
 let typeCounts = {}, catCounts = {}, totalWorks = 0; let osCounts = { open: 0, closed: 0 }; // 筛选下拉选项的计数
-let TYPES = ['全部', '网站', '小程序', 'App', '智能体', '桌面应用', '浏览器扩展', '其他'];
+let TYPES = ['全部', 'Web', 'iOS', 'Android', 'macOS', 'Windows', 'Linux', '小程序', '浏览器插件', '机器人', 'API', '其他'];
 let renderCatPickerFn = null; // 投稿表单的分类胶囊渲染（loadCategories 后刷新）
 const MAX_CATS = 3;           // 应用分类最多可选个数
 
@@ -43,7 +43,7 @@ const statsModal = $('statsModal');
 const nickModal = $('nickModal');
 const toast = $('toast');
 
-const TYPE_ICONS = { '网站': '🌐', '小程序': '📱', 'App': '📲', '智能体': '🤖', '桌面应用': '🖥️', '浏览器扩展': '🧩', '工具': '🛠️', '游戏': '🎮', '其他': '✨' };
+const TYPE_ICONS = { 'Web': '🌐', 'iOS': '🍎', 'Android': '🤖', 'macOS': '💻', 'Windows': '🪟', 'Linux': '🐧', '小程序': '📱', '浏览器插件': '🧩', '机器人': '🦾', 'API': '🔌', '其他': '✨' };
 
 // ---------- 弹窗滚动锁定 ----------
 // 锁定背景滚动，但用 padding-right 补偿滚动条宽度，
@@ -75,31 +75,34 @@ function hideModal(el) {
   unlockScroll();
 }
 // 移动端形态：宣传图按手机竖屏比例展示与压缩；其余按 PC 宽幅
-const MOBILE_TYPES = ['小程序', 'App'];
+const MOBILE_TYPES = ['小程序', 'iOS', 'Android'];
 const LINK_LABEL = {
-  '网站': '🌐 打开网站', '小程序': '📱 打开小程序', 'App': '📲 前往下载',
-  '智能体': '🤖 体验智能体', '桌面应用': '🖥️ 下载客户端', '浏览器扩展': '🧩 前往安装',
-  '工具': '🛠️ 打开工具', '游戏': '🎮 开始游戏', '其他': '🔗 访问作品'
+  'Web': '🌐 打开网站', 'iOS': '🍎 App Store 下载', 'Android': '🤖 前往下载',
+  'macOS': '💻 下载 Mac 版', 'Windows': '🪟 下载 Windows 版', 'Linux': '🐧 下载 Linux 版',
+  '小程序': '📱 打开小程序', '浏览器插件': '🧩 前往安装', '机器人': '🦾 体验机器人', 'API': '🔌 查看文档',
+  '其他': '🔗 访问作品'
 };
-// 各形态的访问方式规则：网站 → 链接必填；其他形态链接选填；小程序 → 二维码必填
+// 各形态的访问方式规则：Web → 链接必填；其他形态链接选填；小程序 → 二维码必填
 const TYPE_LINK_FIELD = {
-  '网站':  { link: true,  qr: false, label: '网站地址 *',   ph: 'https://你的网站地址' },
+  'Web':   { link: true,  qr: false, label: '网站地址 *',   ph: 'https://你的网站地址' },
   '小程序': { link: false, qr: true },
-  'App':   { link: false, qr: false, label: '下载链接（选填）', ph: 'https://下载页 / 应用商店链接' },
-  '智能体': { link: false, qr: false, label: '体验链接（选填）', ph: 'https://智能体对话页链接' },
-  '桌面应用': { link: false, qr: false, label: '下载链接（选填）', ph: 'https://官网下载页 / 安装包链接' },
-  '浏览器扩展': { link: false, qr: false, label: '安装链接（选填）', ph: 'https://Chrome / Edge 商店链接' },
-  '工具':  { link: false, qr: false, label: '工具链接（选填）', ph: 'https://工具地址' },
-  '游戏':  { link: false, qr: false, label: '游戏链接（选填）', ph: 'https://在线试玩 / 下载页链接' },
+  'iOS':   { link: false, qr: false, label: '下载链接（选填）', ph: 'https://App Store / 下载页链接' },
+  'Android': { link: false, qr: false, label: '下载链接（选填）', ph: 'https://下载页 / 应用商店链接' },
+  'macOS': { link: false, qr: false, label: '下载链接（选填）', ph: 'https://官网下载页 / 安装包链接' },
+  'Windows': { link: false, qr: false, label: '下载链接（选填）', ph: 'https://官网下载页 / 安装包链接' },
+  'Linux': { link: false, qr: false, label: '下载链接（选填）', ph: 'https://官网下载页 / 安装包链接' },
+  '浏览器插件': { link: false, qr: false, label: '安装链接（选填）', ph: 'https://Chrome / Edge 商店链接' },
+  '机器人': { link: false, qr: false, label: '体验链接（选填）', ph: 'https://机器人对话页链接' },
+  'API':   { link: false, qr: false, label: '文档链接（选填）', ph: 'https://API 文档地址' },
   '其他':  { link: false, qr: false, label: '作品链接（选填）',   ph: 'https://...' }
 };
-// 链接必填的形态：只有网站
-const LINK_REQUIRED_TYPES = ['网站'];
+// 链接必填的形态：只有 Web
+const LINK_REQUIRED_TYPES = ['Web'];
 
 // 作品形态可多选：types 数组为主，兼容旧的单值 type
 function typesOf(w) {
   if (Array.isArray(w.types) && w.types.length) return w.types;
-  return [w.type || '网站'];
+  return [w.type || 'Web'];
 }
 function typeText(w) {
   return typesOf(w).map(t => `${TYPE_ICONS[t] || '✨'} ${t}`).join(' · ');
@@ -111,7 +114,7 @@ function linkLabelOf(types) {
 // 多形态合并规则：含小程序 → 需要二维码；含网站 → 链接必填；其他形态链接选填
 function ruleOfTypes(types) {
   const qr = types.indexOf('小程序') !== -1;
-  const link = types.indexOf('网站') !== -1;
+  const link = types.indexOf('Web') !== -1;
   // 除纯小程序外都展示链接框（后台新增的自定义形态同样支持填链接）
   const other = types.filter(t => t !== '小程序');
   const hasLinkField = other.length > 0;
@@ -1629,7 +1632,7 @@ function setupUploadForm() {
 
   // 按作品形态显示/隐藏 链接 / 二维码 字段，并切换预览比例（支持多选）
   function applyTypeFields() {
-    const types = selectedTypes().length ? selectedTypes() : ['网站'];
+    const types = selectedTypes().length ? selectedTypes() : ['Web'];
     const rule = ruleOfTypes(types);
     $('linkField').style.display = rule.hasLinkField ? 'block' : 'none';
     $('qrField').style.display = rule.qr ? 'block' : 'none';
@@ -1764,7 +1767,7 @@ function setupUploadForm() {
     qrCleared = false;
     renderGalleryPreviews();
     $('coverText').innerHTML = '点击上传封面图<br /><small>支持 JPG / PNG / WebP，也可直接 Ctrl+V 粘贴截图</small>';
-    setSelectedTypes(['网站']);
+    setSelectedTypes(['Web']);
     setPasteTarget('image');
   }
   resetUploadForm = resetUploadForm; // 暴露给外部（afterAuth 用）
@@ -1948,7 +1951,7 @@ function setupUploadForm() {
     }
 
     // 形态必填校验：只有网站需要链接，小程序需要二维码
-    const curTypes = selectedTypes().length ? selectedTypes() : ['网站'];
+    const curTypes = selectedTypes().length ? selectedTypes() : ['Web'];
     if (LINK_REQUIRED_TYPES.some(t => curTypes.indexOf(t) !== -1) && !form.link.value.trim()) {
       showToast('形态含「网站」，请填写网站地址');
       form.link.focus();

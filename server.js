@@ -64,13 +64,16 @@ if (!Array.isArray(categories) || !categories.length) categories = DEFAULT_CATEG
 
 // 作品形态：可在后台增删 / 调序 / 换图标（[{ name, icon }]）
 const DEFAULT_TYPES = [
-  { name: '网站', icon: '🌐' },
+  { name: 'Web', icon: '🌐' },
+  { name: 'iOS', icon: '🍎' },
+  { name: 'Android', icon: '🤖' },
+  { name: 'macOS', icon: '💻' },
+  { name: 'Windows', icon: '🪟' },
+  { name: 'Linux', icon: '🐧' },
   { name: '小程序', icon: '📱' },
-  { name: 'App', icon: '📲' },
-  { name: '智能体', icon: '🤖' },
-  { name: '桌面应用', icon: '🖥️' },
-  { name: '浏览器扩展', icon: '🧩' },
-  { name: '工具', icon: '🛠️' },
+  { name: '浏览器插件', icon: '🧩' },
+  { name: '机器人', icon: '🦾' },
+  { name: 'API', icon: '🔌' },
   { name: '其他', icon: '✨' }
 ];
 let workTypes = readJSON('types.json', DEFAULT_TYPES.map(t => ({ ...t })));
@@ -79,7 +82,7 @@ let workTypes = readJSON('types.json', DEFAULT_TYPES.map(t => ({ ...t })));
   workTypes = workTypes
     .map(t => (typeof t === 'string' ? { name: t, icon: '' } : { name: String((t && t.name) || ''), icon: String((t && t.icon) || '') }))
     .filter(t => t.name);
-  if (!workTypes.some(t => t.name === '网站')) workTypes.unshift({ name: '网站', icon: '🌐' });
+  if (!workTypes.some(t => t.name === 'Web')) workTypes.unshift({ name: 'Web', icon: '🌐' });
   workTypes.forEach(t => { if (!t.icon) t.icon = '✨'; });
 })();
 
@@ -243,9 +246,9 @@ if (!fs.existsSync(fileOf('users.json'))) {
   console.log('已为历史作者创建演示账号（张三/李四/王五，密码 123456），请及时修改或删除');
 }
 
-// 对外展示的形态（后台可管理；「游戏」已下线但旧数据仍兼容识别）
+// 对外展示的形态（后台可管理；旧形态名已下线，但旧数据仍兼容识别，提交时会被映射成新形态）
 let WORK_TYPES = workTypes.map(t => t.name);
-let ALL_TYPES_LEGACY = Array.from(new Set(WORK_TYPES.concat(['游戏'])));
+let ALL_TYPES_LEGACY = Array.from(new Set(WORK_TYPES.concat(['游戏', '网站', 'App', '桌面应用', '浏览器扩展', '工具', '智能体'])));
 function syncWorkTypes() {
   WORK_TYPES = workTypes.map(t => t.name);
   ALL_TYPES_LEGACY = Array.from(new Set(WORK_TYPES.concat(['游戏'])));
@@ -548,25 +551,25 @@ function normalizeTypes(input) {
     const v = String(t || '').trim();
     if (ALL_TYPES_LEGACY.includes(v) && out.indexOf(v) === -1) out.push(v);
   }
-  return out.length ? out : ['网站'];
+  return out.length ? out : ['Web'];
 }
 function typesOf(w) {
   const arr = Array.isArray(w.types) ? w.types.filter(t => ALL_TYPES_LEGACY.includes(t)) : [];
   if (arr.length) return arr;
-  return [ALL_TYPES_LEGACY.includes(w.type) ? w.type : '网站'];
+  return [ALL_TYPES_LEGACY.includes(w.type) ? w.type : 'Web'];
 }
 function applyTypes(w, types) {
-  const arr = types && types.length ? types : ['网站'];
+  const arr = types && types.length ? types : ['Web'];
   w.types = arr;
   w.type = arr[0]; // 兼容旧字段与 /t/:type 路由
 }
 
-// 形态必填校验：只有网站必须有链接；小程序必须有小程序码；其余形态链接选填
-const LINK_REQUIRED_TYPES = ['网站'];
+// 形态必填校验：只有 Web 必须有链接；小程序必须有小程序码；其余形态链接选填
+const LINK_REQUIRED_TYPES = ['Web'];
 function validateTypeRequired(types, link, qrcode) {
-  const list = types && types.length ? types : ['网站'];
-  if (list.includes('网站') && !String(link || '').trim()) {
-    return '作品形态含「网站」，请填写网站地址';
+  const list = types && types.length ? types : ['Web'];
+  if (list.includes('Web') && !String(link || '').trim()) {
+    return '作品形态含「Web」，请填写网站地址';
   }
   if (list.includes('小程序') && !String(qrcode || '').trim()) {
     return '作品形态含「小程序」，请上传小程序码 / 二维码';
@@ -1792,7 +1795,7 @@ app.post('/api/admin/types/reorder', requireAdmin, (req, res) => {
 });
 app.delete('/api/admin/types/:name', requireAdmin, (req, res) => {
   const name = decodeURIComponent(req.params.name);
-  if (name === '网站') return res.status(400).json({ error: '「网站」是默认形态，不能删除' });
+  if (name === 'Web') return res.status(400).json({ error: '「Web」是默认形态，不能删除' });
   const used = works.filter(w => typesOf(w).includes(name)).length;
   if (used) return res.status(400).json({ error: `还有 ${used} 件作品在用「${name}」，先改成其他形态再删` });
   const before = workTypes.length;
@@ -2092,7 +2095,7 @@ app.get('/', (req, res) => {
     : pool;
 
   const description = truncateText(
-    `造梦橱窗收录社区提交的网站、小程序、App 与智能体作品，涵盖${orderedCategories().slice(0, 5).join('、')}等分类，` +
+    `造梦橱窗收录社区提交的网站、小程序、桌面客户端、机器人等作品，涵盖${orderedCategories().slice(0, 5).join('、')}等分类，` +
     `支持搜索、分类浏览、作品榜单与免费投稿。`, 150);
 
   const headHtml = seo.head({
@@ -2101,7 +2104,7 @@ app.get('/', (req, res) => {
       : `${seo.SITE_NAME} - ${seo.SITE_TAGLINE}`,
     description,
     keywords: [
-      '作品集', '作品展示', '工具导航', '网站推荐', '小程序', 'App', '智能体',
+      '作品集', '作品展示', '工具导航', '网站推荐', '小程序', 'iOS', 'Android', 'macOS', 'Windows',
       '作品投稿', ...orderedCategories().slice(0, 4)
     ].join(','),
     canonical: base + '/',
@@ -2255,7 +2258,7 @@ app.get('/rank', (req, res) => {
   const headHtml = seo.head({
     title: `作品榜单 - 热门网站、小程序与 App - ${seo.SITE_NAME}`,
     description: truncateText(
-      `作品集热门榜单：支持按综合热度、点赞、收藏排序，实时更新最受欢迎的网站、小程序、App 与智能体作品。`, 150),
+      `作品集热门榜单：支持按综合热度、点赞、收藏排序，实时更新最受欢迎的网站、小程序、桌面客户端、机器人等作品。`, 150),
     keywords: '作品榜单,热门工具,排行榜,小程序排行,网站排行,点赞榜,收藏榜',
     canonical: base + '/rank',
     image: list[0] ? seo.absolute(base, list[0].image) : '',

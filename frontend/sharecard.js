@@ -258,7 +258,7 @@
     ctx.fillText(clipLines(ctx, wrap(ctx, authorText, maxTextW), 1, maxTextW)[0] || '', PAD, titleBottom + 18);
 
     // 标签胶囊（紧跟作者行，随标题行数自适应）
-    const types = (typeof typesOf === 'function' ? typesOf(work) : [work.type || '网站']).slice(0, 4);
+    const types = (typeof typesOf === 'function' ? typesOf(work) : [work.type || 'Web']).slice(0, 4);
     const labels = types.map(x => `${(typeof TYPE_ICONS === 'object' && TYPE_ICONS[x]) || '✨'} ${x}`);
     if (work.openSource === true) labels.push('🔓 开源');
     if (work.paid === true) labels.push('💰 付费');

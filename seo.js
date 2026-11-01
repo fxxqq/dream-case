@@ -9,9 +9,9 @@ const SITE_NAME = '造梦橱窗';
 const SITE_TAGLINE = '让好作品被更多人看见';
 const SITE_SLOGAN = SITE_TAGLINE;
 // 结构化数据 / RSS 用的事实性描述（标题用标语，描述仍写清收录范围更利于搜索展现）
-const SITE_DESC = '收录大家的网站、小程序、App 与智能体作品，支持搜索、分类浏览、作品榜单与免费投稿。';
+const SITE_DESC = '收录大家的网站、小程序、桌面客户端、机器人等作品，支持搜索、分类浏览、作品榜单与免费投稿。';
 
-const TYPE_ICONS = { '网站': '🌐', '小程序': '📱', 'App': '📲', '智能体': '🤖', '桌面应用': '🖥️', '浏览器扩展': '🧩', '工具': '🛠️', '游戏': '🎮', '其他': '✨' };
+const TYPE_ICONS = { 'Web': '🌐', 'iOS': '🍎', 'Android': '🤖', 'macOS': '💻', 'Windows': '🪟', 'Linux': '🐧', '小程序': '📱', '浏览器插件': '🧩', '机器人': '🦾', 'API': '🔌', '其他': '✨' };
 // 后台可增删形态：启动/变更时用服务端的 [{name, icon}] 覆盖图标映射
 function setTypeIcons(map) {
   if (!map || typeof map !== 'object') return;
@@ -29,14 +29,14 @@ const APP_CATEGORY = {
   '其他': 'UtilitiesApplication'
 };
 const OS_BY_TYPE = {
-  '网站': 'Web', '小程序': 'WeChat', 'App': 'iOS, Android', '智能体': 'Web',
-  '桌面应用': 'Windows, macOS, Linux', '浏览器扩展': 'Chrome, Edge', '工具': 'Web', '游戏': 'Web, Windows', '其他': 'Web'
+  'Web': 'Web', 'iOS': 'iOS', 'Android': 'Android', 'macOS': 'macOS', 'Windows': 'Windows', 'Linux': 'Linux',
+  '小程序': 'WeChat', '浏览器插件': 'Chrome, Edge', '机器人': 'Web', 'API': 'Web', '其他': 'Web'
 };
 
 /** 作品形态：兼容旧的单值 type，返回数组 */
 function typesOf(w) {
   if (Array.isArray(w.types) && w.types.length) return w.types;
-  return [w.type || '网站'];
+  return [w.type || 'Web'];
 }
 function typeText(w, sep = ' · ') {
   return typesOf(w).map(t => `${TYPE_ICONS[t] || '✨'} ${t}`).join(sep);
@@ -47,13 +47,14 @@ function typeBadges(w) {
     .join('');
 }
 const LINK_LABELS = {
-  '网站': '🌐 打开网站', '小程序': '📱 打开小程序', 'App': '📲 前往下载',
-  '智能体': '🤖 体验智能体', '桌面应用': '🖥️ 下载客户端', '浏览器扩展': '🧩 前往安装',
-  '游戏': '🎮 开始游戏', '其他': '🔗 访问作品'
+  'Web': '🌐 打开网站', 'iOS': '🍎 App Store 下载', 'Android': '🤖 前往下载',
+  'macOS': '💻 下载 Mac 版', 'Windows': '🪟 下载 Windows 版', 'Linux': '🐧 下载 Linux 版',
+  '小程序': '📱 打开小程序', '浏览器插件': '🧩 前往安装', '机器人': '🦾 体验机器人', 'API': '🔌 查看文档',
+  '其他': '🔗 访问作品'
 };
 function linkLabelOf(w) {
   const t = typesOf(w);
-  for (const k of ['网站', '小程序', 'App', '智能体', '桌面应用', '浏览器扩展', '游戏', '其他']) if (t.indexOf(k) !== -1) return LINK_LABELS[k];
+  for (const k of ['Web', 'iOS', 'Android', 'macOS', 'Windows', 'Linux', '小程序', '浏览器插件', '机器人', 'API', '其他']) if (t.indexOf(k) !== -1) return LINK_LABELS[k];
   return '🔗 访问作品';
 }
 
@@ -352,7 +353,7 @@ function listPage(base, { title, description, h1, activeName, kind = 'c', subtit
   <footer class="site-footer">
     <div class="container footer-inner">
       <div class="footer-meta">
-        <span>${SITE_NAME} · 收录大家的网站、小程序、App 与智能体作品</span>
+        <span>${SITE_NAME} · 收录大家的网站、小程序、桌面客户端、机器人等作品</span>
         <a class="footer-icp" href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
       </div>
       <a href="/sitemap.xml" class="footer-link">站点地图</a>
