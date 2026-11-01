@@ -145,10 +145,11 @@ ads.forEach(a => { if (a && a.kind !== 'image' && a.kind !== 'text') a.kind = a.
 // 点击扣分有总额上限（= 这单的展示费），烧到上限后点击不再计费，防止恶意点击把积分掏空。
 // 位置目前只开放「作品详情页」；内容只能取自自己名下、已过审的站内作品，
 // 标题/简介/封面直接从作品取，不能自定义文案或挂外链，也不用人工审稿。
-const REDEEM_SHOW_VIEWS = 10;              // 每 10 次展示
-const REDEEM_SHOW_POINTS = 2;              // 扣 2 分
-const REDEEM_CLICK_POINTS = 2;             // 每次点击扣 2 分
-const REDEEM_PACKS = [50, 100, 200];       // 可买的展示次数包
+const REDEEM_SHOW_VIEWS = 10;              // 展示：每 10 次
+const REDEEM_SHOW_POINTS = 2;              // 2 分（单次展示约 0.2 分）
+const REDEEM_CLICK_POINTS = 2;             // 点击：每次 2 分（单次是展示的 10 倍，点击更值钱）
+const REDEEM_SHOW_PACKS = [50, 100, 200];  // 展示次数包
+const REDEEM_CLICK_PACKS = [0, 5, 10, 20]; // 点击次数包（0 = 只买展示，不加购点击）
 const REDEEM_SLOT_KEY = 'detail';          // 目前只开放详情页
 const REDEEM_MAX_DAYS = 14;                // 兜底有效期：14 天没投完也下线（不退款）
 const REDEEM_MAX_ACTIVE = 2;               // 每人同时最多 2 条在投
@@ -159,9 +160,17 @@ function redeemSlots() {
     showViews: REDEEM_SHOW_VIEWS, showPoints: REDEEM_SHOW_POINTS, clickPoints: REDEEM_CLICK_POINTS
   }));
 }
-// 展示费 = 展示次数 / 10 × 2（档位 50/100/200 都是 10 的倍数，结果必为整数）
-function redeemPriceOf(views) {
+// 展示费 = 展示次数 / 10 × 2（档位都是 10 的倍数，结果必为整数）
+function redeemShowPriceOf(views) {
   return Math.round(views / REDEEM_SHOW_VIEWS * REDEEM_SHOW_POINTS);
+}
+// 点击费 = 点击次数 × 2
+function redeemClickPriceOf(clicks) {
+  return Math.max(0, clicks | 0) * REDEEM_CLICK_POINTS;
+}
+// 订单总额 = 展示费 + 点击费
+function redeemPriceOf(views, clicks) {
+  return redeemShowPriceOf(views) + redeemClickPriceOf(clicks);
 }
 
 // ---------- 用户 / 会话 ----------
@@ -1523,8 +1532,8 @@ app.post('/api/ads/:id/impression', (req, res) => {
 });
 
 // 点击：同一 IP 对同一支广告 60 秒内只记一次。
-// 积分兑换的广告，点击还要按次扣投放人的积分（上限 = 这单的展示费），
-// 烧到上限后只记点击不再扣分，防止恶意点击把人积分掏空。
+// 积分兑换的广告，点击额度是兑换时一起买好的：用一次扣一次额度，不额外扣积分；
+// 额度用完后广告照常展示，点击只计数（不再计费），避免恶意点击把人积分掏空。
 app.post('/api/ads/:id/click', (req, res) => {
   const a = ads.find(x => x.id === req.params.id);
   if (!a) return res.status(404).json({ error: '广告不存在' });
@@ -1533,13 +1542,11 @@ app.post('/api/ads/:id/click', (req, res) => {
     scheduleAdSave();
     if (a.source === 'redeem' && a.redemptionId) {
       const r = redemptions.find(x => x.id === a.redemptionId && x.status === 'active');
-      if (r && (r.clickCost || 0) + REDEEM_CLICK_POINTS <= (r.price || 0)) {
-        const owner = users.find(u => u.id === r.userId);
-        if (owner && shareStatsOf(owner.id).points >= REDEEM_CLICK_POINTS) {
-          addPoints(owner.id, -REDEEM_CLICK_POINTS, 'adclick', r.workId);
-          r.clickCost = (r.clickCost || 0) + REDEEM_CLICK_POINTS;
-          saveRedemptions();
-        }
+      if (r && (a.clickLeft || 0) > 0) {
+        a.clickLeft = (a.clickLeft || 0) - 1;
+        r.clickUsed = (r.clickUsed || 0) + 1;
+        scheduleAdSave();
+        saveRedemptions();
       }
     }
   }
@@ -1564,6 +1571,7 @@ function finishRedemption(redemptionId, status) {
   const ad = ads.find(a => a.id === r.adId);
   if (status === 'used_up' || status === 'expired') {
     r.used = Math.max(0, (r.views || 0) - ((ad && ad.budget) || 0));
+    r.clickUsed = Math.max(0, (r.clicks || 0) - ((ad && ad.clickLeft) || 0));
     if (status === 'expired') r.used = r.views;   // 到期没投完也按已用满记（不退款）
   }
   r.status = status;
@@ -1572,13 +1580,16 @@ function finishRedemption(redemptionId, status) {
   return r;
 }
 
-// 主动撤下 / 后台下架：按没用完的曝光次数折算退分，已用掉的不退
+// 主动撤下 / 后台下架：没用完的展示次数和点击额度都按原价折算退分，已用掉的不退
 function refundRedemption(r, status) {
   const ad = ads.find(a => a.id === r.adId);
   const used = Math.max(0, (r.views || 0) - ((ad && ad.budget) || 0));
   const left = Math.max(0, (r.views || 0) - used);
-  const back = Math.floor((r.price || 0) * left / Math.max(1, r.views || 0));
+  const leftClicks = Math.max(0, ad ? (ad.clickLeft || 0) : (r.clicks || 0));
+  let back = Math.floor(left / REDEEM_SHOW_VIEWS * REDEEM_SHOW_POINTS) + leftClicks * REDEEM_CLICK_POINTS;
+  back = Math.min(back, r.price || 0);
   r.used = used;
+  r.clickUsed = Math.max(0, (r.clicks || 0) - leftClicks);
   r.status = status;
   r.endedAt = Date.now();
   r.refunded = back;
@@ -1621,14 +1632,17 @@ function myRedemptionList(user) {
       const slot = AD_SLOTS.find(s => s.key === r.slot) || {};
       const w = works.find(x => x.id === r.workId) || {};
       const used = r.status === 'active' ? Math.max(0, (r.views || 0) - ((ad && ad.budget) || 0)) : (r.used || 0);
+      const clicks = r.clicks || 0;
+      const clickLeft = ad ? Math.max(0, ad.clickLeft || 0) : Math.max(0, clicks - (r.clickUsed || 0));
       return {
         id: r.id, workId: r.workId, workTitle: w.title || '（作品已下线）',
         slot: r.slot, slotName: slot.name || r.slot,
         views: r.views || 0, used, left: Math.max(0, (r.views || 0) - used),
+        clicks, clickLeft, clickUsed: Math.max(0, clicks - clickLeft),
+        showPrice: r.showPrice || 0, clickPrice: r.clickPrice || 0,
         price: r.price || 0, status: r.status, refunded: r.refunded || 0,
-        clickCost: r.clickCost || 0, clickCap: r.price || 0,
         createdAt: r.createdAt, endsAt: r.endsAt,
-        pv: st.pv || 0, uv: st.uv || 0, clicks: ad ? (ad.clicks || 0) : 0
+        pv: st.pv || 0, uv: st.uv || 0
       };
     });
 }
@@ -1638,7 +1652,8 @@ function redeemPayload(user) {
     showViews: REDEEM_SHOW_VIEWS,
     showPoints: REDEEM_SHOW_POINTS,
     clickPoints: REDEEM_CLICK_POINTS,
-    packs: REDEEM_PACKS,
+    showPacks: REDEEM_SHOW_PACKS,
+    clickPacks: REDEEM_CLICK_PACKS,
     maxActive: REDEEM_MAX_ACTIVE,
     maxDays: REDEEM_MAX_DAYS,
     slots: redeemSlots(),
@@ -1655,16 +1670,18 @@ app.get('/api/redeem/options', (req, res) => {
   res.json(redeemPayload(currentUser(req)));
 });
 
-// 兑换：扣展示费 → 生成一条广告（内容取自作品）→ 立刻上线；点击费用投放期间实时扣
+// 兑换：展示费 + 点击费一次付清 → 生成一条广告（内容取自作品）→ 立刻上线
 app.post('/api/redeem', (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
   if (!rateLimit('redeem:' + user.id, 6, 60000)) return res.status(429).json({ error: '操作太频繁，稍等一下' });
   const body = req.body || {};
   const views = parseInt(body.views, 10);
+  const clicks = body.clicks === undefined ? 0 : parseInt(body.clicks, 10);
   const workId = String(body.workId || '');
 
-  if (!REDEEM_PACKS.includes(views)) return res.status(400).json({ error: '展示量档位不对' });
+  if (!REDEEM_SHOW_PACKS.includes(views)) return res.status(400).json({ error: '展示次数档位不对' });
+  if (!REDEEM_CLICK_PACKS.includes(clicks)) return res.status(400).json({ error: '点击次数档位不对' });
   const work = works.find(w => w.id === workId);
   if (!work || work.deleted) return res.status(400).json({ error: '作品不存在' });
   if (work.userId !== user.id) return res.status(400).json({ error: '只能推广自己名下的作品' });
@@ -1680,7 +1697,9 @@ app.post('/api/redeem', (req, res) => {
     return res.status(400).json({ error: '这件作品已经在投放中，等它投完再来' });
   }
 
-  const price = redeemPriceOf(views);
+  const showPrice = redeemShowPriceOf(views);
+  const clickPrice = redeemClickPriceOf(clicks);
+  const price = showPrice + clickPrice;
   const points = shareStatsOf(user.id).points;
   if (points < price) return res.status(400).json({ error: `积分不够：需要 ${price} 分，你还有 ${points} 分` });
 
@@ -1702,6 +1721,7 @@ app.post('/api/redeem', (req, res) => {
     ownerId: user.id,
     redemptionId,
     budget: views,          // 剩余展示次数，被看到一次扣 1
+    clickLeft: clicks,      // 剩余点击额度，被点一次扣 1
     endsAt: now + REDEEM_MAX_DAYS * 86400e3,
     sort: adsOfSlot(slot).length,
     clicks: 0,
@@ -1711,7 +1731,8 @@ app.post('/api/redeem', (req, res) => {
   saveAds();
   redemptions.push({
     id: redemptionId, adId, userId: user.id, workId: work.id, slot,
-    views, price, used: 0, clickCost: 0, status: 'active',
+    views, clicks, showPrice, clickPrice, price,
+    used: 0, clickUsed: 0, status: 'active',
     createdAt: now, endsAt: ad.endsAt
   });
   saveRedemptions();

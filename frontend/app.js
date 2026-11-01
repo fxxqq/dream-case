@@ -2600,7 +2600,7 @@ const REDEEM_STATUS = {
   cancelled: { text: '已撤下', cls: 'done' },
   removed: { text: '后台下架', cls: 'done' }
 };
-let redeemSel = { workId: '', views: 0 };
+let redeemSel = { workId: '', views: 0, clicks: 0 };
 let redeemData = null;
 
 function redeemDate(ts) {
@@ -2610,12 +2610,16 @@ function redeemDate(ts) {
   return `${d.getMonth() + 1}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+// 总价 = 展示费 + 点击费（都按原价预扣，不搞实时扣分，用户看得见花多少）
 function redeemTotal() {
-  if (!redeemData) return { price: 0, views: 0 };
-  const views = redeemSel.views || (redeemData.packs || [])[0] || 0;
-  // 展示费 = 每 10 次展示 2 分；点击每次另扣 2 分（上限 = 展示费），在投放中实时结算
+  if (!redeemData) return { price: 0, views: 0, clicks: 0, showPrice: 0, clickPrice: 0 };
+  const views = redeemSel.views || (redeemData.showPacks || [])[0] || 0;
+  const clicks = redeemSel.clicks || 0;
   const sv = redeemData.showViews || 10, sp = redeemData.showPoints || 2;
-  return { price: Math.round(views / sv * sp), views };
+  const cp = redeemData.clickPoints || 2;
+  const showPrice = Math.round(views / sv * sp);
+  const clickPrice = clicks * cp;
+  return { price: showPrice + clickPrice, views, clicks, showPrice, clickPrice };
 }
 
 async function openRedeem() {
@@ -2643,14 +2647,16 @@ function renderRedeem() {
   const slots = Array.isArray(d.slots) ? d.slots : [];
   const works = Array.isArray(d.works) ? d.works : [];
   const mine = Array.isArray(d.mine) ? d.mine : [];
-  const packs = (d.packs || []).slice();
+  const showPacks = (d.showPacks || []).slice();
+  const clickPacks = (d.clickPacks || []).slice();
   if (!works.some(w => w.id === redeemSel.workId)) redeemSel.workId = works.length ? works[0].id : '';
-  if (!packs.includes(redeemSel.views)) redeemSel.views = packs[0] || 0;
-  const { price, views } = redeemTotal();
+  if (!showPacks.includes(redeemSel.views)) redeemSel.views = showPacks[0] || 0;
+  if (!clickPacks.includes(redeemSel.clicks)) redeemSel.clicks = clickPacks[0] || 0;
+  const { price, views, clicks, showPrice, clickPrice } = redeemTotal();
   const enough = (d.points || 0) >= price;
   const people = Math.max(1, Math.round(views / 2));
   const noWork = !works.length;
-  const clickNote = `点击每次另扣 ${d.clickPoints} 分（上限 = 展示费）`;
+  const cp = d.clickPoints || 2;
 
   const worksHtml = noWork
     ? `<div class="redeem-empty">你还没有上线中的作品。推广位只能推自己的作品——先提交一件，通过后就能投放。</div>`
@@ -2663,13 +2669,18 @@ function renderRedeem() {
 
   const slotsHtml = `<div class="redeem-slots">${slots.map(s => `
       <button type="button" class="redeem-slot is-on" data-rslot="${escapeHtml(s.key)}">
-        <span class="rs-main"><b>${escapeHtml(s.name)}</b><small>${escapeHtml(s.where || '')} · 每 ${s.showViews} 次展示 ${s.showPoints} 分 · ${clickNote}</small></span>
-        <span class="rs-price">${s.showPoints}<i>分 / ${s.showViews} 次</i></span>
+        <span class="rs-main"><b>${escapeHtml(s.name)}</b><small>${escapeHtml(s.where || '')} · 展示每 ${s.showViews} 次 ${s.showPoints} 分 · 点击每次 ${cp} 分</small></span>
+        <span class="rs-price">${s.showPoints}<i>分 / ${s.showViews} 次展示</i></span>
       </button>`).join('')}</div>`;
 
-  const packsHtml = `<div class="redeem-packs">${packs.map(v => `
+  const showPacksHtml = `<div class="redeem-packs">${showPacks.map(v => `
       <button type="button" class="redeem-pack${v === redeemSel.views ? ' is-on' : ''}" data-rviews="${v}">
         <b>${v} 次展示</b><small>${Math.round(v / (d.showViews || 10) * (d.showPoints || 2))} 分</small>
+      </button>`).join('')}</div>`;
+
+  const clickPacksHtml = `<div class="redeem-packs">${clickPacks.map(v => `
+      <button type="button" class="redeem-pack${v === redeemSel.clicks ? ' is-on' : ''}" data-rclicks="${v}">
+        <b>${v ? v + ' 次点击' : '不加购'}</b><small>${v ? `${v * cp} 分` : '0 分'}</small>
       </button>`).join('')}</div>`;
 
   const mineHtml = mine.length ? `<div class="redeem-list">${mine.map(r => {
@@ -2683,7 +2694,7 @@ function renderRedeem() {
           <span class="ri-title">${escapeHtml(r.workTitle)}</span>
           <span class="ri-status is-${st.cls}">${st.text}</span>
         </div>
-        <div class="ri-meta">${escapeHtml(r.slotName)} · 已展示 ${r.used}/${r.views} 次 · 点击 ${r.clicks} 次${r.clickCost ? ` · 点击费 ${r.clickCost} 分` : ''}</div>
+        <div class="ri-meta">${escapeHtml(r.slotName)} · 已展示 ${r.used}/${r.views} 次${r.clicks ? ` · 点击 ${r.clickUsed}/${r.clicks} 次` : ' · 未加购点击'}</div>
         <div class="ri-bar"><span style="width:${pct}%"></span></div>
         <div class="ri-foot">
           <span>${foot}</span>
@@ -2696,7 +2707,7 @@ function renderRedeem() {
     <div class="redeem-hero">
       <div class="rh-points"><b>${d.points || 0}</b><span>可用分享积分</span></div>
       <p class="rh-tip">好友通过你的分享链接访问 +1 分，注册 +20 分。<br />
-        兑换后作品会出现在所选位置，<b>每被看到一次扣 1 次展示</b>，投完自动下线。</p>
+        <b>展示和点击都能买</b>：每被看到一次扣 1 次展示额度，每被点开一次扣 1 次点击额度；展示投完自动下线。</p>
     </div>
     <div class="redeem-sec">
       <div class="redeem-sec-head">1. 选作品<span>只能推自己名下、已上线的作品</span></div>
@@ -2707,20 +2718,24 @@ function renderRedeem() {
       ${slotsHtml}
     </div>
     <div class="redeem-sec">
-      <div class="redeem-sec-head">3. 买多少次展示<span>每 ${d.showViews} 次展示 ${d.showPoints} 分</span></div>
-      ${packsHtml}
+      <div class="redeem-sec-head">3. 买多少次展示<span>每 ${d.showViews} 次展示 ${d.showPoints} 分，用于挂在详情页曝光</span></div>
+      ${showPacksHtml}
+    </div>
+    <div class="redeem-sec">
+      <div class="redeem-sec-head">4. 加购多少次点击<span>点击每次 ${cp} 分，比展示贵，但更有价值；不加购也能投</span></div>
+      ${clickPacksHtml}
     </div>
     <div class="redeem-foot">
       <div class="redeem-total">
-        <span>展示费合计</span><b>${price}</b><i>分</i>
-        <em>约 ${people} 位访客看到</em>
+        <span>合计</span><b>${price}</b><i>分</i>
+        <em>展示 ${showPrice} 分${clickPrice ? ` + 点击 ${clickPrice} 分` : ''} · 约 ${people} 位访客看到</em>
       </div>
       <button type="button" class="btn-primary" id="redeemGo"${noWork || !enough ? ' disabled' : ''}>
         ${noWork ? '先提交作品' : (enough ? `花 ${price} 分推广` : `还差 ${price - (d.points || 0)} 分`)}
       </button>
     </div>
     <p class="redeem-note">
-      每次被点击再扣 ${d.clickPoints} 分，一单点击费最多扣到 ${price} 分为止；每人同时最多 ${d.maxActive} 条在投；${d.maxDays} 天没投完也下线；撤下或后台下架按剩下的展示次数退分。
+      展示和点击都是兑换时一次买好、按次数扣减，投放期间不再额外扣积分；额度用完只计数。每人同时最多 ${d.maxActive} 条在投；${d.maxDays} 天没投完也下线；撤下或后台下架按剩下的展示次数与点击额度退分。
     </p>
     <div class="redeem-sec">
       <div class="redeem-sec-head">我的投放</div>
@@ -2732,6 +2747,9 @@ function renderRedeem() {
   });
   body.querySelectorAll('[data-rviews]').forEach(el => {
     el.onclick = () => { redeemSel.views = parseInt(el.dataset.rviews, 10) || 0; renderRedeem(); };
+  });
+  body.querySelectorAll('[data-rclicks]').forEach(el => {
+    el.onclick = () => { redeemSel.clicks = parseInt(el.dataset.rclicks, 10) || 0; renderRedeem(); };
   });
   body.querySelectorAll('[data-rcancel]').forEach(el => {
     el.onclick = () => cancelRedeem(el.dataset.rcancel);
@@ -2749,12 +2767,13 @@ async function submitRedeem(btn) {
     const res = await fetch('/api/redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workId: redeemSel.workId, views: redeemSel.views })
+      body: JSON.stringify({ workId: redeemSel.workId, views: redeemSel.views, clicks: redeemSel.clicks })
     });
     const d = await res.json();
     if (!res.ok) { showToast(d.error || '兑换失败，请稍后重试'); return; }
     redeemData = d;
-    redeemSel.views = (d.packs || [])[0] || 0;
+    redeemSel.views = (d.showPacks || [])[0] || 0;
+    redeemSel.clicks = (d.clickPacks || [])[0] || 0;
     renderRedeem();
     showToast('兑换成功，作品已经出现在详情页推广位上了');
     loadAds();   // 立刻刷新页面上的广告位
@@ -2766,7 +2785,7 @@ async function submitRedeem(btn) {
 }
 
 async function cancelRedeem(id) {
-  if (!confirm('撤下这条推广？剩余没投完的展示次数会按比例退回积分，已展示和已消耗的点击费不退。')) return;
+  if (!confirm('撤下这条推广？剩余没投完的展示次数和点击额度会按原价退回积分，已经用掉的展示/点击不退。')) return;
   try {
     const res = await fetch('/api/me/ads/' + encodeURIComponent(id) + '/cancel', { method: 'POST' });
     const d = await res.json();
