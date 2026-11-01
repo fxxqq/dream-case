@@ -246,6 +246,13 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .type-picker .type-opt input:checked + span::after { opacity: 1; transform: scale(1); }
 .type-picker .type-opt input:focus-visible + span { box-shadow: 0 0 0 3px rgba(91, 91, 214, .22); }
 /* 应用分类多选：胶囊复用 type-opt，另加提示行与「＋ 新分类」虚线按钮 */
+/* 分类数量多，胶囊不拉伸铺满、整体更小一号 */
+.cat-picker { gap: 7px; }
+.cat-picker .type-opt { flex: 0 0 auto; font-size: 12.5px; }
+.cat-picker .type-opt span { padding: 5px 12px; font-size: 12.5px; border-width: 1px; }
+.cat-picker .type-opt span::after { font-size: 11px; width: 13px; }
+.cat-picker .type-opt:hover span { transform: none; box-shadow: none; }
+.cat-picker .type-opt input:checked + span { box-shadow: 0 2px 8px rgba(91, 91, 214, .22); }
 .type-picker .type-opt.cat-add { flex: 0 0 auto; }
 .type-picker .type-opt.cat-add span { border-style: dashed; color: var(--muted); background: #fafafe; }
 .type-picker .type-opt.cat-add:hover span { border-color: var(--primary); color: var(--primary); }
