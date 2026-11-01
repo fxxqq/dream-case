@@ -693,18 +693,19 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 }
 .featured-card:hover .feat-arrow { opacity: 1; transform: translate(1px, -1px); }
 
-/* 滑动进度条（可点击/拖动滚动） */
-.featured-progress {
-  width: 140px; height: 5px; border-radius: 99px;
-  background: #e9eaf5; margin: 6px auto 0; overflow: hidden;
-  cursor: pointer; touch-action: none;
+/* 本周精选：两行榜单（PV / 收藏） */
+.feat-block + .feat-block { margin-top: 18px; }
+.feat-block-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+.feat-block-title { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.feat-block-sub { font-size: 12px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feat-block-head .featured-nav { margin-left: auto; }
+.feat-no {
+  position: absolute; left: 6px; top: 6px; z-index: 2;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(28, 26, 52, .62); color: #fff;
+  font-size: 11px; font-weight: 600; line-height: 20px; text-align: center;
+  pointer-events: none;
 }
-.featured-progress span {
-  display: block; height: 100%; border-radius: 99px;
-  background: var(--primary); opacity: .5;
-  transition: margin-left .12s linear, width .2s;
-}
-.featured-progress.scrubbing span { transition: none; }
 
 /* 列表头 */
 .list-head {

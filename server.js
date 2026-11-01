@@ -402,6 +402,38 @@ function workPvUv(workId, days) {
   return { pv, uv: uvSet.size };
 }
 
+// ---------- 收藏时间日志（「本周收藏最多」用） ----------
+// user.favs 里只有作品 id、没有时间，无法反推「本周新增」，
+// 所以收藏动作单独记一条：{ workId, userId, t }，只保留最近 180 天。
+const FAV_LOG_RETENTION_DAYS = 180;
+let favLog = (() => {
+  const raw = readJSON('fav-log.json', []);
+  if (!Array.isArray(raw)) return [];
+  const from = Date.now() - FAV_LOG_RETENTION_DAYS * 86400000;
+  return raw.filter(e => e && typeof e.workId === 'string' && typeof e.t === 'number' && e.t >= from);
+})();
+let favLogTimer = null;
+function scheduleFavLogSave() {
+  if (favLogTimer) return;
+  favLogTimer = setTimeout(() => {
+    favLogTimer = null;
+    try { writeJSON('fav-log.json', favLog); } catch (e) { /* 统计失败不影响主流程 */ }
+  }, 1500);
+}
+// on=true 记一次收藏，on=false 撤掉这个人对这件作品的收藏记录
+function logFav(workId, userId, on) {
+  favLog = favLog.filter(e => !(e.workId === workId && e.userId === userId));
+  if (on) favLog.push({ workId, userId, t: Date.now() });
+  scheduleFavLogSave();
+}
+// 最近 N 天各作品的新增收藏数
+function favCountsSince(days) {
+  const from = Date.now() - days * 86400000;
+  const m = new Map();
+  favLog.forEach(e => { if (e.t >= from) m.set(e.workId, (m.get(e.workId) || 0) + 1); });
+  return m;
+}
+
 // ---------- 分享归因与积分奖励 ----------
 // 分享链接形如 /w/<id>?ref=<账号名>。访客打开后按「IP + 分享者 + 作品 + 当天」去重，
 // 计一次有效分享访问；被邀请人注册再计一次邀请注册。
@@ -1496,12 +1528,29 @@ app.get('/api/works', (req, res) => {
   res.json({ items, total, page, pageSize, hasMore: page * pageSize < total });
 });
 
-// 精选
+// 本周精选：按最近 7 天的真实数据自动排名，取两组 TOP5
+//   pv   = 近 7 天被打开的 PV 最多（浏览量）
+//   favs = 近 7 天新增收藏最多（关注度）；本周暂无新增时按累计收藏兜底，避免空榜
+const FEATURED_TOP = 5;
+const FEATURED_DAYS = 7;
 app.get('/api/featured', (req, res) => {
   const user = currentUser(req);
-  const list = filterBlocked(works.filter(w => isVisible(w) && w.featured), user)
-    .sort((a, b) => score(b) - score(a)).slice(0, 8).map(w => publicWork(w, user));
-  res.json(list);
+  const visible = filterBlocked(works.filter(isVisible), user);
+  const fav7 = favCountsSince(FEATURED_DAYS);
+  const rows = visible.map(w => ({
+    w,
+    pv7: workPvUv(w.id, FEATURED_DAYS).pv,
+    pvAll: (workVisits[w.id] && workVisits[w.id].pv) || 0,
+    fav7: fav7.get(w.id) || 0
+  }));
+  const pack = r => ({ ...publicWork(r.w, user), pv7: r.pv7, fav7: r.fav7 });
+  const byPv = rows.slice()
+    .sort((a, b) => b.pv7 - a.pv7 || b.pvAll - a.pvAll || score(b.w) - score(a.w))
+    .slice(0, FEATURED_TOP).map(pack);
+  const byFav = rows.slice()
+    .sort((a, b) => b.fav7 - a.fav7 || (b.w.favs || 0) - (a.w.favs || 0) || (b.w.likes || 0) - (a.w.likes || 0))
+    .slice(0, FEATURED_TOP).map(pack);
+  res.json({ days: FEATURED_DAYS, pv: byPv, favs: byFav });
 });
 
 // 榜单：period = week / month / all；by = hot（综合）/ likes（点赞）/ favs（收藏）/ pv / uv
@@ -1742,6 +1791,7 @@ app.post('/api/works/:id/fav', (req, res) => {
     user.favs.splice(i, 1);
     w.favs = Math.max(0, (w.favs || 0) - 1);
   }
+  if (on !== (i !== -1)) logFav(w.id, user.id, on);
   saveUsers();
   saveWorks();
   res.json({ favs: w.favs || 0, faved: user.favs.includes(w.id) });
@@ -1763,6 +1813,7 @@ app.post('/api/favs/merge', (req, res) => {
     if (!w || !isVisible(w)) continue;
     user.favs.unshift(id);
     w.favs = (w.favs || 0) + 1;
+    logFav(id, user.id, true);
     added++;
   }
   if (added) { saveUsers(); saveWorks(); }

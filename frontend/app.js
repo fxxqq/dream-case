@@ -807,69 +807,64 @@ function updateThumbArrows() {
   $('thumbPrev').style.visibility = gal.scrollLeft > 2 ? 'visible' : 'hidden';
   $('thumbNext').style.visibility = max > 2 && gal.scrollLeft < max - 2 ? 'visible' : 'hidden';
 }
-let featuredIds = new Set();
+// 「本周精选」两行榜单：近 7 天 PV 最多 / 近 7 天新增收藏最多，各 TOP5
+const FEAT_ROWS = [
+  { key: 'pv', rowId: 'featRowPv', meta: w => `👁 近 7 天 ${w.pv7 || 0} 次浏览` },
+  { key: 'favs', rowId: 'featRowFav', meta: w => `⭐ 近 7 天 +${w.fav7 || 0} 收藏 · 累计 ${w.favs || 0}` }
+];
 async function loadFeatured() {
   try {
-    const list = await (await fetch('/api/featured', { cache: 'no-store' })).json();
-    const sig = list.map(w => w.id).join(',') + '|' + list.length;
-    featuredIds = new Set(list.map(w => w.id));
-    syncDetailFeaturedBadge();
+    const data = await (await fetch('/api/featured', { cache: 'no-store' })).json();
+    const lists = { pv: Array.isArray(data.pv) ? data.pv : [], favs: Array.isArray(data.favs) ? data.favs : [] };
+    const sig = FEAT_ROWS.map(c => lists[c.key].map(w => w.id).join(',')).join('|');
     if (sig === featuredSig) return;
     featuredSig = sig;
     const section = $('featuredSection');
-    const row = $('featuredRow');
-    if (!list.length) {
-      row.innerHTML = '';
-      section.style.display = 'none';
-      return;
-    }
-    const keepLeft = row.scrollLeft;   // 原地替换内容时保留轮播位置，不把用户拉回第一张
-    section.style.display = 'block';
-    row.innerHTML = list.map(w => `
-      <div class="featured-card" data-id="${w.id}">
-        <img src="${w.thumb}" alt="${escapeHtml(w.title)}" loading="lazy" />
-        <div class="featured-body">
-          <div class="featured-title" title="${escapeHtml(w.title)}">${escapeHtml(w.title)}</div>
-          ${w.intro ? `<div class="featured-intro">${escapeHtml(w.intro)}</div>` : ''}
-          <div class="featured-meta">♥ ${w.likes || 0} 赞 · 👁 ${w.views || 0} 浏览</div>
-        </div>
-        <span class="feat-arrow">↗</span>
-      </div>`).join('');
-    row.querySelectorAll('.featured-card').forEach(el =>
-      el.addEventListener('click', () => openWork(el.dataset.id)));
-    setupFeatCarousel();
-    row.scrollLeft = keepLeft;
-    updateFeatNav();
+    let any = false;
+    FEAT_ROWS.forEach(cfg => {
+      const row = $(cfg.rowId);
+      const block = row ? row.closest('.feat-block') : null;
+      const list = lists[cfg.key];
+      if (!row || !block) return;
+      if (!list.length) { row.innerHTML = ''; block.style.display = 'none'; return; }
+      any = true;
+      block.style.display = '';
+      const keepLeft = row.scrollLeft; // 原地替换内容时保留轮播位置
+      row.innerHTML = list.map((w, i) => `
+        <div class="featured-card" data-id="${w.id}">
+          <span class="feat-no">${i + 1}</span>
+          <img src="${w.thumb}" alt="${escapeHtml(w.title)}" loading="lazy" />
+          <div class="featured-body">
+            <div class="featured-title" title="${escapeHtml(w.title)}">${escapeHtml(w.title)}</div>
+            ${w.intro ? `<div class="featured-intro">${escapeHtml(w.intro)}</div>` : ''}
+            <div class="featured-meta">${cfg.meta(w)}</div>
+          </div>
+          <span class="feat-arrow">↗</span>
+        </div>`).join('');
+      row.querySelectorAll('.featured-card').forEach(el =>
+        el.addEventListener('click', () => openWork(el.dataset.id)));
+      row.scrollLeft = keepLeft;
+      updateFeatNav(row);
+    });
+    section.style.display = any ? 'block' : 'none';
   } catch { /* ignore */ }
 }
 
-// 详情弹窗里也有「✨ 精选」标签：后台改了精选时同步它，不需要关掉弹窗重开
-function syncDetailFeaturedBadge() {
-  const w = state.currentWork;
-  if (!w || $('detailModal').style.display !== 'flex') return;
-  const should = featuredIds.has(w.id);
-  if (!!w.featured === should) return;
-  w.featured = should;
-  const cat = $('detailCategory').querySelector('.badge-featured');
-  if (should && !cat) {
-    $('detailCategory').insertAdjacentHTML('beforeend', '<span class="badge-featured">✨ 精选</span>');
-  } else if (!should && cat) cat.remove();
-}
-
-// 精选轮播：左右箭头 + 滑动进度条 + 拖拽滚动
-function setupFeatCarousel() {
-  const row = $('featuredRow');
-  const prev = $('featPrev'), next = $('featNext');
-  const step = () => {
-    const card = row.querySelector('.featured-card');
-    return card ? (card.offsetWidth + 14) * 2 : 400;
-  };
-  prev.onclick = () => row.scrollBy({ left: -step(), behavior: 'smooth' });
-  next.onclick = () => row.scrollBy({ left: step(), behavior: 'smooth' });
-  updateFeatNav();
-  // 鼠标按住拖拽滑动（拖动中禁用卡片点击，松手即恢复）；只绑定一次
-  if (!row._dragInit) {
-    row._dragInit = 1;
+// 精选轮播：每行独立（一行只有 5 张，窄屏横向滑动，宽屏可完整展示）
+function setupFeaturedRows() {
+  document.querySelectorAll('.feat-block').forEach(block => {
+    const row = block.querySelector('.featured-row');
+    if (!row) return;
+    const prev = block.querySelector('.fn-btn[data-dir="-1"]');
+    const next = block.querySelector('.fn-btn[data-dir="1"]');
+    const step = () => {
+      const card = row.querySelector('.featured-card');
+      return card ? (card.offsetWidth + 14) * 2 : 400;
+    };
+    if (prev) prev.onclick = () => row.scrollBy({ left: -step(), behavior: 'smooth' });
+    if (next) next.onclick = () => row.scrollBy({ left: step(), behavior: 'smooth' });
+    row.addEventListener('scroll', () => updateFeatNav(row), { passive: true });
+    // 鼠标按住拖拽滑动（拖动中禁用卡片点击，松手即恢复）
     let down = null;
     row.addEventListener('pointerdown', e => { down = { x: e.clientX, l: row.scrollLeft }; });
     window.addEventListener('pointermove', e => {
@@ -878,50 +873,26 @@ function setupFeatCarousel() {
       if (Math.abs(dx) > 6) { row.classList.add('dragging'); row.scrollLeft = down.l - dx; }
     });
     window.addEventListener('pointerup', () => { down = null; row.classList.remove('dragging'); });
-
-    // 下方进度条可点击/拖动直接滚动（拖住蓝条或点轨道任意位置都行）
-    const prog = $('featProgress');
-    let scrubbing = false;
-    const scrubTo = e => {
-      const rect = prog.getBoundingClientRect();
-      const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-      row.scrollLeft = ratio * (row.scrollWidth - row.clientWidth);
-    };
-    prog.addEventListener('pointerdown', e => {
-      scrubbing = true;
-      prog.classList.add('scrubbing');
-      row.classList.add('dragging'); // 拖进度条时临时禁用卡片吸附，更跟手
-      try { prog.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-      scrubTo(e);
-    });
-    prog.addEventListener('pointermove', e => { if (scrubbing) scrubTo(e); });
-    const endScrub = () => {
-      if (!scrubbing) return;
-      scrubbing = false;
-      prog.classList.remove('scrubbing');
-      row.classList.remove('dragging');
-    };
-    prog.addEventListener('pointerup', endScrub);
-    prog.addEventListener('pointercancel', endScrub);
-  }
+    updateFeatNav(row);
+  });
+  window.addEventListener('resize', () => {
+    document.querySelectorAll('.featured-row').forEach(r => updateFeatNav(r));
+  });
 }
-function updateFeatNav() {
-  const row = $('featuredRow');
+function updateFeatNav(row) {
   if (!row || !row.children.length) return;
+  const block = row.closest('.feat-block');
+  if (!block) return;
+  const nav = block.querySelector('.featured-nav');
+  const prev = block.querySelector('.fn-btn[data-dir="-1"]');
+  const next = block.querySelector('.fn-btn[data-dir="1"]');
   const max = row.scrollWidth - row.clientWidth;
   const noOverflow = max <= 4;
-  // 卡片有 scroll-snap，最右端会差十几像素对不齐，容差放大到 24 避免箭头一直亮着
+  // 卡片有 scroll-snap，最右端会差十几像素对不齐，容差放到 24 避免箭头一直亮着
   const TOL = 24;
-  $('featPrev').disabled = row.scrollLeft <= TOL;
-  $('featNext').disabled = row.scrollLeft >= max - TOL;
-  // 不溢出时用 visibility 隐藏箭头/进度条：保留占位高度，切换精选时页面不会上下跳
-  document.querySelector('.featured-nav').style.visibility = noOverflow ? 'hidden' : 'visible';
-  const prog = $('featProgress');
-  prog.style.visibility = noOverflow ? 'hidden' : 'visible';
-  if (noOverflow) return;
-  const bar = $('featBar');
-  bar.style.width = Math.max(12, row.clientWidth / row.scrollWidth * 100) + '%';
-  bar.style.marginLeft = (row.scrollLeft / row.scrollWidth * 100) + '%';
+  if (nav) nav.style.visibility = noOverflow ? 'hidden' : 'visible';
+  if (prev) prev.disabled = row.scrollLeft <= TOL;
+  if (next) next.disabled = row.scrollLeft >= max - TOL;
 }
 
 // 后台改了精选/置顶/审核/删除 → 前台静默同步（不整页重载、不打断浏览）
@@ -3033,9 +3004,8 @@ async function init() {
   setupSubmitChoice();
   setupFeedback();
   setupWish();
-  // 精选轮播：滚动/窗口变化时同步箭头与进度条状态
-  $('featuredRow').addEventListener('scroll', updateFeatNav, { passive: true });
-  window.addEventListener('resize', updateFeatNav);
+  // 本周精选：两行榜单各自的箭头 / 拖拽 / 溢出状态
+  setupFeaturedRows();
   route();
 }
 
