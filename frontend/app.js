@@ -2654,7 +2654,6 @@ function renderRedeem() {
   if (!clickPacks.includes(redeemSel.clicks)) redeemSel.clicks = clickPacks[0] || 0;
   const { price, views, clicks, showPrice, clickPrice } = redeemTotal();
   const enough = (d.points || 0) >= price;
-  const people = Math.max(1, Math.round(views / 2));
   const noWork = !works.length;
   const cp = d.clickPoints || 2;
 
@@ -2728,7 +2727,7 @@ function renderRedeem() {
     <div class="redeem-foot">
       <div class="redeem-total">
         <span>合计</span><b>${price}</b><i>分</i>
-        <em>展示 ${showPrice} 分${clickPrice ? ` + 点击 ${clickPrice} 分` : ''} · 约 ${people} 位访客看到</em>
+        <em>展示 ${showPrice} 分${clickPrice ? ` + 点击 ${clickPrice} 分` : ''} · 约 ${views} 次展示${clicks ? ` + ${clicks} 次点击` : ''}</em>
       </div>
       <button type="button" class="btn-primary" id="redeemGo"${noWork || !enough ? ' disabled' : ''}>
         ${noWork ? '先提交作品' : (enough ? `花 ${price} 分推广` : `还差 ${price - (d.points || 0)} 分`)}
