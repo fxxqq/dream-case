@@ -638,6 +638,8 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 
 /* 精选轮播：标题行右边的圆形箭头 */
 .featured-head { align-items: center; }
+.featured-head .section-sub { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sub-narrow { display: none; }
 .featured-nav { margin-left: auto; display: flex; gap: 8px; }
 .fn-btn {
   width: 32px; height: 32px; border-radius: 50%;
@@ -693,12 +695,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 }
 .featured-card:hover .feat-arrow { opacity: 1; transform: translate(1px, -1px); }
 
-/* 本周精选：两行榜单（PV / 收藏） */
-.feat-block + .feat-block { margin-top: 18px; }
-.feat-block-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
-.feat-block-title { font-size: 14px; font-weight: 600; color: var(--text); white-space: nowrap; }
-.feat-block-sub { font-size: 12px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.feat-block-head .featured-nav { margin-left: auto; }
+/* 本周精选：一行 10 个，卡片左上角序号 */
 .feat-no {
   position: absolute; left: 6px; top: 6px; z-index: 2;
   width: 20px; height: 20px; border-radius: 50%;
@@ -950,7 +947,11 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   /* 「本周精选」标题不再被副标题挤换行 */
   .section-head { gap: 8px; }
   .section-head h2 { flex: none; white-space: nowrap; font-size: 16.5px; }
-  .featured-head .section-sub { flex: 1 1 auto; min-width: 0; }
+  .featured-head .section-sub { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* 手机上直接手指滑动，箭头不占位置，把空间留给说明文案 */
+  .featured-head .featured-nav { display: none; }
+  .featured-head .sub-wide { display: none; }
+  .featured-head .sub-narrow { display: inline; }
 }
 
 body.scroll-locked { overflow: hidden; }

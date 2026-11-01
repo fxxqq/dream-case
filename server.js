@@ -1528,11 +1528,12 @@ app.get('/api/works', (req, res) => {
   res.json({ items, total, page, pageSize, hasMore: page * pageSize < total });
 });
 
-// 本周精选：按最近 7 天的真实数据自动排名，取两组 TOP5
-//   pv   = 近 7 天被打开的 PV 最多（浏览量）
-//   favs = 近 7 天新增收藏最多（关注度）；本周暂无新增时按累计收藏兜底，避免空榜
-const FEATURED_TOP = 5;
+// 本周精选：按最近 7 天的真实数据自动排名，一行 10 个
+//   取「近 7 天打开次数（PV）最多的 5 个」＋「近 7 天新增收藏最多的 5 个」去重合并，
+//   不足 10 个再用综合热度补齐；收藏更稀有，排序权重按 1 次收藏 ≈ 5 次打开。
+const FEATURED_TOP = 10;
 const FEATURED_DAYS = 7;
+const FEATURED_EACH = 5;
 app.get('/api/featured', (req, res) => {
   const user = currentUser(req);
   const visible = filterBlocked(works.filter(isVisible), user);
@@ -1543,14 +1544,25 @@ app.get('/api/featured', (req, res) => {
     pvAll: (workVisits[w.id] && workVisits[w.id].pv) || 0,
     fav7: fav7.get(w.id) || 0
   }));
-  const pack = r => ({ ...publicWork(r.w, user), pv7: r.pv7, fav7: r.fav7 });
   const byPv = rows.slice()
     .sort((a, b) => b.pv7 - a.pv7 || b.pvAll - a.pvAll || score(b.w) - score(a.w))
-    .slice(0, FEATURED_TOP).map(pack);
+    .slice(0, FEATURED_EACH);
   const byFav = rows.slice()
     .sort((a, b) => b.fav7 - a.fav7 || (b.w.favs || 0) - (a.w.favs || 0) || (b.w.likes || 0) - (a.w.likes || 0))
-    .slice(0, FEATURED_TOP).map(pack);
-  res.json({ days: FEATURED_DAYS, pv: byPv, favs: byFav });
+    .slice(0, FEATURED_EACH);
+  // 两个榜先去重合并，再按「打开 + 收藏×5」综合排序，避免一行里出现两段互不相干的顺序
+  const merged = new Map();
+  [...byPv, ...byFav].forEach(r => { if (!merged.has(r.w.id)) merged.set(r.w.id, r); });
+  let list = [...merged.values()].sort((a, b) =>
+    (b.pv7 + b.fav7 * 5) - (a.pv7 + a.fav7 * 5) || b.pvAll - a.pvAll || score(b.w) - score(a.w));
+  if (list.length < FEATURED_TOP) {
+    const rest = rows.filter(r => !merged.has(r.w.id))
+      .sort((a, b) => (b.pv7 + b.fav7 * 5) - (a.pv7 + a.fav7 * 5) || score(b.w) - score(a.w))
+      .slice(0, FEATURED_TOP - list.length);
+    list = list.concat(rest);
+  }
+  list = list.slice(0, FEATURED_TOP).map(r => ({ ...publicWork(r.w, user), pv7: r.pv7, fav7: r.fav7 }));
+  res.json({ days: FEATURED_DAYS, list });
 });
 
 // 榜单：period = week / month / all；by = hot（综合）/ likes（点赞）/ favs（收藏）/ pv / uv

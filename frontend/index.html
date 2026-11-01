@@ -41,32 +41,16 @@
       <section class="featured-section" id="featuredSection" style="display:none">
         <div class="section-head featured-head">
           <h2>✨ 本周精选</h2>
-          <span class="section-sub">按最近 7 天的真实数据自动排名，每天更新</span>
-        </div>
-
-        <div class="feat-block">
-          <div class="feat-block-head">
-            <span class="feat-block-title">👁 本周最多人在看</span>
-            <span class="feat-block-sub">近 7 天被打开的次数（PV）最多的 5 个</span>
-            <div class="featured-nav">
-              <button class="fn-btn" data-feat-row="featRowPv" data-dir="-1" aria-label="向左滑动">‹</button>
-              <button class="fn-btn" data-feat-row="featRowPv" data-dir="1" aria-label="向右滑动">›</button>
-            </div>
+          <span class="section-sub">
+            <span class="sub-wide">近 7 天被打开最多、收藏（关注）最多的 10 个作品 · 每天更新</span>
+            <span class="sub-narrow">近 7 天打开最多、收藏最多的 10 个作品</span>
+          </span>
+          <div class="featured-nav">
+            <button class="fn-btn" id="featPrev" aria-label="向左滑动">‹</button>
+            <button class="fn-btn" id="featNext" aria-label="向右滑动">›</button>
           </div>
-          <div class="featured-row" id="featRowPv"></div>
         </div>
-
-        <div class="feat-block">
-          <div class="feat-block-head">
-            <span class="feat-block-title">⭐ 本周最受关注</span>
-            <span class="feat-block-sub">近 7 天新增收藏数最多的 5 个（收藏＝想留着继续看）</span>
-            <div class="featured-nav">
-              <button class="fn-btn" data-feat-row="featRowFav" data-dir="-1" aria-label="向左滑动">‹</button>
-              <button class="fn-btn" data-feat-row="featRowFav" data-dir="1" aria-label="向右滑动">›</button>
-            </div>
-          </div>
-          <div class="featured-row" id="featRowFav"></div>
-        </div>
+        <div class="featured-row" id="featRow"></div>
       </section>
 
       <!-- 广告位：首页顶部（位置排在「本周精选」下方；内容在后台「广告位」里挂，没有广告时自动隐藏不占位） -->
