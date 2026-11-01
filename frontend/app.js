@@ -3133,6 +3133,15 @@ function setupFeedback() {
   $('closeFeedback').onclick = closeFeedback;
   modal.onclick = e => { if (e.target === modal) closeFeedback(); };
 
+  // 页脚等处的 /?feedback=1 链接：原地开弹窗，不整页跳转（跳转会把滚动位置丢回顶部）
+  document.addEventListener('click', e => {
+    const a = e.target.closest && e.target.closest('a[href*="feedback=1"]');
+    if (!a) return;
+    e.preventDefault();
+    history.replaceState(null, '', '/?feedback=1');
+    openFeedback();
+  });
+
   form.addEventListener('submit', async e => {
     e.preventDefault();
     const btn = $('feedbackSubmit');
