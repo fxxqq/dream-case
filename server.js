@@ -173,6 +173,15 @@ function userByName(name) {
   }
   return userIndex.get(name) || null;
 }
+
+// 分享归因的 ref 解析：新链接带用户 id（纯 ASCII），旧的汉字账号名链接也继续兼容
+function resolveShareUser(ref) {
+  const r = String(ref || '').trim();
+  if (!r) return null;
+  const byName = userByName(r);
+  if (byName) return byName;
+  return users.find(u => u.id === r) || null;
+}
 function displayNameOf(name) {
   if (!name) return '';
   const u = userByName(name);
@@ -479,7 +488,7 @@ function pruneShare() {
 
 // 记录一次分享访问。返回 { credited, points, reason }
 function creditShareVisit(req, refName, workId) {
-  const refUser = userByName(String(refName || '').trim());
+  const refUser = resolveShareUser(refName);
   if (!refUser) return { credited: false, reason: 'no_ref' };
   const me = currentUser(req);
   if (me && me.id === refUser.id) return { credited: false, reason: 'self' }; // 自己点自己的链接不算
@@ -531,7 +540,7 @@ function creditShareRegister(req, newUser, refName) {
   const ip = ipRecOf(ipk);
   if (newUser && !newUser.regIp) newUser.regIp = ipk;
 
-  let refUser = userByName(String(refName || '').trim());
+  let refUser = resolveShareUser(refName);
   // 没有显式 ref 就用 7 天内的首次触达兜底
   if (!refUser && ip.attr && Date.now() - ip.attr.at <= SHARE_ATTR_DAYS * 86400e3) {
     refUser = users.find(u => u.id === ip.attr.uid) || null;
@@ -948,6 +957,7 @@ app.get('/api/me', (req, res) => {
   const user = currentUser(req);
   res.json(user
     ? {
+        id: user.id,
         username: user.username, createdAt: user.createdAt,
         nickname: user.nickname || '',
         displayName: displayNameOf(user.username),

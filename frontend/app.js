@@ -317,7 +317,7 @@ function setupSubmitChoice() {
 }
 
 async function afterAuth(data) {
-  state.user = { username: data.username, nickname: data.nickname || '' };
+  state.user = { id: data.id || '', username: data.username, nickname: data.nickname || '' };
   state.favs = Array.isArray(data.favs) ? data.favs : [];
   renderAuthBox();
   hideModal(authModal);
@@ -369,7 +369,7 @@ async function doLogout() {
 async function loadMe() {
   try {
     const data = await (await fetch('/api/me')).json();
-    state.user = data.username ? { username: data.username, nickname: data.nickname || '' } : null;
+    state.user = data.username ? { id: data.id || '', username: data.username, nickname: data.nickname || '' } : null;
     state.favs = Array.isArray(data.favs) ? data.favs : [];
     state.blocked = Array.isArray(data.blocked) ? data.blocked : [];
   } catch { state.user = null; state.favs = []; state.blocked = []; }
@@ -1124,8 +1124,10 @@ function refStore() {
     return r;
   } catch { return null; }
 }
-// 当前用户自己的账号：自己分享自己的作品时，链接不带 ref（避免自点）
-function myRefName() { return state.user ? state.user.username : ''; }
+// 当前用户自己的分享身份：优先用用户 id（纯 ASCII，链接干净），旧汉字账号名链接服务端仍兼容
+function myRefName() {
+  return state.user ? (state.user.id || state.user.username) : '';
+}
 // 给链接挂上分享者身份
 function withRef(url) {
   const me = myRefName();
