@@ -3063,6 +3063,11 @@ function setupHeader() {
     const a = e.target.closest('a[data-nav]');
     if (a && a.origin === location.origin) {
       e.preventDefault();
+      // 点 logo 回首页 = 回到默认浏览态，清掉收藏过滤
+      if (a.classList.contains('logo') && state.favoritesOnly) {
+        state.favoritesOnly = false;
+        $('favBtn').classList.remove('active');
+      }
       navigate(a.pathname);
     }
   });
