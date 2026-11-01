@@ -699,6 +699,9 @@ function renderAdSlot(el, slot) {
   el.style.display = 'block';
   if (list.length === 1) {
     el.innerHTML = adHtml(list[0]);
+  } else if (list.every(a => a.kind === 'text')) {
+    // 全是纯文字（脚注式细行）时并列展示：两条同时可见，各自独立曝光/关闭
+    el.innerHTML = `<div class="ad-stack">${list.map(a => adHtml(a)).join('')}</div>`;
   } else {
     el.innerHTML =
       `<div class="ad-carousel">${list.map((a, i) =>

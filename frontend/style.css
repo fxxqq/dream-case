@@ -1310,6 +1310,10 @@ body.on-work .load-more-wrap { display: none !important; }
   .ad-card.ad-text-card .ad-cta { align-self: flex-start; }
 }
 
+/* 多条纯文字广告并列：细分隔线隔开，整体仍是一块淡脚注 */
+.ad-stack { display: flex; flex-direction: column; }
+.ad-stack > .ad-card-wrap + .ad-card-wrap { border-top: 1px solid #eceef6; }
+
 /* 修改昵称弹窗 */
 .modal.modal-nick { max-width: 440px; }
 .nick-body { display: flex; flex-direction: column; gap: 10px; }
