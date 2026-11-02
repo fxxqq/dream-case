@@ -61,7 +61,7 @@
       <div class="list-head">
         <span class="list-head-left">
           <span id="listTitle">全部作品</span>
-          <span class="list-count" id="workCount"></span>
+          <span class="list-count" id="workCount">加载中…</span>
         </span>
         <div class="head-controls">
           <div class="sort-toggle" id="sortToggle" role="group" aria-label="排序方式">
@@ -75,7 +75,17 @@
         </div>
       </div>
 
-      <section class="gallery" id="gallery"></section>
+      <!-- 首屏骨架屏：JS 数据没回来前的占位卡，loadWorks 拿到数据后整体替换 -->
+      <section class="gallery" id="gallery" aria-busy="true">
+        <div class="sk-card" aria-hidden="true"><div class="sk-img"></div><div class="sk-body"><div class="sk-line" style="width:72%"></div><div class="sk-line" style="width:45%"></div><div class="sk-foot"><span class="sk-line" style="width:30%"></span><span class="sk-line" style="width:18%"></span></div></div></div>
+        <div class="sk-card" aria-hidden="true"><div class="sk-img"></div><div class="sk-body"><div class="sk-line" style="width:60%"></div><div class="sk-line" style="width:38%"></div><div class="sk-foot"><span class="sk-line" style="width:26%"></span><span class="sk-line" style="width:20%"></span></div></div></div>
+        <div class="sk-card" aria-hidden="true"><div class="sk-img"></div><div class="sk-body"><div class="sk-line" style="width:78%"></div><div class="sk-line" style="width:50%"></div><div class="sk-foot"><span class="sk-line" style="width:32%"></span><span class="sk-line" style="width:16%"></span></div></div></div>
+        <div class="sk-card" aria-hidden="true"><div class="sk-img"></div><div class="sk-body"><div class="sk-line" style="width:66%"></div><div class="sk-line" style="width:42%"></div><div class="sk-foot"><span class="sk-line" style="width:28%"></span><span class="sk-line" style="width:22%"></span></div></div></div>
+        <div class="sk-card" aria-hidden="true"><div class="sk-img"></div><div class="sk-body"><div class="sk-line" style="width:70%"></div><div class="sk-line" style="width:36%"></div><div class="sk-foot"><span class="sk-line" style="width:30%"></span><span class="sk-line" style="width:18%"></span></div></div></div>
+        <div class="sk-card" aria-hidden="true"><div class="sk-img"></div><div class="sk-body"><div class="sk-line" style="width:58%"></div><div class="sk-line" style="width:46%"></div><div class="sk-foot"><span class="sk-line" style="width:24%"></span><span class="sk-line" style="width:20%"></span></div></div></div>
+        <div class="sk-card" aria-hidden="true"><div class="sk-img"></div><div class="sk-body"><div class="sk-line" style="width:74%"></div><div class="sk-line" style="width:40%"></div><div class="sk-foot"><span class="sk-line" style="width:30%"></span><span class="sk-line" style="width:16%"></span></div></div></div>
+        <div class="sk-card" aria-hidden="true"><div class="sk-img"></div><div class="sk-body"><div class="sk-line" style="width:64%"></div><div class="sk-line" style="width:44%"></div><div class="sk-foot"><span class="sk-line" style="width:26%"></span><span class="sk-line" style="width:18%"></span></div></div></div>
+      </section>
       <div class="empty" id="empty" style="display:none">
         <div class="empty-icon">🎨</div>
         <p>没有找到作品，换个关键词或分类试试？</p>

@@ -960,8 +960,28 @@ function updateFeatNav() {
   window.addEventListener('pageshow', refresh);
 })();
 
+// 首次进页面数据还没回来时，先铺一排骨架占位卡，避免空容器导致版面错乱
+function renderSkeleton() {
+  if (gallery.children.length) return; // 已有内容（切换筛选等场景）就不动
+  $('workCount').textContent = '加载中…';
+  $('empty').style.display = 'none';
+  const n = 12;
+  let html = '';
+  for (let i = 0; i < n; i++) {
+    html += `<div class="sk-card" aria-hidden="true">
+      <div class="sk-img"></div>
+      <div class="sk-body">
+        <div class="sk-line" style="width:72%"></div>
+        <div class="sk-line" style="width:45%"></div>
+        <div class="sk-foot"><span class="sk-line" style="width:30%"></span><span class="sk-line" style="width:18%"></span></div>
+      </div>
+    </div>`;
+  }
+  gallery.innerHTML = html;
+}
+
 async function loadWorks(reset = true) {
-  if (reset) state.page = 1; // 先不清空容器，等数据到达再替换，避免页面高度塌陷把滚动位置钳回顶部
+  if (reset) { state.page = 1; renderSkeleton(); } // 先不清空容器，等数据到达再替换，避免页面高度塌陷把滚动位置钳回顶部
   const params = new URLSearchParams({
     sort: state.sort, type: state.type, category: state.category,
     page: state.page, pageSize: 12
@@ -988,6 +1008,7 @@ async function loadWorks(reset = true) {
 
     const html = data.items.map(w => state.view === 'list' ? listHtml(w) : cardHtml(w)).join('');
     gallery.classList.toggle('list-mode', state.view === 'list');
+    gallery.removeAttribute('aria-busy');
     if (reset) gallery.innerHTML = ''; // 数据到手再替换，旧内容保留期间页面高度稳定
     gallery.insertAdjacentHTML('beforeend', html);
     bindCards(gallery);
@@ -1004,6 +1025,10 @@ async function loadWorks(reset = true) {
     state.hasMore = !!data.hasMore;
     $('loadMore').style.display = state.hasMore ? 'inline-block' : 'none';
   } catch {
+    // 只剩骨架屏说明是首次加载就失败：清掉占位、给出空态，别让灰卡一直闪
+    if ([...gallery.children].every(el => el.classList.contains('sk-card'))) gallery.innerHTML = '';
+    $('empty').style.display = gallery.children.length ? 'none' : 'block';
+    if (!$('workCount').textContent.trim() || $('workCount').textContent === '加载中…') $('workCount').textContent = '';
     showToast('加载失败，请检查网络或服务状态');
   }
 }
