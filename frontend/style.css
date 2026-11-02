@@ -863,23 +863,31 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .rank-list { display: flex; flex-direction: column; gap: 10px; padding-bottom: 48px; }
 .rank-item {
   display: flex; align-items: center; gap: 14px; background: #fff;
-  border: 1px solid var(--border); border-radius: 12px; padding: 10px 16px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 12px; padding: 12px 18px; cursor: pointer;
 }
 .rank-item:hover { border-color: var(--primary); }
-.rank-item img { width: 64px; height: 48px; object-fit: cover; border-radius: 8px; }
+.rank-item img { width: 72px; height: 54px; object-fit: cover; border-radius: 8px; }
 .rank-no {
   width: 28px; text-align: center; font-weight: 700; font-size: 16px; color: var(--muted);
 }
 .rank-no-1 { color: #f5a524; } .rank-no-2 { color: #8a94a6; } .rank-no-3 { color: #c08a5a; }
-.rank-main { flex: 1; }
+.rank-main { flex: 1; min-width: 0; }
 .rank-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
 .rank-meta { font-size: 12px; color: var(--muted); }
+/* PC：五个指标横排一行靠右，行高收紧，避免中间大片留白 */
 .rank-score {
-  display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
-  text-align: right; font-size: 12.5px; color: var(--muted); line-height: 1.45;
+  display: flex; align-items: center; gap: 18px;
+  flex-shrink: 0; text-align: right; font-size: 12.5px; color: var(--muted); line-height: 1.45;
 }
+.rank-score span { white-space: nowrap; }
 /* 当前排序维度的那个数字加重，一眼看出按什么排的 */
 .rank-score span.on { color: var(--text); font-weight: 700; }
+/* 手机：横排放不下，改回竖排小字 */
+@media (max-width: 640px) {
+  .rank-item { padding: 10px 12px; gap: 10px; }
+  .rank-item img { width: 64px; height: 48px; }
+  .rank-score { flex-direction: column; align-items: flex-end; gap: 1px; }
+}
 
 /* 作者页 */
 .author-card {
