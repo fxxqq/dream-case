@@ -82,6 +82,82 @@
     .field input[type="file"] { padding:8px; font-size:13px; }
     .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 
+    /* ---- 与前台投稿弹窗统一的控件（胶囊单选 / 拖拽上传 / 预览网格） ---- */
+    .form-hint { font-size:12px; color:var(--muted); background:#f7f7fb; border-radius:8px; padding:8px 10px; margin:2px 0 14px; }
+    .os-picker { display:flex; flex-wrap:wrap; gap:8px; margin:2px 0 4px; }
+    .os-picker .os-opt { display:inline-flex; align-items:center; position:relative; margin:0; font-size:13px; font-weight:500; cursor:pointer; }
+    .os-picker .os-opt input { position:absolute; opacity:0; width:0; height:0; pointer-events:none; }
+    .os-picker .os-opt span {
+      display:inline-flex; align-items:center; gap:4px; padding:7px 14px;
+      border:1.5px solid var(--border); border-radius:999px; background:#fff; color:#4a4f5e;
+      transition:background .15s, color .15s, border-color .15s, transform .15s;
+      user-select:none; white-space:nowrap;
+    }
+    .os-picker .os-opt:hover span { border-color:#b9bbf0; transform:translateY(-1px); }
+    .os-picker .os-opt input:checked + span { background:#eeeefc; border-color:var(--primary); color:var(--primary); font-weight:600; }
+    .upload-dropzone {
+      display:flex; align-items:center; gap:12px; border:2px dashed var(--border);
+      border-radius:12px; padding:16px; cursor:pointer; background:#fafbff;
+      transition:border-color .15s, background .15s, transform .1s;
+    }
+    .upload-dropzone:hover { border-color:var(--primary); background:#f3f3ff; }
+    .upload-dropzone:active { transform:scale(.99); }
+    .upload-dropzone input[type="file"] { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; clip:rect(0 0 0 0); }
+    .upload-dropzone .dropzone-icon {
+      flex:none; width:42px; height:42px; display:flex; align-items:center; justify-content:center;
+      font-size:20px; border-radius:10px; background:#eef0fb; color:var(--primary);
+    }
+    .upload-dropzone:hover .dropzone-icon { background:var(--primary); color:#fff; }
+    .upload-dropzone .dropzone-text { color:var(--muted); font-size:13.5px; line-height:1.5; }
+    .upload-dropzone .dropzone-text small { color:#a0a3b5; }
+    .upload-dropzone.small { padding:12px; }
+    .upload-dropzone.small .dropzone-icon { width:34px; height:34px; font-size:16px; }
+    .upload-dropzone.paste-active { border-color:var(--primary); background:#f3f3ff; }
+    .upload-dropzone.paste-active::after {
+      content:'Ctrl+V'; margin-left:auto; flex:none; font-size:11px; color:var(--primary);
+      background:#eef0fb; padding:3px 8px; border-radius:999px;
+    }
+    .preview-box { margin-top:10px; position:relative; width:fit-content; max-width:100%; display:none; }
+    .preview-box img { max-width:100%; border-radius:10px; max-height:200px; object-fit:contain; display:block; }
+    .preview-box.mobile img { max-height:320px; }
+    .preview-remove {
+      position:absolute; top:8px; right:8px; width:26px; height:26px; border-radius:50%;
+      border:none; cursor:pointer; background:rgba(20,20,30,.62); color:#fff;
+      font-size:13px; line-height:1; display:flex; align-items:center; justify-content:center;
+      transition:background .15s, transform .1s;
+    }
+    .preview-remove:hover { background:#e5484d; transform:scale(1.06); }
+    .gallery-previews { display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:8px; margin-top:10px; }
+    .gallery-previews:empty { display:none; }
+    .gallery-thumb { position:relative; aspect-ratio:16/10; border-radius:8px; overflow:hidden; border:1px solid var(--border); cursor:grab; }
+    .gallery-previews.mobile { grid-template-columns:repeat(auto-fill, minmax(64px, 1fr)); }
+    .gallery-previews.mobile .gallery-thumb { aspect-ratio:9/16; }
+    .gallery-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+    .gallery-thumb.dragging { opacity:.45; cursor:grabbing; }
+    .gallery-thumb.drag-over { border-color:var(--primary); box-shadow:0 0 0 2px rgba(91,91,214,.35); }
+    .gallery-order {
+      position:absolute; top:4px; left:4px; min-width:16px; height:16px; padding:0 3px;
+      display:flex; align-items:center; justify-content:center;
+      background:rgba(0,0,0,.55); color:#fff; font-size:10px; border-radius:8px; pointer-events:none;
+    }
+    .gallery-move {
+      position:absolute; bottom:4px; width:18px; height:18px; border:none; border-radius:50%;
+      background:rgba(0,0,0,.55); color:#fff; font-size:12px; line-height:1; cursor:pointer;
+      display:flex; align-items:center; justify-content:center; opacity:.75;
+    }
+    .gallery-move:hover { background:var(--primary); opacity:1; }
+    .gallery-move.prev { left:4px; }
+    .gallery-move.next { right:4px; }
+    .gallery-remove {
+      position:absolute; top:4px; right:4px; width:20px; height:20px; border:none; border-radius:50%;
+      background:rgba(0,0,0,.6); color:#fff; font-size:11px; line-height:1; cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .gallery-remove:hover { background:#e03131; }
+    .type-picker .type-opt.cat-add span { border-style:dashed; color:var(--muted); background:#fafafe; }
+    .type-picker .type-opt.cat-add:hover span { border-color:var(--primary); color:var(--primary); }
+    .type-picker .type-opt.cat-add span::after { content:none; }
+
     /* 作品形态多选（chip）：flex 不拉伸、✓ 占位常驻，选中不改变按钮宽高 */
     .type-picker { display:flex; flex-wrap:wrap; gap:6px; }
     .type-picker .type-opt { position:relative; display:inline-flex; align-items:center; cursor:pointer; flex:0 0 auto; }
@@ -251,17 +327,6 @@
             <label>作者</label>
             <input name="author" maxlength="50" placeholder="默认：管理员" />
           </div>
-        </div>
-        <div class="field">
-          <label>形态（可多选）</label>
-          <div class="type-picker" id="adminTypePicker"></div>
-        </div>
-        <div class="field">
-          <label>分类（可多选，最多 3 个，第一个是主分类）</label>
-          <div class="type-picker" id="adminCatPicker"></div>
-          <p class="cat-hint" id="adminCatHint">最多选择 3 个</p>
-        </div>
-        <div class="grid2">
           <div class="field">
             <label>状态</label>
             <select name="status">
@@ -270,62 +335,82 @@
               <option value="rejected">已拒绝</option>
             </select>
           </div>
-          <div class="field"></div>
         </div>
         <div class="field">
-          <label>是否开源</label>
-          <select name="openSource">
-            <option value="">不标注</option>
-            <option value="1">开源（代码公开）</option>
-            <option value="0">闭源</option>
-          </select>
+          <label>作品形态 *（可多选，比如既是网站又有小程序）</label>
+          <div class="type-picker" id="adminTypePicker"></div>
         </div>
         <div class="field">
-          <label>源码仓库地址（标注开源时必填）</label>
-          <input type="text" name="repo" maxlength="500" placeholder="https://github.com/用户名/仓库" />
+          <label>应用分类 *（可多选，最多 3 个）</label>
+          <div class="type-picker" id="adminCatPicker"></div>
+          <p class="cat-hint" id="adminCatHint">最多选择 3 个，第一个是主分类</p>
+          <input type="text" id="adminNewCategory" maxlength="20"
+                 placeholder="输入新分类名称，回车确认" style="display:none; margin-top:8px" />
         </div>
         <div class="field">
-          <label>是否收费</label>
-          <select name="paid">
-            <option value="">免费 / 不标注</option>
-            <option value="1">需要付费（含付费版本）</option>
-          </select>
+          <label>作品介绍 / 使用说明</label>
+          <textarea name="prompt" rows="3" maxlength="1000"
+                    placeholder="介绍一下：做什么用的、怎么体验、有什么亮点"></textarea>
         </div>
         <div class="field">
           <label>官网（选填，作品的主页 / 官方网站）</label>
-          <input type="text" name="site" maxlength="500" placeholder="https://example.com" />
+          <input type="text" name="site" maxlength="500" placeholder="https://example.com" autocomplete="off" />
         </div>
         <div class="field">
-          <label id="adminLinkLabel">链接（网站地址 / 下载链接 / 体验链接，按形态必填）</label>
+          <label id="adminLinkLabel">链接（按形态必填 / 选填）</label>
           <div id="adminLinkInputs"></div><!-- 链接输入框由 JS 按所选形态渲染：单形态一个，多形态每个形态一个 -->
         </div>
-        <div class="field">
-          <label>介绍 / 使用说明</label>
-          <textarea name="prompt" rows="3" maxlength="1000" placeholder="做什么用的、怎么体验、有什么亮点"></textarea>
+        <div class="field" id="adminQrField" data-paste="qrcode">
+          <label>小程序码 / 二维码 *</label>
+          <label class="upload-dropzone small">
+            <input type="file" name="qrcode" accept="image/*" />
+            <span class="dropzone-icon">▦</span>
+            <span class="dropzone-text">点击上传二维码图片<br /><small>或复制图片后按 Ctrl+V 粘贴</small></span>
+          </label>
+          <div class="preview-box" id="qrPreviewBox">
+            <img id="qrPreviewImg" alt="二维码预览" />
+            <button type="button" class="preview-remove" id="qrClear" title="删除二维码">✕</button>
+          </div>
         </div>
         <div class="field" data-paste="image">
-          <label>封面 / 截图 <span id="coverHint">*</span> <em class="paste-tip">可 Ctrl+V 粘贴</em></label>
-          <div class="file-row">
+          <label>作品封面 / 截图 *</label>
+          <label class="upload-dropzone">
             <input type="file" name="image" accept="image/*" />
-            <button type="button" class="paste-mini" data-paste="image"><span>📋</span>粘贴</button>
+            <span class="dropzone-icon">🖼️</span>
+            <span class="dropzone-text" id="coverText">点击上传封面图<br /><small>支持 JPG / PNG / WebP，也可直接 Ctrl+V 粘贴截图</small></span>
+          </label>
+          <div class="preview-box" id="previewBox">
+            <img id="previewImg" alt="封面预览" />
+            <button type="button" class="preview-remove" id="coverClear" title="移除这张封面">✕</button>
           </div>
-          <div class="file-preview" id="coverPreview"></div>
-        </div>
-        <div class="field" data-paste="qrcode">
-          <label>二维码（小程序必填） <em class="paste-tip">可 Ctrl+V 粘贴</em></label>
-          <div class="file-row">
-            <input type="file" name="qrcode" accept="image/*" />
-            <button type="button" class="paste-mini" data-paste="qrcode"><span>📋</span>粘贴</button>
-          </div>
-          <div class="file-preview" id="qrPreview"></div>
         </div>
         <div class="field" data-paste="images">
-          <label>宣传图（最多 9 张，选填） <em class="paste-tip">可连续 Ctrl+V 粘贴</em></label>
-          <div class="file-row">
+          <label>宣传图（选填，最多 9 张，展示在详情页）</label>
+          <label class="upload-dropzone small">
             <input type="file" name="images" accept="image/*" multiple />
-            <button type="button" class="paste-mini" data-paste="images"><span>📋</span>粘贴</button>
+            <span class="dropzone-icon">+</span>
+            <span class="dropzone-text" id="galleryText">添加宣传图片（复制图片后可直接 Ctrl+V 粘贴）</span>
+          </label>
+          <div class="gallery-previews" id="galleryPreviews"></div>
+        </div>
+        <div class="field">
+          <label>是否开源</label>
+          <div class="os-picker">
+            <label class="os-opt"><input type="radio" name="openSource" value="" /><span>不标注</span></label>
+            <label class="os-opt"><input type="radio" name="openSource" value="1" /><span>开源（代码公开）</span></label>
+            <label class="os-opt"><input type="radio" name="openSource" value="0" /><span>闭源</span></label>
           </div>
-          <div class="file-preview" id="galleryPreview"></div>
+        </div>
+        <div class="field" id="repoField" style="display:none">
+          <label>源码仓库地址 *</label>
+          <input type="text" name="repo" maxlength="500" placeholder="https://github.com/用户名/仓库" />
+        </div>
+        <div class="field">
+          <label>是否收费（选填）</label>
+          <div class="os-picker">
+            <label class="os-opt"><input type="radio" name="paid" value="" /><span>免费（不标注）</span></label>
+            <label class="os-opt"><input type="radio" name="paid" value="1" /><span>💰 需要付费</span></label>
+          </div>
         </div>
         <div class="modal-foot">
           <button type="button" class="btn btn-ghost" id="cancelEdit">取消</button>
@@ -657,12 +742,17 @@
     function adminRenderLinkInputs() {
       const box = $('adminLinkInputs');
       if (!box) return;
-      const types = adminSelectedTypes().filter(t => t !== '小程序');
+      const allTypes = adminSelectedTypes();
+      const types = allTypes.filter(t => t !== '小程序');
+      // 与前台一致：只有选了「小程序」才显示二维码字段
+      const needQr = allTypes.includes('小程序');
+      $('adminQrField').style.display = needQr ? 'block' : 'none';
+      $('adminLinkLabel').style.display = types.length ? 'block' : 'none';
       const prev = adminPendingLinkValues || adminCollectLinks();
       adminPendingLinkValues = null;
       if (!types.length) { box.innerHTML = ''; return; }
       if (types.length === 1) {
-        $('adminLinkLabel').textContent = '链接（按形态必填/选填）';
+        $('adminLinkLabel').textContent = '链接（按形态必填 / 选填）';
         box.innerHTML = `<input name="link" data-ltype="${esc(types[0])}" maxlength="500" placeholder="${esc(ADMIN_LINK_PH[types[0]] || 'https://...')}" value="${esc(prev[types[0]] || '')}" />`;
       } else {
         $('adminLinkLabel').textContent = '各平台链接（选填，哪个平台有就填哪个）';
@@ -678,9 +768,17 @@
     }
     function renderAdminCats(checked) {
       $('adminCatPicker').innerHTML = adminCatList.map(c =>
-        `<label class="type-opt"><input type="checkbox" name="cats" value="${esc(c)}"${checked.includes(c) ? ' checked' : ''} /><span>${esc(c)}</span></label>`).join('');
+        `<label class="type-opt"><input type="checkbox" name="cats" value="${esc(c)}"${checked.includes(c) ? ' checked' : ''} /><span>${esc(c)}</span></label>`).join('')
+        + `<button type="button" class="type-opt cat-add" id="adminCatAddBtn" title="创建并选择新分类"><span>＋ 新分类</span></button>`;
+      const addBtn = $('adminCatAddBtn');
+      if (addBtn) addBtn.onclick = e => {
+        e.preventDefault();
+        const inp = $('adminNewCategory');
+        inp.style.display = 'block';
+        inp.focus();
+      };
       const n = adminSelectedCats().length;
-      $('adminCatHint').textContent = n ? `已选 ${n}/3 个` : '最多选择 3 个';
+      $('adminCatHint').textContent = n ? `已选 ${n}/3 个，第一个是主分类` : '最多选择 3 个，第一个是主分类';
     }
     function adminSetCats(list) {
       const want = (list || []).filter(c => adminCatList.includes(c)).slice(0, 3);
@@ -693,6 +791,41 @@
         toast('最多选择 3 个分类');
       }
       renderAdminCats(adminSelectedCats());
+    });
+    // 新分类：回车确认后先创建，再自动勾选（与前台投稿弹窗一致）
+    {
+      const inp = $('adminNewCategory');
+      inp.addEventListener('keydown', async e => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const name = inp.value.trim();
+        if (!name) { inp.style.display = 'none'; return; }
+        try {
+          const r = await fetch('/api/categories', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+          });
+          if (!r.ok) {
+            const err = await r.json().catch(() => ({}));
+            if (err.error !== '分类已存在') { toast(err.error || '新增分类失败'); return; }
+          }
+          const sel = adminSelectedCats();
+          adminCatList = ((await api('/api/categories')) || []).filter(c => c !== '全部');
+          if (!adminCatList.includes(name)) adminCatList.push(name);
+          const want = sel.includes(name) || sel.length >= 3 ? sel : [...sel, name];
+          renderAdminCats(want.slice(0, 3));
+          if (want.length > 3) toast('最多选择 3 个分类');
+          inp.style.display = 'none';
+          inp.value = '';
+        } catch { toast('新增分类失败'); }
+      });
+      inp.addEventListener('blur', () => { if (!inp.value.trim()) inp.style.display = 'none'; });
+    }
+    // 开源 = 是 → 才需要填源码仓库
+    workForm.querySelectorAll('input[name="openSource"]').forEach(r => {
+      r.addEventListener('change', () => {
+        $('repoField').style.display = getFormRadio('openSource') === '1' ? 'block' : 'none';
+      });
     });
     // 勾选形态变化 → 重渲染链接输入框（每个所选形态一个）
     $('adminTypePicker').addEventListener('change', e => {
@@ -736,15 +869,26 @@
     }
 
     function renderGalleryPreview() {
-      $('galleryPreview').innerHTML = galItems.map((it, i) =>
-        `<div class="thumb gal" draggable="true" data-index="${i}" title="拖动可调整顺序">
+      $('galleryPreviews').innerHTML = galItems.map((it, i) =>
+        `<div class="gallery-thumb" draggable="true" data-index="${i}" title="拖动可调整顺序">
            <img src="${it.kind === 'old' ? it.url : it.src}" alt="" />
-           <span class="gal-order">${i + 1}</span>
-           <button type="button" class="gal-move prev" data-gmove="${i}:-1" title="前移">‹</button>
-           <button type="button" class="gal-move next" data-gmove="${i}:1" title="后移">›</button>
-           <button type="button" class="thumb-del" data-del="gal" data-i="${i}" title="删除">✕</button>
+           <span class="gallery-order">${i + 1}</span>
+           <button type="button" class="gallery-move prev" data-move="${i}:-1" title="前移">‹</button>
+           <button type="button" class="gallery-move next" data-move="${i}:1" title="后移">›</button>
+           <button type="button" class="gallery-remove" data-i="${i}" title="删除这张">✕</button>
          </div>`).join('');
-      bindThumbDel();
+      $('galleryText').innerHTML = galItems.length
+        ? `已选 ${galItems.length}/9 张，点击继续添加`
+        : '添加宣传图片（复制图片后可直接 Ctrl+V 粘贴）';
+      $('galleryPreviews').querySelectorAll('.gallery-remove').forEach(btn => {
+        btn.onclick = e => {
+          e.preventDefault();
+          const [it] = galItems.splice(+btn.dataset.i, 1);
+          if (it && it.kind === 'new') URL.revokeObjectURL(it.src);
+          syncGalleryInput();
+          renderGalleryPreview();
+        };
+      });
       bindGalleryDrag();
     }
 
@@ -757,8 +901,8 @@
 
     let galDragFrom = -1;
     function bindGalleryDrag() {
-      const box = $('galleryPreview');
-      box.querySelectorAll('.gal').forEach(el => {
+      const box = $('galleryPreviews');
+      box.querySelectorAll('.gallery-thumb').forEach(el => {
         el.addEventListener('dragstart', e => {
           galDragFrom = +el.dataset.index;
           el.classList.add('dragging');
@@ -766,7 +910,7 @@
         });
         el.addEventListener('dragend', () => {
           el.classList.remove('dragging');
-          box.querySelectorAll('.gal').forEach(x => x.classList.remove('drag-over'));
+          box.querySelectorAll('.gallery-thumb').forEach(x => x.classList.remove('drag-over'));
         });
         el.addEventListener('dragover', e => {
           e.preventDefault();
@@ -780,54 +924,52 @@
           if (galDragFrom >= 0 && galDragFrom !== +el.dataset.index) moveGal(galDragFrom, +el.dataset.index);
         });
       });
-      box.querySelectorAll('.gal-move').forEach(btn => {
+      box.querySelectorAll('.gallery-move').forEach(btn => {
         btn.onclick = e => {
           e.preventDefault();
-          const [i, d] = btn.dataset.gmove.split(':').map(Number);
+          const [i, d] = btn.dataset.move.split(':').map(Number);
           moveGal(i, i + d);
         };
       });
     }
 
+    function setCoverDropText(html) {
+      const el = $('coverText');
+      if (el) el.innerHTML = html;
+    }
+
     function renderCoverPreview() {
       const f = workForm.image.files[0];
-      $('coverPreview').innerHTML = f
-        ? thumbHtml(URL.createObjectURL(f), 'data-del="cover"') + '<span class="thumb-tip">新封面</span>'
-        : (existingCover ? thumbHtml(existingCover, '') + '<span class="thumb-tip">当前封面（必填）</span>' : '');
-      bindThumbDel();
+      const box = $('previewBox');
+      const src = f ? URL.createObjectURL(f) : (existingCover || '');
+      box.style.display = src ? 'block' : 'none';
+      if (src) $('previewImg').src = src; else $('previewImg').removeAttribute('src');
+      setCoverDropText(f ? '已选择新封面，点击可更换<br /><small>也可直接 Ctrl+V 粘贴截图</small>'
+        : (existingCover ? '保留原封面，点击可更换<br /><small>也可直接 Ctrl+V 粘贴截图</small>'
+                         : '点击上传封面图<br /><small>支持 JPG / PNG / WebP，也可直接 Ctrl+V 粘贴截图</small>'));
     }
 
     function renderQrPreview() {
       const f = workForm.qrcode.files[0];
-      $('qrPreview').innerHTML = f
-        ? thumbHtml(URL.createObjectURL(f), 'data-del="qr"')
-        : (existingQr && !qrCleared ? thumbHtml(existingQr, 'data-del="qr"') + '<span class="thumb-tip">当前二维码</span>' : '');
-      bindThumbDel();
+      const box = $('qrPreviewBox');
+      const src = f ? URL.createObjectURL(f) : (qrCleared ? '' : (existingQr || ''));
+      box.style.display = src ? 'block' : 'none';
+      if (src) $('qrPreviewImg').src = src; else $('qrPreviewImg').removeAttribute('src');
     }
 
-    function bindThumbDel() {
-      document.querySelectorAll('.file-preview .thumb-del').forEach(btn => {
-        btn.onclick = e => {
-          e.preventDefault();
-          const kind = btn.dataset.del;
-          const i = +btn.dataset.i;
-          if (kind === 'cover') {
-            workForm.image.value = '';
-            renderCoverPreview();
-          } else if (kind === 'qr') {
-            workForm.qrcode.value = '';
-            qrCleared = true;  // 提交时真正删除服务器上的二维码
-            renderQrPreview();
-            toast('已删除二维码');
-          } else if (kind === 'gal') {
-            const [it] = galItems.splice(i, 1);
-            if (it && it.kind === 'new') URL.revokeObjectURL(it.src);
-            syncGalleryInput();
-            renderGalleryPreview();
-          }
-        };
-      });
-    }
+    // 封面 / 二维码的「✕ 删除」（静态按钮，只绑一次）
+    $('coverClear').onclick = e => {
+      e.preventDefault();
+      workForm.image.value = '';
+      renderCoverPreview();
+    };
+    $('qrClear').onclick = e => {
+      e.preventDefault();
+      workForm.qrcode.value = '';
+      qrCleared = true;  // 提交时真正删除服务器上的二维码
+      renderQrPreview();
+      toast('已删除二维码');
+    };
 
     // 把 galItems 里的新图同步回 file input（FormData / 旧逻辑兼容）
     function syncGalleryInput() {
@@ -835,18 +977,33 @@
       setNewGallery(news);
     }
 
+    // 单选胶囊（开源 / 收费）：RadioNodeList 直接赋值在部分浏览器不稳，统一走这里
+    function setFormRadio(name, val) {
+      const list = workForm.querySelectorAll(`input[name="${name}"]`);
+      list.forEach(i => { i.checked = (i.value === (val || '')); });
+      if (![...list].some(i => i.checked) && list.length) list[0].checked = true;
+    }
+    const getFormRadio = name => {
+      const on = workForm.querySelector(`input[name="${name}"]:checked`);
+      return on ? on.value : '';
+    };
+
     async function openEditor(id) {
       editingId = id || null;
       workForm.reset();
       existingCover = ''; existingQr = ''; originalImages = []; galItems = []; qrCleared = false;
-      ['coverPreview', 'qrPreview', 'galleryPreview'].forEach(x => $(x).innerHTML = '');
       setPasteTarget('image');
       const w = id ? WORK_CACHE[id] : null;
       $('editorTitle').textContent = w ? '编辑作品：' + w.title : '新建作品';
-      $('coverHint').textContent = w ? '（不选则保留原封面）' : '*';
+      $('galleryText').textContent = '添加宣传图片（复制图片后可直接 Ctrl+V 粘贴）';
+      setCoverDropText(w ? '保留原封面，点击可更换<br /><small>也可直接 Ctrl+V 粘贴截图</small>'
+                         : '点击上传封面图<br /><small>支持 JPG / PNG / WebP，也可直接 Ctrl+V 粘贴截图</small>');
       $('saveWorkBtn').textContent = w ? '保存修改' : '创建作品';
       await loadTypeOptions();
       await loadCatOptions(w ? (Array.isArray(w.categories) && w.categories.length ? w.categories : [w.category].filter(Boolean)) : []);
+      setFormRadio('openSource', w && w.openSource === true ? '1' : (w && w.openSource === false ? '0' : ''));
+      setFormRadio('paid', w && w.paid ? '1' : '');
+      $('repoField').style.display = getFormRadio('openSource') === '1' ? 'block' : 'none';
       let draftRestored = false;
       if (!w) {
         draftRestored = restoreDraft(); // 新建模式恢复草稿（内部会渲染链接输入框）
@@ -857,9 +1014,7 @@
         workForm.author.value = w.author || '';
         adminSetTypes(w.types && w.types.length ? w.types : [w.type || '网站']);
         workForm.status.value = w.status || 'approved';
-        workForm.openSource.value = w.openSource === true ? '1' : w.openSource === false ? '0' : '';
         workForm.repo.value = w.repo || '';
-        workForm.paid.value = w.paid ? '1' : '';
         {
           // 编辑回填：按形态的 links 优先，旧数据的单 link 落到第一个非小程序形态的输入框
           const nonMini = (w.types && w.types.length ? w.types : [w.type || 'Web']).filter(t => t !== '小程序');
@@ -900,9 +1055,9 @@
           title: workForm.title.value, author: workForm.author.value,
           types: adminSelectedTypes(), cats: adminSelectedCats(),
           status: workForm.status.value, links: adminCollectLinks(),
-          openSource: workForm.openSource.value,
+          openSource: getFormRadio('openSource'),
           repo: workForm.repo.value,
-          paid: workForm.paid.value,
+          paid: getFormRadio('paid'),
           prompt: workForm.prompt.value, site: workForm.site.value, t: Date.now()
         }));
       } catch {}
@@ -919,9 +1074,10 @@
         adminSetTypes(Array.isArray(d.types) && d.types.length ? d.types : (d.type ? [d.type] : ['网站']));
         adminSetCats(Array.isArray(d.cats) && d.cats.length ? d.cats : (d.category ? [d.category] : []));
         if ([...workForm.status.options].some(o => o.value === d.status)) workForm.status.value = d.status;
-        workForm.openSource.value = ['', '1', '0'].includes(d.openSource) ? d.openSource : '';
+        setFormRadio('openSource', ['', '1', '0'].includes(d.openSource) ? d.openSource : '');
         workForm.repo.value = d.repo || '';
-        workForm.paid.value = d.paid === '1' ? '1' : '';
+        setFormRadio('paid', d.paid === '1' ? '1' : '');
+        $('repoField').style.display = getFormRadio('openSource') === '1' ? 'block' : 'none';
         // 兼容旧草稿的单 link 字段
         if (d.links && Object.keys(d.links).length) adminPendingLinkValues = d.links;
         else if (d.link && d.link.trim()) {
@@ -968,8 +1124,10 @@
 
     function setPasteTarget(t) {
       pasteTarget = t;
-      document.querySelectorAll('.paste-mini').forEach(b => b.classList.toggle('on', b.dataset.paste === t));
-      document.querySelectorAll('.field[data-paste]').forEach(f => f.classList.toggle('paste-active', f.dataset.paste === t));
+      document.querySelectorAll('.upload-dropzone').forEach(el => {
+        const f = el.closest('.field');
+        el.classList.toggle('paste-active', !!(f && f.dataset.paste === t));
+      });
     }
 
     function clipboardImage(cd) {
@@ -1010,6 +1168,8 @@
 
     function applyPasted(target, file) {
       if (!file) return;
+      // 二维码字段隐藏时（网站 / App 等形态）自动落到封面，与前台一致
+      if (target === 'qrcode' && $('adminQrField').style.display === 'none') target = 'image';
       if (target === 'images') { appendGallery([file]); return; }
       const input = target === 'qrcode' ? workForm.qrcode : workForm.image;
       if (!putFile(input, file)) { toast('当前浏览器不支持粘贴，请点击选择文件'); return; }
