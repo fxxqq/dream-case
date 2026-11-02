@@ -710,7 +710,7 @@ function shareStatsOf(userId) {
   };
 }
 
-// ---------- 许愿墙 ----------
+// ---------- 造梦酒肆 ----------
 // 一句话说出「我想要一个……」，别人点「我也想要」表达需求热度；
 // 有本事的创作者点「我来实现」认领，做完把作品挂上来，卡片自动变「已实现」。
 let ideas = readJSON('ideas.json', []);
@@ -1191,7 +1191,7 @@ app.post('/api/me/password', (req, res) => {
 
 // ---- 注销账号（不可恢复） ----
 // 双确认：密码 + 完整账号名。作品可选「保留（解除归属，署名保留）」或「一并删除」；
-// 评论/许愿墙内容保留但匿名化；认领申请、广告投放、积分与分享记录、被领兑换码一并清理。
+// 评论/造梦酒肆内容保留但匿名化；认领申请、广告投放、积分与分享记录、被领兑换码一并清理。
 const DELETED_AUTHOR = '已注销用户';
 
 app.post('/api/me/delete', (req, res) => {
@@ -1249,7 +1249,7 @@ app.post('/api/me/delete', (req, res) => {
   if (favRollback) saveWorks();
   favLog = favLog.filter(e => e.userId !== user.id);
 
-  // 评论 / 许愿墙：内容保留，作者名匿名化（不留下昵称线索）
+  // 评论 / 造梦酒肆：内容保留，作者名匿名化（不留下昵称线索）
   let cmtAnon = false;
   comments.forEach(c => {
     if (c.userId !== user.id) return;
@@ -1561,7 +1561,7 @@ app.get('/api/shareboard', (req, res) => {
   res.json({ board: shareBoard(10) });
 });
 
-// ---- 许愿墙 ----
+// ---- 造梦酒肆 ----
 // 列表：默认按「想要的人多」排序，可按最新；支持 limit
 app.get('/api/ideas', (req, res) => {
   const sort = req.query.sort === 'new' ? 'new' : 'hot';
@@ -3870,7 +3870,7 @@ app.get('/rank', (req, res) => {
   sendHtml(res, shell(headHtml, isBotUa(req) ? block : '')); // 真人不输出 SEO 区块（SPA 自己渲染，避免闪现+塌陷）
 });
 
-// 许愿墙：说出想要的作品，社区创作者来认领实现（服务端渲染，利于收录）
+// 造梦酒肆（原造梦酒肆）：说出想要的作品，社区创作者来认领实现（服务端渲染，利于收录）
 app.get('/wish', (req, res) => {
   const base = seo.baseUrl(req);
   const list = ideas.filter(i => !i.hidden).slice().sort((a, b) => {
@@ -3880,21 +3880,21 @@ app.get('/wish', (req, res) => {
   const top = list.slice(0, 30);
   const doneCount = list.filter(i => i.status === 'done' || i.workId).length;
   const desc = truncateText(
-    `许愿墙：说出你想要但还没人做的工具，社区里的创作者来接单实现。目前共有 ${list.length} 个想法，` +
+    `造梦酒肆：坐下说一句你想要但还没人做的工具，社区里的创作者来接单实现。目前共有 ${list.length} 个想法，` +
     `其中 ${doneCount} 个已被实现。最受期待的有 ${top.slice(0, 3).map(i => i.title).join('、')} 等。`, 150);
 
   const headHtml = seo.head({
-    title: `许愿墙 - 说出你想要的作品，让社区帮你实现 - ${seo.SITE_NAME}`,
+    title: `造梦酒肆 - 说出你想要的作品，让社区帮你实现 - ${seo.SITE_NAME}`,
     description: desc,
-    keywords: '许愿墙,想要的功能,求工具,需求征集,作品定制,社区共创',
+    keywords: '造梦酒肆,许愿墙,想要的功能,求工具,需求征集,作品定制,社区共创',
     canonical: base + '/wish',
     type: 'website',
     jsonLd: [
-      seo.breadcrumbLd(base, [{ name: '首页', href: '/' }, { name: '许愿墙' }]),
+      seo.breadcrumbLd(base, [{ name: '首页', href: '/' }, { name: '造梦酒肆' }]),
       {
         '@context': 'https://schema.org',
         '@type': 'ItemList',
-        name: '许愿墙 · 大家想要的作品',
+        name: '造梦酒肆 · 大家想要的作品',
         url: base + '/wish',
         itemListOrder: 'https://schema.org/ItemListOrderDescending',
         numberOfItems: top.length,
@@ -3908,10 +3908,10 @@ app.get('/wish', (req, res) => {
   });
 
   const block = `<div id="seoContent" class="seo-wrap">
-  ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name: '许愿墙' }])}
+  ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name: '造梦酒肆' }])}
   <div class="page-head">
-    <h1>💡 许愿墙</h1>
-    <p>想要什么作品，写在这儿——社区里的高手会来接；被认领、被实现的想法会挂上作品链接</p>
+    <h1>🍶 造梦酒肆</h1>
+    <p>坐下说一句你想要的作品——社区里的高手会来接；被认领、被实现的想法会挂上作品链接</p>
   </div>
   <p class="seo-wish-stat">共 ${list.length} 个想法 · 已被实现 ${doneCount} 个 · 按「想要的人最多」排序</p>
   <ol class="seo-rank seo-wish">

@@ -1367,7 +1367,7 @@ function closeAllViews() {
   hideModal(detailModal);
 }
 
-// 导航高亮：榜单页亮「榜单」，许愿墙页亮「许愿墙」，其余按当前排序/收藏态亮对应按钮
+// 导航高亮：榜单页亮「榜单」，造梦酒肆页亮「造梦酒肆」，其余按当前排序/收藏态亮对应按钮
 function updateNavActive() {
   const onRank = location.pathname === '/rank';
   const onWish = location.pathname === '/wish';
@@ -1512,7 +1512,7 @@ function route() {
   }
   if (path === '/wish') {
     $('wishView').style.display = 'block';
-    setTitle('许愿墙');
+    setTitle('造梦酒肆');
     setupWish();
     if (!keepList) loadIdeas(30);
     updateNavActive();
@@ -2912,7 +2912,7 @@ function setupDetailActions() {
 }
 
 // ---------- 已屏蔽作品 ----------
-// ---------- 许愿墙 ----------
+// ---------- 造梦酒肆 ----------
 // 「你有什么想法，让大家实现吗」：一句话发想法 → 别人点「我也想要」→ 创作者认领 → 做完挂作品
 let wishSort = 'hot';
 let wishShown = 30;
@@ -3692,7 +3692,7 @@ function setupHeader() {
     if (location.pathname !== '/') navigate('/'); else loadWorks();
   };
 
-  // 许愿墙：回首页并平滑滚到许愿墙区块，短暂高亮提示位置
+  // 造梦酒肆：回首页并平滑滚到造梦酒肆区块，短暂高亮提示位置
   // 展示方式切换：卡片网格 / 一行一个的列表（选择存 localStorage）
   document.querySelectorAll('#viewToggle .vt-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === state.view);
@@ -4110,7 +4110,7 @@ async function init() {
   setupSubmitChoice();
   setupFeedback();
   setupInstall();
-  // 许愿墙是独立页面，进入 /wish 时再初始化（见 route）
+  // 造梦酒肆是独立页面，进入 /wish 时再初始化（见 route）
   // 本周精选：滚动/窗口变化时同步箭头状态
   $('featRow').addEventListener('scroll', updateFeatNav, { passive: true });
   window.addEventListener('resize', updateFeatNav);

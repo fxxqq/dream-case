@@ -18,7 +18,7 @@
       </form>
 
       <nav class="main-nav">
-        <a class="nav-btn" href="/wish" data-nav>✨ 许愿墙</a>
+        <a class="nav-btn" href="/wish" data-nav>🍶 造梦酒肆</a>
         <a class="nav-btn" href="/rank" data-nav>榜单</a>
         <button class="nav-btn" id="favBtn">⭐ 收藏</button>
       </nav>
@@ -126,11 +126,11 @@
       <div class="rank-list" id="rankList"></div>
     </section>
 
-    <!-- 许愿墙：说出你想要的作品，社区里的创作者来认领实现 -->
+    <!-- 造梦酒肆：说出你想要的作品，社区里的创作者来认领实现 -->
     <section id="wishView" style="display:none">
       <div class="page-head wish-page-head">
-        <h2 class="page-title">💡 许愿墙</h2>
-        <p>想要什么作品，写在这儿——社区里的高手会来接；被认领、被实现的想法会挂上作品链接</p>
+        <h2 class="page-title">🍶 造梦酒肆</h2>
+        <p>坐下说一句你想要的作品——社区里的高手会来接；被认领、被实现的想法会挂上作品链接</p>
       </div>
       <div class="wish-compose">
         <input id="wishInput" maxlength="80" autocomplete="off"
@@ -408,7 +408,7 @@
           <b>注销后不可恢复</b>，请确认下面这些内容你都清楚：
           <ul>
             <li>账号 <b id="delAccName"></b>、昵称、积分（<span id="delAccPts">0</span> 分）、收藏、签到记录全部清除，同名账号会释放给其他人注册</li>
-            <li>评论和许愿墙的内容会保留，但显示为「已注销用户」</li>
+            <li>评论和造梦酒肆的内容会保留，但显示为「已注销用户」</li>
             <li>正在进行中的推广投放会停止，已消耗的积分不退回</li>
             <li>其他设备上的登录状态会立即失效</li>
           </ul>
@@ -438,7 +438,7 @@
     </div>
   </div>
 
-  <!-- 许愿墙：认领者把做好的作品挂上来 -->
+  <!-- 造梦酒肆：认领者把做好的作品挂上来 -->
   <div class="modal-mask" id="ideaDoneModal" style="display:none">
     <div class="modal modal-idea">
       <div class="modal-head">
@@ -446,7 +446,7 @@
         <button class="close-btn" id="closeIdeaDone" title="关闭">✕</button>
       </div>
       <div class="idea-done-body">
-        <p class="idea-done-tip">把做好的作品链接贴进来（<code>/w/xxx</code> 或完整网址），这张许愿卡就会变成「已实现」。</p>
+        <p class="idea-done-tip">把做好的作品链接贴进来（<code>/w/xxx</code> 或完整网址），这张想法卡就会变成「已实现」。</p>
         <input id="ideaDoneInput" maxlength="200" autocomplete="off" placeholder="https://idea.v5pc.com/w/xxxx" />
         <p class="idea-done-msg" id="ideaDoneMsg"></p>
         <div class="idea-done-actions">

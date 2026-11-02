@@ -336,7 +336,7 @@
           <span class="side-group">内容</span>
           <button class="tab" data-tab="all">全部作品</button>
           <button class="tab" data-tab="comments">评论管理</button>
-          <button class="tab" data-tab="ideas">想法墙</button>
+          <button class="tab" data-tab="ideas">造梦酒肆</button>
           <span class="side-group">配置</span>
           <button class="tab" data-tab="categories">分类管理</button>
           <button class="tab" data-tab="types">形态管理</button>
@@ -1509,7 +1509,7 @@
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
 
-    // ---- 许愿墙（想法） ----
+    // ---- 造梦酒肆（想法） ----
     async function loadIdeasAdmin() {
       try {
         const list = await api('/api/admin/ideas');
