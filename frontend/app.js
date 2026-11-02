@@ -23,6 +23,7 @@ const state = {
   user: null,
   favs: [], // 当前登录用户收藏的作品 id（服务端存储，按收藏时间倒序）
   blocked: [], // 当前登录用户屏蔽过的作品 id（服务端存储，同步过来用于展示数量）
+  blockedUsers: [], // 当前登录用户拉黑的作者用户名（TA 的所有作品都不再展示给我）
   myClaims: [], // 我的作品认领申请 [{ workId, status }]
   // 展示方式：card 卡片网格 / list 一行一个的紧凑列表（记住用户的选择）
   view: localStorage.getItem('dm_view') === 'list' ? 'list' : 'card'
@@ -271,7 +272,7 @@ let updateRepoFieldFn = () => {}; // setupUploadForm 内部注入：开源时显
 function renderAuthBox() {
   const box = $('authBox');
   if (state.user) {
-    const n = (state.blocked || []).length;
+    const n = (state.blocked || []).length + (state.blockedUsers || []).length;
     const ck = state.user.checkin || {};
     const ckDone = !!ck.done;
     box.innerHTML =
@@ -279,13 +280,13 @@ function renderAuthBox() {
       `<button class="link-btn checkin-entry${ckDone ? ' is-done' : ''}" id="checkinBtn"
          title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天` : `每日签到领 ${ck.todayPoints || 2} 分`}"><span class="lb-ico">📅</span>${ckDone ? `已签${ck.streak > 1 ? ' ' + ck.streak + '天' : ''}` : '签到'}</button>` +
       `<button class="link-btn stats-entry" id="statsBtn" title="我的作品数据与站内推广"><span class="lb-ico">📊</span>数据与推广</button>` +
-      (n ? `<button class="link-btn blocked-entry" id="blockedBtn" title="查看已屏蔽的作品">🚫 ${n}</button>` : '') +
+      (n ? `<button class="link-btn blocked-entry" id="blockedBtn" title="查看已屏蔽的作品和拉黑的作者">🚫 ${n}</button>` : '') +
       `<button class="link-btn" id="logoutBtn">退出</button>`;
     $('logoutBtn').onclick = doLogout;
     $('statsBtn').onclick = openStats;
     $('checkinBtn').onclick = doCheckin;
     const bb = $('blockedBtn');
-    if (bb) bb.onclick = openBlockedList;
+    if (bb) bb.onclick = () => openBlockedList('works');
   } else {
     box.innerHTML = '<button class="btn-ghost auth-open" id="loginEntry">登录 / 注册</button>';
     $('loginEntry').onclick = () => openAuth('login');
@@ -430,7 +431,8 @@ async function loadMe() {
     state.user = data.username ? { id: data.id || '', username: data.username, nickname: data.nickname || '' } : null;
     state.favs = Array.isArray(data.favs) ? data.favs : [];
     state.blocked = Array.isArray(data.blocked) ? data.blocked : [];
-  } catch { state.user = null; state.favs = []; state.blocked = []; }
+    state.blockedUsers = Array.isArray(data.blockedUsers) ? data.blockedUsers : [];
+  } catch { state.user = null; state.favs = []; state.blocked = []; state.blockedUsers = []; }
   await loadMyClaims();
   if (state.user) await mergeLocalFavs(); // 本机遗留的旧收藏（换设备/重新登录都会补一次）
   renderAuthBox();
@@ -1425,11 +1427,15 @@ async function openWork(id, push = true) {
     $('detailLike').classList.toggle('liked', isFav('liked:' + w.id) || localStorage.getItem('liked:' + w.id) === '1');
     renderDetailFav(w.id);
 
-    // 自己的作品：显示编辑 / 删除；别人的作品：登录后可屏蔽
+    // 自己的作品：显示编辑 / 删除；别人的作品：登录后可屏蔽，有账号的作者可拉黑
     const canManage = !!w.owned;
     $('editWork').style.display = canManage ? 'inline-block' : 'none';
     $('delWork').style.display = canManage ? 'inline-block' : 'none';
     $('blockWork').style.display = (!canManage && state.user) ? 'inline-block' : 'none';
+    const blockedAuthor = state.user && (state.blockedUsers || []).includes(w.author);
+    $('blockAuthor').style.display = (!canManage && state.user && w.claimed && w.author && w.author !== '匿名')
+      ? 'inline-block' : 'none';
+    $('blockAuthor').textContent = blockedAuthor ? '↩ 已拉黑作者 · 恢复' : '⛔ 拉黑作者';
 
     // 认领入口：只有管理员开放了认领的作品才显示（自己的作品不显示）
     const entry = $('claimEntry');
@@ -2353,6 +2359,41 @@ function setupDetailActions() {
     showToast('已屏蔽，可在顶部「🚫」里恢复');
   };
 
+  // 拉黑 / 取消拉黑作者：TA 的所有作品都不再展示给我（含以后新发的）
+  $('blockAuthor').onclick = async () => {
+    const w = state.currentWork;
+    if (!w || !w.author) return;
+    if (!state.user) { openAuth('login'); return; }
+    const btn = $('blockAuthor');
+    const turningOff = (state.blockedUsers || []).includes(w.author); // 已拉黑 → 本次是恢复
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(w.author)}/block`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: !turningOff })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data.error || '操作失败'); return; }
+      state.blockedUsers = Array.isArray(data.blockedUsers) ? data.blockedUsers : state.blockedUsers;
+      renderAuthBox();
+      hideModal(detailModal);
+      if (turningOff) {
+        showToast('已取消拉黑，该作者的作品恢复显示');
+        if (!location.pathname.startsWith('/w/')) route();
+      } else {
+        // 拉黑生效：回到列表页重新渲染（重新带过滤条件），作者的全部作品都会消失
+        if (location.pathname.startsWith('/w/')) {
+          if (history.state && history.state.dm === 'work') {
+            history.back();
+          } else { history.pushState({}, '', '/'); route(); }
+        } else {
+          route();
+        }
+        showToast(`已拉黑 @${w.author}，TA 的作品不再展示给你，可在顶部「🚫」里恢复`);
+      }
+    } catch { showToast('操作失败，请稍后再试'); }
+    finally { btn.disabled = false; }
+  };
+
   // 评论 / 提问切换
   document.querySelectorAll('#commentKind .ck-btn').forEach(btn => {
     btn.onclick = () => {
@@ -3025,13 +3066,27 @@ async function openStats() {
   });
 }
 
-async function openBlockedList() {
+let blockedTab = 'works'; // 当前停在哪个标签：works 作品 / users 作者
+
+async function openBlockedList(tab) {
   if (!state.user) { openAuth('login'); return; }
+  blockedTab = tab || blockedTab;
   const box = $('blockedList');
-  box.innerHTML = '<div class="blocked-empty">加载中…</div>';
+  const ubox = $('blockedUserList');
+  $('blockedTabWorks').classList.toggle('is-on', blockedTab === 'works');
+  $('blockedTabUsers').classList.toggle('is-on', blockedTab === 'users');
+  $('blockedTabWorks').onclick = () => openBlockedList('works');
+  $('blockedTabUsers').onclick = () => openBlockedList('users');
+  box.style.display = blockedTab === 'works' ? '' : 'none';
+  ubox.style.display = blockedTab === 'users' ? '' : 'none';
   $('closeBlocked').onclick = () => hideModal(blockedModal);
   blockedModal.onclick = e => { if (e.target === blockedModal) hideModal(blockedModal); };
   showModal(blockedModal);
+  if (blockedTab === 'works') loadBlockedWorks(box); else loadBlockedUsers(ubox);
+}
+
+async function loadBlockedWorks(box) {
+  box.innerHTML = '<div class="blocked-empty">加载中…</div>';
   try {
     const list = await (await fetch('/api/blocked')).json();
     if (!Array.isArray(list)) { box.innerHTML = '<div class="blocked-empty">加载失败，请稍后重试</div>'; return; }
@@ -3050,6 +3105,53 @@ async function openBlockedList() {
     });
   } catch {
     box.innerHTML = '<div class="blocked-empty">加载失败，请稍后重试</div>';
+  }
+}
+
+async function loadBlockedUsers(box) {
+  box.innerHTML = '<div class="blocked-empty">加载中…</div>';
+  try {
+    const list = await (await fetch('/api/blocked-users')).json();
+    if (!Array.isArray(list)) { box.innerHTML = '<div class="blocked-empty">加载失败，请稍后重试</div>'; return; }
+    if (!list.length) { box.innerHTML = '<div class="blocked-empty">还没有拉黑任何作者</div>'; return; }
+    box.innerHTML = list.map(u => `
+      <div class="blocked-item" data-name="${escapeHtml(u.username)}">
+        <span class="blocked-avatar">👤</span>
+        <div class="blocked-main">
+          <div class="blocked-title">@${escapeHtml(u.nickname)}</div>
+          <div class="blocked-meta">现有 ${u.works} 件作品对你隐藏（含以后新发的）</div>
+        </div>
+        <button type="button" class="btn-ghost blocked-undo" data-name="${escapeHtml(u.username)}">取消拉黑</button>
+      </div>`).join('');
+    box.querySelectorAll('.blocked-undo').forEach(btn => {
+      btn.onclick = () => unblockUser(btn.dataset.name, btn);
+    });
+  } catch {
+    box.innerHTML = '<div class="blocked-empty">加载失败，请稍后重试</div>';
+  }
+}
+
+async function unblockUser(name, btn) {
+  btn.disabled = true;
+  btn.textContent = '恢复中…';
+  try {
+    const res = await fetch(`/api/users/${encodeURIComponent(name)}/block`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: false })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || '操作失败');
+    state.blockedUsers = Array.isArray(data.blockedUsers) ? data.blockedUsers : state.blockedUsers;
+    renderAuthBox();
+    const item = btn.closest('.blocked-item');
+    if (item) item.remove();
+    const box = $('blockedUserList');
+    if (box && !box.querySelector('.blocked-item')) box.innerHTML = '<div class="blocked-empty">还没有拉黑任何作者</div>';
+    showToast(`已取消拉黑 @${name}，TA 的作品恢复显示`);
+    if (!location.pathname.startsWith('/w/')) route();
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = '取消拉黑';
+    showToast(err.message);
   }
 }
 

@@ -273,9 +273,15 @@ function requireUser(req, res) {
 function blockedIds(user) {
   return new Set(user && Array.isArray(user.blocked) ? user.blocked : []);
 }
+// 拉黑作者：存在用户名数组里，TA 的所有作品（含以后新发的）都不再出现在我的列表里
+function blockedAuthorSet(user) {
+  return new Set(user && Array.isArray(user.blockedUsers) ? user.blockedUsers : []);
+}
 function filterBlocked(list, user) {
   const set = blockedIds(user);
-  return set.size ? list.filter(w => !set.has(w.id)) : list;
+  const authors = blockedAuthorSet(user);
+  if (!set.size && !authors.size) return list;
+  return list.filter(w => !set.has(w.id) && !authors.has(w.author));
 }
 
 // 历史数据迁移：为旧作品作者创建演示账号（密码 123456，可在 data/users.json 删除）
@@ -1034,6 +1040,7 @@ app.get('/api/me', (req, res) => {
         displayName: displayNameOf(user.username),
         nicknameNextAt: nickNextAt(user),
         blocked: Array.isArray(user.blocked) ? user.blocked : [],
+        blockedUsers: Array.isArray(user.blockedUsers) ? user.blockedUsers : [],
         favs: Array.isArray(user.favs) ? user.favs : [],
         checkin: checkinView(user)
       }
@@ -1111,6 +1118,42 @@ app.get('/api/blocked', (req, res) => {  const user = requireUser(req, res);
   const ids = Array.isArray(user.blocked) ? user.blocked : [];
   const map = new Map(works.map(w => [w.id, w]));
   const list = ids.map(id => map.get(id)).filter(w => w && isVisible(w)).map(w => publicWork(w, user));
+  res.json(list);
+});
+
+// 拉黑 / 取消拉黑某个作者：TA 的所有作品都不再出现在我的列表里（含以后新发的）
+app.post('/api/users/:name/block', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('ublock:' + user.id, 30, 60000)) {
+    return res.status(429).json({ error: '操作过于频繁，稍后再试' });
+  }
+  const name = decodeURIComponent(req.params.name || '');
+  const target = users.find(u => u.username === name);
+  if (!target) return res.status(404).json({ error: '用户不存在' });
+  if (target.id === user.id) return res.status(400).json({ error: '不能拉黑自己' });
+  if (!Array.isArray(user.blockedUsers)) user.blockedUsers = [];
+  const on = !(req.body && req.body.on === false); // 默认拉黑；传 on:false 为取消
+  const i = user.blockedUsers.indexOf(name);
+  if (on && i === -1) user.blockedUsers.unshift(name);
+  if (!on && i !== -1) user.blockedUsers.splice(i, 1);
+  saveUsers();
+  res.json({ blockedUsers: user.blockedUsers, on });
+});
+
+// 我拉黑的作者列表（含各自当前可见作品数，用于解除拉黑）
+app.get('/api/blocked-users', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const names = Array.isArray(user.blockedUsers) ? user.blockedUsers : [];
+  const list = names.map(name => {
+    const u = users.find(x => x.username === name);
+    return {
+      username: name,
+      nickname: u ? (u.nickname || u.username) : name,
+      works: works.filter(w => w.author === name && isVisible(w) && !(w.anonymous === true)).length
+    };
+  });
   res.json(list);
 });
 

@@ -413,6 +413,7 @@
           <button class="btn-report" id="editWork" style="display:none">✏️ 编辑</button>
           <button class="btn-report" id="delWork" style="display:none">🗑 删除作品</button>
           <button class="btn-report" id="blockWork" style="display:none" title="不再在列表里看到这个作品">🚫 屏蔽</button>
+          <button class="btn-report" id="blockAuthor" style="display:none" title="这个作者的每件作品都不再展示给我（含以后新发的）">⛔ 拉黑作者</button>
           <button class="btn-report" id="openReport">⚠ 投诉</button>
           <button class="btn-report" id="copyLinkBtn">🔗 复制链接</button>
           <button class="btn-report" id="shareCardBtn" title="生成一张带二维码的分享图，发朋友圈/小红书都行">🖼 分享卡片</button>
@@ -427,11 +428,16 @@
   <div class="modal-mask" id="blockedModal" style="display:none">
     <div class="modal blocked-modal">
       <div class="modal-head">
-        <h2>已屏蔽的作品</h2>
+        <h2>我的屏蔽列表</h2>
         <button class="close-btn" id="closeBlocked">✕</button>
       </div>
-      <p class="blocked-hint">被屏蔽的作品不会出现在你的首页、榜单、精选和搜索结果里，只对你自己生效，随时可以恢复。</p>
+      <div class="blocked-tabs">
+        <button class="blocked-tab is-on" id="blockedTabWorks" type="button">屏蔽的作品</button>
+        <button class="blocked-tab" id="blockedTabUsers" type="button">拉黑的作者</button>
+      </div>
+      <p class="blocked-hint">被屏蔽的作品 / 拉黑作者的投稿不会出现在你的首页、榜单、精选和搜索结果里，只对你自己生效，随时可以恢复。</p>
       <div class="blocked-list" id="blockedList"></div>
+      <div class="blocked-list" id="blockedUserList" style="display:none"></div>
     </div>
   </div>
 
