@@ -115,7 +115,7 @@
       <div class="rank-dd-row">
         <div class="dd-filter" id="rankPeriodDD">
           <button type="button" class="dd-btn" id="rankPeriodBtn">
-            <span class="dd-ico">🗓️</span><span class="dd-label">周期</span>
+            <span class="dd-ico"><i class="ico" data-ico="checkin"></i></span><span class="dd-label">周期</span>
             <b class="dd-value" id="rankPeriodValue">周榜</b><span class="dd-caret">▾</span>
           </button>
           <div class="dd-panel" id="rankPeriodPanel">
@@ -126,20 +126,20 @@
         </div>
         <div class="dd-filter" id="rankByDD">
           <button type="button" class="dd-btn" id="rankByBtn">
-            <span class="dd-ico">🏆</span><span class="dd-label">排序</span>
+            <span class="dd-ico"><i class="ico" data-ico="rank"></i></span><span class="dd-label">排序</span>
             <b class="dd-value" id="rankByValue">综合</b><span class="dd-caret">▾</span>
           </button>
           <div class="dd-panel" id="rankByPanel">
-            <button type="button" class="dd-opt active" data-by="hot"><span class="dd-opt-label">🏆 综合</span></button>
-            <button type="button" class="dd-opt" data-by="likes"><span class="dd-opt-label">♥ 按点赞</span></button>
-            <button type="button" class="dd-opt" data-by="favs"><span class="dd-opt-label">★ 按收藏</span></button>
-            <button type="button" class="dd-opt" data-by="pv"><span class="dd-opt-label">📊 按 PV</span></button>
-            <button type="button" class="dd-opt" data-by="uv"><span class="dd-opt-label">🧑 按 UV</span></button>
+            <button type="button" class="dd-opt active" data-by="hot"><span class="dd-opt-label"><i class="ico" data-ico="rank"></i> 综合</span></button>
+            <button type="button" class="dd-opt" data-by="likes"><span class="dd-opt-label"><i class="ico" data-ico="heart"></i> 按点赞</span></button>
+            <button type="button" class="dd-opt" data-by="favs"><span class="dd-opt-label"><i class="ico" data-ico="star"></i> 按收藏</span></button>
+            <button type="button" class="dd-opt" data-by="pv"><span class="dd-opt-label"><i class="ico" data-ico="bars"></i> 按 PV</span></button>
+            <button type="button" class="dd-opt" data-by="uv"><span class="dd-opt-label"><i class="ico" data-ico="person"></i> 按 UV</span></button>
           </div>
         </div>
       </div>
       <div class="ad-slot" data-ad-slot="rank"></div>
-      <p class="rank-legend">♥ 获赞 · ★ 被收藏 · <b>📊 PV</b> 本周期页面浏览量 · <b>🧑 UV</b> 本周期独立访客数（按所选维度降序，当前维度数字加粗）</p>
+      <p class="rank-legend"><i class="ico" data-ico="heart"></i> 获赞 · <i class="ico" data-ico="star"></i> 被收藏 · <b><i class="ico" data-ico="bars"></i> PV</b> 本周期页面浏览量 · <b><i class="ico" data-ico="person"></i> UV</b> 本周期独立访客数（按所选维度降序，当前维度数字加粗）</p>
       <div class="rank-list" id="rankList"></div>
     </section>
 

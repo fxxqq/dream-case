@@ -770,10 +770,10 @@ function listHtml(w) {
         <div class="row-meta">${escapeHtml(typeText(w))} · ${w.verified ? '<i class="verified">✔</i>' : ''}${escapeHtml(aname(w))} · ${escapeHtml(w.category)}${w.openSource === true ? ' · 🔓 开源' : w.openSource === false ? ' · 🔒 闭源' : ''}${w.paid ? ' · 💰 付费' : ''}</div>
       </div>
       <div class="row-stats">
-        <span class="row-stat">♥ <b>${w.likes}</b></span>
-        <span class="row-stat">★ <b class="fav-num" data-fav-count="${w.id}" data-count="${w.favs || 0}" data-prefix="">${w.favs || 0}</b></span>
-        <span class="row-stat">👁 <b>${w.views}</b></span>
-        ${cc ? `<span class="row-stat">💬 <b class="cmt-num" data-comment-count="${w.id}" data-count="${cc}" data-prefix="">${cc}</b></span>` : ''}
+        <span class="row-stat">${ic('heart')} <b>${w.likes}</b></span>
+        <span class="row-stat">${ic('star')} <b class="fav-num" data-fav-count="${w.id}" data-count="${w.favs || 0}" data-prefix="">${w.favs || 0}</b></span>
+        <span class="row-stat">${ic('eye')} <b>${w.views}</b></span>
+        ${cc ? `<span class="row-stat">${ic('chat')} <b class="cmt-num" data-comment-count="${w.id}" data-count="${cc}" data-prefix="">${cc}</b></span>` : ''}
       </div>
       <button class="row-fav ${isFav(w.id) ? 'active' : ''}" data-fav="${w.id}" title="收藏">${ic('fav')}</button>
     </div>`;
@@ -1661,11 +1661,11 @@ async function loadRank(period, by) {
           <div class="rank-meta">${escapeHtml(typeText(w))} · ${escapeHtml(aname(w))} · ${escapeHtml(w.category)}</div>
         </div>
         <div class="rank-score">
-          <span class="${cur === 'likes' ? 'on' : ''}" title="获赞数">♥ ${w.likes || 0}</span>
-          <span class="${cur === 'favs' ? 'on' : ''}" title="被收藏数">★ ${w.favs || 0}</span>
-          ${cur === 'hot' ? `<span class="on" title="综合分 = 获赞×3 + 收藏×4 + 累计浏览">⚡ ${(w.likes || 0) * 3 + (w.favs || 0) * 4 + (w.views || 0)}</span>` : ''}
-          <span class="${cur === 'pv' ? 'on' : ''}" title="本周期页面浏览量（Page Views，排序依据）">📊 ${w.pv || 0}</span>
-          <span class="${cur === 'uv' ? 'on' : ''}" title="本周期独立访客数（Unique Visitors，排序依据）">🧑 ${w.uv || 0}</span>
+          <span class="${cur === 'likes' ? 'on' : ''}" title="获赞数">${ic('heart')} ${w.likes || 0}</span>
+          <span class="${cur === 'favs' ? 'on' : ''}" title="被收藏数">${ic('star')} ${w.favs || 0}</span>
+          ${cur === 'hot' ? `<span class="on" title="综合分 = 获赞×3 + 收藏×4 + 累计浏览">${ic('bolt')} ${(w.likes || 0) * 3 + (w.favs || 0) * 4 + (w.views || 0)}</span>` : ''}
+          <span class="${cur === 'pv' ? 'on' : ''}" title="本周期页面浏览量（Page Views，排序依据）">${ic('bars')} ${w.pv || 0}</span>
+          <span class="${cur === 'uv' ? 'on' : ''}" title="本周期独立访客数（Unique Visitors，排序依据）">${ic('person')} ${w.uv || 0}</span>
         </div>
       </div>`).join('') : '<div class="empty"><p>暂无上榜作品</p></div>';
     $('rankList').querySelectorAll('.rank-item').forEach(el =>

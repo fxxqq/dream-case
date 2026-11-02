@@ -1007,6 +1007,12 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .rank-score span { white-space: nowrap; }
 /* 当前排序维度的那个数字加重，一眼看出按什么排的 */
 .rank-score span.on { color: var(--text); font-weight: 700; }
+/* 统计迷你线性图标：跟字色走（当前维度 span.on 自动加重变色） */
+.rank-score svg, .row-stat svg { width: 12.5px; height: 12.5px; vertical-align: -1.5px; }
+.rank-legend .ico { font-size: 13px; }
+.dd-opt-label .ico { font-size: 13.5px; vertical-align: -2px; }
+/* 领奖台造型扁宽，下拉里放一档更醒目 */
+.dd-ico .ico[data-ico="rank"] { font-size: 1.25em; }
 /* 手机：横排放不下，改回竖排小字 */
 @media (max-width: 640px) {
   .rank-item { padding: 10px 12px; gap: 10px; }
