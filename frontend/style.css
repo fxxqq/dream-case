@@ -196,7 +196,7 @@ img.fit-show { object-fit: contain; z-index: 1; position: relative; }
 .site-footer { border-top: 1px solid var(--border); padding: 20px 0; color: var(--muted); font-size: 13px; margin-top: auto; }
 
 /* 页脚友情链接 */
-.footer-friends { margin-bottom: 10px; line-height: 1.9; }
+.footer-friends { line-height: 1.9; }
 .footer-friends .ff-label { opacity: .75; margin-right: 4px; }
 .footer-friends a { color: var(--muted); text-decoration: none; }
 .footer-friends a:hover { color: var(--primary); }
@@ -1082,12 +1082,15 @@ body.scroll-locked { overflow: hidden; }
 }
 
 /* ========== SEO / 服务端渲染区块 ========== */
-.footer-inner { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; }
-.footer-meta { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+/* 页脚：纵向三行（品牌/导航/友链），统一左对齐、统一节奏 */
+.footer-inner { display: block; }
+.footer-inner > * + * { margin-top: 10px; }
+.footer-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 13px; }
 .footer-icp { color: var(--muted); text-decoration: none; font-size: 13px; }
 .footer-icp:hover { color: var(--primary); text-decoration: underline; }
-.footer-links { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+.footer-links { display: flex; gap: 22px; flex-wrap: wrap; align-items: center; }
 .fgroup { display: inline-flex; align-items: center; gap: 12px; }
+.fgroup + .fgroup { padding-left: 22px; border-left: 1px solid var(--border); }
 .fg-label { font-size: 12px; color: var(--muted); opacity: .6; }
 .footer-links .footer-link { color: var(--muted); text-decoration: none; }
 .footer-links .footer-link:hover { color: var(--primary); }
