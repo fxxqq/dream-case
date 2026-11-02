@@ -1603,6 +1603,7 @@ async function loadComments(workId) {
   const nick = $('commentNickname');
   input.value = '';
   cancelReply();
+  state.commentKind = 'comment'; // 每次打开作品都回到「评论」：上一个作品里选的「提问」不带入（曾因此评论模式下提问tab高亮）
   if (state.user) {
     nick.style.display = 'none';
     $('commentHint').textContent = `以 @${state.user.nickname || state.user.username} 的身份发言`;
