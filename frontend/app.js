@@ -1204,7 +1204,7 @@ function renderCategorySelect() {
 
 // ---------- 路由 ----------
 const SITE_NAME = '造梦橱窗';
-const DEFAULT_TITLE = `${SITE_NAME} - 让好作品被更多人看见`;
+const DEFAULT_TITLE = `${SITE_NAME} - 让每一个用心的作品，都被更多人看见`;
 
 function setTitle(t) { document.title = t ? `${t} - ${SITE_NAME}` : DEFAULT_TITLE; }
 
