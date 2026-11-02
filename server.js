@@ -1531,9 +1531,10 @@ function trackAdShow(adId, req) {
   const days = Object.keys(adStats).sort();
   while (days.length > AD_STATS_RETENTION_DAYS) delete adStats[days.shift()];
   scheduleAdStatsSave();
-  // 积分兑换的广告：每次有效曝光扣 1 次额度，扣完就下线（订单转 used_up）
+  // 积分兑换的广告：每次有效曝光扣 1 次展示额度，扣完就下线（订单转 used_up）
+  // 纯点击包广告（views=0）展示不扣额度、只计数，点完点击额度后由点击接口统一下线
   const ad = ads.find(a => a.id === adId);
-  if (ad && ad.source === 'redeem') {
+  if (ad && ad.source === 'redeem' && (ad.budget || 0) > 0) {
     ad.budget = Math.max(0, (ad.budget || 0) - 1);
     if (ad.budget <= 0) {
       ad.active = false;
@@ -1592,6 +1593,12 @@ app.post('/api/ads/:id/click', (req, res) => {
         r.clickUsed = (r.clickUsed || 0) + 1;
         scheduleAdSave();
         saveRedemptions();
+        // 纯点击包广告（没买展示）：点击额度用完就下线结算
+        if ((a.clickLeft || 0) <= 0 && (r.views || 0) === 0) {
+          a.active = false;
+          finishRedemption(a.redemptionId, 'used_up');
+          scheduleAdSave();
+        }
       }
     }
   }
@@ -1714,10 +1721,13 @@ function expireRedemptions() {
   });
   ads.forEach(a => {
     if (a.source !== 'redeem' || a.active === false) return;
-    if ((a.budget || 0) <= 0 || (a.endsAt && a.endsAt <= now)) {
+    const r = redemptions.find(x => x.id === a.redemptionId);
+    const showBased = !r || (r.views || 0) > 0;   // 兼容老数据：找不到订单按展示包算
+    const exhausted = showBased ? (a.budget || 0) <= 0 : (a.clickLeft || 0) <= 0;
+    if (exhausted || (a.endsAt && a.endsAt <= now)) {
       a.active = false;
       scheduleAdSave();
-      finishRedemption(a.redemptionId, (a.budget || 0) <= 0 ? 'used_up' : 'expired');
+      finishRedemption(a.redemptionId, exhausted ? 'used_up' : 'expired');
     }
   });
   if (changed) saveRedemptions();
@@ -1777,12 +1787,19 @@ app.post('/api/redeem', (req, res) => {
   if (!user) return;
   if (!rateLimit('redeem:' + user.id, 6, 60000)) return res.status(429).json({ error: '操作太频繁，稍等一下' });
   const body = req.body || {};
-  const views = parseInt(body.views, 10);
-  const clicks = body.clicks === undefined ? 0 : parseInt(body.clicks, 10);
+  const views = parseInt(body.views, 10) > 0 ? parseInt(body.views, 10) : 0;
+  const clicks = parseInt(body.clicks, 10) > 0 ? parseInt(body.clicks, 10) : 0;
   const workId = String(body.workId || '');
 
-  if (!REDEEM_SHOW_PACKS.includes(views)) return res.status(400).json({ error: '展示次数档位不对' });
-  if (!REDEEM_CLICK_PACKS.includes(clicks)) return res.status(400).json({ error: '点击次数档位不对' });
+  // 二选一：要么买展示包，要么买点击包，不能同时买
+  if (views > 0 && clicks > 0) return res.status(400).json({ error: '展示包和点击包二选一，不能同时买' });
+  if (views > 0) {
+    if (!REDEEM_SHOW_PACKS.includes(views)) return res.status(400).json({ error: '展示次数档位不对' });
+  } else if (clicks > 0) {
+    if (!REDEEM_CLICK_PACKS.includes(clicks)) return res.status(400).json({ error: '点击次数档位不对' });
+  } else {
+    return res.status(400).json({ error: '请先选一个套餐：展示包或点击包' });
+  }
   const work = works.find(w => w.id === workId);
   if (!work || work.deleted) return res.status(400).json({ error: '作品不存在' });
   if (work.userId !== user.id) return res.status(400).json({ error: '只能推广自己名下的作品' });
