@@ -174,11 +174,11 @@ function ruleOfTypes(types) {
 function isMobileTypes(types) { return types.some(t => MOBILE_TYPES.indexOf(t) !== -1); }
 
 // ---------- 基础工具 ----------
-function showToast(msg) {
+function showToast(msg, ms) {
   toast.textContent = msg;
   toast.classList.add('show');
   clearTimeout(showToast._t);
-  showToast._t = setTimeout(() => toast.classList.remove('show'), 2400);
+  showToast._t = setTimeout(() => toast.classList.remove('show'), ms || 2400);
 }
 // 展示名：作品带 authorName（服务端按账号查昵称），评论带 displayName；
 // 账号（author/username）只用于链接和身份判定，界面上尽量不直接露出来
@@ -1443,6 +1443,43 @@ function captureRef() {
   history.replaceState(null, '', url.pathname + (url.search || '') + (url.hash || ''));
 }
 
+// ---------- 外宣渠道归因：?fr=平台key 落地 ----------
+// 外宣包生成的文案里，本站链接会带 ?fr=v2ex 这种标记；访客从外站点进来时报一次，
+// 只进后台渠道统计，不产生积分、也不影响 ?ref= 的分享归因。
+let frReported = '';
+function reportFrVisit(fr, workId) {
+  const key = fr + '|' + (workId || '');
+  if (frReported === key) return;
+  frReported = key;
+  try {
+    fetch('/api/fr/visit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fr, workId: workId || '' }), keepalive: true
+    }).catch(() => {});
+  } catch { /* 统计失败不影响访问 */ }
+}
+function captureFr() {
+  let url;
+  try { url = new URL(location.href); } catch { return; }
+  const fr = String(url.searchParams.get('fr') || '').trim().toLowerCase();
+  if (!/^[a-z0-9_-]{2,24}$/.test(fr)) return;
+  const workId = (location.pathname.match(/^\/w\/([A-Za-z0-9_-]+)/) || [])[1] || '';
+  reportFrVisit(fr, workId);
+  // 摘掉 fr，保持地址栏干净（不参与路径统计，也不会被二次转发带上）
+  url.searchParams.delete('fr');
+  history.replaceState(null, '', url.pathname + (url.search || '') + (url.hash || ''));
+}
+// 给本站链接挂渠道标记（外站链接不加：对方不认这个参数，只会显得像营销链接）
+function withFr(url, fr) {
+  if (!url || !fr) return url;
+  try {
+    const u = new URL(url, location.origin);
+    if (u.origin !== location.origin) return url;
+    u.searchParams.set('fr', fr);
+    return u.toString();
+  } catch { return url; }
+}
+
 // ---------- 访问统计：页面浏览上报（PV；UV 由后端按账号/IP 去重） ----------
 let lastTrack = { path: '', at: 0 };
 let lastWorkTrack = { id: '', at: 0 };
@@ -2504,13 +2541,15 @@ function setupUploadForm() {
       hideModal(uploadModal);
       resetUploadForm();
       const bonus = Number(data.osBonus) || 0;
+      const instantLive = !wasEdit && !data.anonymous && !data.needReview;
       showToast(
         wasEdit
           ? (bonus > 0 ? '修改已保存 ✅ 开源奖励 +50 盏灯火已到账' : '修改已保存 ✅')
         : data.anonymous ? '已提交，审核通过后上线（注册可免审直发）'
         : data.needReview ? '提交成功，等待审核通过后展示'
-        : bonus > 0 ? '提交成功 🎉 开源奖励 +50 盏灯火已到账'
-        : '提交成功 🎉');
+        : bonus > 0 ? '提交成功 🎉 开源奖励 +50 盏灯火已到账 · 作品页可点「外宣包」做宣传'
+        : '提交成功 🎉 · 作品页可点「外宣包」做宣传',
+        instantLive ? 4200 : undefined);
       if (bonus > 0) loadMe();   // 头部积分数字立刻刷新
       state.sort = 'latest';
       document.querySelectorAll('#sortToggle .st-btn').forEach(b =>
@@ -3327,7 +3366,9 @@ function renderPromoKit() {
        <span>${p.emoji || '🔗'}</span>${escapeHtml(p.name.split(' · ')[0])}
      </button>`).join('');
   const p = ps.find(x => x.key === pkState.key);
-  const b = promoBase(w);
+  const base = promoBase(w);
+  // 文案里的本站链接带上 ?fr=<平台>，访客从该平台进来时能认出渠道
+  const b = { ...base, page: withFr(base.page, pkState.key), link: withFr(base.link, pkState.key) };
   const tpl = PROMO_TPL[pkState.key];
   $('pkCopy').textContent = (tpl || PROMO_GENERIC)(b);
   $('pkMeta').innerHTML = p
@@ -3802,6 +3843,10 @@ async function openStats(mode) {
     <p class="stats-tip">
       数据统计包含弹窗与独立页面两种浏览方式；「访客」按登录账号 / IP 去重。<br />
       灯火、分享成绩和推广投放都在「🎯 推广中心」里。
+    </p>
+    <p class="stats-tip stats-promo-tip">
+      作品想被更多人看到？<a href="/guide" class="stats-promo-link">看外宣指南 →</a>
+      8 个适合发新品的地方，每个都配好了现成文案；也可以打开作品详情页点「外宣包」一键生成。
     </p>`;
 
   body.querySelectorAll('.sw-share').forEach(btn => {
@@ -4369,6 +4414,7 @@ async function init() {
   // SEO 预渲染区块立刻移除（不等任何接口）：它顶在页面上几百像素，等数据回来才塌掉是最大的抖动源
   // 作品详情页 /w/ 除外（完整页面模式要展示它，route 里再处理）
   if (!location.pathname.startsWith('/w/')) removeSeoBlock();
+  captureFr();    // 再处理 ?fr=：只记渠道来源，不加分
   captureRef();   // 先处理 ?ref=：记下分享者并上报，再把参数从地址栏摘掉
   loadFooterFriends();  // 页脚友情链接（后台可配，空则不展示）
   loadFooterStats();    // 页脚站点 PV/UV + 提交作品引导

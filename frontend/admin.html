@@ -39,6 +39,16 @@
     .stat b { font-size:16px; }
     .stat span { color:var(--muted); font-size:12px; }
 
+    /* 外宣渠道来源：来自外宣包 ?fr= 标记的落地访问 */
+    .promo-src { background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin:0 0 14px; }
+    .promo-src h4 { margin:0 0 8px; font-size:13px; font-weight:600; color:#333; }
+    .promo-src h4 span { font-weight:400; color:var(--muted); font-size:12px; margin-left:6px; }
+    .ps-row { display:flex; align-items:center; gap:10px; padding:6px 0; border-top:1px dashed #f0f0f6; font-size:13px; }
+    .ps-name { min-width:88px; font-weight:600; color:#444; }
+    .ps-bar { flex:1; height:6px; background:#f2f2f8; border-radius:99px; overflow:hidden; }
+    .ps-bar i { display:block; height:100%; background:var(--primary, #5b5bd6); border-radius:99px; }
+    .ps-num { min-width:150px; text-align:right; color:var(--muted); font-size:12px; }
+
     /* 左侧菜单 + 右侧内容 布局 */
     .admin-layout { display:flex; align-items:flex-start; gap:18px; }
     .side {
@@ -349,6 +359,7 @@
 
         <div class="admin-main">
           <div class="stats" id="stats"></div>
+          <div class="promo-src" id="promoSrc" style="display:none"></div>
           <div class="panel" id="panel"></div>
         </div>
       </div>
@@ -615,6 +626,22 @@
           ['待处理投诉', s.reports], ['待看反馈', s.feedback], ['待审认领', s.claims || 0],
           ['总浏览', s.views], ['总点赞', s.likes]
         ].map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
+        // 外宣渠道来源：外宣包链接带 ?fr=<平台>，落地时上报，按访问量排序
+        const promo = Array.isArray(s.promo) ? s.promo : [];
+        const psBox = $('promoSrc');
+        if (promo.length) {
+          const max = Math.max(...promo.map(p => p.pv || 0), 1);
+          psBox.style.display = '';
+          psBox.innerHTML = `<h4>外宣渠道来源<span>访问来自外宣包里的 ?fr= 标记，只做统计、不产生积分</span></h4>` +
+            promo.map(p => `
+              <div class="ps-row">
+                <span class="ps-name">${esc(p.name || p.key)}</span>
+                <span class="ps-bar"><i style="width:${Math.max(4, Math.round((p.pv || 0) / max * 100))}%"></i></span>
+                <span class="ps-num">${p.pv || 0} 访问 · ${p.uv || 0} 人 · ${p.works || 0} 件作品 · ${(p.lastAt || '').slice(5, 10).replace('-', '/') || '—'}</span>
+              </div>`).join('');
+        } else {
+          psBox.style.display = 'none';
+        }
         // 待处理数直接标在对应标签上，一眼看到哪里有活
         updateTabBadges({ pending: s.pending, reports: s.reports, claims: s.claims || 0, feedback: s.feedback });
       } catch (e) {

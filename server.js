@@ -422,6 +422,57 @@ function visitStats() {
   };
 }
 
+// ---------- 外宣渠道统计（外宣包链接带 ?fr=<平台key>，落地时前端上报一次） ----------
+// 结构：{ 'v2ex': { pv: 12, uv: { 'u:<userId>': 1, 'ip:<ip>': 1 }, works: { '<workId>': 3 }, lastAt: '...' } }
+const promoVisits = (() => {
+  const raw = readJSON('promo-visits.json', {});
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+})();
+
+let promoVisitSaveTimer = null;
+function schedulePromoVisitSave() {
+  if (promoVisitSaveTimer) return;
+  promoVisitSaveTimer = setTimeout(() => {
+    promoVisitSaveTimer = null;
+    try { writeJSON('promo-visits.json', promoVisits); } catch (e) { /* 统计失败不影响主流程 */ }
+  }, 3000);
+}
+
+function trackPromoVisit(req, key, workId) {
+  const k = String(key || '').trim().toLowerCase().slice(0, 24);
+  if (!/^[a-z0-9_-]{2,24}$/.test(k)) return false;
+  const rec = promoVisits[k] || (promoVisits[k] = { pv: 0, uv: {}, works: {}, lastAt: '' });
+  if (!rec.uv) rec.uv = {};
+  if (!rec.works) rec.works = {};
+  rec.pv = (rec.pv || 0) + 1;
+  const user = currentUser(req);
+  rec.uv[user ? 'u:' + user.id : 'ip:' + clientIp(req)] = 1;
+  if (workId && works.some(w => w.id === workId)) rec.works[workId] = (rec.works[workId] || 0) + 1;
+  rec.lastAt = new Date().toISOString();
+  schedulePromoVisitSave();
+  return true;
+}
+
+// 后台展示：平台名从 promo-guide.js 取，指南没收的渠道用常见中文名兜底，再不行原样显示 key
+const FR_NAMES = {
+  xhs: '小红书', zhihu: '知乎', bilibili: 'B站', weibo: '微博', douyin: '抖音',
+  wechat: '微信', twitter: 'X（推特）', x: 'X（推特）', reddit: 'Reddit',
+  wechatmoments: '朋友圈', friend: '熟人转发', share: '站内分享', other: '其他'
+};
+function promoStatsForAdmin() {
+  return Object.entries(promoVisits).map(([key, r]) => {
+    const p = PLATFORMS.find(x => x.key === key);
+    return {
+      key,
+      name: p ? String(p.name).split(' · ')[0] : (FR_NAMES[key] || key),
+      pv: r.pv || 0,
+      uv: Object.keys(r.uv || {}).length,
+      works: Object.keys(r.works || {}).length,
+      lastAt: r.lastAt || ''
+    };
+  }).sort((a, b) => b.pv - a.pv);
+}
+
 // ---------- 作品维度访问统计（每个作品的 PV / UV） ----------
 // 结构：{ '<workId>': { pv: 12, uv: { 'u:<userId>': 1, 'ip:<ip>': 1 }, days: { '2026-10-31': { pv: 3, uv: {...} } } } }
 const workVisits = (() => {
@@ -1555,6 +1606,16 @@ app.post('/api/ref/visit', (req, res) => {
   if (!rateLimit('refvisit:' + clientIp(req), 120, 3600e3)) return res.json({ ok: true, credited: false });
   const r = creditShareVisit(req, ref, workId);
   res.json({ ok: true, credited: !!r.credited, points: r.points || 0 });
+});
+
+// ---- 外宣渠道归因：访客带着 ?fr=<平台key> 落地时上报一次 ----
+// 和 ?ref=（分享者，算灯火）互不干扰：fr 只做渠道统计，不产生任何积分。
+app.post('/api/fr/visit', (req, res) => {
+  const fr = String((req.body && req.body.fr) || '').trim().toLowerCase().slice(0, 24);
+  const workId = String((req.body && req.body.workId) || '').trim().slice(0, 40);
+  if (!fr) return res.json({ ok: true });
+  if (!rateLimit('frvisit:' + clientIp(req), 200, 3600e3)) return res.json({ ok: true });
+  res.json({ ok: trackPromoVisit(req, fr, workId) });
 });
 
 // 分享达人榜（公开，只给昵称和公开数字）
@@ -2883,6 +2944,7 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
     users: users.length,
     usersToday,
     users7,
+    promo: promoStatsForAdmin(),
     ...visitStats()
   });
 });
