@@ -3617,10 +3617,24 @@ function setupFeedback() {
   const form = $('feedbackForm');
   if (!modal || !form) return;
 
-  function openFeedback() {
-    $('feedbackHint').innerHTML = state.user
-      ? `用着不顺手、想要什么功能、发现 bug，都可以说一句。当前身份：<b>@${escapeHtml(state.user.nickname || state.user.username)}</b>`
-      : '用着不顺手、想要什么功能、发现 bug，都可以说一句。匿名也能提。';
+  function openFeedback(preset) {
+    const hintEl = $('feedbackHint');
+    if (preset && preset.type) {
+      const sel = form.querySelector('select[name="type"]');
+      if (sel) {
+        // 预选类型：合作洽谈/交换友链等入口带过来，找不到对应 option 就落到「合作/其他」
+        const has = Array.from(sel.options).some(o => o.value === preset.type);
+        sel.value = has ? preset.type : '合作/其他';
+      }
+      if (preset.hint) hintEl.innerHTML = escapeHtml(preset.hint);
+      else hintEl.innerHTML = state.user
+        ? `用着不顺手、想要什么功能、发现 bug，都可以说一句。当前身份：<b>@${escapeHtml(state.user.nickname || state.user.username)}</b>`
+        : '用着不顺手、想要什么功能、发现 bug，都可以说一句。匿名也能提。';
+    } else {
+      hintEl.innerHTML = state.user
+        ? `用着不顺手、想要什么功能、发现 bug，都可以说一句。当前身份：<b>@${escapeHtml(state.user.nickname || state.user.username)}</b>`
+        : '用着不顺手、想要什么功能、发现 bug，都可以说一句。匿名也能提。';
+    }
     showModal(modal);
     setTimeout(() => form.content.focus(), 60);
   }
@@ -3637,6 +3651,14 @@ function setupFeedback() {
     e.preventDefault();
     history.replaceState(null, '', '/?feedback=1');
     openFeedback();
+  });
+
+  // 页脚「合作洽谈 / 交换友链」等按钮：打开反馈弹窗并预选类型、替换提示语
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('[data-fb]');
+    if (!b) return;
+    e.preventDefault();
+    openFeedback({ type: b.dataset.fb, hint: b.dataset.fbHint || '' });
   });
 
   form.addEventListener('submit', async e => {

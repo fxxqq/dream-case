@@ -14,6 +14,12 @@
     .header-inner { display:flex; align-items:center; gap:16px; height:60px; max-width:1200px; margin:0 auto; padding:0 20px; }
     .logo { font-weight:700; color:var(--primary); font-size:17px; }
     .spacer { flex:1; }
+    /* 顶部 PV/UV 横幅：进入后台一眼看到站点流量 */
+    .pv-banner { display:flex; align-items:center; gap:14px; font-size:13px; color:var(--muted); }
+    .pv-banner b { color:var(--text); font-size:15px; font-variant-numeric: tabular-nums; }
+    .pv-banner .pv-item { white-space:nowrap; }
+    .pv-banner .pv-item em { font-style:normal; font-size:11px; color:var(--muted); margin-right:3px; }
+    @media (max-width: 900px) { .pv-banner { display:none; } }
     .btn { border:none; border-radius:8px; padding:8px 16px; font-size:13px; cursor:pointer; }
     .btn-primary { background:var(--primary); color:#fff; }
     .btn-ghost { background:#fff; border:1px solid var(--border); color:var(--text); }
@@ -182,6 +188,12 @@
   <header>
     <div class="header-inner">
       <span class="logo">✦ 造梦橱窗 · 后台</span>
+      <span class="pv-banner" id="pvBanner" style="display:none">
+        <span class="pv-item"><em>今日</em><b id="pvToday">0</b> PV</span>
+        <span class="pv-item"><em>今日</em><b id="uvToday">0</b> UV</span>
+        <span class="pv-item"><em>累计</em><b id="pvTotal">0</b> PV</span>
+        <span class="pv-item"><em>累计</em><b id="uvTotal">0</b> UV</span>
+      </span>
       <a class="btn btn-ghost" href="/">返回网站</a>
       <span class="spacer"></span>
       <button class="btn btn-ghost" id="refreshBtn" title="刷新数据和当前列表">
@@ -442,6 +454,7 @@
       $('adminBox').style.display = 'block';
       $('logoutBtn').style.display = 'inline-block';
       $('refreshBtn').classList.add('show');
+      $('pvBanner').style.display = '';
       loadStats();
       renderTab(currentTab);
     }
@@ -461,6 +474,11 @@
     async function loadStats() {
       try {
         const s = await api('/api/admin/stats');
+        // 顶部 PV/UV 横幅（登录后常显，刷新数据时同步更新）
+        $('pvToday').textContent = s.pvToday || 0;
+        $('uvToday').textContent = s.uvToday || 0;
+        $('pvTotal').textContent = s.pv || 0;
+        $('uvTotal').textContent = s.uv || 0;
         $('stats').innerHTML = [
           ['注册用户', s.users || 0], ['今日新增', s.usersToday || 0], ['近 7 天新增', s.users7 || 0],
           ['作品总数', s.total], ['已通过', s.approved], ['待审核', s.pending],
