@@ -76,12 +76,12 @@
     .field input[type="file"] { padding:8px; font-size:13px; }
     .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 
-    /* 作品形态多选（chip） */
+    /* 作品形态多选（chip）：flex 不拉伸、✓ 占位常驻，选中不改变按钮宽高 */
     .type-picker { display:flex; flex-wrap:wrap; gap:8px; }
-    .type-picker .type-opt { position:relative; display:inline-flex; align-items:center; cursor:pointer; flex:1 1 auto; }
+    .type-picker .type-opt { position:relative; display:inline-flex; align-items:center; cursor:pointer; flex:0 0 auto; }
     .type-picker .type-opt input { position:absolute; opacity:0; width:0; height:0; pointer-events:none; }
     .type-picker .type-opt span {
-      display:inline-flex; align-items:center; justify-content:center; width:100%;
+      display:inline-flex; align-items:center; justify-content:center; width:100%; gap:4px;
       padding:8px 10px; border:1.5px solid var(--border); border-radius:999px; background:#fff;
       color:#4a4f5e; font-size:13.5px; font-weight:500; white-space:nowrap;
       transition:background .15s,color .15s,border-color .15s,box-shadow .15s;
@@ -91,7 +91,14 @@
       background:var(--primary); border-color:var(--primary); color:#fff;
       box-shadow:0 4px 12px rgba(91,91,214,.28);
     }
-    .type-picker .type-opt input:checked + span::after { content:'✓'; font-size:12px; font-weight:700; }
+    /* ✓ 的占位空间常驻保留（只切透明度），勾选不会改变按钮宽度，避免整行重排 */
+    .type-picker .type-opt span::after {
+      content:'✓'; font-size:12px; font-weight:700;
+      display:inline-block; width:15px; text-align:center;
+      opacity:0; transform:scale(.5);
+      transition:opacity .15s, transform .15s;
+    }
+    .type-picker .type-opt input:checked + span::after { opacity:1; transform:scale(1); }
     .cat-hint { margin:4px 0 0; font-size:12px; color:var(--muted); }
     #adminCatPicker { gap:7px; }
     #adminCatPicker .type-opt { flex:0 0 auto; }
