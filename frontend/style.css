@@ -569,6 +569,12 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .detail-cat span { font-size: 12px; padding: 3px 10px; border-radius: 999px; }
 .detail-cat .badge-type { color: #fff; background: #1f2330; }
 .detail-cat .badge-cat { color: var(--primary); background: #eeeefc; }
+/* 源码仓库入口：标签行里的可点徽标（开源作品才有） */
+.detail-cat .badge-repo {
+  font-size: 12px; padding: 3px 10px; border-radius: 999px; text-decoration: none;
+  color: #1a7f45; background: #e7f8ec; cursor: pointer;
+}
+.detail-cat .badge-repo:hover { background: #d5f2df; }
 .detail-prompt {
   background: #f4f4fa; border-radius: 10px; padding: 14px; font-size: 13px;
   line-height: 1.7; color: #444; margin-bottom: 20px; white-space: pre-wrap;

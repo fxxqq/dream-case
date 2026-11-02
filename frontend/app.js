@@ -1470,7 +1470,9 @@ async function openWork(id, push = true) {
       `<span class="badge-cat">${escapeHtml(w.category)}</span>` +
       osBadgeHtml(w) +
       paidBadgeHtml(w) +
-      (w.featured ? '<span class="badge-featured">✨ 精选</span>' : '');
+      (w.featured ? '<span class="badge-featured">✨ 精选</span>' : '') +
+      // 开源作品的源码入口：放在标题下的标签行里（挨着开源徽标），不再单独占按钮行
+      (w.repo ? `<a class="badge-repo" href="${escapeHtml(w.repo)}" target="_blank" rel="noopener" title="打开源码仓库">📁 源码</a>` : '');
     $('detailAuthor').innerHTML = `${w.verified ? '<i class="verified">✔</i> ' : ''}${escapeHtml(aname(w))}`;
     $('detailStats').innerHTML = `♥ ${w.likes} 点赞 · ★ <span class="fav-num" data-fav-count="${w.id}" data-count="${w.favs || 0}" data-prefix="">${w.favs || 0}</span> 人收藏 · 💬 <span class="cmt-num" data-comment-count="${w.id}" data-count="${w.commentCount || 0}" data-prefix="">${w.commentCount || 0}</span> 评论 · 👁 ${w.views} 浏览 · ${formatDate(w.createdAt)}`;
     $('detailPrompt').textContent = w.intro || '';
@@ -1488,10 +1490,7 @@ async function openWork(id, push = true) {
         e.t ? escapeHtml(LINK_LABEL[e.t] || '🔗 访问作品') : escapeHtml(linkLabelOf(tl))
       }</a>`).join('');
 
-    // 开源作品的源码仓库入口
-    const repoBtn = $('detailRepo');
-    if (w.repo) { repoBtn.href = w.repo; repoBtn.style.display = 'inline-block'; }
-    else repoBtn.style.display = 'none';
+    // （源码入口已上移到标题标签行 badge-repo，按钮行不再重复放）
 
     // 完整页面（独立 URL，可分享、可被搜索引擎收录）
     $('fullPageBtn').href = '/w/' + encodeURIComponent(w.id) + '?full=1';
