@@ -327,7 +327,8 @@ function renderAuthBox() {
         <button class="user-chip" id="userMenuBtn" title="个人菜单">👤 ${escapeHtml(state.user.nickname || state.user.username)}<span class="um-caret">▾</span></button>
         <div class="user-dropdown" id="userDropdown">
           <a class="ud-item" href="/u/${encodeURIComponent(state.user.username)}" data-nav>🏠 我的主页</a>
-          <button class="ud-item" id="statsBtn">📊 数据与推广</button>
+          <button class="ud-item" id="statsBtn">📊 我的数据</button>
+          <button class="ud-item" id="promoBtn">🎯 推广中心</button>
           ${n ? '<button class="ud-item" id="blockedBtn">🚫 屏蔽管理</button>' : ''}
           <button class="ud-item" id="passBtn">🔑 改密码</button>
           <button class="ud-item" id="logoutBtn">⎋ 退出登录</button>
@@ -348,7 +349,8 @@ function renderAuthBox() {
       });
     }
     $('logoutBtn').onclick = doLogout;
-    $('statsBtn').onclick = openStats;
+    $('statsBtn').onclick = () => openStats('data');
+    $('promoBtn').onclick = () => openStats('promo');
     $('checkinBtn').onclick = doCheckin;
     $('noticeBtn').onclick = openNotices;
     $('passBtn').onclick = openPassModal;
@@ -3347,9 +3349,11 @@ function statsSparkline(values, w = 88, h = 24) {
       stroke-linejoin="round" stroke-linecap="round" /></svg>`;
 }
 
-async function openStats() {
+async function openStats(mode) {
+  mode = mode === 'promo' ? 'promo' : 'data';   // data = 我的数据 / promo = 推广中心
   if (!state.user) { openAuth('login'); return; }
   const body = $('statsBody');
+  $('statsTitle').textContent = mode === 'promo' ? '推广中心' : '我的数据';
   body.innerHTML = '<div class="stats-loading">加载中…</div>';
   $('closeStats').onclick = () => hideModal(statsModal);
   statsModal.onclick = e => { if (e.target === statsModal) hideModal(statsModal); };
@@ -3409,25 +3413,31 @@ async function openStats() {
   const shareTip = `分享奖励：好友通过你的链接访问 +1 分，好友注册 +20 分。同一 IP 对同一分享者每天最多计 3 次、
       同一 IP 全站每天最多 10 次、同一 IP 最多计入 2 个邀请注册——换浏览器或清缓存都刷不动。`;
 
-  // 没有作品也要能看分享成绩：分享是「帮别人推广」，不依赖自己有没有作品
-  if (!works.length) {
+  // 推广中心：签到 + 积分 + 分享成绩 + 积分达人榜（和作品数据无关，没有作品也能看）
+  if (mode === 'promo') {
     body.innerHTML = `
       ${ckCard}
       <div class="stats-summary">${shareCards}</div>
       <div class="stats-actions">
         <button type="button" class="stats-redeem" id="goRedeem">🎯 用积分上「站内推广」</button>
       </div>
+      ${boardHtml}
+      <p class="stats-tip">${shareTip}</p>`;
+    $('goRedeem').onclick = () => { hideModal(statsModal); openRedeem(); };
+    bindCheckin();
+    return;
+  }
+
+  // 我的数据：只放作品相关的浏览/点赞/收藏/评论
+  if (!works.length) {
+    body.innerHTML = `
       <div class="stats-empty">
         <div class="stats-empty-icon">📊</div>
         <p>你还没有归属自己的作品。</p>
         <p class="stats-empty-sub">提交新作品，或对已收录的作品发起「认领」，通过后这里就会显示它的浏览、点赞与收藏数据。</p>
         <button class="btn-primary" id="statsGoSubmit">＋ 去提交作品</button>
-      </div>
-      ${boardHtml}
-      <p class="stats-tip">${shareTip}</p>`;
+      </div>`;
     $('statsGoSubmit').onclick = () => { hideModal(statsModal); $('openUpload').click(); };
-    $('goRedeem').onclick = () => { hideModal(statsModal); openRedeem(); };
-    bindCheckin();
     return;
   }
 
@@ -3456,7 +3466,6 @@ async function openStats() {
     </div>`).join('');
 
   body.innerHTML = `
-    ${ckCard}
     <div class="stats-summary">
       <div class="stat-card"><b>${totals.works}</b><span>作品</span></div>
       <div class="stat-card"><b>${totals.views}</b><span>累计浏览</span></div>
@@ -3464,10 +3473,6 @@ async function openStats() {
       <div class="stat-card"><b>${totals.likes}</b><span>点赞</span></div>
       <div class="stat-card"><b>${totals.favs}</b><span>收藏</span></div>
       <div class="stat-card"><b>${totals.comments}</b><span>评论</span></div>
-      ${shareCards}
-    </div>
-    <div class="stats-actions">
-      <button type="button" class="stats-redeem" id="goRedeem">🎯 用积分上「站内推广」</button>
     </div>
     <div class="stats-chart">
       <div class="stats-chart-head">近 14 天浏览趋势</div>
@@ -3475,14 +3480,10 @@ async function openStats() {
     </div>
     <div class="stats-works-head">作品明细</div>
     <div class="stats-works">${rows}</div>
-    ${boardHtml}
     <p class="stats-tip">
       数据统计包含弹窗与独立页面两种浏览方式；「访客」按登录账号 / IP 去重。<br />
-      ${shareTip}
+      积分、分享成绩和推广投放都在「🎯 推广中心」里。
     </p>`;
-
-  $('goRedeem').onclick = () => { hideModal(statsModal); openRedeem(); };
-  bindCheckin();
 
   body.querySelectorAll('.sw-share').forEach(btn => {
     btn.onclick = async e => {
