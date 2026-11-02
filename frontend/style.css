@@ -1081,6 +1081,12 @@ body.scroll-locked { overflow: hidden; }
 .footer-icp:hover { color: var(--primary); text-decoration: underline; }
 .footer-links { display: flex; gap: 16px; flex-wrap: wrap; }
 .footer-links .footer-link { text-decoration: none; }
+.footer-links button.footer-link {
+  appearance: none; background: none; border: none; padding: 0; margin: 0;
+  font: inherit; color: inherit; cursor: pointer; text-decoration: none;
+}
+.footer-links button.footer-link:hover { color: var(--primary); }
+.footer-links button.footer-link:disabled { opacity: .6; cursor: default; }
 
 .seo-wrap { padding-bottom: 8px; }
 .breadcrumb { font-size: 13px; color: var(--muted); padding: 18px 0 0; }

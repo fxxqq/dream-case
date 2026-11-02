@@ -3685,6 +3685,12 @@ function setupInstall() {
     e.preventDefault();
     openInstall();
   });
+  // 页脚「检查更新」
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('#swUpdateBtn');
+    if (!b) return;
+    manualSwUpdate();
+  });
 
   $('closeInstall').onclick = closeInstall;
   $('installKnow').onclick = closeInstall;
@@ -3723,17 +3729,62 @@ async function init() {
   route();
 }
 
-// ---------- PWA：注册 Service Worker ----------
+// ---------- PWA：注册 Service Worker 与自动更新 ----------
 // localhost 与 https 下才可用；admin 页面用的是独立 admin.html，不会执行到这里
+let __swReg = null;        // SW registration，页脚「检查更新」按钮要用
+let __swReloaded = false;  // 本轮已自动刷新过，防止反复刷新
+let __swNewFound = false;  // 本轮检查是否发现了新版本（用于区分「已最新」和「更新中」）
+
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
   if (location.protocol !== 'https:' && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {
-      // 注册失败（如隐私模式、存储被禁）不影响正常浏览
+  window.addEventListener('load', async () => {
+    try {
+      __swReg = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
+    } catch (err) { return; } // 注册失败（隐私模式、存储被禁）不影响正常浏览
+
+    // 新 SW 接管后自动刷新一次页面，让正在看的页面立刻换上新代码。
+    // 首次安装时页面原本没有 controller，跳过刷新避免装完就刷。
+    let hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController && !__swReloaded) {
+        __swReloaded = true;
+        location.reload();
+      }
+      hadController = true;
     });
+
+    __swReg.addEventListener('updatefound', () => { __swNewFound = true; });
+
+    // 桌面 PWA 冷启动少、浏览器自动检查不及时：打开页面和每次回到前台都主动查一次
+    const check = () => { if (__swReg) __swReg.update().catch(() => {}); };
+    check();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
   });
 }
 registerServiceWorker();
+
+// 页脚「🔄 检查更新」：手动触发检查。发现新版本时 sw 内置 skipWaiting 会立即接管，
+// 上面的 controllerchange 监听负责刷新页面；没发现则提示已是最新。
+async function manualSwUpdate() {
+  if (!('serviceWorker' in navigator)) { showToast('当前浏览器不支持自动更新'); return; }
+  const btn = $('swUpdateBtn');
+  const resetBtn = () => { if (btn) { btn.disabled = false; btn.textContent = '🔄 检查更新'; } };
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ 检查中…'; }
+  try {
+    const reg = __swReg || await navigator.serviceWorker.getRegistration();
+    if (!reg) { showToast('已是最新版本 ✓'); resetBtn(); return; }
+    __swNewFound = false;
+    await reg.update().catch(() => {});
+    // 给新 SW 一点安装时间；装好即接管并自动刷新（无需用户再操作）
+    setTimeout(() => {
+      if (!__swNewFound && !__swReloaded) showToast('已是最新版本 ✓');
+      resetBtn();
+    }, 1200);
+  } catch (err) {
+    showToast('检查失败，稍后再试');
+    resetBtn();
+  }
+}
 
 init();
