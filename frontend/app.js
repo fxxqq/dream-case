@@ -889,9 +889,9 @@ async function loadFeatured() {
         <span class="feat-no">${i + 1}</span>
         <img src="${w.thumb}" alt="${escapeHtml(w.title)}" loading="lazy" />
         <div class="featured-body">
-          <div class="featured-title" title="${escapeHtml(w.title)}">${escapeHtml(w.title)}</div>
+          <div class="featured-title" title="${escapeHtml(w.title)}">${w.adminPick ? '<span class="feat-tag" title="管理员设置的精选">✦ 站方</span>' : ''}${escapeHtml(w.title)}</div>
           ${w.intro ? `<div class="featured-intro">${escapeHtml(w.intro)}</div>` : ''}
-          <div class="featured-meta">👁 ${w.pv7 || 0} 次打开 · ⭐ ${w.fav7 || 0} 人收藏</div>
+          <div class="featured-meta">👁 ${w.pv7 || 0} 次打开 · 👤 ${w.uv7 || 0} 访客 · ⭐ ${w.favs || 0} 收藏</div>
         </div>
         <span class="feat-arrow">↗</span>
       </div>`).join('');

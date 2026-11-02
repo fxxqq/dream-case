@@ -469,13 +469,6 @@ function logFav(workId, userId, on) {
   if (on) favLog.push({ workId, userId, t: Date.now() });
   scheduleFavLogSave();
 }
-// 最近 N 天各作品的新增收藏数
-function favCountsSince(days) {
-  const from = Date.now() - days * 86400000;
-  const m = new Map();
-  favLog.forEach(e => { if (e.t >= from) m.set(e.workId, (m.get(e.workId) || 0) + 1); });
-  return m;
-}
 
 // ---------- 分享归因与积分奖励 ----------
 // 分享链接形如 /w/<id>?ref=<账号名>。访客打开后按「IP + 分享者 + 作品 + 当天」去重，
@@ -1910,40 +1903,46 @@ app.get('/api/works', (req, res) => {
   res.json({ items, total, page, pageSize, hasMore: page * pageSize < total });
 });
 
-// 本周精选：按最近 7 天的真实数据自动排名，一行 10 个
-//   取「近 7 天打开次数（PV）最多的 5 个」＋「近 7 天新增收藏最多的 5 个」去重合并，
-//   不足 10 个再用综合热度补齐；收藏更稀有，排序权重按 1 次收藏 ≈ 5 次打开。
-const FEATURED_TOP = 10;
+// 本周精选：管理员勾选的精选作品置前，其余按数据自动补充
+//   来源 = 管理员精选 ＋「近 7 天访客（UV）最多的 10 个」＋「点赞最多的 5 个」＋「收藏最多的 5 个」，去重合并
+//   顺序：管理员精选在最前（按热度排），其余按 UV＋收藏×5＋点赞×2 综合排序；上限 15 个
+const FEATURED_TOP = 15;
 const FEATURED_DAYS = 7;
+const FEATURED_UV = 10;
 const FEATURED_EACH = 5;
 app.get('/api/featured', (req, res) => {
   const user = currentUser(req);
   const visible = filterBlocked(works.filter(isVisible), user);
-  const fav7 = favCountsSince(FEATURED_DAYS);
-  const rows = visible.map(w => ({
-    w,
-    pv7: workPvUv(w.id, FEATURED_DAYS).pv,
-    pvAll: (workVisits[w.id] && workVisits[w.id].pv) || 0,
-    fav7: fav7.get(w.id) || 0
-  }));
-  const byPv = rows.slice()
-    .sort((a, b) => b.pv7 - a.pv7 || b.pvAll - a.pvAll || score(b.w) - score(a.w))
+  const rows = visible.map(w => {
+    const m = workPvUv(w.id, FEATURED_DAYS);
+    return { w, uv7: m.uv, pv7: m.pv, pvAll: (workVisits[w.id] && workVisits[w.id].pv) || 0 };
+  });
+  const heat = r => r.uv7 + (r.w.favs || 0) * 5 + (r.w.likes || 0) * 2;
+  const byUv = rows.slice()
+    .sort((a, b) => b.uv7 - a.uv7 || b.pvAll - a.pvAll || score(b.w) - score(a.w))
+    .slice(0, FEATURED_UV);
+  const byLikes = rows.slice()
+    .sort((a, b) => (b.w.likes || 0) - (a.w.likes || 0) || (b.w.favs || 0) - (a.w.favs || 0))
     .slice(0, FEATURED_EACH);
-  const byFav = rows.slice()
-    .sort((a, b) => b.fav7 - a.fav7 || (b.w.favs || 0) - (a.w.favs || 0) || (b.w.likes || 0) - (a.w.likes || 0))
+  const byFavs = rows.slice()
+    .sort((a, b) => (b.w.favs || 0) - (a.w.favs || 0) || (b.w.likes || 0) - (a.w.likes || 0))
     .slice(0, FEATURED_EACH);
-  // 两个榜先去重合并，再按「打开 + 收藏×5」综合排序，避免一行里出现两段互不相干的顺序
+  // 去重合并：管理员精选排最前（同样按热度内部排序），然后依次 UV 榜、点赞榜、收藏榜
   const merged = new Map();
-  [...byPv, ...byFav].forEach(r => { if (!merged.has(r.w.id)) merged.set(r.w.id, r); });
-  let list = [...merged.values()].sort((a, b) =>
-    (b.pv7 + b.fav7 * 5) - (a.pv7 + a.fav7 * 5) || b.pvAll - a.pvAll || score(b.w) - score(a.w));
-  if (list.length < FEATURED_TOP) {
-    const rest = rows.filter(r => !merged.has(r.w.id))
-      .sort((a, b) => (b.pv7 + b.fav7 * 5) - (a.pv7 + a.fav7 * 5) || score(b.w) - score(a.w))
-      .slice(0, FEATURED_TOP - list.length);
-    list = list.concat(rest);
+  rows.filter(r => r.w.featured).sort((a, b) => heat(b) - heat(a)).forEach(r => merged.set(r.w.id, r));
+  [byUv, byLikes, byFavs].forEach(list => list.forEach(r => { if (!merged.has(r.w.id)) merged.set(r.w.id, r); }));
+  if (merged.size < FEATURED_TOP) {
+    rows.filter(r => !merged.has(r.w.id))
+      .sort((a, b) => heat(b) - heat(a))
+      .slice(0, FEATURED_TOP - merged.size)
+      .forEach(r => merged.set(r.w.id, r));
   }
-  list = list.slice(0, FEATURED_TOP).map(r => ({ ...publicWork(r.w, user), pv7: r.pv7, fav7: r.fav7 }));
+  // 站方精选固定在最前（内部按热度），其余作品统一按 UV＋收藏×5＋点赞×2 热度排序，
+  // 避免按来源分段导致交界处数字忽高忽低
+  const list = [...merged.values()]
+    .sort((a, b) => ((b.w.featured ? 1 : 0) - (a.w.featured ? 1 : 0)) || heat(b) - heat(a))
+    .slice(0, FEATURED_TOP)
+    .map(r => ({ ...publicWork(r.w, user), uv7: r.uv7, pv7: r.pv7, adminPick: !!r.w.featured }));
   res.json({ days: FEATURED_DAYS, list });
 });
 
