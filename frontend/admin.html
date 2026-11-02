@@ -452,9 +452,8 @@
         <div class="field">
           <label>是否开源</label>
           <div class="os-picker">
-            <label class="os-opt"><input type="radio" name="openSource" value="" /><span>不标注</span></label>
+            <label class="os-opt"><input type="radio" name="openSource" value="0" checked /><span>闭源</span></label>
             <label class="os-opt"><input type="radio" name="openSource" value="1" /><span>开源（代码公开）</span></label>
-            <label class="os-opt"><input type="radio" name="openSource" value="0" /><span>闭源</span></label>
           </div>
         </div>
         <div class="field" id="repoField" style="display:none">
@@ -463,9 +462,18 @@
         </div>
         <div class="field">
           <label>是否收费（选填）</label>
-          <div class="os-picker">
-            <label class="os-opt"><input type="radio" name="paid" value="" /><span>免费（不标注）</span></label>
+          <div class="os-picker" id="paidPicker">
+            <label class="os-opt"><input type="radio" name="paid" value="" checked /><span>免费（不标注）</span></label>
             <label class="os-opt"><input type="radio" name="paid" value="1" /><span>💰 需要付费</span></label>
+          </div>
+          <div class="os-picker" id="paidModelPicker" style="display:none; margin-top:8px">
+            <label class="os-opt"><input type="radio" name="paidModel" value="" checked /><span>形式不定</span></label>
+            <label class="os-opt"><input type="radio" name="paidModel" value="freemium" /><span>部分免费</span></label>
+            <label class="os-opt"><input type="radio" name="paidModel" value="member" /><span>会员专享</span></label>
+            <label class="os-opt"><input type="radio" name="paidModel" value="onetime" /><span>单篇购买</span></label>
+            <label class="os-opt"><input type="radio" name="paidModel" value="subscription" /><span>订阅制</span></label>
+            <label class="os-opt"><input type="radio" name="paidModel" value="trial" /><span>试用后付费</span></label>
+            <label class="os-opt"><input type="radio" name="paidModel" value="donation" /><span>打赏/赞助</span></label>
           </div>
         </div>
         <div class="modal-foot">
@@ -720,7 +728,7 @@
                 ${w.featured ? '<span class="tag ok">精选</span>' : ''}
                 ${w.pinned ? '<span class="tag">置顶</span>' : ''}
                 ${w.openSource === true ? '<span class="tag ok">开源</span>' : w.openSource === false ? '<span class="tag">闭源</span>' : ''}
-                ${w.paid ? '<span class="tag warn">付费</span>' : ''}
+                ${w.paid ? `<span class="tag warn">付费${w.paidModel && PAID_MODELS[w.paidModel] ? ' · ' + PAID_MODELS[w.paidModel] : ''}</span>` : ''}
                 ${w.claimable ? `<span class="tag warn" title="${w.claimed ? '已开放认领，审核通过会转移归属' : '无归属作品（匿名投稿 / 后台代传）默认可认领'}">可认领</span>` : ''}
               </div>
               <div class="row-meta">@${esc(w.author)}${w.anonymous && (w.authorReal || w.ownerReal) ? `（原提交：${esc(w.authorReal || '')}${w.ownerReal ? ' / @' + esc(w.ownerReal) : ''}）` : ''} · ${esc(w.category)} · ♥${w.likes} · 👁${w.views}
@@ -899,6 +907,18 @@
         $('repoField').style.display = getFormRadio('openSource') === '1' ? 'block' : 'none';
       });
     });
+    // 收费形式：勾「需要付费」才展开；点形式自动勾「需要付费」；改回免费时清掉形式
+    const PAID_MODELS = { freemium: '部分免费', member: '会员专享', onetime: '单篇购买', subscription: '订阅制', trial: '试用后付费', donation: '打赏/赞助' };
+    const updatePaidModelField = () => {
+      const paid = getFormRadio('paid') === '1';
+      $('paidModelPicker').style.display = paid ? 'flex' : 'none';
+      if (!paid) setFormRadio('paidModel', '');
+    };
+    workForm.querySelectorAll('input[name="paid"]').forEach(r => r.addEventListener('change', updatePaidModelField));
+    workForm.querySelectorAll('input[name="paidModel"]').forEach(r => r.addEventListener('change', () => {
+      if (r.value) setFormRadio('paid', '1');
+      updatePaidModelField();
+    }));
     // 勾选形态变化 → 重渲染链接输入框（每个所选形态一个）
     $('adminTypePicker').addEventListener('change', e => {
       if (e.target.name !== 'types') return;
@@ -1073,9 +1093,11 @@
       $('saveWorkBtn').textContent = w ? '保存修改' : '创建作品';
       await loadTypeOptions();
       await loadCatOptions(w ? (Array.isArray(w.categories) && w.categories.length ? w.categories : [w.category].filter(Boolean)) : []);
-      setFormRadio('openSource', w && w.openSource === true ? '1' : (w && w.openSource === false ? '0' : ''));
+      setFormRadio('openSource', w ? (w.openSource === true ? '1' : '0') : '0');
       setFormRadio('paid', w && w.paid ? '1' : '');
+      setFormRadio('paidModel', w && w.paid ? (w.paidModel || '') : '');
       $('repoField').style.display = getFormRadio('openSource') === '1' ? 'block' : 'none';
+      updatePaidModelField();
       let draftRestored = false;
       if (!w) {
         draftRestored = restoreDraft(); // 新建模式恢复草稿（内部会渲染链接输入框）
@@ -1130,6 +1152,7 @@
           openSource: getFormRadio('openSource'),
           repo: workForm.repo.value,
           paid: getFormRadio('paid'),
+          paidModel: getFormRadio('paidModel'),
           prompt: workForm.prompt.value, site: workForm.site.value, t: Date.now()
         }));
       } catch {}
@@ -1146,10 +1169,12 @@
         adminSetTypes(Array.isArray(d.types) && d.types.length ? d.types : (d.type ? [d.type] : ['网站']));
         adminSetCats(Array.isArray(d.cats) && d.cats.length ? d.cats : (d.category ? [d.category] : []));
         if ([...workForm.status.options].some(o => o.value === d.status)) workForm.status.value = d.status;
-        setFormRadio('openSource', ['', '1', '0'].includes(d.openSource) ? d.openSource : '');
+        setFormRadio('openSource', d.openSource === '1' ? '1' : '0');
         workForm.repo.value = d.repo || '';
         setFormRadio('paid', d.paid === '1' ? '1' : '');
+        setFormRadio('paidModel', d.paid === '1' ? (d.paidModel || '') : '');
         $('repoField').style.display = getFormRadio('openSource') === '1' ? 'block' : 'none';
+        updatePaidModelField();
         // 兼容旧草稿的单 link 字段
         if (d.links && Object.keys(d.links).length) adminPendingLinkValues = d.links;
         else if (d.link && d.link.trim()) {

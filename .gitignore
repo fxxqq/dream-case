@@ -25,3 +25,6 @@ test-*.js
 .env
 .DS_Store
 Thumbs.db
+
+# 本地截图验证脚本
+_iconpreview/

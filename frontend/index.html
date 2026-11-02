@@ -10,7 +10,7 @@
 <body>
   <header class="site-header">
     <div class="container header-inner">
-      <a class="logo" href="/" data-nav>✦ 造梦橱窗</a>
+      <a class="logo" href="/" data-nav><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
 
       <!-- role=search + name=q + autocomplete=off：告诉浏览器这是搜索框，别按用户名输入框配对自动填充账号 -->
       <form class="search-box" role="search" onsubmit="return false;">
@@ -20,8 +20,8 @@
 
       <nav class="main-nav">
         <a class="nav-btn" href="/wish" data-nav><i class="ico" data-ico="wish"></i> 造梦酒肆</a>
-        <a class="nav-btn" href="/rank" data-nav><i class="ico" data-ico="rank"></i> 榜单</a>
-        <button class="nav-btn" id="favBtn"><i class="ico" data-ico="fav"></i> 收藏</button>
+        <a class="nav-btn" href="/rank" data-nav><i class="ico" data-ico="rank"></i> 造梦榜单</a>
+        <button class="nav-btn" id="favBtn"><i class="ico" data-ico="fav"></i> 我的收藏</button>
       </nav>
 
       <div id="authBox" class="auth-box"></div>
@@ -169,12 +169,12 @@
     <section id="guideView" style="display:none">
       <div class="page-head wish-page-head">
         <h2 class="page-title">📣 外宣指南</h2>
-        <p>一处发布，到处露脸——8 个适合独立开发者发新品的地方，附投稿入口和避坑要点</p>
+        <p>做一次，到 8 个地方露脸——附投稿入口和避坑要点</p>
       </div>
       <div class="guide-howto">
         <div class="guide-step"><b>1</b><span>打开任意作品详情，点「📣 外宣包」，按平台生成投稿文案</span></div>
         <div class="guide-step"><b>2</b><span>复制文案 + 保存作品截图，去对应平台投稿（下面每个都有直达入口）</span></div>
-        <div class="guide-step"><b>3</b><span>别一把梭：每个平台重写开头一句，社区都看得出复制粘贴</span></div>
+        <div class="guide-step"><b>3</b><span>别一把梭：同一个开头贴 8 个社区，一眼就被认出来——每个平台重写第一句</span></div>
       </div>
       <div class="guide-list" id="guideList"></div>
       <p class="guide-note" id="guideNote"></p>
@@ -313,8 +313,8 @@
 
         <label>是否开源</label>
         <div class="os-picker" id="osPicker">
-          <label class="os-opt"><input type="radio" name="openSource" value="0" checked /><span>否</span></label>
-          <label class="os-opt"><input type="radio" name="openSource" value="1" /><span>是（需填源码地址）</span></label>
+          <label class="os-opt"><input type="radio" name="openSource" value="0" checked /><span>闭源</span></label>
+          <label class="os-opt"><input type="radio" name="openSource" value="1" /><span>开源（代码公开，需填源码地址）</span></label>
         </div>
         <p class="form-hint" id="osBonusHint" style="display:none">🎁 标注开源的原创作品，系统自动送 <b>50 盏灯火</b>（一件作品一次），可用于站内宣传。GitHub 收获 <b>1000+ star</b> 的项目，联系站长可按 star 数 1:1 领取等额积分。</p>
         <div id="repoField" style="display:none">
@@ -326,6 +326,15 @@
         <div class="os-picker" id="paidPicker">
           <label class="os-opt"><input type="radio" name="paid" value="" checked /><span>免费（不标注）</span></label>
           <label class="os-opt"><input type="radio" name="paid" value="1" /><span>💰 需要付费</span></label>
+        </div>
+        <div class="os-picker" id="paidModelPicker" style="display:none; margin-top:8px">
+          <label class="os-opt"><input type="radio" name="paidModel" value="" checked /><span>形式不定</span></label>
+          <label class="os-opt"><input type="radio" name="paidModel" value="freemium" /><span>部分免费</span></label>
+          <label class="os-opt"><input type="radio" name="paidModel" value="member" /><span>会员专享</span></label>
+          <label class="os-opt"><input type="radio" name="paidModel" value="onetime" /><span>单篇购买</span></label>
+          <label class="os-opt"><input type="radio" name="paidModel" value="subscription" /><span>订阅制</span></label>
+          <label class="os-opt"><input type="radio" name="paidModel" value="trial" /><span>试用后付费</span></label>
+          <label class="os-opt"><input type="radio" name="paidModel" value="donation" /><span>打赏/赞助</span></label>
         </div>
 
         <button type="submit" class="btn-primary btn-block" id="submitBtn">提交</button>
@@ -532,7 +541,7 @@
 
         <div class="detail-actions">
           <button class="btn-like" id="detailLike"><i class="ico b-ico" data-ico="heart"></i> 点赞 <span id="detailLikes">0</span></button>
-          <button class="btn-like btn-fav" id="detailFav" title="收藏后可在顶部「收藏」里找到"><i class="ico" data-ico="fav"></i> 收藏</button>
+          <button class="btn-like btn-fav" id="detailFav" title="收藏后可在顶部「我的收藏」里找到"><i class="ico" data-ico="fav"></i> 收藏</button>
           <button class="btn-share" id="shareCardBtn" title="生成一张带二维码的分享图，发朋友圈/小红书都行"><i class="ico b-ico" data-ico="sharecard"></i> 分享卡片</button>
           <button class="btn-share btn-pack" id="promoKitBtn" title="按平台生成投稿文案，复制就能去外站投"><i class="ico b-ico" data-ico="megaphone"></i> 外宣包</button>
           <span id="detailLinks" class="detail-links"></span>

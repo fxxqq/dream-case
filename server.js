@@ -1048,6 +1048,13 @@ function parsePaid(v) {
   return v === true || v === '1' || v === 'true';
 }
 
+// 收费形式：标注付费时的可选模式（白名单，防脏数据；空/非法 → 不标注形式）
+const PAID_MODELS = ['freemium', 'member', 'onetime', 'subscription', 'trial', 'donation'];
+function parsePaidModel(v) {
+  const s = String(v || '').trim();
+  return PAID_MODELS.includes(s) ? s : '';
+}
+
 // 源码仓库地址：补协议、截断；标注开源时必须非空（由调用方校验）
 function normRepo(v) {
   let s = String(v || '').trim();
@@ -1073,6 +1080,7 @@ function publicWork(w, user) {
     openSource: w.openSource === true ? true : (w.openSource === false ? false : null),
     repo: w.repo || '',
     paid: !!w.paid,
+    paidModel: w.paid ? (w.paidModel || '') : '',
     verified: !!creator,
     codesTotal: codesOf(w.id).length,
     codesLeft: codesOf(w.id).filter(c => c.status === 'available').length,
@@ -2550,7 +2558,8 @@ app.post('/api/works', (req, res) => {
       pinned: false,
       openSource: parseOpenSource(req.body.openSource),
       repo: repoVal,
-      paid: parsePaid(req.body.paid),
+      paid: parsePaid(req.body.paid) || !!parsePaidModel(req.body.paidModel),
+      paidModel: (parsePaid(req.body.paid) || !!parsePaidModel(req.body.paidModel)) ? parsePaidModel(req.body.paidModel) : '',
       reports: 0,
       likes: 0,
       views: 0,
@@ -2615,7 +2624,10 @@ app.put('/api/works/:id', (req, res) => {
     if (req.body.openSource !== undefined) w.openSource = parseOpenSource(req.body.openSource);
     if (req.body.repo !== undefined) w.repo = normRepo(req.body.repo);
     if (w.openSource === true && !w.repo) return res.status(400).json({ error: '标注开源时请填写源码仓库地址' });
+    if (req.body.paidModel !== undefined) w.paidModel = parsePaidModel(req.body.paidModel);
     if (req.body.paid !== undefined) w.paid = parsePaid(req.body.paid);
+    else if (w.paidModel && !w.paid) w.paid = true; // 只传了收费形式且原为免费 → 视为标注付费
+    if (!w.paid) w.paidModel = '';                  // 改回免费则清掉形式
     if (link !== undefined) {
       let lv = String(link).trim();
       if (lv && !/^https?:\/\//i.test(lv)) lv = 'https://' + lv;
@@ -3113,7 +3125,8 @@ app.post('/api/admin/works', requireAdmin, (req, res) => {
       pinned: false,
       openSource: parseOpenSource(req.body.openSource),
       repo: repoVal,
-      paid: parsePaid(req.body.paid),
+      paid: parsePaid(req.body.paid) || !!parsePaidModel(req.body.paidModel),
+      paidModel: (parsePaid(req.body.paid) || !!parsePaidModel(req.body.paidModel)) ? parsePaidModel(req.body.paidModel) : '',
       reports: 0,
       likes: 0,
       views: 0,
@@ -3177,7 +3190,10 @@ app.put('/api/admin/works/:id', requireAdmin, (req, res) => {
     if (req.body.openSource !== undefined) w.openSource = parseOpenSource(req.body.openSource);
     if (req.body.repo !== undefined) w.repo = normRepo(req.body.repo);
     if (w.openSource === true && !w.repo) return res.status(400).json({ error: '标注开源时请填写源码仓库地址' });
+    if (req.body.paidModel !== undefined) w.paidModel = parsePaidModel(req.body.paidModel);
     if (req.body.paid !== undefined) w.paid = parsePaid(req.body.paid);
+    else if (w.paidModel && !w.paid) w.paid = true; // 只传了收费形式且原为免费 → 视为标注付费
+    if (!w.paid) w.paidModel = '';                  // 改回免费则清掉形式
     // links 字段接管后同步遗留单链接：全清空时一并清掉，否则回填/展示会"复活"
     if (req.body.links !== undefined) w.link = (linksMap && (linksMap.Web || Object.values(linksMap)[0])) || '';
     if (link !== undefined) {
@@ -4006,7 +4022,7 @@ app.get('/guide', (req, res) => {
   const headHtml = seo.head({
     title: `外宣指南 - 8 个适合独立开发者发新品的地方 - ${seo.SITE_NAME}`,
     description: truncateText(
-      '一处发布，到处露脸：Product Hunt、Hacker News、V2EX 分享创造、少数派、小众软件、酷安、即刻、HelloGitHub——每个平台的适合投什么、投稿入口、避坑要点，外加可一键复制的投稿文案模板。', 150),
+      '做一次，到 8 个地方露脸：Product Hunt、Hacker News、V2EX 分享创造、少数派、小众软件、酷安、即刻、HelloGitHub——每个平台的适合投什么、投稿入口、避坑要点，外加可一键复制的投稿文案模板。', 150),
     keywords: '外宣指南,产品推广,独立开发者,发新品,Product Hunt,V2EX,少数派,小众软件,酷安,即刻,HelloGitHub,推广渠道',
     canonical: base + '/guide',
     type: 'website',
@@ -4032,7 +4048,7 @@ app.get('/guide', (req, res) => {
   ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name: '外宣指南' }])}
   <div class="page-head">
     <h1>📣 外宣指南</h1>
-    <p>一处发布，到处露脸——8 个适合独立开发者发新品的地方</p>
+    <p>做一次，到 8 个地方露脸——附投稿入口和避坑要点</p>
   </div>
   <ol class="seo-rank seo-guide">
     ${PLATFORMS.map((p, i) => `<li>

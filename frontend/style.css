@@ -280,19 +280,19 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   flex: 0 0 auto;  /* 不拉伸：选中/换行时按钮宽高稳定，整行不重排 */
 }
 .type-picker .type-opt input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
-.type-picker .type-opt span {
+.type-picker .type-opt > span {
   display: inline-flex; align-items: center; justify-content: center; gap: 3px;
   width: 100%; padding: 4px 8px; border: 1.5px solid var(--border); border-radius: 999px;
   background: #fff; color: #4a4f5e; transition: background .15s, color .15s, border-color .15s, box-shadow .15s, transform .15s;
   user-select: none; white-space: nowrap;
 }
-.type-picker .type-opt:hover span { border-color: #b9bbf0; transform: translateY(-1px); box-shadow: 0 3px 10px rgba(70,70,160,.10); }
+.type-picker .type-opt:hover > span { border-color: #b9bbf0; transform: translateY(-1px); box-shadow: 0 3px 10px rgba(70,70,160,.10); }
 .type-picker .type-opt input:checked + span {
   background: var(--primary); border-color: var(--primary); color: #fff;
   box-shadow: 0 3px 8px rgba(91, 91, 214, .24);
 }
 /* ✓ 的占位空间常驻保留（只切透明度），勾选不会改变按钮宽度，避免换行位置跳动 */
-.type-picker .type-opt span::after {
+.type-picker .type-opt > span::after {
   content: '✓'; font-size: 11px; font-weight: 700;
   display: inline-block; width: 13px; text-align: center;
   opacity: 0; transform: scale(.5);
@@ -300,11 +300,15 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 }
 .type-picker .type-opt input:checked + span::after { opacity: 1; transform: scale(1); }
 .type-picker .type-opt input:focus-visible + span { box-shadow: 0 0 0 3px rgba(91, 91, 214, .22); }
+/* Web 形态 SVG 图标是「浅紫屏体 + 紫描边」双色，选中紫底上紫的部分会隐身：
+   选中态强制改为 屏体半透明白 + 描边/文字/底座纯白，保住显示器层次 */
+.type-picker .type-opt input:checked + span .tico svg path:nth-child(1) { fill: rgba(255,255,255,.38); }
+.type-picker .type-opt input:checked + span .tico svg path:nth-child(n+2) { fill: #fff; }
 /* 应用分类多选：胶囊复用 type-opt，另加提示行与「＋ 新分类」虚线按钮 */
 /* 分类数量多，胶囊不拉伸铺满、整体更小一号 */
 .cat-picker { gap: 7px; }
 .cat-picker .type-opt { flex: 0 0 auto; font-size: 12.5px; }
-.cat-picker .type-opt span { padding: 4px 10px; font-size: 12.5px; border-width: 1px; }
+.cat-picker .type-opt > span { padding: 4px 10px; font-size: 12.5px; border-width: 1px; }
 .cat-picker .type-opt span::after { font-size: 11px; width: 13px; }
 .cat-picker .type-opt:hover span { transform: none; box-shadow: none; }
 .cat-picker .type-opt input:checked + span { box-shadow: 0 2px 8px rgba(91, 91, 214, .22); }
@@ -601,6 +605,8 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .detail-cat { margin-bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
 .detail-cat span { font-size: 12px; padding: 3px 10px; border-radius: 999px; }
 .detail-cat .badge-type { color: #fff; background: #1f2330; }
+/* Web 形态 SVG 图标在深藏青底上：描边/文字/底座提亮为白，保住显示器层次 */
+.detail-cat .badge-type .tico svg path:nth-child(n+2) { fill: #fff; }
 .detail-cat .badge-cat { color: var(--primary); background: #eeeefc; }
 /* 源码仓库入口：标签行里的可点徽标（开源作品才有） */
 .detail-cat .badge-repo {
@@ -725,7 +731,8 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 
 /* ========== v3 新增样式 ========== */
 .header-inner { gap: 16px; }
-.logo { text-decoration: none; white-space: nowrap; }
+.logo { text-decoration: none; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; }
+.logo-mark { display: block; flex: none; }
 .main-nav { display: flex; gap: 4px; flex: 1; align-items: center; min-width: 0; }
 .main-nav .nav-btn {
   text-decoration: none; line-height: 1.4; white-space: nowrap; flex: none;
@@ -1115,6 +1122,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 @media (max-width: 640px) {
   .header-inner { flex-wrap: wrap; height: auto; padding: 6px 0; gap: 5px 8px; }
   .logo { font-size: 16px; }
+  .logo-mark { width: 22px; height: 22px; }
   .header-inner > .btn-primary { order: 1; margin-left: auto; padding: 6px 12px; font-size: 13px; border-radius: 8px; }
   .search-box { flex: 1 1 100%; order: 2; }
   .search-box input { padding: 6px 12px 6px 30px; font-size: 13px; }
@@ -2178,6 +2186,8 @@ body.on-work .load-more-wrap { display: none !important; }
 .ico svg { width: 100%; height: 100%; display: block; }
 /* 形态 SVG 图标：和旁边 emoji 视觉等大（emoji 天生占 1.1~1.2em） */
 .tico { font-size: 1.12em; }
+/* .ico svg 的百分比宽高在 inline-flex 嵌套里高度会塌陷（被压成横条），固定 em 尺寸 */
+.tico svg { width: 1em; height: 1em; }
 
 /* 领奖台造型扁宽，按 1em 会显得比旁边图标小一圈，单独放一档
    （nav-btn 已是 flex 居中，无需再手调 vertical-align） */

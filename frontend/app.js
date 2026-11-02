@@ -96,6 +96,8 @@ const LINK_LABEL = {
   '小程序': '📱 打开小程序', '浏览器插件': '🧩 前往安装', '机器人': '🦾 体验机器人', 'API': '🔌 查看文档',
   '其他': '🔗 访问作品'
 };
+// 收费形式（标注「需要付费」时可选）→ 中文标签
+const PAID_MODELS = { freemium: '部分免费', member: '会员专享', onetime: '单篇购买', subscription: '订阅制', trial: '试用后付费', donation: '打赏/赞助' };
 // 各形态的访问方式规则：Web → 链接必填；其他形态链接选填；小程序 → 二维码必填
 const TYPE_LINK_FIELD = {
   'Web':   { link: true,  qr: false, label: '网站地址 *',   ph: 'https://你的网站地址' },
@@ -726,9 +728,12 @@ function osBadgeHtml(w, cls = '') {
   return '';
 }
 
-// 付费徽章：默认免费不显示，只有作者标注「需要付费」才出现
+// 付费徽章：默认免费不显示，只有作者标注「需要付费」才出现；选了收费形式则带上
 function paidBadgeHtml(w, cls = '') {
-  return w.paid ? `<span class="os-badge paid ${cls}" title="需要付费或含付费版本">💰 付费</span>` : '';
+  if (!w.paid) return '';
+  const label = PAID_MODELS[w.paidModel] || '付费';
+  const tip = PAID_MODELS[w.paidModel] ? `付费作品（${label}）` : '需要付费或含付费版本';
+  return `<span class="os-badge paid ${cls}" title="${tip}">💰 ${escapeHtml(label)}</span>`;
 }
 
 function cardHtml(w, opts = {}) {
@@ -767,7 +772,7 @@ function listHtml(w) {
       <div class="row-main">
         <div class="row-title">${w.pinned ? '<span class="pin-badge row-pin">置顶</span>' : ''}${escapeHtml(w.title)}</div>
         ${w.intro ? `<div class="row-intro">${escapeHtml(w.intro)}</div>` : ''}
-        <div class="row-meta">${escapeHtml(typeText(w))} · ${w.verified ? '<i class="verified">✔</i>' : ''}${escapeHtml(aname(w))} · ${escapeHtml(w.category)}${w.openSource === true ? ' · 🔓 开源' : w.openSource === false ? ' · 🔒 闭源' : ''}${w.paid ? ' · 💰 付费' : ''}</div>
+        <div class="row-meta">${escapeHtml(typeText(w))} · ${w.verified ? '<i class="verified">✔</i>' : ''}${escapeHtml(aname(w))} · ${escapeHtml(w.category)}${w.openSource === true ? ' · 🔓 开源' : w.openSource === false ? ' · 🔒 闭源' : ''}${w.paid ? ` · 💰 ${escapeHtml(PAID_MODELS[w.paidModel] || '付费')}` : ''}</div>
       </div>
       <div class="row-stats">
         <span class="row-stat">${ic('heart')} <b>${w.likes}</b></span>
@@ -2212,6 +2217,7 @@ function setupUploadForm() {
     $('authorField').style.display = state.user ? 'none' : 'block';
     form.reset();
     form.image.required = true;
+    updatePaidModelField(); // form.reset 会还原 radio 默认值，收费形式区一并收起
     newCatInput.style.display = 'none';
     newCatInput.value = '';
     setCats([]);
@@ -2249,6 +2255,7 @@ function setupUploadForm() {
         openSource: (form.querySelector('input[name="openSource"]:checked') || {}).value || '',
         repo: form.repo.value,
         paid: (form.querySelector('input[name="paid"]:checked') || {}).value || '',
+        paidModel: (form.querySelector('input[name="paidModel"]:checked') || {}).value || '',
         prompt: form.prompt.value, site: form.site.value, links: collectLinkValues(form), t: Date.now()
       }));
     } catch {}
@@ -2279,6 +2286,9 @@ function setupUploadForm() {
       if (osDraft) osDraft.checked = true;
       const paidDraft = form.querySelector(`input[name="paid"][value="${d.paid || ''}"]`);
       if (paidDraft) paidDraft.checked = true;
+      const pmDraft = form.querySelector(`input[name="paidModel"][value="${d.paidModel || ''}"]`);
+      if (pmDraft) pmDraft.checked = true;
+      updatePaidModelField();
       form.repo.value = d.repo || '';
       applyTypeFields();
       updateRepoFieldFn();
@@ -2300,6 +2310,25 @@ function setupUploadForm() {
   }
   form.querySelectorAll('input[name="openSource"]').forEach(r => r.addEventListener('change', updateRepoField));
   updateRepoFieldFn = updateRepoField;
+
+  // 收费形式：勾「需要付费」才展开；直接点某个形式也自动勾上「需要付费」；改回免费时清掉形式
+  function updatePaidModelField() {
+    const paid = (form.querySelector('input[name="paid"]:checked') || {}).value === '1';
+    const picker = $('paidModelPicker');
+    if (picker) picker.style.display = paid ? 'flex' : 'none';
+    if (!paid) {
+      const none = form.querySelector('input[name="paidModel"][value=""]');
+      if (none) none.checked = true;
+    }
+  }
+  form.querySelectorAll('input[name="paid"]').forEach(r => r.addEventListener('change', updatePaidModelField));
+  form.querySelectorAll('input[name="paidModel"]').forEach(r => r.addEventListener('change', () => {
+    if (r.value) {
+      const paidYes = form.querySelector('input[name="paid"][value="1"]');
+      if (paidYes) paidYes.checked = true;
+    }
+    updatePaidModelField();
+  }));
 
   editWorkFn = startEdit;
   function startEdit(w) {
@@ -2325,6 +2354,9 @@ function setupUploadForm() {
     if (osInput) osInput.checked = true;
     const paidInput = form.querySelector(`input[name="paid"][value="${w.paid ? '1' : ''}"]`);
     if (paidInput) paidInput.checked = true;
+    const pmInput = form.querySelector(`input[name="paidModel"][value="${w.paidModel || ''}"]`);
+    if (pmInput) pmInput.checked = true;
+    updatePaidModelField();
     form.repo.value = w.repo || '';
     updateRepoFieldFn();
     form.image.required = false; // 编辑时可以不换封面
