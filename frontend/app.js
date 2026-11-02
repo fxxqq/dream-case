@@ -1469,15 +1469,15 @@ async function openWork(id, push = true) {
     setTitle(w.title);
 
     $('detailImg').src = w.image;
-    $('detailTitle').textContent = w.title;
+    // 标题：开源作品在标题后面直接跟一颗可点的「源码」小徽标
+    $('detailTitle').innerHTML = escapeHtml(w.title) +
+      (w.repo ? ` <a class="badge-repo badge-repo-inline" href="${escapeHtml(w.repo)}" target="_blank" rel="noopener" title="打开源码仓库">📁 源码</a>` : '');
     $('detailCategory').innerHTML =
       typesOf(w).map(t => `<span class="badge-type">${TYPE_ICONS[t] || '✨'} ${escapeHtml(t)}</span>`).join('') +
       `<span class="badge-cat">${escapeHtml(w.category)}</span>` +
       osBadgeHtml(w) +
       paidBadgeHtml(w) +
-      (w.featured ? '<span class="badge-featured">✨ 精选</span>' : '') +
-      // 开源作品的源码入口：放在标题下的标签行里（挨着开源徽标），不再单独占按钮行
-      (w.repo ? `<a class="badge-repo" href="${escapeHtml(w.repo)}" target="_blank" rel="noopener" title="打开源码仓库">📁 源码</a>` : '');
+      (w.featured ? '<span class="badge-featured">✨ 精选</span>' : '');
     $('detailAuthor').innerHTML = `${w.verified ? '<i class="verified">✔</i> ' : ''}${escapeHtml(aname(w))}`;
     $('detailStats').innerHTML = `♥ ${w.likes} 点赞 · ★ <span class="fav-num" data-fav-count="${w.id}" data-count="${w.favs || 0}" data-prefix="">${w.favs || 0}</span> 人收藏 · 💬 <span class="cmt-num" data-comment-count="${w.id}" data-count="${w.commentCount || 0}" data-prefix="">${w.commentCount || 0}</span> 评论 · 👁 ${w.views} 浏览 · ${formatDate(w.createdAt)}`;
     $('detailPrompt').textContent = w.intro || '';

@@ -485,6 +485,12 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 
 .detail-info { padding: 24px; flex: 1; min-width: 0; max-height: 90vh; overflow-y: auto; }
 .detail-info h2 { font-size: 20px; margin-bottom: 8px; word-break: break-all; }
+/* 标题后紧跟的「源码」小徽标：字号略小、垂直居中对齐标题 */
+.detail-info h2 .badge-repo-inline {
+  font-size: 12px; padding: 3px 10px; margin-left: 8px;
+  vertical-align: middle; position: relative; top: -2px;
+  white-space: nowrap;
+}
 
 /* 详情页评论区 */
 .detail-comments { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 14px; }
