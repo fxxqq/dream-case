@@ -115,9 +115,9 @@ nav { display: flex; gap: 8px; flex: 1; }
 }
 .chip.active { background: #1f2330; border-color: #1f2330; color: #fff; font-weight: 600; }
 
-/* Gallery */
+/* Gallery：桌面一行 5 个（容器内宽 1160 - 4*20 间隙 = 每列 ≤216），窄屏 auto-fill 自动降为 4/3/2 列 */
 .gallery {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(212px, 1fr));
   gap: 20px; padding-bottom: 48px;
 }
 .card {
