@@ -1018,6 +1018,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700;
 }
 .author-info h1 { font-size: 20px; margin-bottom: 4px; }
+.author-verified { font-size: 18px; margin-left: 4px; vertical-align: -1px; cursor: default; }   /* 认证 ✔ 跟在大名字旁，放大一号 */
 .author-name-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .author-nick-btn {
   display: inline-flex; align-items: center; gap: 4px; cursor: pointer;

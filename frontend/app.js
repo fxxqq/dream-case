@@ -1538,7 +1538,9 @@ async function loadAuthor(name) {
     const data = await (await fetch('/api/authors/' + encodeURIComponent(name))).json();
     // 有昵称就显示昵称（地址栏仍是 /u/账号，链接不会失效）
     const shown = data.displayName || name;
-    $('authorName').textContent = '@' + shown;
+    // 认证创作者：名字旁直接挂绿色 ✔（和卡片/详情一致），统计行不再重复放认证标签
+    $('authorName').innerHTML = '@' + escapeHtml(shown) +
+      (data.verified ? ' <i class="verified author-verified" title="认证创作者">✔</i>' : '');
     $('authorAvatar').textContent = shown.slice(0, 1).toUpperCase();
     setTitle(`@${shown} 的作品`);
     // 自己的主页：名字旁显示「修改昵称」入口，页面底部放「注销账号」（低调、防误触）
@@ -1551,7 +1553,6 @@ async function loadAuthor(name) {
     if (isMe) $('authorDelBtn').onclick = openDelAcc;
     $('authorBio').textContent = data.bio || '';
     $('authorStats').innerHTML =
-      `${data.verified ? '<span class="verified-tag">✔ 认证创作者</span> ' : ''}` +
       `作品 ${data.total} · 累计获赞 ${data.totalLikes} · 被收藏 ${data.totalFavs || 0}`;
     $('authorGallery').innerHTML = data.works.map(w => cardHtml(w)).join('') ||
       '<div class="empty"><p>这位作者还没有作品</p></div>';
