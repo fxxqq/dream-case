@@ -2165,6 +2165,11 @@ app.post('/api/works/:id/redeem', (req, res) => {
   res.json({ ok: true, code: pick.code, left: avail.length - 1 });
 });
 
+// 站点公开统计：页脚展示今日/累计 PV·UV（只出聚合数字，无明细）
+app.get('/api/site-stats', (req, res) => {
+  res.json(visitStats());
+});
+
 app.get('/api/works/:id', (req, res) => {
   const w = works.find(x => x.id === req.params.id);
   if (!w || (!isVisible(w) && !isAdmin(req))) return res.status(404).json({ error: '作品不存在或未通过审核' });

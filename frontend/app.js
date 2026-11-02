@@ -3869,6 +3869,7 @@ async function init() {
   if (!location.pathname.startsWith('/w/')) removeSeoBlock();
   captureRef();   // 先处理 ?ref=：记下分享者并上报，再把参数从地址栏摘掉
   loadFooterFriends();  // 页脚友情链接（后台可配，空则不展示）
+  loadFooterStats();    // 页脚站点 PV/UV + 提交作品引导
   // 支持 /?q=关键词 直接进入搜索结果（与站点搜索结构化数据一致）
   const q = (new URLSearchParams(location.search).get('q') || '').trim();
   if (q) {
@@ -3906,6 +3907,24 @@ async function loadFooterFriends() {
       list.map(f => `<a href="${escapeHtml(f.url)}" target="_blank" rel="noopener nofollow">${escapeHtml(f.name)}</a>`)
         .join('<span class="ff-sep">·</span>');
   } catch { /* 拿不到就不展示，无害 */ }
+}
+
+// 页脚站点统计：今日/累计 PV·UV + 提交作品引导（公开接口，无明细）
+async function loadFooterStats() {
+  const el = $('footerStats');
+  if (!el) return;
+  try {
+    const s = await (await fetch('/api/site-stats')).json();
+    el.innerHTML =
+      `<span class="fs-item">今日 <b>${s.pvToday || 0}</b> PV</span>` +
+      `<span class="fs-item">今日 <b>${s.uvToday || 0}</b> UV</span>` +
+      `<span class="fs-item">累计 <b>${s.pv || 0}</b> PV</span>` +
+      `<span class="fs-item">累计 <b>${s.uv || 0}</b> UV</span>` +
+      `<a href="#upload" class="fs-cta" id="fsGoSubmit">提交作品</a>，让你的好作品被更多人看到`;
+    el.style.display = '';
+    const cta = $('fsGoSubmit');
+    if (cta) cta.onclick = e => { e.preventDefault(); const up = $('openUpload'); if (up) up.click(); };
+  } catch { /* 统计拉不到就隐藏，不影响页脚其他内容 */ }
 }
 
 // ---------- PWA：注册 Service Worker 与自动更新 ----------
