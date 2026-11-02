@@ -701,6 +701,8 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   background: linear-gradient(180deg, #fdfdff, #f4f4fb);
   border: 1px solid #e4e6f4; border-radius: 14px;
   padding: 14px; cursor: pointer;
+  /* 定高：有无简介都一样高，也和加载骨架卡（.feat-sk）完全等高，替换时零位移 */
+  min-height: 110px;
   transition: transform .15s, box-shadow .15s;
   user-select: none;
 }
@@ -741,6 +743,17 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   font-size: 11px; font-weight: 600; line-height: 20px; text-align: center;
   pointer-events: none;
 }
+
+/* 精选加载骨架卡：与真实卡片等高等宽，数据回来原地替换、页面零位移 */
+.feat-sk {
+  flex: 0 0 268px; scroll-snap-align: start;
+  display: flex; gap: 12px; align-items: flex-start;
+  background: linear-gradient(180deg, #fdfdff, #f4f4fb);
+  border: 1px solid #e4e6f4; border-radius: 14px;
+  padding: 14px; min-height: 110px;
+}
+.feat-sk-img { width: 56px; height: 56px; border-radius: 12px; flex-shrink: 0; }
+.feat-sk-body { flex: 1; min-width: 0; padding-top: 2px; }
 
 /* 列表头 */
 .list-head {

@@ -845,7 +845,7 @@ function renderTypePicker() {
 }
 
 // 精选区：数据没变就不动 DOM（静默刷新），避免闪烁与滚动位置跳动
-let featuredSig = '';
+let featuredSig = null; // 初始 null：精选为空时 sig='' 也不能命中，必须走到隐藏分支收起骨架
 // 详情弹窗图片切换：封面图 + 宣传图合成一个列表，左右箭头循环
 let galState = { list: [], offset: 1, idx: 0 }; // offset：宣传图在 list 中的起始下标
 function setDetailImage(i) {
@@ -3488,6 +3488,9 @@ function setupInstall() {
 
 // ---------- 启动 ----------
 async function init() {
+  // SEO 预渲染区块立刻移除（不等任何接口）：它顶在页面上几百像素，等数据回来才塌掉是最大的抖动源
+  // 作品详情页 /w/ 除外（完整页面模式要展示它，route 里再处理）
+  if (!location.pathname.startsWith('/w/')) removeSeoBlock();
   captureRef();   // 先处理 ?ref=：记下分享者并上报，再把参数从地址栏摘掉
   // 支持 /?q=关键词 直接进入搜索结果（与站点搜索结构化数据一致）
   const q = (new URLSearchParams(location.search).get('q') || '').trim();
