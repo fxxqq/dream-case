@@ -317,9 +317,10 @@ function renderAuthBox() {
     const n = (state.blocked || []).length + (state.blockedUsers || []).length;
     const ck = state.user.checkin || {};
     const ckDone = !!ck.done;
+    const pts = Number(state.user.points || 0);
     box.innerHTML =
-      `<button class="link-btn checkin-entry${ckDone ? ' is-done' : ''}" id="checkinBtn"
-         title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天` : `每日签到领 ${ck.todayPoints || 2} 分`}"><span class="lb-ico">📅</span>${ckDone ? `已签${ck.streak > 1 ? ' ' + ck.streak + '天' : ''}` : '签到'}</button>` +
+      `<button class="link-btn checkin-entry${ckDone ? ' is-done' : ' is-todo'}" id="checkinBtn"
+         title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天，明天再来` : `每日签到领 ${ck.todayPoints || 2} 分，连签 7 天有全勤奖`}"><span class="lb-ico">${ckDone ? '✓' : '📅'}</span>${ckDone ? `已签${ck.streak > 1 ? ' ' + ck.streak + ' 天' : ''}` : `签到 +${ck.todayPoints || 2}`}<span class="ck-pts">💎 ${pts}</span></button>` +
       `<div class="user-menu" id="userMenu">
         <button class="user-chip" id="userMenuBtn" title="个人菜单">👤 ${escapeHtml(state.user.nickname || state.user.username)}<span class="um-caret">▾</span></button>
         <div class="user-dropdown" id="userDropdown">
@@ -367,6 +368,7 @@ async function doCheckin(after) {
     const d = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(d.error || '签到失败');
     state.user.checkin = d;
+    if (typeof d.points === 'number') state.user.points = d.points;
     renderAuthBox();
     showToast(d.dayInCycle === d.cycle
       ? `签到成功 +${d.reward} 分（连续 ${d.streak} 天，含 ${d.bonusPoints} 分全勤奖励）`
@@ -3106,6 +3108,11 @@ async function openStats() {
   }
   const { totals, days, trend, works } = data;
   const share = data.share || { points: 0, visits: 0, regs: 0, rank: 0 };
+  if (state.user && typeof share.points === 'number') {
+    state.user.points = share.points;   // 同步头部积分徽章
+    const chip = document.querySelector('.checkin-entry .ck-pts');
+    if (chip) chip.textContent = `💎 ${share.points}`;
+  }
   const board = Array.isArray(data.board) ? data.board : [];
   const shareCards = `
       <div class="stat-card is-share"><b>${share.visits || 0}</b><span>分享带来访问</span></div>

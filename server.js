@@ -1056,7 +1056,8 @@ app.get('/api/me', (req, res) => {
         blocked: Array.isArray(user.blocked) ? user.blocked : [],
         blockedUsers: Array.isArray(user.blockedUsers) ? user.blockedUsers : [],
         favs: Array.isArray(user.favs) ? user.favs : [],
-        checkin: checkinView(user)
+        checkin: checkinView(user),
+        points: shareStatsOf(user.id).points
       }
     : { user: null });
 });

@@ -1548,9 +1548,27 @@ body.on-work .load-more-wrap { display: none !important; }
 }
 
 /* ========== 每日签到 ========== */
-/* 顶部入口：未签到是主色，签过转灰 */
+/* 顶部入口：未签到是主色+浅底胶囊强调，签过转灰 */
 .checkin-entry { color: var(--primary); }
+.checkin-entry.is-todo {
+  background: var(--primary-soft, #eef1ff);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-weight: 600;
+}
 .checkin-entry.is-done { color: var(--muted); }
+/* 积分小徽章：未签时金黄、已签后随整体转灰 */
+.checkin-entry .ck-pts {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #fff7e6;
+  color: #d48806;
+  white-space: nowrap;
+}
+.checkin-entry.is-done .ck-pts { background: #f2f2f6; color: var(--muted); }
 
 /* 数据看板里的签到卡 */
 .checkin-card {
