@@ -50,10 +50,25 @@ nav { display: flex; gap: 8px; flex: 1; }
 .btn-primary:hover { background: var(--primary-dark); }
 .btn-block { width: 100%; margin-top: 16px; }
 
-/* Hero：两行，主标题 + 一句副标题 */
+/* Hero：主标题（关键词渐变高亮）+ 一句副标题，进场轻微上浮 */
 .hero { text-align: center; padding: 44px 0 10px; }
 .hero h1 { font-size: 30px; letter-spacing: .01em; margin-bottom: 10px; text-wrap: balance; }
+.hero h1 .grad {
+  background: linear-gradient(92deg, var(--primary), #9b8cff 55%, #e070c9);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+}
 .hero p { color: var(--muted); font-size: 15px; }
+.hero .hero-sub { margin-top: 2px; }
+.hero-br { display: none; }   /* 移动端才启用：在逗号后手动换行，避免 balance 把「都/值得」拆开 */
+@media (prefers-reduced-motion: no-preference) {
+  .hero h1, .hero .hero-sub { animation: hero-in .55s ease both; }
+  .hero .hero-sub { animation-delay: .12s; }
+}
+@keyframes hero-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
 
 /* Type filter */
 .type-bar { display: flex; gap: 10px; flex-wrap: wrap; padding: 24px 0 0; }
@@ -681,6 +696,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 
 @media (max-width: 720px) {
   .hero h1 { font-size: 23px; }
+  .hero-br { display: inline; }
 }
 
 /* 详情页图片按作品形态区分展示比例 */
