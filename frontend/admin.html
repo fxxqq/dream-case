@@ -2023,6 +2023,7 @@
                 <div class="row-meta">积分 <b class="pt-val">${u.points}</b> · ${u.works} 件作品 · ${esc((u.createdAt || '').slice(0, 10))}</div>
               </div>
               <div class="row-actions">
+                <input class="pt-note" type="text" maxlength="60" placeholder="附言（选填）" style="width:130px" />
                 <input class="pt-input" type="number" value="100" style="width:80px" />
                 <button class="btn btn-primary btn-sm pt-give">送分</button>
                 <button class="btn btn-danger btn-sm pt-take">扣分</button>
@@ -2046,16 +2047,19 @@
         const val = parseInt(row.querySelector('.pt-input').value, 10);
         if (!Number.isFinite(val) || val === 0) return toast('请输入非 0 整数');
         const delta = take ? -Math.abs(val) : Math.abs(val);
+        const noteEl = row.querySelector('.pt-note');
+        const note = noteEl ? noteEl.value.trim() : '';
         const name = row.querySelector('.row-title').textContent.trim();
         if (take && !confirm(`确定从 ${name} 扣 ${Math.abs(val)} 分？`)) return;
         try {
           const r = await api('/api/admin/points', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: uid, delta })
+            body: JSON.stringify({ userId: uid, delta, note })
           });
           row.querySelector('.pt-val').textContent = r.points;
           row.querySelector('.pt-input').value = 100;
-          toast(`${r.name} ${delta > 0 ? '+' : ''}${delta} 分，现有 ${r.points} 分`);
+          if (noteEl) noteEl.value = '';
+          toast(`${r.name} ${delta > 0 ? '+' : ''}${delta} 分，现有 ${r.points} 分（已发消息通知）`);
         } catch (err) { toast(err.message); }
       }
     });

@@ -318,9 +318,11 @@ function renderAuthBox() {
     const ck = state.user.checkin || {};
     const ckDone = !!ck.done;
     const pts = Number(state.user.points || 0);
+    const unread = Number(state.user.unreadNotices || 0);
     box.innerHTML =
       `<button class="link-btn checkin-entry${ckDone ? ' is-done' : ' is-todo'}" id="checkinBtn"
          title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天，明天再来` : `每日签到领 ${ck.todayPoints || 2} 分，连签 7 天有全勤奖`}"><span class="lb-ico">${ckDone ? '✓' : '📅'}</span>${ckDone ? `已签${ck.streak > 1 ? ' ' + ck.streak + ' 天' : ''}` : `签到 +${ck.todayPoints || 2}`}<span class="ck-pts">💎 ${pts}</span></button>` +
+      `<button class="link-btn notice-entry${unread ? ' has-new' : ''}" id="noticeBtn" title="${unread ? unread + ' 条未读消息' : '站内消息'}"><span class="nb-ico">🔔</span><span class="nb-dot"${unread ? '' : ' style="display:none"'}>${unread > 99 ? '99+' : unread}</span></button>` +
       `<div class="user-menu" id="userMenu">
         <button class="user-chip" id="userMenuBtn" title="个人菜单">👤 ${escapeHtml(state.user.nickname || state.user.username)}<span class="um-caret">▾</span></button>
         <div class="user-dropdown" id="userDropdown">
@@ -350,6 +352,7 @@ function renderAuthBox() {
     $('logoutBtn').onclick = doLogout;
     $('statsBtn').onclick = openStats;
     $('checkinBtn').onclick = doCheckin;
+    $('noticeBtn').onclick = openNotices;
     $('passBtn').onclick = openPassModal;
     $('delAccBtn').onclick = openDelAcc;
     const bb = $('blockedBtn');
@@ -507,6 +510,7 @@ async function loadMe() {
     state.user = data.username
       ? { id: data.id || '', username: data.username, nickname: data.nickname || '',
           checkin: data.checkin || {}, points: data.points || 0,
+          unreadNotices: Number(data.unreadNotices || 0),   // 顶部铃铛未读数
           worksCount: Number(data.worksCount || 0) }   // 带上签到状态、积分和作品数，顶部按钮 / 注销弹窗要用
       : null;
     state.favs = Array.isArray(data.favs) ? data.favs : [];
@@ -516,6 +520,104 @@ async function loadMe() {
   await loadMyClaims();
   if (state.user) await mergeLocalFavs(); // 本机遗留的旧收藏（换设备/重新登录都会补一次）
   renderAuthBox();
+}
+
+// ---------- 站内消息 ----------
+// 目前主要是积分变动（管理员送分/扣分）的系统通知：顶部铃铛显示未读数，点开看列表，打开即已读
+let noticeTimer = null;
+let noticeItems = [];
+let noticeUnreadSeen = -1;
+
+function renderNoticeBadge(n) {
+  const btn = $('noticeBtn');
+  if (!btn) return;
+  const num = Number(n || 0);
+  const dot = btn.querySelector('.nb-dot');
+  btn.classList.toggle('has-new', num > 0);
+  btn.title = num ? `${num} 条未读消息` : '站内消息';
+  if (dot) {
+    dot.style.display = num > 0 ? '' : 'none';
+    dot.textContent = num > 99 ? '99+' : String(num);
+  }
+}
+
+async function loadNotices(silent) {
+  if (!state.user) { noticeItems = []; return null; }
+  try {
+    const d = await (await fetch('/api/me/notices')).json();
+    noticeItems = Array.isArray(d.items) ? d.items : [];
+    const unread = Number(d.unread || 0);
+    state.user.unreadNotices = unread;
+    renderNoticeBadge(unread);
+    // 后台轮询发现未读数涨了：直接弹一条提示，不用等用户点铃铛
+    if (silent && noticeUnreadSeen >= 0 && unread > noticeUnreadSeen) {
+      const first = noticeItems.find(x => !x.read);
+      showToast(first && first.title ? `新消息：${first.title}` : '你有一条新消息');
+    }
+    noticeUnreadSeen = unread;
+    return d;
+  } catch { return null; }   // 消息拉不到不影响页面
+}
+
+function startNoticePoll() {
+  if (noticeTimer) return;
+  noticeTimer = setInterval(() => { if (state.user) loadNotices(true); }, 60000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.user) loadNotices(true);
+  });
+}
+
+function fmtNoticeTime(iso) {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return '';
+  const diff = Date.now() - t;
+  if (diff < 60000) return '刚刚';
+  if (diff < 3600000) return Math.floor(diff / 60000) + ' 分钟前';
+  if (diff < 86400000) return Math.floor(diff / 3600000) + ' 小时前';
+  const d = new Date(t);
+  return `${d.getMonth() + 1} 月 ${d.getDate()} 日`;
+}
+
+function renderNoticeList() {
+  const box = $('noticeList');
+  if (!box) return;
+  if (!noticeItems.length) { box.innerHTML = '<div class="notice-empty">还没有消息，积分有变动时会在这里通知你</div>'; return; }
+  box.innerHTML = noticeItems.map(n => `
+    <div class="notice-item${n.read ? '' : ' is-unread'}${Number(n.delta || 0) > 0 ? ' is-plus' : (Number(n.delta || 0) < 0 ? ' is-minus' : '')}">
+      <div class="notice-top">
+        <span class="notice-title">${escapeHtml(n.title || '消息')}</span>
+        <span class="notice-time">${fmtNoticeTime(n.createdAt)}</span>
+      </div>
+      <div class="notice-text">${escapeHtml(n.text || '')}</div>
+    </div>`).join('');
+}
+
+async function openNotices() {
+  if (!state.user) { openAuth('login'); return; }
+  const mask = $('noticeMask');
+  $('closeNotice').onclick = () => hideModal(mask);
+  $('noticeReadAll').onclick = async () => {
+    try { await fetch('/api/me/notices/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); } catch { /* 忽略 */ }
+    noticeItems = noticeItems.map(n => ({ ...n, read: true }));
+    state.user.unreadNotices = 0;
+    noticeUnreadSeen = 0;
+    renderNoticeList();
+    renderNoticeBadge(0);
+  };
+  mask.onclick = e => { if (e.target === mask) hideModal(mask); };
+  showModal(mask);
+  renderNoticeList();
+  const d = await loadNotices();
+  renderNoticeList();
+  // 打开即视为已读（列表先渲染出来，再静默标记，避免闪一下）
+  if (d && d.unread) {
+    try { await fetch('/api/me/notices/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); } catch { /* 忽略 */ }
+    noticeItems = noticeItems.map(n => ({ ...n, read: true }));
+    state.user.unreadNotices = 0;
+    noticeUnreadSeen = 0;
+    renderNoticeList();
+    renderNoticeBadge(0);
+  }
 }
 
 // 我的认领申请（用于详情里显示「审核中 / 已认领」状态）
@@ -3957,6 +4059,11 @@ async function init() {
     $('searchInput').value = q;
   }
   await loadMe();
+  startNoticePoll();   // 有未读消息就点亮铃铛，之后每 60 秒补一次
+  if (state.user && Number(state.user.unreadNotices || 0) > 0) {
+    setTimeout(() => showToast(`你有 ${state.user.unreadNotices} 条新消息，点右上角 🔔 查看`), 800);
+    loadNotices(true);
+  }
   await loadTypeMeta();
   await loadCategories();
   await loadTools();

@@ -329,6 +329,21 @@
     </div>
   </div>
 
+  <!-- 站内消息：积分变动等系统通知，打开即标记已读 -->
+  <div class="modal-mask" id="noticeMask" style="display:none">
+    <div class="modal modal-notice">
+      <div class="modal-head">
+        <h2>消息</h2>
+        <button class="close-btn" id="closeNotice" title="关闭">✕</button>
+      </div>
+      <div class="notice-list" id="noticeList"></div>
+      <div class="notice-foot">
+        <span class="notice-hint">积分有变动时会在这里通知你</span>
+        <button type="button" class="btn-ghost" id="noticeReadAll">全部标记已读</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 修改昵称：只改展示名，登录账号 / 作品归属不变 -->
   <div class="modal-mask" id="nickModal" style="display:none">
     <div class="modal modal-nick">

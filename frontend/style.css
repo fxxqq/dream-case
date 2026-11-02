@@ -1638,6 +1638,42 @@ body.on-work .load-more-wrap { display: none !important; }
 }
 .checkin-entry.is-done .ck-pts { background: #f2f2f6; color: var(--muted); }
 
+/* ========== 站内消息 ========== */
+/* 顶部铃铛：有未读时轻度高亮 + 右上角红点数字 */
+.notice-entry { position: relative; padding: 3px 8px; color: var(--muted); border-radius: 999px; }
+.notice-entry:hover { color: var(--primary); }
+.notice-entry.has-new { color: var(--primary); background: var(--primary-soft, #eef1ff); }
+.notice-entry .nb-ico { font-size: 15px; line-height: 1; }
+.notice-entry .nb-dot {
+  position: absolute; top: -3px; right: -4px;
+  min-width: 15px; height: 15px; padding: 0 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px; background: var(--danger); color: #fff;
+  font-size: 10px; font-weight: 700; line-height: 1;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.modal.modal-notice { max-width: 480px; }
+.notice-list { max-height: 56vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+.notice-empty { padding: 26px 0; text-align: center; font-size: 13px; color: var(--muted); }
+.notice-item {
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff;
+  border-left: 3px solid #dfe1ee;
+}
+.notice-item.is-plus { border-left-color: #38a169; background: #f7fdf9; }
+.notice-item.is-minus { border-left-color: var(--danger); background: #fffafa; }
+.notice-item.is-unread { box-shadow: 0 2px 10px rgba(70, 70, 160, .08); }
+.notice-item.is-unread .notice-title::after {
+  content: 'NEW'; margin-left: 6px; padding: 0 5px; border-radius: 4px;
+  background: var(--primary); color: #fff; font-size: 9px; font-weight: 700; vertical-align: 1px;
+}
+.notice-top { display: flex; align-items: baseline; gap: 8px; justify-content: space-between; }
+.notice-title { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.notice-time { flex: none; font-size: 11.5px; color: var(--muted); }
+.notice-text { margin-top: 4px; font-size: 12.8px; line-height: 1.65; color: #4a4f5e; word-break: break-word; }
+.notice-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.notice-hint { font-size: 12px; color: var(--muted); }
+
 /* 数据看板里的签到卡 */
 .checkin-card {
   border: 1px solid #e4e1ff; border-radius: 14px;

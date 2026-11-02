@@ -51,6 +51,9 @@ let users = readJSON('users.json', []);        // 注册用户
 let userIndex = null;                          // 账号 → 用户对象（懒建缓存，改动用户时置空）
 let sessions = readJSON('sessions.json', {});  // sid -> { uid, exp }
 let comments = readJSON('comments.json', []);  // 作品评论
+// 站内消息：目前主要用来说明积分变动（管理员送分/扣分、扣费投放等），结构见 addNotice()
+let notices = readJSON('notices.json', []);
+if (!Array.isArray(notices)) notices = [];
 let feedback = readJSON('feedback.json', []);  // 意见反馈
 let claims = readJSON('claims.json', []);      // 作品认领申请（提交证据 → 管理员审核）
 let ads = readJSON('ads.json', []);            // 广告（固定几个广告位，后台往里挂）
@@ -132,6 +135,33 @@ function saveComments() { writeJSON('comments.json', comments); }
 function saveFeedback() { writeJSON('feedback.json', feedback); }
 function saveClaims() { writeJSON('claims.json', claims); }
 function saveAds() { writeJSON('ads.json', ads); }
+function saveNotices() { writeJSON('notices.json', notices); }
+
+// ---------- 站内消息 ----------
+// 每个账号最多留 50 条，多了从最旧的丢；积分类消息带「变动后余额」，前端直接展示
+const NOTICE_KEEP_PER_USER = 50;
+function addNotice(userId, data) {
+  if (!userId) return null;
+  const n = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    userId: String(userId),
+    kind: (data && data.kind) || 'system',
+    title: String((data && data.title) || '').slice(0, 60),
+    text: String((data && data.text) || '').slice(0, 300),
+    points: Number((data && data.points) || 0),   // 0 表示这条与积分无关
+    delta: Number((data && data.delta) || 0),
+    read: false,
+    createdAt: new Date().toISOString()
+  };
+  notices.unshift(n);
+  const mine = notices.filter(x => x.userId === n.userId);
+  if (mine.length > NOTICE_KEEP_PER_USER) {
+    const drop = new Set(mine.slice(NOTICE_KEEP_PER_USER).map(x => x.id));
+    notices = notices.filter(x => !drop.has(x.id));
+  }
+  saveNotices();
+  return n;
+}
 
 // ---------- 广告位定义 ----------
 // 广告位（位置）是写死在前端页面里的固定空位，后台只能选择「把这支广告挂到哪个位置」，
@@ -1079,6 +1109,7 @@ app.get('/api/me', (req, res) => {
         favs: Array.isArray(user.favs) ? user.favs : [],
         checkin: checkinView(user),
         points: shareStatsOf(user.id).points,
+        unreadNotices: notices.filter(n => n.userId === user.id && !n.read).length,
         worksCount: works.filter(w => w.userId === user.id && !w.deleted).length
       }
     : { user: null });
@@ -1279,6 +1310,11 @@ app.post('/api/me/delete', (req, res) => {
   });
   saveShareSoon();
 
+  // 站内消息：随账号一起清除
+  const noticeBefore = notices.length;
+  notices = notices.filter(n => n.userId !== user.id);
+  if (notices.length !== noticeBefore) saveNotices();
+
   // 认证创作者标记：账号注销后不再显示认证
   const cIdx = creators.findIndex(c => c.name === user.username);
   if (cIdx !== -1) { creators.splice(cIdx, 1); writeJSON('creators.json', creators); }
@@ -1399,6 +1435,36 @@ app.post('/api/works/:id/claim', (req, res) => {
 });
 
 // 我的认领记录（前端用来显示「审核中 / 已通过」状态）
+// ---- 站内消息（积分变动、系统通知）----
+app.get('/api/me/notices', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const mine = notices.filter(n => n.userId === user.id);
+  res.json({
+    items: mine.slice(0, 30).map(n => ({
+      id: n.id, kind: n.kind, title: n.title, text: n.text,
+      points: n.points || 0, delta: n.delta || 0, read: !!n.read, createdAt: n.createdAt
+    })),
+    unread: mine.filter(n => !n.read).length
+  });
+});
+
+// 标记已读：带 id 标记单条，不带就全部标记
+app.post('/api/me/notices/read', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const id = String((req.body && req.body.id) || '');
+  let changed = 0;
+  notices.forEach(n => {
+    if (n.userId !== user.id || n.read) return;
+    if (id && n.id !== id) return;
+    n.read = true;
+    changed++;
+  });
+  if (changed) saveNotices();
+  res.json({ ok: true, changed });
+});
+
 app.get('/api/me/claims', (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
@@ -3362,13 +3428,22 @@ app.post('/api/admin/points', requireAdmin, (req, res) => {
   if (!Number.isFinite(d) || d === 0) return res.status(400).json({ error: '分值必须是 非0 整数' });
   if (Math.abs(d) > 100000) return res.status(400).json({ error: '单次最多 ±100000 分' });
   const points = addPoints(u.id, d, 'admin');
+  const noteText = String(note || '').trim().slice(0, 100);
+  // 给用户发一条站内消息：登录后顶部铃铛能看到，也能解释积分从哪来的
+  addNotice(u.id, {
+    kind: 'points',
+    title: d > 0 ? `积分到账 +${d}` : `积分调整 ${d}`,
+    text: (d > 0 ? `管理员给你送上了 ${d} 积分` : `管理员调整了你的积分 ${d}`) +
+      (noteText ? `：${noteText}` : '') + `，当前余额 ${points} 分。`,
+    points, delta: d
+  });
   res.json({
     ok: true,
     username: u.username,
     name: displayNameOf(u.username),
     delta: d,
     points,
-    note: String(note || '').slice(0, 100)
+    note: noteText
   });
 });
 
