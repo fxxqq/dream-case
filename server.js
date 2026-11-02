@@ -11,6 +11,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const seo = require('./seo');
 const { PLATFORMS, EXTRA } = require('./promo-guide');
+const Icons = require('./frontend/icons'); // 站点 SVG 图标统一管理（SSR 直出时用 ICONS.xxx）
 
 const PORT = process.env.PORT || 3000;
 const REVIEW_MODE = process.env.REVIEW_MODE === '1'; // 打开后新投稿需审核
@@ -3914,7 +3915,7 @@ app.get('/wish', (req, res) => {
   const block = `<div id="seoContent" class="seo-wrap">
   ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name: '造梦酒肆' }])}
   <div class="page-head">
-    <h1>🍶 造梦酒肆</h1>
+    <h1><span class="ico">${Icons.ICONS.wish}</span> 造梦酒肆</h1>
     <p>坐下说一句你想要的作品——社区里的高手会来接；被认领、被实现的想法会挂上作品链接</p>
   </div>
   <p class="seo-wish-stat">共 ${list.length} 个想法 · 已被实现 ${doneCount} 个 · 按「想要的人最多」排序</p>

@@ -2126,3 +2126,11 @@ body.on-work .load-more-wrap { display: none !important; }
   .pk-actions { flex-direction: column-reverse; }
   .pk-actions .btn-primary, .pk-actions .pk-go { width: 100%; justify-content: center; }
 }
+
+/* ---- 统一图标（frontend/icons.js：data-ico 占位 + Icons.icon() 生成） ---- */
+.ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1em; height: 1em; flex: none;
+  vertical-align: -0.15em;
+}
+.ico svg { width: 100%; height: 100%; display: block; }
