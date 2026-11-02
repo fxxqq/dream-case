@@ -300,7 +300,7 @@
           <label class="os-opt"><input type="radio" name="openSource" value="0" checked /><span>否</span></label>
           <label class="os-opt"><input type="radio" name="openSource" value="1" /><span>是（需填源码地址）</span></label>
         </div>
-        <p class="form-hint" id="osBonusHint" style="display:none">🎁 标注开源的原创作品，系统自动送 <b>50 积分</b>（一件作品一次），可用于站内宣传。GitHub 收获 <b>1000+ star</b> 的项目，联系站长可按 star 数 1:1 领取等额积分。</p>
+        <p class="form-hint" id="osBonusHint" style="display:none">🎁 标注开源的原创作品，系统自动送 <b>50 盏灯火</b>（一件作品一次），可用于站内宣传。GitHub 收获 <b>1000+ star</b> 的项目，联系站长可按 star 数 1:1 领取等额积分。</p>
         <div id="repoField" style="display:none">
           <label>源码仓库地址 *</label>
           <input type="text" name="repo" maxlength="500" placeholder="https://github.com/用户名/仓库" />
@@ -328,7 +328,7 @@
     </div>
   </div>
 
-  <!-- 站内宣传：拿分享积分换曝光量，只能推自己的作品 -->
+  <!-- 站内宣传：拿灯火换曝光量，只能推自己的作品 -->
   <div class="modal-mask" id="redeemModal" style="display:none">
     <div class="modal modal-redeem">
       <div class="modal-head">
@@ -351,7 +351,7 @@
     </div>
   </div>
 
-  <!-- 站内消息：积分变动等系统通知，打开即标记已读 -->
+  <!-- 站内消息：灯火变动等系统通知，打开即标记已读 -->
   <div class="modal-mask" id="noticeMask" style="display:none">
     <div class="modal modal-notice">
       <div class="modal-head">
@@ -360,7 +360,7 @@
       </div>
       <div class="notice-list" id="noticeList"></div>
       <div class="notice-foot">
-        <span class="notice-hint">积分有变动时会在这里通知你</span>
+        <span class="notice-hint">灯火有变动时会在这里通知你</span>
         <button type="button" class="btn-ghost" id="noticeReadAll">全部标记已读</button>
       </div>
     </div>
@@ -424,9 +424,9 @@
         <div class="del-warn">
           <b>注销后不可恢复</b>，请确认下面这些内容你都清楚：
           <ul>
-            <li>账号 <b id="delAccName"></b>、昵称、积分（<span id="delAccPts">0</span> 分）、收藏、签到记录全部清除，同名账号会释放给其他人注册</li>
+            <li>账号 <b id="delAccName"></b>、昵称、灯火（<span id="delAccPts">0</span> 盏）、收藏、签到记录全部清除，同名账号会释放给其他人注册</li>
             <li>评论和造梦酒肆的内容会保留，但显示为「已注销用户」</li>
-            <li>正在进行中的推广投放会停止，已消耗的积分不退回</li>
+            <li>正在进行中的推广投放会停止，已消耗的灯火不退回</li>
             <li>其他设备上的登录状态会立即失效</li>
           </ul>
         </div>

@@ -324,7 +324,7 @@ function renderAuthBox() {
     const unread = Number(state.user.unreadNotices || 0);
     box.innerHTML =
       `<button class="link-btn checkin-entry${ckDone ? ' is-done' : ' is-todo'}" id="checkinBtn"
-         title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天，明天再来` : `每日签到领 ${ck.todayPoints || 2} 分，连签 7 天有全勤奖`}"><span class="lb-ico">${ckDone ? '✓' : `<span class="ico">${ic('checkin')}</span>`}</span>${ckDone ? `已签${ck.streak > 1 ? ' ' + ck.streak + ' 天' : ''}` : `签到 +${ck.todayPoints || 2}`}<span class="ck-pts">💎 ${pts}</span></button>` +
+         title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天，明天再来` : `每日签到领 ${ck.todayPoints || 2} 盏灯火，连签 7 天有全勤奖`}"><span class="lb-ico">${ckDone ? '✓' : `<span class="ico">${ic('checkin')}</span>`}</span>${ckDone ? `已签${ck.streak > 1 ? ' ' + ck.streak + ' 天' : ''}` : `签到 +${ck.todayPoints || 2}`}<span class="ck-pts">🕯 ${pts}</span></button>` +
       `<button class="link-btn notice-entry${unread ? ' has-new' : ''}" id="noticeBtn" title="${unread ? unread + ' 条未读消息' : '站内消息'}"><span class="nb-ico">🔔</span><span class="nb-dot"${unread ? '' : ' style="display:none"'}>${unread > 99 ? '99+' : unread}</span></button>` +
       `<div class="user-menu" id="userMenu">
         <button class="user-chip" id="userMenuBtn" title="个人菜单">👤 ${escapeHtml(state.user.nickname || state.user.username)}<span class="um-caret">▾</span></button>
@@ -387,8 +387,8 @@ async function doCheckin(after) {
     if (typeof d.points === 'number') state.user.points = d.points;
     renderAuthBox();
     showToast(d.dayInCycle === d.cycle
-      ? `签到成功 +${d.reward} 分（连续 ${d.streak} 天，含 ${d.bonusPoints} 分全勤奖励）`
-      : `签到成功 +${d.reward} 分 · 连续 ${d.streak} 天`);
+      ? `签到成功 +${d.reward} 盏灯火（连续 ${d.streak} 天，含 ${d.bonusPoints} 盏全勤奖励）`
+      : `签到成功 +${d.reward} 盏灯火 · 连续 ${d.streak} 天`);
     if (typeof after === 'function') after(d);
   } catch (err) {
     if (btn) btn.disabled = false;
@@ -415,10 +415,10 @@ function checkinCardHtml(ck) {
     <div class="checkin-card${done ? ' is-done' : ''}">
       <div class="ck-head">
         <div class="ck-title"><span class="ico">${ic('checkin')}</span> 每日签到${ck.streak ? `<span class="ck-streak">连续 ${ck.streak} 天</span>` : ''}</div>
-        <button type="button" class="checkin-go" id="checkinGo"${done ? ' disabled' : ''}>${done ? '今日已签 ✓' : `签到 +${ck.todayPoints || 2} 分`}</button>
+        <button type="button" class="checkin-go" id="checkinGo"${done ? ' disabled' : ''}>${done ? '今日已签 ✓' : `签到 +${ck.todayPoints || 2}`}</button>
       </div>
       <div class="ck-days">${dots}</div>
-      <div class="ck-tip">每天 +2 分，连续第 ${cycle} 天额外 +${ck.bonusPoints || 6} 分；断签从头算。积分可直接兑换「站内宣传」。</div>
+      <div class="ck-tip">每天 +2 盏灯火，连续第 ${cycle} 天额外 +${ck.bonusPoints || 6} 盏；断签从头算。灯火可直接兑换「站内宣传」。</div>
     </div>`;
 }
 
@@ -462,7 +462,7 @@ async function afterAuth(data) {
   renderAuthBox();
   hideModal(authModal);
   showToast(data.invited
-    ? `欢迎，${data.nickname || data.username}！你的邀请人获得了 +${data.invitePoints} 分享积分`
+    ? `欢迎，${data.nickname || data.username}！你的邀请人获得了 +${data.invitePoints} 盏灯火`
     : `欢迎，${data.nickname || data.username}！`);
   // 先把本机旧收藏并入账号，再补上登录前点的那颗星
   await mergeLocalFavs();
@@ -583,7 +583,7 @@ function fmtNoticeTime(iso) {
 function renderNoticeList() {
   const box = $('noticeList');
   if (!box) return;
-  if (!noticeItems.length) { box.innerHTML = '<div class="notice-empty">还没有消息，积分有变动时会在这里通知你</div>'; return; }
+  if (!noticeItems.length) { box.innerHTML = '<div class="notice-empty">还没有消息，灯火有变动时会在这里通知你</div>'; return; }
   box.innerHTML = noticeItems.map(n => `
     <div class="notice-item${n.read ? '' : ' is-unread'}${Number(n.delta || 0) > 0 ? ' is-plus' : (Number(n.delta || 0) < 0 ? ' is-minus' : '')}">
       <div class="notice-top">
@@ -2506,10 +2506,10 @@ function setupUploadForm() {
       const bonus = Number(data.osBonus) || 0;
       showToast(
         wasEdit
-          ? (bonus > 0 ? '修改已保存 ✅ 开源奖励 +50 积分已到账' : '修改已保存 ✅')
+          ? (bonus > 0 ? '修改已保存 ✅ 开源奖励 +50 盏灯火已到账' : '修改已保存 ✅')
         : data.anonymous ? '已提交，审核通过后上线（注册可免审直发）'
         : data.needReview ? '提交成功，等待审核通过后展示'
-        : bonus > 0 ? '提交成功 🎉 开源奖励 +50 积分已到账'
+        : bonus > 0 ? '提交成功 🎉 开源奖励 +50 盏灯火已到账'
         : '提交成功 🎉');
       if (bonus > 0) loadMe();   // 头部积分数字立刻刷新
       state.sort = 'latest';
@@ -3497,10 +3497,10 @@ function renderRedeem() {
 
   body.innerHTML = `
     <div class="redeem-hero">
-      <div class="rh-points"><b>${d.points || 0}</b><span>可用分享积分</span></div>
+      <div class="rh-points"><b>${d.points || 0}</b><span>可用灯火</span></div>
       <p class="rh-tip">好友通过你的分享链接访问 +1 分，注册 +20 分。<br />
         <b>展示包、点击包二选一</b>：展示包按被看到的次数扣，投完自动下线；点击包按实际被点开的次数扣，点完自动下线。</p>
-      <div class="rh-share-row"><span>没积分？<b>把作品分享给朋友</b>就能赚</span><button type="button" class="rh-share-btn" id="shareMyWork">📤 去分享作品</button></div>
+      <div class="rh-share-row"><span>没灯火？<b>把作品分享给朋友</b>就能赚</span><button type="button" class="rh-share-btn" id="shareMyWork">📤 去分享作品</button></div>
     </div>
     <div class="redeem-sec">
       <div class="redeem-sec-head">1. 选作品<span>只能推自己名下、已上线的作品</span></div>
@@ -3537,7 +3537,7 @@ function renderRedeem() {
       </button>
     </div>
     <p class="redeem-note">
-      套餐二选一，兑换时一次买好、按次数扣减，投放期间不再额外扣积分；额度用完只计数。每人同时最多 ${d.maxActive} 条在投；${d.maxDays} 天没投完也下线；撤下或后台下架按剩下的额度退分。
+      套餐二选一，兑换时一次买好、按次数扣减，投放期间不再额外扣灯火；额度用完只计数。每人同时最多 ${d.maxActive} 条在投；${d.maxDays} 天没投完也下线；撤下或后台下架按剩下的额度退分。
     </p>
     <div class="redeem-sec">
       <div class="redeem-sec-head">我的投放</div>
@@ -3630,7 +3630,7 @@ async function submitRedeem(btn) {
 }
 
 async function cancelRedeem(id) {
-  if (!confirm('撤下这条推广？剩余没投完的展示次数和点击额度会按原价退回积分，已经用掉的展示/点击不退。')) return;
+  if (!confirm('撤下这条推广？剩余没投完的展示次数和点击额度会按原价退回灯火，已经用掉的展示/点击不退。')) return;
   try {
     const res = await fetch('/api/me/ads/' + encodeURIComponent(id) + '/cancel', { method: 'POST' });
     const d = await res.json();
@@ -3681,15 +3681,15 @@ async function openStats(mode) {
   const { totals, days, trend, works } = data;
   const share = data.share || { points: 0, visits: 0, regs: 0, rank: 0 };
   if (state.user && typeof share.points === 'number') {
-    state.user.points = share.points;   // 同步头部积分徽章
+    state.user.points = share.points;   // 同步头部灯火徽章
     const chip = document.querySelector('.checkin-entry .ck-pts');
-    if (chip) chip.textContent = `💎 ${share.points}`;
+    if (chip) chip.textContent = `🕯 ${share.points}`;
   }
   const board = Array.isArray(data.board) ? data.board : [];
   const shareCards = `
       <div class="stat-card is-share"><b>${share.visits || 0}</b><span>分享带来访问</span></div>
       <div class="stat-card is-share"><b>${share.regs || 0}</b><span>邀请注册</span></div>
-      <div class="stat-card is-share" id="pointsCard"><b>${share.points || 0}</b><span>积分余额${share.rank ? ` · 分享第 ${share.rank} 名` : ''}</span></div>`;
+      <div class="stat-card is-share" id="pointsCard"><b>${share.points || 0}</b><span>灯火余额${share.rank ? ` · 分享第 ${share.rank} 名` : ''}</span></div>`;
   // 签到卡：7 天进度 + 一键签到（签到后原地刷新卡片和积分数字）
   const ckCard = checkinCardHtml(data.checkin || state.user.checkin || {});
   const bindCheckin = () => {
@@ -3708,7 +3708,7 @@ async function openStats(mode) {
     });
   };
   const boardHtml = board.length ? `
-    <div class="stats-works-head">积分达人榜</div>
+    <div class="stats-works-head">灯火达人榜</div>
     <div class="board-list">
       ${board.map(b => `
         <div class="board-row${b.username === state.user.username ? ' is-me' : ''}">
@@ -3725,20 +3725,20 @@ async function openStats(mode) {
   const osBonusHtml = `
     <div class="os-bonus">
       <div class="ob-head">🔓 开源作品奖励</div>
-      <p>作品标注「开源」，系统自动送 <b>50 积分</b>（一件作品一次，同一个源码仓库只认第一次），可直接用于站内宣传。</p>
-      <p>开源项目在 GitHub 收获 <b>1000+ star</b> 的，欢迎联系站长——按 star 数 1:1 领取等额积分（1000 star = 1000 分），star 越多送得越多。</p>
+      <p>作品标注「开源」，系统自动送 <b>50 盏灯火</b>（一件作品一次，同一个源码仓库只认第一次），可直接用于站内宣传。</p>
+      <p>开源项目在 GitHub 收获 <b>1000+ star</b> 的，欢迎联系站长——按 star 数 1:1 领取等额灯火（1000 star = 1000 盏），star 越多送得越多。</p>
       <button type="button" class="ob-btn" data-fb="合作/其他"
         data-fb-hint="我要申请开源作品的 star 奖励，作品链接和源码仓库：">📮 联系站长领 star 奖励</button>
     </div>`;
 
-  // 推广中心：签到 + 积分 + 分享成绩 + 积分达人榜（和作品数据无关，没有作品也能看）
+  // 推广中心：签到 + 积分 + 分享成绩 + 灯火达人榜（和作品数据无关，没有作品也能看）
   if (mode === 'promo') {
     body.innerHTML = `
       ${ckCard}
       <div class="stats-summary">${shareCards}</div>
       ${osBonusHtml}
       <div class="stats-actions">
-        <button type="button" class="stats-redeem" id="goRedeem">🎯 用积分上「站内宣传」</button>
+        <button type="button" class="stats-redeem" id="goRedeem">🎯 用灯火上「站内宣传」</button>
       </div>
       ${boardHtml}
       <p class="stats-tip">${shareTip}</p>`;
@@ -3801,7 +3801,7 @@ async function openStats(mode) {
     <div class="stats-works">${rows}</div>
     <p class="stats-tip">
       数据统计包含弹窗与独立页面两种浏览方式；「访客」按登录账号 / IP 去重。<br />
-      积分、分享成绩和推广投放都在「🎯 推广中心」里。
+      灯火、分享成绩和推广投放都在「🎯 推广中心」里。
     </p>`;
 
   body.querySelectorAll('.sw-share').forEach(btn => {

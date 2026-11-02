@@ -1892,7 +1892,7 @@ function addPoints(uid, delta, kind, workId) {
 }
 
 // ---------- 开源作品奖励 ----------
-// 标注开源的原创作品，系统一次性送 50 积分并给上传者发站内消息（积分可用于站内宣传）。
+// 标注开源的原创作品，系统一次性送 50 盏灯火并给上传者发站内消息（灯火可用于站内宣传）。
 // 防刷两条：① 一件作品只送一次（反复开关不再发，靠 w.osBonusAt 记住）；
 //          ② 同一个源码仓库只认第一次（换标题重复提交同一个 repo 不再给分）。
 const OS_BONUS_POINTS = 50;
@@ -1917,8 +1917,8 @@ function grantOpenSourceBonus(w) {
   const points = addPoints(w.userId, OS_BONUS_POINTS, 'os', w.id);
   addNotice(w.userId, {
     kind: 'points',
-    title: `开源作品奖励 +${OS_BONUS_POINTS} 积分`,
-    text: `「${w.title}」已标注为开源，系统赠送 ${OS_BONUS_POINTS} 积分，可在「推广中心」用于站内宣传。源码 star 超过 1000 的话，联系站长可按 star 数 1:1 领取等额积分。`,
+    title: `开源作品奖励 +${OS_BONUS_POINTS} 盏灯火`,
+    text: `「${w.title}」已标注为开源，系统赠送 ${OS_BONUS_POINTS} 盏灯火，可在「推广中心」用于站内宣传。源码 star 超过 1000 的话，联系站长可按 star 数 1:1 领取等额灯火。`,
     points,
     delta: OS_BONUS_POINTS
   });
@@ -2128,7 +2128,7 @@ app.post('/api/redeem', (req, res) => {
   const clickPrice = redeemClickPriceOf(clicks);
   const price = showPrice + clickPrice;
   const points = shareStatsOf(user.id).points;
-  if (points < price) return res.status(400).json({ error: `积分不够：需要 ${price} 分，你还有 ${points} 分` });
+  if (points < price) return res.status(400).json({ error: `灯火不够：需要 ${price} 盏，你还剩 ${points} 盏` });
 
   const now = Date.now();
   const redemptionId = 'rd' + now.toString(36) + Math.random().toString(36).slice(2, 6);
@@ -3475,7 +3475,7 @@ app.delete('/api/admin/creators/:name', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-// ---- 用户列表（送积分用）：账号 / 昵称 / 当前积分 / 注册时间 ----
+// ---- 用户列表（送灯火用）：账号 / 昵称 / 当前灯火 / 注册时间 ----
 app.get('/api/admin/users', requireAdmin, (req, res) => {
   const q = String(req.query.q || '').trim().toLowerCase();
   let list = users.map(u => ({
@@ -3492,7 +3492,7 @@ app.get('/api/admin/users', requireAdmin, (req, res) => {
   res.json(list.slice(0, 50));
 });
 
-// ---- 管理员送积分 / 扣积分（delta 可负，账本统一走 addPoints）----
+// ---- 管理员送灯火 / 扣灯火（delta 可负，账本统一走 addPoints）----
 app.post('/api/admin/points', requireAdmin, (req, res) => {
   const { userId, delta, note } = req.body || {};
   const u = users.find(x => x.id === String(userId || ''));
@@ -3505,9 +3505,9 @@ app.post('/api/admin/points', requireAdmin, (req, res) => {
   // 给用户发一条站内消息：登录后顶部铃铛能看到，也能解释积分从哪来的
   addNotice(u.id, {
     kind: 'points',
-    title: d > 0 ? `积分到账 +${d}` : `积分调整 ${d}`,
-    text: (d > 0 ? `管理员给你送上了 ${d} 积分` : `管理员调整了你的积分 ${d}`) +
-      (noteText ? `：${noteText}` : '') + `，当前余额 ${points} 分。`,
+    title: d > 0 ? `灯火到账 +${d} 盏` : `灯火调整 ${d} 盏`,
+    text: (d > 0 ? `管理员为你点亮了 ${d} 盏灯火` : `管理员调整了你的灯火：${d} 盏`) +
+      (noteText ? `：${noteText}` : '') + `，当前余额 ${points} 盏。`,
     points, delta: d
   });
   res.json({
