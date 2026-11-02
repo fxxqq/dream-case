@@ -161,6 +161,9 @@
         </div>
       </div>
       <div class="gallery" id="authorGallery"></div>
+      <div class="author-danger-row" id="authorDangerRow" style="display:none">
+        <button type="button" class="author-del-btn" id="authorDelBtn" title="注销后账号与数据不可恢复">注销账号…</button>
+      </div>
     </section>
   </main>
 
@@ -412,7 +415,7 @@
         <div class="del-choice" id="delWorkChoice">
           <label class="del-opt">
             <input type="radio" name="delWorks" value="keep" checked />
-            <span><b>保留我的作品</b>（<span id="delAccWorks">0</span> 件）<em>继续展示、署名保留，但不再能编辑和管理</em></span>
+            <span><b>保留我的作品</b><span class="del-count">（<span id="delAccWorks">0</span> 件）</span><em>继续展示、署名保留，但不再能编辑和管理</em></span>
           </label>
           <label class="del-opt">
             <input type="radio" name="delWorks" value="wipe" />

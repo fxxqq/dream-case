@@ -1014,6 +1014,16 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .author-bio { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
 .author-stats { font-size: 13px; color: var(--muted); }
 
+/* 自己主页底部的注销入口：低调灰色小字，故意不起眼防误触 */
+.author-danger-row { margin-top: 18px; text-align: center; }
+.author-del-btn {
+  font-size: 12px; font-family: inherit; cursor: pointer;
+  background: none; border: none; padding: 4px 8px;
+  color: var(--muted); text-decoration: underline dotted;
+  transition: color .15s;
+}
+.author-del-btn:hover { color: var(--danger); }
+
 /* 详情补充 */
 .detail-author {
   background: none; border: none; color: var(--primary); font-size: 14px;
@@ -1970,6 +1980,7 @@ body.on-work .load-more-wrap { display: none !important; }
 .del-opt:hover { border-color: #d9d4f8; background: #fbfaff; }
 .del-opt input { margin: 3px 0 0; accent-color: var(--primary); flex: none; }
 .del-opt span { display: block; color: var(--text); }
+.del-opt .del-count, .del-opt .del-count span { display: inline; white-space: nowrap; }  /* 「（N 件）」连同数字不折行、不变成块级 */
 .del-opt em { display: block; margin-top: 2px; font-style: normal; font-size: 12px; color: var(--muted); }
 .del-opt:has(input:checked) { border-color: var(--primary); background: #f7f6ff; }
 .btn-danger {

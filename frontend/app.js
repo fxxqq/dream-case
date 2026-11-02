@@ -331,8 +331,6 @@ function renderAuthBox() {
           ${n ? '<button class="ud-item" id="blockedBtn">🚫 屏蔽管理</button>' : ''}
           <button class="ud-item" id="passBtn">🔑 改密码</button>
           <button class="ud-item" id="logoutBtn">⎋ 退出登录</button>
-          <div class="ud-sep"></div>
-          <button class="ud-item ud-danger" id="delAccBtn">⚠ 注销账号</button>
         </div>
       </div>`;
     // 下拉菜单：点 chip 开合，点外面 / Esc 关闭（document 监听只挂一次）
@@ -354,7 +352,6 @@ function renderAuthBox() {
     $('checkinBtn').onclick = doCheckin;
     $('noticeBtn').onclick = openNotices;
     $('passBtn').onclick = openPassModal;
-    $('delAccBtn').onclick = openDelAcc;
     const bb = $('blockedBtn');
     if (bb) bb.onclick = () => openBlockedList('works');
   } else {
@@ -1539,11 +1536,14 @@ async function loadAuthor(name) {
     $('authorName').textContent = '@' + shown;
     $('authorAvatar').textContent = shown.slice(0, 1).toUpperCase();
     setTitle(`@${shown} 的作品`);
-    // 自己的主页：名字旁显示「修改昵称」入口
+    // 自己的主页：名字旁显示「修改昵称」入口，页面底部放「注销账号」（低调、防误触）
     const isMe = state.user && state.user.username === name;
     const nickBtn = $('authorNickBtn');
     nickBtn.style.display = isMe ? 'inline-flex' : 'none';
     if (isMe) nickBtn.onclick = openNickModal;
+    const dangerRow = $('authorDangerRow');
+    dangerRow.style.display = isMe ? 'block' : 'none';
+    if (isMe) $('authorDelBtn').onclick = openDelAcc;
     $('authorBio').textContent = data.bio || '';
     $('authorStats').innerHTML =
       `${data.verified ? '<span class="verified-tag">✔ 认证创作者</span> ' : ''}` +
