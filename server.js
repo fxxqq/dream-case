@@ -1903,9 +1903,9 @@ app.get('/api/works', (req, res) => {
   res.json({ items, total, page, pageSize, hasMore: page * pageSize < total });
 });
 
-// 本周精选：管理员勾选的精选作品置前，其余按数据自动补充
+// 本周精选：管理员勾选的精选作品固定放最后，其余按数据自动补充
 //   来源 = 管理员精选 ＋「近 7 天访客（UV）最多的 10 个」＋「点赞最多的 5 个」＋「收藏最多的 5 个」，去重合并
-//   顺序：管理员精选在最前（按热度排），其余按 UV＋收藏×5＋点赞×2 综合排序；上限 15 个
+//   顺序：非站方作品按 UV＋收藏×5＋点赞×2 综合排序在前，管理员精选压轴（内部也按热度排）；上限 15 个
 const FEATURED_TOP = 15;
 const FEATURED_DAYS = 7;
 const FEATURED_UV = 10;
@@ -1937,10 +1937,10 @@ app.get('/api/featured', (req, res) => {
       .slice(0, FEATURED_TOP - merged.size)
       .forEach(r => merged.set(r.w.id, r));
   }
-  // 站方精选固定在最前（内部按热度），其余作品统一按 UV＋收藏×5＋点赞×2 热度排序，
+  // 非站方作品按 UV＋收藏×5＋点赞×2 热度排序在前，站方精选压轴放最后（内部也按热度），
   // 避免按来源分段导致交界处数字忽高忽低
   const list = [...merged.values()]
-    .sort((a, b) => ((b.w.featured ? 1 : 0) - (a.w.featured ? 1 : 0)) || heat(b) - heat(a))
+    .sort((a, b) => ((a.w.featured ? 1 : 0) - (b.w.featured ? 1 : 0)) || heat(b) - heat(a))
     .slice(0, FEATURED_TOP)
     .map(r => ({ ...publicWork(r.w, user), uv7: r.uv7, pv7: r.pv7, adminPick: !!r.w.featured }));
   res.json({ days: FEATURED_DAYS, list });
