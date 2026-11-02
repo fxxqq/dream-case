@@ -984,7 +984,10 @@ function renderAdSlot(el, slot) {
     return;
   }
   el.style.display = 'block';
-  if (list.length === 1) {
+  if (slot === 'detail') {
+    // 详情位只展示一条：多条时随机挑一条（每次打开详情重抽，各家曝光机会均等），不做轮播
+    el.innerHTML = adHtml(list[Math.floor(Math.random() * list.length)]);
+  } else if (list.length === 1) {
     el.innerHTML = adHtml(list[0]);
   } else if (list.every(a => a.kind === 'text')) {
     // 全是纯文字（脚注式细行）时并列展示：两条同时可见，各自独立曝光/关闭
