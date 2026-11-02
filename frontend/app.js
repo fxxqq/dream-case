@@ -2855,6 +2855,7 @@ function renderRedeem() {
       <div class="rh-points"><b>${d.points || 0}</b><span>可用分享积分</span></div>
       <p class="rh-tip">好友通过你的分享链接访问 +1 分，注册 +20 分。<br />
         <b>展示包、点击包二选一</b>：展示包按被看到的次数扣，投完自动下线；点击包按实际被点开的次数扣，点完自动下线。</p>
+      <div class="rh-share-row"><span>没积分？<b>把作品分享给朋友</b>就能赚</span><button type="button" class="rh-share-btn" id="shareMyWork">📤 去分享作品</button></div>
     </div>
     <div class="redeem-sec">
       <div class="redeem-sec-head">1. 选作品<span>只能推自己名下、已上线的作品</span></div>
@@ -2906,8 +2907,43 @@ function renderRedeem() {
   body.querySelectorAll('[data-rcancel]').forEach(el => {
     el.onclick = () => cancelRedeem(el.dataset.rcancel);
   });
+  const smb = $('shareMyWork');
+  if (smb) smb.onclick = openSharePick;
   const go = $('redeemGo');
   if (go) go.onclick = () => submitRedeem(go);
+}
+
+// ---------- 从推广弹窗引导分享：选作品 → 出分享卡片 ----------
+// 分享卡片需要作品完整信息（图/简介/作者），列表里只有 id/标题/缩略图，选中后按 id 拉详情
+async function shareWorkDirect(id) {
+  try {
+    const w = await (await fetch('/api/works/' + encodeURIComponent(id) + '?nopv=1')).json();
+    if (w.error) { showToast(w.error); return; }
+    if (window.ShareCard) window.ShareCard.open(w);
+    else showToast('分享卡片加载中，稍后再试');
+  } catch {
+    showToast('分享卡片生成失败，请重试');
+  }
+}
+
+function openSharePick() {
+  const works = redeemData && Array.isArray(redeemData.works) ? redeemData.works : [];
+  if (!works.length) { showToast('先提交一件作品，上线后就能分享啦'); return; }
+  if (works.length === 1) { shareWorkDirect(works[0].id); return; }
+  const modal = $('sharePickModal');
+  const body = $('sharePickBody');
+  body.innerHTML = works.map(w => `
+    <button type="button" class="spp-item" data-spid="${escapeHtml(w.id)}">
+      ${w.thumb ? `<img src="${escapeHtml(w.thumb)}" alt="" loading="lazy" />` : '<span class="rw-noimg">无图</span>'}
+      <span class="spp-name">${escapeHtml(w.title)}</span>
+      <span class="spp-go">生成分享图 ›</span>
+    </button>`).join('');
+  body.querySelectorAll('[data-spid]').forEach(el => {
+    el.onclick = () => { hideModal(modal); shareWorkDirect(el.dataset.spid); };
+  });
+  $('closeSharePick').onclick = () => hideModal(modal);
+  modal.onclick = e => { if (e.target === modal) hideModal(modal); };
+  showModal(modal);
 }
 
 async function submitRedeem(btn) {
