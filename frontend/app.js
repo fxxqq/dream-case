@@ -366,7 +366,15 @@ async function doCheckin(after) {
   try {
     const res = await fetch('/api/me/checkin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(d.error || '签到失败');
+    if (!res.ok) {
+      // 服务端说「已签过」时响应里带最新签到状态，顺手纠正顶部按钮（防止页面状态过期）
+      if (d && d.done && state.user) {
+        state.user.checkin = d;
+        if (typeof d.points === 'number') state.user.points = d.points;
+        renderAuthBox();
+      }
+      throw new Error(d.error || '签到失败');
+    }
     state.user.checkin = d;
     if (typeof d.points === 'number') state.user.points = d.points;
     renderAuthBox();
@@ -493,7 +501,10 @@ async function doLogout() {
 async function loadMe() {
   try {
     const data = await (await fetch('/api/me')).json();
-    state.user = data.username ? { id: data.id || '', username: data.username, nickname: data.nickname || '' } : null;
+    state.user = data.username
+      ? { id: data.id || '', username: data.username, nickname: data.nickname || '',
+          checkin: data.checkin || {}, points: data.points || 0 }   // 带上签到状态和积分，顶部按钮要用
+      : null;
     state.favs = Array.isArray(data.favs) ? data.favs : [];
     state.blocked = Array.isArray(data.blocked) ? data.blocked : [];
     state.blockedUsers = Array.isArray(data.blockedUsers) ? data.blockedUsers : [];
