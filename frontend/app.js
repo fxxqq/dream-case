@@ -3427,7 +3427,7 @@ async function openStats(mode) {
     <div class="os-bonus">
       <div class="ob-head">🔓 开源作品奖励</div>
       <p>作品标注「开源」，系统自动送 <b>50 积分</b>（一件作品一次，同一个源码仓库只认第一次），可直接用于站内宣传。</p>
-      <p>源码在 GitHub 已经拿到 <b>1000+ star</b>？联系站长，按 star 数再送等额积分（1000 star = 1000 分）。</p>
+      <p>开源项目在 GitHub 收获 <b>1000+ star</b> 的，欢迎联系站长——按 star 数 1:1 领取等额积分（1000 star = 1000 分），star 越多送得越多。</p>
       <button type="button" class="ob-btn" data-fb="合作/其他"
         data-fb-hint="我要申请开源作品的 star 奖励，作品链接和源码仓库：">📮 联系站长领 star 奖励</button>
     </div>`;

@@ -1913,7 +1913,7 @@ function grantOpenSourceBonus(w) {
   addNotice(w.userId, {
     kind: 'points',
     title: `开源作品奖励 +${OS_BONUS_POINTS} 积分`,
-    text: `「${w.title}」已标注为开源，系统赠送 ${OS_BONUS_POINTS} 积分，可在「推广中心」用于站内宣传。源码 star 超过 1000 的话，可以联系站长按 star 数再送等额积分。`,
+    text: `「${w.title}」已标注为开源，系统赠送 ${OS_BONUS_POINTS} 积分，可在「推广中心」用于站内宣传。源码 star 超过 1000 的话，联系站长可按 star 数 1:1 领取等额积分。`,
     points,
     delta: OS_BONUS_POINTS
   });
