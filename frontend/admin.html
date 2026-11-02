@@ -99,6 +99,11 @@
       transition:opacity .15s, transform .15s;
     }
     .type-picker .type-opt input:checked + span::after { opacity:1; transform:scale(1); }
+    /* 多形态时每个平台一行链接输入框 */
+    .lpt-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+    .lpt-row:last-child { margin-bottom:0; }
+    .lpt-row .lpt-name { flex:none; min-width:72px; font-size:12.5px; color:var(--muted); text-align:right; white-space:nowrap; }
+    .lpt-row input { flex:1; min-width:0; }
     .cat-hint { margin:4px 0 0; font-size:12px; color:var(--muted); }
     #adminCatPicker { gap:7px; }
     #adminCatPicker .type-opt { flex:0 0 auto; }
@@ -274,8 +279,8 @@
           </select>
         </div>
         <div class="field">
-          <label>链接（网站地址 / 下载链接 / 体验链接，按形态必填）</label>
-          <input name="link" maxlength="500" placeholder="https://..." />
+          <label id="adminLinkLabel">链接（网站地址 / 下载链接 / 体验链接，按形态必填）</label>
+          <div id="adminLinkInputs"></div><!-- 链接输入框由 JS 按所选形态渲染：单形态一个，多形态每个形态一个 -->
         </div>
         <div class="field">
           <label>介绍 / 使用说明</label>
@@ -605,6 +610,41 @@
       const want = (list || []).filter(Boolean);
       workForm.querySelectorAll('input[name="types"]').forEach(i => { i.checked = want.indexOf(i.value) !== -1; });
       if (!adminSelectedTypes().length) workForm.querySelector('input[name="types"]').checked = true;
+      adminRenderLinkInputs();
+    }
+
+    // ---- 按形态的多个链接（多平台应用各填各的）----
+    const ADMIN_LINK_PH = {
+      'Web': 'https://你的网站地址', 'iOS': 'https://App Store / 下载页链接',
+      'Android': 'https://下载页 / 应用商店链接', 'macOS': 'https://官网下载页 / 安装包链接',
+      'Windows': 'https://官网下载页 / 安装包链接', 'Linux': 'https://官网下载页 / 安装包链接',
+      '浏览器插件': 'https://Chrome / Edge 商店链接', '机器人': 'https://机器人对话页链接',
+      'API': 'https://API 文档地址', '其他': 'https://...'
+    };
+    let adminPendingLinkValues = null; // 编辑回填时先暂存，渲染时消费
+    function adminCollectLinks() {
+      const out = {};
+      workForm.querySelectorAll('input[data-ltype]').forEach(i => {
+        const v = i.value.trim();
+        if (v) out[i.dataset.ltype] = v;
+      });
+      return out;
+    }
+    function adminRenderLinkInputs() {
+      const box = $('adminLinkInputs');
+      if (!box) return;
+      const types = adminSelectedTypes().filter(t => t !== '小程序');
+      const prev = adminPendingLinkValues || adminCollectLinks();
+      adminPendingLinkValues = null;
+      if (!types.length) { box.innerHTML = ''; return; }
+      if (types.length === 1) {
+        $('adminLinkLabel').textContent = '链接（按形态必填/选填）';
+        box.innerHTML = `<input name="link" data-ltype="${esc(types[0])}" maxlength="500" placeholder="${esc(ADMIN_LINK_PH[types[0]] || 'https://...')}" value="${esc(prev[types[0]] || '')}" />`;
+      } else {
+        $('adminLinkLabel').textContent = '各平台链接（选填，哪个平台有就填哪个）';
+        box.innerHTML = types.map(t =>
+          `<div class="lpt-row"><span class="lpt-name">${esc(t)}</span><input name="link_${esc(t)}" data-ltype="${esc(t)}" maxlength="500" placeholder="${esc(ADMIN_LINK_PH[t] || 'https://...')}" value="${esc(prev[t] || '')}" /></div>`).join('');
+      }
     }
 
     // ---- 分类（多选，最多 3 个）----
@@ -629,6 +669,11 @@
         toast('最多选择 3 个分类');
       }
       renderAdminCats(adminSelectedCats());
+    });
+    // 勾选形态变化 → 重渲染链接输入框（每个所选形态一个）
+    $('adminTypePicker').addEventListener('change', e => {
+      if (e.target.name !== 'types') return;
+      adminRenderLinkInputs();
     });
     async function loadCatOptions(selected) {
       try {
@@ -779,7 +824,10 @@
       await loadTypeOptions();
       await loadCatOptions(w ? (Array.isArray(w.categories) && w.categories.length ? w.categories : [w.category].filter(Boolean)) : []);
       let draftRestored = false;
-      if (!w) draftRestored = restoreDraft(); // 新建模式恢复草稿
+      if (!w) {
+        draftRestored = restoreDraft(); // 新建模式恢复草稿（内部会渲染链接输入框）
+        if (!draftRestored) adminRenderLinkInputs(); // 没草稿也要按默认形态渲染链接输入框
+      }
       if (w) {
         workForm.title.value = w.title || '';
         workForm.author.value = w.author || '';
@@ -788,7 +836,14 @@
         workForm.openSource.value = w.openSource === true ? '1' : w.openSource === false ? '0' : '';
         workForm.repo.value = w.repo || '';
         workForm.paid.value = w.paid ? '1' : '';
-        workForm.link.value = w.link || '';
+        {
+          // 编辑回填：按形态的 links 优先，旧数据的单 link 落到第一个非小程序形态的输入框
+          const nonMini = (w.types && w.types.length ? w.types : [w.type || 'Web']).filter(t => t !== '小程序');
+          const pv = Object.assign({}, w.links || {});
+          if (w.link && nonMini.length && !Object.keys(pv).length) pv[nonMini[0]] = w.link;
+          adminPendingLinkValues = Object.keys(pv).length ? pv : null;
+          adminRenderLinkInputs();
+        }
         workForm.prompt.value = w.intro || '';
         existingCover = w.image || '';
         existingQr = w.qrcode || '';
@@ -807,7 +862,8 @@
     const DRAFT_KEY = 'admin_work_draft';
     let draftTimer = null;
     function editorDirty() {
-      if (['title', 'author', 'link', 'prompt'].some(k => workForm[k].value.trim())) return true;
+      if (['title', 'author', 'prompt'].some(k => workForm[k].value.trim())) return true;
+      if (Object.keys(adminCollectLinks()).length) return true;
       if (workForm.image.files.length || workForm.qrcode.files.length) return true;
       if (galItems.length) return true;
       return false;
@@ -818,7 +874,7 @@
         localStorage.setItem(DRAFT_KEY, JSON.stringify({
           title: workForm.title.value, author: workForm.author.value,
           types: adminSelectedTypes(), cats: adminSelectedCats(),
-          status: workForm.status.value, link: workForm.link.value,
+          status: workForm.status.value, links: adminCollectLinks(),
           openSource: workForm.openSource.value,
           repo: workForm.repo.value,
           paid: workForm.paid.value,
@@ -831,7 +887,8 @@
       try {
         const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
         if (!d) return false;
-        if (!['title', 'author', 'link', 'prompt'].some(k => (d[k] || '').trim())) return false;
+        const hasLink = (d.links && Object.keys(d.links).length) || (d.link || '').trim();
+        if (!['title', 'author', 'prompt'].some(k => (d[k] || '').trim()) && !hasLink) return false;
         workForm.title.value = d.title || '';
         workForm.author.value = d.author || '';
         adminSetTypes(Array.isArray(d.types) && d.types.length ? d.types : (d.type ? [d.type] : ['网站']));
@@ -840,7 +897,13 @@
         workForm.openSource.value = ['', '1', '0'].includes(d.openSource) ? d.openSource : '';
         workForm.repo.value = d.repo || '';
         workForm.paid.value = d.paid === '1' ? '1' : '';
-        workForm.link.value = d.link || '';
+        // 兼容旧草稿的单 link 字段
+        if (d.links && Object.keys(d.links).length) adminPendingLinkValues = d.links;
+        else if (d.link && d.link.trim()) {
+          const t = ((d.types || []).filter(x => x !== '小程序')[0]) || 'Web';
+          adminPendingLinkValues = { [t]: d.link.trim() };
+        }
+        adminRenderLinkInputs();
         workForm.prompt.value = d.prompt || '';
         return true;
       } catch { return false; }
@@ -969,8 +1032,9 @@
       try {
         // 形态必填校验：只有网站需要链接，小程序需要二维码
         const pickedTypes = [...document.querySelectorAll('#adminTypePicker input:checked')].map(i => i.value);
-        if (pickedTypes.includes('网站') && !workForm.link.value.trim()) {
-          throw new Error('形态含「网站」，请填写网站地址');
+        const pickedLinks = adminCollectLinks();
+        if (pickedTypes.includes('Web') && !(pickedLinks.Web || '').trim()) {
+          throw new Error('形态含「Web」，请填写网站地址');
         }
         if (pickedTypes.includes('小程序')) {
           const hasQr = workForm.qrcode.files.length > 0 || (existingQr && !qrCleared);
@@ -978,6 +1042,10 @@
         }
 
         const fd = new FormData(workForm);
+        // 按形态的多个链接：统一走 links 字段，散的 link/link_xxx 不单独传
+        Object.keys(pickedLinks).forEach(t => fd.delete('link_' + t));
+        fd.delete('link');
+        fd.set('links', JSON.stringify(pickedLinks));
         // 分类多选（最多 3 个），第一个是主分类；category 字段兼容老逻辑
         const pickedCats = adminSelectedCats();
         if (!pickedCats.length) throw new Error('请至少选择一个分类');

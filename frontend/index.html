@@ -219,7 +219,7 @@
 
         <div id="linkField">
           <label id="linkLabel">网站地址 *</label>
-          <input type="text" name="link" maxlength="500" placeholder="https://..." />
+          <div id="linkInputs"></div><!-- 链接输入框由 JS 按所选形态渲染：单形态一个，多形态每个形态一个 -->
         </div>
 
         <div id="qrField" style="display:none">
@@ -424,7 +424,7 @@
         <div class="detail-actions">
           <button class="btn-like" id="detailLike">♥ 点赞 <span id="detailLikes">0</span></button>
           <button class="btn-like btn-fav" id="detailFav" title="收藏后可在顶部「收藏」里找到">☆ 收藏</button>
-          <a class="btn-link" id="detailLink" target="_blank" rel="noopener" style="display:none"></a>
+          <span id="detailLinks" class="detail-links"></span>
           <a class="btn-link" id="detailRepo" target="_blank" rel="noopener" style="display:none">📁 源码</a>
         </div>
 

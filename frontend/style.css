@@ -590,7 +590,17 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .btn-fav.faved { background: #f59e0b; border-color: #f59e0b; color: #fff; }
 
 /* 点赞 / 收藏 / 打开网站 一行放下，不换行 */
-.detail-actions { display: flex; gap: 8px; flex-wrap: nowrap; }
+.detail-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* 多平台链接按钮组：每个形态一个入口 */
+.detail-links { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+/* 投稿表单：多形态时每个平台一行链接输入框 */
+.lpt-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.lpt-row:last-child { margin-bottom: 0; }
+.lpt-row .lpt-name {
+  flex: none; min-width: 72px; font-size: 12.5px; color: var(--muted);
+  text-align: right; white-space: nowrap;
+}
+.lpt-row input { flex: 1; min-width: 0; }
 .detail-actions > * { flex: none; white-space: nowrap; box-sizing: border-box; }
 .detail-actions .btn-like, .detail-actions .btn-fav { padding: 9px 12px; font-size: 13px; }
 .detail-actions .btn-link { padding: 9px 14px; font-size: 13px; }

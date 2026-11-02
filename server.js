@@ -906,6 +906,26 @@ function validateTypeRequired(types, link, qrcode) {
   return '';
 }
 
+// 按形态的多个链接：{ "iOS": "https://...", "Android": "..." }
+// 只保留所选形态（小程序除外——它用二维码），逐个规范化 URL；无有效条目返回 null
+function normLinksMap(raw, types) {
+  if (!raw) return null;
+  let obj = raw;
+  if (typeof raw === 'string') {
+    try { obj = JSON.parse(raw); } catch { return null; }
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+  const list = (types && types.length ? types : ['Web']).filter(t => t !== '小程序');
+  const out = {};
+  for (const t of list) {
+    let s = String(obj[t] || '').trim();
+    if (!s) continue;
+    if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+    if (s.length <= 500) out[t] = s;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 // 每个作品的评论数：懒加载缓存，评论增删后置空重算
 let commentCounts = null;
 function countComments(id) {
@@ -946,6 +966,7 @@ function publicWork(w, user) {
     categories: catsOf(w),
     type: types[0], types: types,
     intro: w.prompt || '', link: w.link || '',
+    ...(w.links && Object.keys(w.links).length ? { links: w.links } : {}),
     image: w.image, thumb: w.thumb || w.image, qrcode: w.qrcode || '',
     images: Array.isArray(w.images) ? w.images.slice(0, 9) : [],
     likes: w.likes || 0, favs: w.favs || 0, commentCount: countComments(w.id), views: w.views || 0, featured: !!w.featured, pinned: !!w.pinned,
@@ -2069,6 +2090,10 @@ app.post('/api/works', (req, res) => {
     let linkVal = String(link || '').trim();
     if (linkVal && !/^https?:\/\//i.test(linkVal)) linkVal = 'https://' + linkVal;
 
+    // 按形态的多个链接（多平台应用：iOS/Android/macOS… 各填各的）
+    const linksMap = normLinksMap(req.body.links, types);
+    if (!linkVal && linksMap) linkVal = linksMap.Web || Object.values(linksMap)[0];
+
     const typeErr = validateTypeRequired(types, linkVal, qrcode ? qrcode.filename : '');
     if (typeErr) return res.status(400).json({ error: typeErr });
 
@@ -2104,6 +2129,7 @@ app.post('/api/works', (req, res) => {
       views: 0,
       createdAt: new Date().toISOString()
     };
+    if (linksMap) work.links = linksMap;
     works.push(work);
     saveWorks();
     res.status(201).json({
@@ -2128,7 +2154,17 @@ app.put('/api/works/:id', (req, res) => {
     const { title, prompt, category, link, type } = req.body;
     // 形态必填校验：先按「改动后的预期状态」校验，通过后才动字段与文件
     const nextTypes = (req.body.types !== undefined || type) ? normalizeTypes(req.body.types || type) : typesOf(w);
-    const nextLink = link !== undefined ? String(link).trim() : (w.link || '');
+    // 按形态的多个链接：请求里带了就更新，没带就沿用已有
+    let linksMap;
+    if (req.body.links !== undefined) {
+      linksMap = normLinksMap(req.body.links, nextTypes);
+      if (linksMap) w.links = linksMap; else delete w.links;
+    } else {
+      linksMap = w.links || null;
+    }
+    const nextLink = (link !== undefined ? String(link).trim() : '')
+      || (linksMap && (linksMap.Web || Object.values(linksMap)[0]))
+      || (w.link || '');
     const nextQr = (req.files && req.files.qrcode && req.files.qrcode[0]) ? 'new'
       : (String(req.body.removeQrcode) === '1' ? '' : (w.qrcode || ''));
     const typeErr = validateTypeRequired(nextTypes, nextLink, nextQr);
@@ -2608,6 +2644,10 @@ app.post('/api/admin/works', requireAdmin, (req, res) => {
     let linkVal = String(link || '').trim();
     if (linkVal && !/^https?:\/\//i.test(linkVal)) linkVal = 'https://' + linkVal;
 
+    // 按形态的多个链接（多平台应用：iOS/Android/macOS… 各填各的）
+    const linksMap = normLinksMap(req.body.links, types);
+    if (!linkVal && linksMap) linkVal = linksMap.Web || Object.values(linksMap)[0];
+
     const typeErr = validateTypeRequired(types, linkVal, qrcode ? qrcode.filename : '');
     if (typeErr) return res.status(400).json({ error: typeErr });
 
@@ -2641,6 +2681,7 @@ app.post('/api/admin/works', requireAdmin, (req, res) => {
       views: 0,
       createdAt: new Date().toISOString()
     };
+    if (linksMap) work.links = linksMap;
     works.push(work);
     saveWorks();
     res.status(201).json({ ...publicWork(work), status: work.status });
@@ -2657,7 +2698,17 @@ app.put('/api/admin/works/:id', requireAdmin, (req, res) => {
     const { title, prompt, category, link, type, author, status } = req.body;
     // 形态必填校验：按「改动后的预期状态」校验，通过后才动字段与文件
     const nextTypes = (req.body.types !== undefined || type) ? normalizeTypes(req.body.types || type) : typesOf(w);
-    const nextLink = link !== undefined ? String(link).trim() : (w.link || '');
+    // 按形态的多个链接：请求里带了就更新，没带就沿用已有
+    let linksMap;
+    if (req.body.links !== undefined) {
+      linksMap = normLinksMap(req.body.links, nextTypes);
+      if (linksMap) w.links = linksMap; else delete w.links;
+    } else {
+      linksMap = w.links || null;
+    }
+    const nextLink = (link !== undefined ? String(link).trim() : '')
+      || (linksMap && (linksMap.Web || Object.values(linksMap)[0]))
+      || (w.link || '');
     const nextQr = (req.files && req.files.qrcode && req.files.qrcode[0]) ? 'new'
       : (String(req.body.removeQrcode) === '1' ? '' : (w.qrcode || ''));
     const typeErr = validateTypeRequired(nextTypes, nextLink, nextQr);

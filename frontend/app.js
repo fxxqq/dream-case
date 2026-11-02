@@ -115,6 +115,48 @@ function linkLabelOf(types) {
   for (const t of types) if (LINK_LABEL[t]) return LINK_LABEL[t];
   return '🔗 访问作品';
 }
+// ---------- 按形态的多个链接（多平台应用：iOS/Android/macOS… 各填各的） ----------
+function linkConfOf(t) {
+  return TYPE_LINK_FIELD[t] || { label: '作品链接（选填）', ph: 'https://...' };
+}
+// 读取表单里所有按形态的链接输入框 → { 类型: 地址 }
+function collectLinkValues(root) {
+  const out = {};
+  (root || document.getElementById('uploadForm')).querySelectorAll('input[data-ltype]').forEach(i => {
+    const v = i.value.trim();
+    if (v) out[i.dataset.ltype] = v;
+  });
+  return out;
+}
+// 草稿/编辑回填时先暂存，applyTypeFields 渲染链接输入框时消费
+let pendingLinkValues = null;
+function renderLinkInputs(types, values) {
+  const box = $('linkInputs');
+  if (!box) return;
+  const prev = values || pendingLinkValues || collectLinkValues();
+  pendingLinkValues = null;
+  const nonMini = types.filter(t => t !== '小程序');
+  if (!nonMini.length) { box.innerHTML = ''; return; }
+  if (nonMini.length === 1) {
+    const t = nonMini[0], c = linkConfOf(t);
+    $('linkLabel').textContent = c.label;
+    box.innerHTML = `<input type="text" name="link" data-ltype="${escapeHtml(t)}" maxlength="500"
+      placeholder="${escapeHtml(c.ph)}" value="${escapeHtml(prev[t] || '')}" />`;
+  } else {
+    $('linkLabel').textContent = '各平台链接（选填，哪个平台有就填哪个）';
+    box.innerHTML = nonMini.map(t => {
+      const c = linkConfOf(t);
+      return `<div class="lpt-row">
+        <span class="lpt-name">${TYPE_ICONS[t] || '✨'} ${escapeHtml(t)}</span>
+        <input type="text" name="link_${escapeHtml(t)}" data-ltype="${escapeHtml(t)}" maxlength="500"
+          placeholder="${escapeHtml(c.ph.replace(' *', ''))}" value="${escapeHtml(prev[t] || '')}" />
+      </div>`;
+    }).join('');
+  }
+  // 只有 Web 的地址必填（表单 novalidate，配合提交时的中文校验提示）
+  const web = box.querySelector('input[data-ltype="Web"]');
+  if (web) web.required = true;
+}
 // 多形态合并规则：含小程序 → 需要二维码；含网站 → 链接必填；其他形态链接选填
 function ruleOfTypes(types) {
   const qr = types.indexOf('小程序') !== -1;
@@ -1415,12 +1457,17 @@ async function openWork(id, push = true) {
     $('detailPrompt').textContent = w.intro || '';
     $('detailLikes').textContent = w.likes;
 
-    const linkBtn = $('detailLink');
-    if (w.link) {
-      linkBtn.href = w.link;
-      linkBtn.textContent = linkLabelOf(typesOf(w));
-      linkBtn.style.display = 'inline-block';
-    } else linkBtn.style.display = 'none';
+    // 访问/下载按钮：每个填了链接的形态各一个（多平台应用 iOS/Android/macOS… 分开展示）
+    // 旧数据没有按形态的 links 时，退回单个按钮沿用原文案
+    const tl = typesOf(w);
+    const linkEntries = tl
+      .map(t => ({ t, url: (w.links && w.links[t]) || '' }))
+      .filter(e => e.url);
+    if (!linkEntries.length && w.link) linkEntries.push({ t: null, url: w.link });
+    $('detailLinks').innerHTML = linkEntries.map(e =>
+      `<a class="btn-link" target="_blank" rel="noopener" href="${escapeHtml(e.url)}">${
+        e.t ? escapeHtml(LINK_LABEL[e.t] || '🔗 访问作品') : escapeHtml(linkLabelOf(tl))
+      }</a>`).join('');
 
     // 开源作品的源码仓库入口
     const repoBtn = $('detailRepo');
@@ -1790,12 +1837,10 @@ function setupUploadForm() {
   function applyTypeFields() {
     const types = selectedTypes().length ? selectedTypes() : ['Web'];
     const rule = ruleOfTypes(types);
-    $('linkField').style.display = rule.hasLinkField ? 'block' : 'none';
+    const nonMini = types.filter(t => t !== '小程序');
+    $('linkField').style.display = nonMini.length ? 'block' : 'none';
     $('qrField').style.display = rule.qr ? 'block' : 'none';
-    $('linkLabel').textContent = rule.label;
-    form.link.placeholder = rule.ph;
-    // 只有网站必填链接（同步给原生校验）
-    form.link.required = rule.link;
+    renderLinkInputs(types);
     // 移动端形态：宣传图/封面预览按手机竖屏比例
     const mobile = isMobileTypes(types);
     $('galleryPreviews').classList.toggle('mobile', mobile);
@@ -1948,7 +1993,7 @@ function setupUploadForm() {
         openSource: (form.querySelector('input[name="openSource"]:checked') || {}).value || '',
         repo: form.repo.value,
         paid: (form.querySelector('input[name="paid"]:checked') || {}).value || '',
-        prompt: form.prompt.value, link: form.link.value, t: Date.now()
+        prompt: form.prompt.value, links: collectLinkValues(form), t: Date.now()
       }));
     } catch {}
   }
@@ -1957,7 +2002,8 @@ function setupUploadForm() {
     try {
       const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
       if (!d) return false;
-      if (!['title', 'link', 'prompt'].some(k => (d[k] || '').trim())) return false;
+      const hasLink = (d.links && Object.keys(d.links).length) || (d.link || '').trim();
+      if (!['title', 'prompt'].some(k => (d[k] || '').trim()) && !hasLink) return false;
       if (Array.isArray(d.types) && d.types.length) setSelectedTypes(d.types);
       else if (d.type) setSelectedTypes([d.type]);
       form.title.value = d.title || '';
@@ -1965,7 +2011,13 @@ function setupUploadForm() {
       if (d.customCat) { newCatInput.style.display = 'block'; newCatInput.value = d.customCat; }
       else { newCatInput.style.display = 'none'; newCatInput.value = ''; }
       form.prompt.value = d.prompt || '';
-      form.link.value = d.link || '';
+      // 兼容旧草稿的单 link 字段：填进当前主形态的输入框
+      if (d.links && Object.keys(d.links).length) pendingLinkValues = d.links;
+      else if (d.link && d.link.trim()) {
+        const t = ((d.types || []).filter(x => x !== '小程序')[0]) || 'Web';
+        pendingLinkValues = { [t]: d.link.trim() };
+      }
+      pendingLinkValues = pendingLinkValues || null;
       const osDraft = form.querySelector(`input[name="openSource"][value="${d.openSource || ''}"]`);
       if (osDraft) osDraft.checked = true;
       const paidDraft = form.querySelector(`input[name="paid"][value="${d.paid || ''}"]`);
@@ -2000,7 +2052,13 @@ function setupUploadForm() {
     setSelectedTypes(typesOf(w));
     form.title.value = w.title;
     form.prompt.value = w.intro || '';
-    form.link.value = w.link || '';
+    // 编辑回填：按形态的 links 优先，旧数据的单 link 落到第一个非小程序形态的输入框
+    {
+      const nonMini = typesOf(w).filter(t => t !== '小程序');
+      const pv = Object.assign({}, w.links || {});
+      if (w.link && nonMini.length && !Object.keys(pv).length) pv[nonMini[0]] = w.link;
+      pendingLinkValues = Object.keys(pv).length ? pv : null;
+    }
     setCats(Array.isArray(w.categories) && w.categories.length ? w.categories : [w.category].filter(Boolean));
     const osVal = w.openSource === true ? '1' : w.openSource === false ? '0' : '';
     const osInput = form.querySelector(`input[name="openSource"][value="${osVal}"]`);
@@ -2108,10 +2166,13 @@ function setupUploadForm() {
 
     // 形态必填校验：只有网站需要链接，小程序需要二维码
     const curTypes = selectedTypes().length ? selectedTypes() : ['Web'];
-    if (LINK_REQUIRED_TYPES.some(t => curTypes.indexOf(t) !== -1) && !form.link.value.trim()) {
-      showToast('形态含「网站」，请填写网站地址');
-      form.link.focus();
-      return;
+    if (LINK_REQUIRED_TYPES.some(t => curTypes.indexOf(t) !== -1)) {
+      const webInput = form.querySelector('input[data-ltype="Web"]');
+      if (!webInput || !webInput.value.trim()) {
+        showToast('形态含「网站」，请填写网站地址');
+        if (webInput) webInput.focus();
+        return;
+      }
     }
     if (curTypes.indexOf('小程序') !== -1) {
       const hasQr = form.qrcode.files.length > 0 ||
@@ -2190,6 +2251,11 @@ function setupUploadForm() {
       fd.set('category', cats[0]);                // 兼容老字段
       fd.delete('newCategory');
       fd.delete('images'); // 宣传图单独压缩后追加
+      // 按形态的多个链接：收集后统一走 links 字段，散的 link/link_xxx 不单独传
+      const linkValues = collectLinkValues(form);
+      Object.keys(linkValues).forEach(t => fd.delete('link_' + t));
+      fd.delete('link');
+      fd.set('links', JSON.stringify(linkValues));
 
       // 编辑模式：未选择新图片时不上传文件字段；二维码仅小程序形态支持
       const qrAllowed = ruleOfTypes(selectedTypes()).qr;
