@@ -3290,7 +3290,7 @@ async function openStats() {
     });
   };
   const boardHtml = board.length ? `
-    <div class="stats-works-head">分享达人榜</div>
+    <div class="stats-works-head">积分达人榜</div>
     <div class="board-list">
       ${board.map(b => `
         <div class="board-row${b.username === state.user.username ? ' is-me' : ''}">
