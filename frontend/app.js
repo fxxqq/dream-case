@@ -3813,7 +3813,7 @@ registerServiceWorker();
 async function manualSwUpdate() {
   if (!('serviceWorker' in navigator)) { showToast('当前浏览器不支持自动更新'); return; }
   const btn = $('swUpdateBtn');
-  const resetBtn = () => { if (btn) { btn.disabled = false; btn.textContent = '🔄 检查更新'; } };
+  const resetBtn = () => { if (btn) { btn.disabled = false; btn.textContent = '检查更新'; } };
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 检查中…'; }
   try {
     const reg = __swReg || await navigator.serviceWorker.getRegistration();

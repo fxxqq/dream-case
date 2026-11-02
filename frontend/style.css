@@ -1086,11 +1086,14 @@ body.scroll-locked { overflow: hidden; }
 .footer-meta { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
 .footer-icp { color: var(--muted); text-decoration: none; font-size: 13px; }
 .footer-icp:hover { color: var(--primary); text-decoration: underline; }
-.footer-links { display: flex; gap: 16px; flex-wrap: wrap; }
-.footer-links .footer-link { text-decoration: none; }
+.footer-links { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+.fgroup { display: inline-flex; align-items: center; gap: 12px; }
+.fg-label { font-size: 12px; color: var(--muted); opacity: .6; }
+.footer-links .footer-link { color: var(--muted); text-decoration: none; }
+.footer-links .footer-link:hover { color: var(--primary); }
 .footer-links button.footer-link {
   appearance: none; background: none; border: none; padding: 0; margin: 0;
-  font: inherit; color: inherit; cursor: pointer; text-decoration: none;
+  font: inherit; color: var(--muted); cursor: pointer; text-decoration: none;
 }
 .footer-links button.footer-link:hover { color: var(--primary); }
 .footer-links button.footer-link:disabled { opacity: .6; cursor: default; }
