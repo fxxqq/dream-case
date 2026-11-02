@@ -3052,7 +3052,7 @@ function renderRedeem() {
   const slotsHtml = `<div class="redeem-slots">${slots.map(s => `
       <button type="button" class="redeem-slot is-on" data-rslot="${escapeHtml(s.key)}">
         <span class="rs-main"><b>${escapeHtml(s.name)}</b><small>${escapeHtml(s.where || '')} · 展示每 ${s.showViews} 次 ${s.showPoints} 分 · 点击每次 ${cp} 分</small></span>
-        <span class="rs-price">${s.showPoints}<i>分 / ${s.showViews} 次展示</i></span>
+        <span class="rs-price"><small>单价</small>${s.showPoints}<i>分 / ${s.showViews} 次展示</i></span>
       </button>`).join('')}</div>`;
 
   const showPacksHtml = `<div class="redeem-packs">${showPacks.map(v => `
