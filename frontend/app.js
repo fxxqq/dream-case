@@ -1331,7 +1331,7 @@ async function loadRank(period, by) {
         <div class="rank-score">
           <span class="${cur === 'likes' ? 'on' : ''}" title="获赞数">♥ ${w.likes || 0}</span>
           <span class="${cur === 'favs' ? 'on' : ''}" title="被收藏数">★ ${w.favs || 0}</span>
-          <span class="${cur === 'hot' ? 'on' : ''}" title="历史累计浏览（不随周期排序）">👁 ${w.views || 0}</span>
+          ${cur === 'hot' ? `<span class="on" title="综合分 = 获赞×3 + 收藏×4 + 累计浏览">⚡ ${(w.likes || 0) * 3 + (w.favs || 0) * 4 + (w.views || 0)}</span>` : ''}
           <span class="${cur === 'pv' ? 'on' : ''}" title="本周期页面浏览量（Page Views，排序依据）">📊 ${w.pv || 0}</span>
           <span class="${cur === 'uv' ? 'on' : ''}" title="本周期独立访客数（Unique Visitors，排序依据）">🧑 ${w.uv || 0}</span>
         </div>
