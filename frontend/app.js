@@ -4117,7 +4117,7 @@ async function loadFooterFriends() {
   } catch { /* 拿不到就不展示，无害 */ }
 }
 
-// 页脚站点统计：今日/累计 PV·UV + 提交作品引导（公开接口，无明细）
+// 页脚站点统计：今日/累计 PV·UV（公开接口，无明细；提交引导头部已有，页脚不再重复）
 async function loadFooterStats() {
   const el = $('footerStats');
   if (!el) return;
@@ -4127,11 +4127,8 @@ async function loadFooterStats() {
       `<span class="fs-item">今日 <b>${s.pvToday || 0}</b> PV</span>` +
       `<span class="fs-item">今日 <b>${s.uvToday || 0}</b> UV</span>` +
       `<span class="fs-item">累计 <b>${s.pv || 0}</b> PV</span>` +
-      `<span class="fs-item">累计 <b>${s.uv || 0}</b> UV</span>` +
-      `<a href="#upload" class="fs-cta" id="fsGoSubmit">提交作品</a>，让你的好作品被更多人看到`;
+      `<span class="fs-item">累计 <b>${s.uv || 0}</b> UV</span>`;
     el.style.display = '';
-    const cta = $('fsGoSubmit');
-    if (cta) cta.onclick = e => { e.preventDefault(); const up = $('openUpload'); if (up) up.click(); };
   } catch { /* 统计拉不到就隐藏，不影响页脚其他内容 */ }
 }
 

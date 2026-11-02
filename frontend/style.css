@@ -1144,8 +1144,6 @@ body.scroll-locked { overflow: hidden; }
 .footer-stats { display: inline-flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; flex-basis: 100%; order: -1; }  /* 独占页脚第一行 */
 .footer-stats .fs-item { color: var(--muted); white-space: nowrap; }
 .footer-stats .fs-item b { color: var(--text); font-variant-numeric: tabular-nums; }
-.footer-stats .fs-cta { color: var(--primary); text-decoration: none; font-weight: 600; }
-.footer-stats .fs-cta:hover { text-decoration: underline; }
 .footer-icp { color: var(--muted); text-decoration: none; font-size: 13px; }
 .footer-icp:hover { color: var(--primary); text-decoration: underline; }
 .footer-links { display: flex; gap: 22px; flex-wrap: wrap; align-items: center; }
