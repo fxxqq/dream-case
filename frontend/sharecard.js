@@ -192,7 +192,7 @@
     ctx.fillText('造梦橱窗', PAD + logoSize + 18, 58);
     ctx.fillStyle = t.sub;
     ctx.font = `400 22px ${FONT}`;
-    ctx.fillText('让每一个用心的作品，都被更多人看见', PAD + logoSize + 18, 100);
+    ctx.fillText('让每一个用心的作品，被更多人看见', PAD + logoSize + 18, 100);
 
     // 作品截图
     const imgX = PAD, imgY = 156, imgW = W - PAD * 2, imgH = 556;
