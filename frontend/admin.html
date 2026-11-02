@@ -544,6 +544,7 @@
               <button class="btn btn-ghost btn-sm" data-act="pin" data-id="${w.id}">${w.pinned ? '取消置顶' : '置顶'}</button>
               <button class="btn btn-ghost btn-sm" data-act="claimopen" data-id="${w.id}">${w.claimable ? '关闭认领' : '开放认领'}</button>
               <button class="btn btn-ghost btn-sm" data-act="anonymous" data-id="${w.id}">${w.anonymous ? '取消匿名' : '设为匿名'}</button>
+              <button class="btn btn-ghost btn-sm" data-act="assign" data-id="${w.id}" title="把作品指定给站内某个账号名下">指定账号</button>
               <button class="btn btn-danger btn-sm" data-act="del" data-id="${w.id}">删除</button>
             </div>
           </div>`;
@@ -1095,6 +1096,22 @@
           });
           w.claimable = r.claimable;
           toast(r.claimable ? '已开放认领，详情页会出现认领入口' : '已关闭认领');
+        } else if (act === 'assign') {
+          const cur = w.anonymous ? '' : (w.authorReal || w.author);
+          const name = prompt(`把「${w.title}」指定给站内哪个账号？\n输入对方的注册账号名（「送积分」页可搜索确认），确定后作品归到 TA 名下`, cur);
+          if (name === null) return;
+          const uname = name.trim().replace(/^@/, '');
+          if (!uname) return;
+          if (!confirm(`确定把「${w.title}」指定给 @${uname}？\n· 作品将归到该账号名下：前台署名、TA 的「我的作品 / 数据看板」、推广与积分归属都算 TA 的\n· 原来的匿名发布 / 待认领状态会一并清除`)) return;
+          const r = await api(`/api/admin/works/${id}/assign`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: uname })
+          });
+          w.author = r.author;
+          w.anonymous = false; w.authorReal = ''; w.ownerReal = '';
+          w.claimable = r.claimable; w.claimed = true;
+          toast(`已指定给 @${r.author}`);
         } else {
           await api(`/api/admin/works/${id}/${act}`, { method: 'POST' });
           w.status = act === 'approve' ? 'approved' : 'rejected';

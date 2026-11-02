@@ -2574,6 +2574,25 @@ app.post('/api/admin/works/:id/anonymous', requireAdmin, (req, res) => {
   res.json({ ok: true, anonymous: w.anonymous === true, claimable: isClaimable(w), author: w.author });
 });
 
+// 管理员把作品指定给站内某个账号：作品归到该账号名下
+// （影响：前台署名、TA 的「我的作品 / 数据看板」、推广与积分归属）
+app.post('/api/admin/works/:id/assign', requireAdmin, (req, res) => {
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  const name = String((req.body && req.body.username) || '').trim().replace(/^@/, '');
+  if (!name) return res.status(400).json({ error: '请填写要指定给的账号名' });
+  const u = users.find(x => x.username === name)
+    || users.find(x => (x.username || '').toLowerCase() === name.toLowerCase());
+  if (!u) return res.status(404).json({ error: `站内没有账号「${name}」，请到「用户」标签页确认` });
+  w.author = u.username;
+  w.userId = u.id;
+  // 明确指定归属后，匿名发布 / 待认领状态一并清掉
+  delete w.anonymous; delete w.authorReal; delete w.ownerReal;
+  if (w.claimOpen === true) w.claimOpen = false;
+  saveWorks();
+  res.json({ ok: true, author: w.author, claimed: true, claimable: isClaimable(w) });
+});
+
 // 管理员直接新增作品（可指定作者、状态、精选/置顶）
 app.post('/api/admin/works', requireAdmin, (req, res) => {
   upload(req, res, err => {
