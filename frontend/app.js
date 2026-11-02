@@ -3223,6 +3223,18 @@ function renderRedeem() {
     <div class="redeem-sec">
       <div class="redeem-sec-head">2. 确认位置</div>
       ${slotsHtml}
+      <div class="redeem-preview" aria-hidden="true">
+        <div class="rp-modal">
+          <div class="rp-head"><i></i><i></i></div>
+          <div class="rp-body">
+            <div class="rp-top"><span class="rp-thumb"></span><span class="rp-lines"><i></i><i></i></span></div>
+            <div class="rp-btns"><i></i><i></i><i></i></div>
+            <div class="rp-ad">📣 你的作品广告</div>
+            <div class="rp-cmt"><i></i><i></i></div>
+          </div>
+        </div>
+        <div class="rp-note">↑ 广告展示在这里：作品详情弹窗内，<br />点赞收藏按钮和评论区之间</div>
+      </div>
     </div>
     <div class="redeem-sec">
       <div class="redeem-sec-head">3. 选一个套餐<span>展示 / 点击二选一：展示每 ${d.showViews} 次 ${d.showPoints} 分；点击每次 ${cp} 分，更贵但更值</span></div>
