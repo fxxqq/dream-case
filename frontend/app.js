@@ -299,7 +299,7 @@ function renderDetailFav(id) {
   const el = document.getElementById('detailFav');
   if (!el) return;
   const faved = isFav(id);
-  el.innerHTML = faved ? '★ 已收藏' : '☆ 收藏';
+  el.innerHTML = faved ? ic('fav') + ' 已收藏' : ic('fav') + ' 收藏';
   el.classList.toggle('faved', faved);
 }
 
@@ -327,7 +327,7 @@ function renderAuthBox() {
          title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天，明天再来` : `每日签到领 ${ck.todayPoints || 2} 盏灯火，连签 7 天有全勤奖`}"><span class="lb-ico">${ckDone ? '✓' : `<span class="ico">${ic('checkin')}</span>`}</span>${ckDone ? `已签${ck.streak > 1 ? ' ' + ck.streak + ' 天' : ''}` : `签到 +${ck.todayPoints || 2}`}<span class="ck-pts"><span class="ico">${ic('lamp')}</span>${pts}</span></button>` +
       `<button class="link-btn notice-entry${unread ? ' has-new' : ''}" id="noticeBtn" title="${unread ? unread + ' 条未读消息' : '站内消息'}"><span class="nb-ico">🔔</span><span class="nb-dot"${unread ? '' : ' style="display:none"'}>${unread > 99 ? '99+' : unread}</span></button>` +
       `<div class="user-menu" id="userMenu">
-        <button class="user-chip" id="userMenuBtn" title="个人菜单">👤 ${escapeHtml(state.user.nickname || state.user.username)}<span class="um-caret">▾</span></button>
+        <button class="user-chip" id="userMenuBtn" title="个人菜单">${ic('user')} ${escapeHtml(state.user.nickname || state.user.username)}<span class="um-caret">▾</span></button>
         <div class="user-dropdown" id="userDropdown">
           <a class="ud-item" href="/u/${encodeURIComponent(state.user.username)}" data-nav>🏠 我的主页</a>
           <button class="ud-item" id="statsBtn">📊 我的数据</button>
@@ -734,7 +734,7 @@ function cardHtml(w, opts = {}) {
         <img class="card-img" src="${w.thumb}" alt="${escapeHtml(w.title)}" loading="lazy" />
         <span class="type-badge" title="${escapeHtml(types.join(' / '))}">${escapeHtml(typeText(w))}</span>
         ${w.pinned ? '<span class="pin-badge">置顶</span>' : ''}
-        <button class="fav-star ${isFav(w.id) ? 'active' : ''}" data-fav="${w.id}" title="收藏">★</button>
+        <button class="fav-star ${isFav(w.id) ? 'active' : ''}" data-fav="${w.id}" title="收藏">${ic('fav')}</button>
       </div>
       <div class="card-body">
         <div class="card-title">${escapeHtml(w.title)}</div>
@@ -768,7 +768,7 @@ function listHtml(w) {
         <span class="row-stat">👁 <b>${w.views}</b></span>
         ${cc ? `<span class="row-stat">💬 <b class="cmt-num" data-comment-count="${w.id}" data-count="${cc}" data-prefix="">${cc}</b></span>` : ''}
       </div>
-      <button class="row-fav ${isFav(w.id) ? 'active' : ''}" data-fav="${w.id}" title="收藏">★</button>
+      <button class="row-fav ${isFav(w.id) ? 'active' : ''}" data-fav="${w.id}" title="收藏">${ic('fav')}</button>
     </div>`;
 }
 
@@ -3925,7 +3925,7 @@ async function loadBlockedUsers(box) {
     if (!list.length) { box.innerHTML = '<div class="blocked-empty">还没有拉黑任何作者</div>'; return; }
     box.innerHTML = list.map(u => `
       <div class="blocked-item" data-name="${escapeHtml(u.username)}">
-        <span class="blocked-avatar">👤</span>
+        <span class="blocked-avatar">${ic('user', 22)}</span>
         <div class="blocked-main">
           <div class="blocked-title">@${escapeHtml(u.nickname)}</div>
           <div class="blocked-meta">现有 ${u.works} 件作品对你隐藏（含以后新发的）</div>

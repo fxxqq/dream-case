@@ -2144,3 +2144,22 @@ body.on-work .load-more-wrap { display: none !important; }
 /* 领奖台造型扁宽，按 1em 会显得比旁边图标小一圈，单独放一档 */
 .nav-btn .ico[data-ico="rank"] { width: 1.35em; height: 1.35em; vertical-align: -0.28em; }
 .page-title .ico[data-ico="rank"] { width: 1.15em; height: 1.15em; vertical-align: -0.22em; }
+
+/* ---- 收藏紫星 / 用户图标的两态与对齐（ic() 输出裸 svg，选择器不带 .ico） ---- */
+.fav-star svg, .row-fav svg { width: 16px; height: 16px; display: block; }
+.fav-star { display: inline-flex; align-items: center; justify-content: center; }
+.row-fav { display: inline-flex; align-items: center; justify-content: center; }
+.fav-star svg, .row-fav svg, .btn-fav svg {
+  filter: grayscale(1); opacity: .5; transition: filter .15s, opacity .15s;
+}
+.fav-star.active svg, .row-fav.active svg, .btn-fav.faved svg {
+  filter: none; opacity: 1;
+}
+.fav-star.active, .row-fav:hover { color: var(--primary); }
+.row-fav.active { color: var(--primary); border-color: #b9b3f0; background: #f3f1ff; }
+.fav-star.active { background: rgba(255,255,255,.92); }
+.btn-fav { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.btn-fav.faved { background: #5b5bd6; border-color: #5b5bd6; color: #fff; }
+.btn-fav.faved svg { filter: brightness(0) invert(1); }
+.user-chip { display: inline-flex; align-items: center; gap: 5px; }
+.user-chip svg { width: 17px; height: 17px; }
