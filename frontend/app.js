@@ -122,8 +122,8 @@ function typeText(w) {
   return typesOf(w).map(t => `${TYPE_ICONS[t] || '✨'} ${t}`).join(' · ');
 }
 function linkLabelOf(types) {
-  for (const t of types) if (LINK_LABEL[t]) return LINK_LABEL[t];
-  return '🔗 访问作品';
+  for (const t of types) if (LINK_LABEL[t]) return LINK_LABEL[t].replace(/^[^A-Za-z\u4e00-\u9fa5]+/, '');
+  return '访问作品';
 }
 // ---------- 按形态的多个链接（多平台应用：iOS/Android/macOS… 各填各的） ----------
 function linkConfOf(t) {
@@ -306,7 +306,7 @@ function renderDetailFav(id) {
   const el = document.getElementById('detailFav');
   if (!el) return;
   const faved = isFav(id);
-  el.innerHTML = faved ? ic('fav') + ' 已收藏' : ic('fav') + ' 收藏';
+  el.innerHTML = `<span class="ico b-ico">${ic('fav')}</span> ${faved ? '已收藏' : '收藏'}`;
   el.classList.toggle('faved', faved);
 }
 
@@ -1128,7 +1128,7 @@ async function loadFeatured() {
           ${w.intro ? `<div class="featured-intro">${escapeHtml(w.intro)}</div>` : ''}
           <div class="featured-meta"><span class="ico s-ico">${ic('eye')}</span>${w.pv7 || 0} 次打开 · <span class="ico s-ico">${ic('person')}</span>${w.uv7 || 0} 访客 · <span class="ico s-ico">${ic('star')}</span>${w.favs || 0} 收藏</div>
         </div>
-        <span class="feat-arrow">↗</span>
+        <span class="feat-arrow"><span class="ico">${ic('arrowout')}</span></span>
       </div>`).join('');
     row.querySelectorAll('.featured-card').forEach(el =>
       el.addEventListener('click', () => openWork(el.dataset.id)));
@@ -1714,8 +1714,8 @@ async function openWork(id, push = true) {
     const siteUrl = String(w.site || '').trim();
     if (siteUrl && !linkEntries.some(e => e.url === siteUrl)) linkEntries.unshift({ t: null, url: siteUrl, site: true });
     $('detailLinks').innerHTML = linkEntries.map(e =>
-      `<a class="btn-link" target="_blank" rel="noopener" href="${escapeHtml(e.url)}">${
-        e.site ? '🏠 官网' : e.t ? escapeHtml(LINK_LABEL[e.t] || '🔗 访问作品') : escapeHtml(linkLabelOf(tl))
+      `<a class="btn-link" target="_blank" rel="noopener" href="${escapeHtml(e.url)}"><span class="ico b-ico">${ic(e.site ? 'globe' : 'link')}</span> ${
+        e.site ? '官网' : e.t ? escapeHtml((LINK_LABEL[e.t] || '访问作品').replace(/^[^A-Za-z\u4e00-\u9fa5]+/, '')) : escapeHtml(linkLabelOf(tl))
       }</a>`).join('');
 
     // （源码入口已上移到标题标签行 badge-repo，按钮行不再重复放）
@@ -1781,7 +1781,7 @@ async function openWork(id, push = true) {
     const blockedAuthor = state.user && (state.blockedUsers || []).includes(w.author);
     $('blockAuthor').style.display = (!canManage && state.user && w.claimed && w.author && w.author !== '匿名')
       ? 'inline-block' : 'none';
-    $('blockAuthor').textContent = blockedAuthor ? '↩ 已拉黑作者 · 恢复' : '⛔ 拉黑作者';
+    $('blockAuthor').innerHTML = `<span class="ico b-ico">${ic('block')}</span> ${blockedAuthor ? '已拉黑作者 · 恢复' : '拉黑作者'}`;
 
     // 站内宣传位：自己的作品不给自己展示（换了作品重开详情要重算一次）
     renderAdSlot(document.querySelector('.ad-slot-detail'), 'detail');
@@ -3194,7 +3194,7 @@ async function loadGuide() {
           <h3>${p.emoji || '🔗'} ${escapeHtml(p.name)}</h3>
           <span class="guide-region">${escapeHtml(p.region || '')}</span>
         </div>
-        <a class="guide-go" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">去投稿 ↗</a>
+        <a class="guide-go" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">去投稿 <span class="ico b-ico">${ic('arrowout')}</span></a>
       </div>
       <p class="guide-fits"><b>适合投：</b>${escapeHtml(p.fits || '')}</p>
       <p class="guide-tip">${escapeHtml(p.tip || '')}</p>
@@ -3402,7 +3402,7 @@ function renderPromoKit() {
     ? `${escapeHtml(p.region || '')} · 适合投：${escapeHtml((p.fits || '').slice(0, 60))}`
     : '通用模板';
   const go = $('pkGo');
-  if (p) { go.href = p.url; go.style.display = ''; go.textContent = `去 ${p.name.split(' · ')[0]} 投稿 ↗`; }
+  if (p) { go.href = p.url; go.style.display = ''; go.innerHTML = `去 ${escapeHtml(p.name.split(' · ')[0])} 投稿 <span class="ico b-ico">${ic('arrowout')}</span>`; }
   else { go.style.display = 'none'; }
 }
 

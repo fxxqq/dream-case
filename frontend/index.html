@@ -531,13 +531,13 @@
         <div class="detail-stats" id="detailStats"></div>
 
         <div class="detail-actions">
-          <button class="btn-like" id="detailLike">♥ 点赞 <span id="detailLikes">0</span></button>
+          <button class="btn-like" id="detailLike"><i class="ico b-ico" data-ico="heart"></i> 点赞 <span id="detailLikes">0</span></button>
           <button class="btn-like btn-fav" id="detailFav" title="收藏后可在顶部「收藏」里找到"><i class="ico" data-ico="fav"></i> 收藏</button>
-          <button class="btn-share" id="shareCardBtn" title="生成一张带二维码的分享图，发朋友圈/小红书都行">🖼 分享卡片</button>
-          <button class="btn-share btn-pack" id="promoKitBtn" title="按平台生成投稿文案，复制就能去外站投">📣 外宣包</button>
+          <button class="btn-share" id="shareCardBtn" title="生成一张带二维码的分享图，发朋友圈/小红书都行"><i class="ico b-ico" data-ico="sharecard"></i> 分享卡片</button>
+          <button class="btn-share btn-pack" id="promoKitBtn" title="按平台生成投稿文案，复制就能去外站投"><i class="ico b-ico" data-ico="megaphone"></i> 外宣包</button>
           <span id="detailLinks" class="detail-links"></span>
-          <button class="btn-link btn-code" id="detailRedeem" style="display:none">🎁 兑换码</button>
-          <button class="btn-ghost btn-code-manage" id="detailCodes" style="display:none">🎟 管理兑换码</button>
+          <button class="btn-link btn-code" id="detailRedeem" style="display:none"><i class="ico b-ico" data-ico="gift"></i> 兑换码</button>
+          <button class="btn-ghost btn-code-manage" id="detailCodes" style="display:none"><i class="ico b-ico" data-ico="ticket"></i> 管理兑换码</button>
         </div>
 
         <div class="detail-qr" id="detailQrBox" style="display:none">
@@ -553,8 +553,8 @@
           <div class="comment-form" id="commentForm">
             <div class="comment-form-top">
               <div class="comment-kind" id="commentKind">
-                <button type="button" class="ck-btn active" data-kind="comment">💬 评论</button>
-                <button type="button" class="ck-btn" data-kind="question">❓ 提问</button>
+                <button type="button" class="ck-btn active" data-kind="comment"><i class="ico ck-ico" data-ico="chat"></i> 评论</button>
+                <button type="button" class="ck-btn" data-kind="question"><i class="ico ck-ico" data-ico="question"></i> 提问</button>
               </div>
               <input type="text" id="commentNickname" class="comment-nick" maxlength="20" placeholder="昵称（可不填）" />
             </div>
@@ -576,14 +576,14 @@
         </div>
 
         <div class="detail-foot">
-          <button class="btn-report" id="editWork" style="display:none">✏️ 编辑</button>
-          <button class="btn-report" id="delWork" style="display:none">🗑 删除作品</button>
-          <button class="btn-report" id="blockWork" style="display:none" title="不再在列表里看到这个作品">🚫 屏蔽</button>
-          <button class="btn-report" id="blockAuthor" style="display:none" title="这个作者的每件作品都不再展示给我（含以后新发的）">⛔ 拉黑作者</button>
-          <button class="btn-report" id="openReport">⚠ 投诉</button>
-          <button class="btn-report" id="copyLinkBtn">🔗 复制链接</button>
+          <button class="btn-report" id="editWork" style="display:none"><i class="ico b-ico" data-ico="edit"></i> 编辑</button>
+          <button class="btn-report" id="delWork" style="display:none"><i class="ico b-ico" data-ico="trash"></i> 删除作品</button>
+          <button class="btn-report" id="blockWork" style="display:none" title="不再在列表里看到这个作品"><i class="ico b-ico" data-ico="block"></i> 屏蔽</button>
+          <button class="btn-report" id="blockAuthor" style="display:none" title="这个作者的每件作品都不再展示给我（含以后新发的）"><i class="ico b-ico" data-ico="block"></i> 拉黑作者</button>
+          <button class="btn-report" id="openReport"><i class="ico b-ico" data-ico="warn"></i> 投诉</button>
+          <button class="btn-report" id="copyLinkBtn"><i class="ico b-ico" data-ico="link"></i> 复制链接</button>
           <a class="btn-report" id="fullPageBtn" target="_blank" rel="noopener"
-             title="在新标签打开完整页面：可分享给朋友，也能被搜索引擎收录">↗ 查看完整主页</a>
+             title="在新标签打开完整页面：可分享给朋友，也能被搜索引擎收录"><i class="ico b-ico" data-ico="arrowout"></i> 查看完整主页</a>
         </div>
       </div>
     </div>
@@ -815,7 +815,7 @@
       <pre class="pk-copy" id="pkCopy"></pre>
       <div class="pk-actions">
         <button class="btn-primary" id="pkCopyBtn">📋 复制文案</button>
-        <a class="btn-ghost pk-go" id="pkGo" target="_blank" rel="noopener">去投稿 ↗</a>
+        <a class="btn-ghost pk-go" id="pkGo" target="_blank" rel="noopener">去投稿 <i class="ico b-ico" data-ico="arrowout"></i></a>
       </div>
     </div>
   </div>

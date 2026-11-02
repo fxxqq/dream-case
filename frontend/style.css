@@ -662,6 +662,9 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   border-radius: 10px; padding: 6px; background: #fff;
 }
 .detail-qr p { font-size: 12px; color: var(--muted); margin-top: 6px; }
+/* 详情页操作按钮里的 SVG 图标：略放半档，跟字色走（红底白字/紫底白字自动适配） */
+.detail-actions .b-ico, .detail-foot .b-ico, .btn-code .b-ico { font-size: 1.1em; }
+.ck-btn .ck-ico { font-size: 1.05em; vertical-align: -0.14em; margin-right: 2px; }
 .btn-report {
   margin-top: 0; background: none; border: none; color: var(--muted);
   font-size: 12.5px; cursor: pointer; text-decoration: underline; padding: 0;
