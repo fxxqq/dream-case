@@ -644,12 +644,12 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 /* ========== v3 新增样式 ========== */
 .header-inner { gap: 16px; }
 .logo { text-decoration: none; white-space: nowrap; }
-.main-nav { display: flex; gap: 4px; flex: 1; align-items: center; }
-.main-nav .nav-btn { text-decoration: none; line-height: 1.4; }
+.main-nav { display: flex; gap: 4px; flex: 1; align-items: center; min-width: 0; }
+.main-nav .nav-btn { text-decoration: none; line-height: 1.4; white-space: nowrap; flex: none; }
 .nav-btn.active { color: var(--primary); background: #eeeefc; font-weight: 600; }
 
 .search-box {
-  position: relative; flex: 0 0 260px; display: flex; align-items: center;
+  position: relative; flex: 0 1 260px; min-width: 130px; display: flex; align-items: center;
 }
 .search-box input {
   width: 100%; padding: 8px 12px 8px 32px; border: 1px solid var(--border);
@@ -992,6 +992,19 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   .main-nav { order: 4; width: 100%; overflow-x: auto; }
 }
 
+/* PC 中间宽度：头部元素多，整体收紧间距防挤爆（导航不许竖排换行） */
+@media (min-width: 821px) and (max-width: 1360px) {
+  .header-inner { gap: 10px; }
+  .main-nav { gap: 0; }
+  .main-nav .nav-btn { padding: 6px 8px; font-size: 13.5px; }
+  .search-box { flex-basis: 180px; }
+  .search-box input { padding: 7px 10px 7px 30px; font-size: 13px; }
+  .auth-box { gap: 2px; }
+  .auth-box .link-btn { font-size: 12.5px; padding: 4px 4px; }
+  .user-chip { padding: 6px 10px; font-size: 13px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+  .header-inner > .btn-primary { padding: 8px 13px; font-size: 13.5px; }
+}
+
 /* 手机端头部紧凑版：logo+提交按钮一行 / 搜索一行 / 导航+用户一行 */
 @media (max-width: 640px) {
   .header-inner { flex-wrap: wrap; height: auto; padding: 8px 0; gap: 8px 10px; }
@@ -1140,6 +1153,27 @@ body.on-work .load-more-wrap { display: none !important; }
   padding: 7px 14px; border-radius: 999px; white-space: nowrap;
 }
 .user-chip:hover { background: #e8e9f5; }
+/* 用户下拉菜单：把数据与推广/改密码/退出等收进来，给头部减负 */
+.user-menu { position: relative; }
+.user-menu .user-chip { border: none; cursor: pointer; font-family: inherit; max-width: 200px; overflow: hidden; }
+.um-caret { font-size: 10px; color: var(--muted); transition: transform .15s; }
+.user-menu.open .um-caret { transform: rotate(180deg); }
+.user-dropdown {
+  display: none; position: absolute; right: 0; top: calc(100% + 8px); z-index: 60;
+  min-width: 168px; padding: 6px;
+  background: #fff; border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(20, 20, 40, .14);
+}
+.user-menu.open .user-dropdown { display: block; }
+.ud-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 9px 12px; border: none; border-radius: 8px;
+  background: none; font-size: 13.5px; color: var(--text);
+  cursor: pointer; text-align: left; text-decoration: none; white-space: nowrap;
+}
+.ud-item:hover { background: #f1f2fb; color: var(--primary); }
+.ud-item.ud-danger { color: var(--danger); }
+.ud-item.ud-danger:hover { background: #fdf0f0; color: var(--danger); }
 .link-btn {
   background: none; border: none; color: var(--muted); font-size: 13px; cursor: pointer; padding: 4px 6px;
 }

@@ -276,13 +276,32 @@ function renderAuthBox() {
     const ck = state.user.checkin || {};
     const ckDone = !!ck.done;
     box.innerHTML =
-      `<a class="user-chip" href="/u/${encodeURIComponent(state.user.username)}" data-nav title="我的主页">👤 ${escapeHtml(state.user.nickname || state.user.username)}</a>` +
       `<button class="link-btn checkin-entry${ckDone ? ' is-done' : ''}" id="checkinBtn"
          title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天` : `每日签到领 ${ck.todayPoints || 2} 分`}"><span class="lb-ico">📅</span>${ckDone ? `已签${ck.streak > 1 ? ' ' + ck.streak + '天' : ''}` : '签到'}</button>` +
-      `<button class="link-btn stats-entry" id="statsBtn" title="我的作品数据与站内推广"><span class="lb-ico">📊</span>数据与推广</button>` +
-      (n ? `<button class="link-btn blocked-entry" id="blockedBtn" title="查看已屏蔽的作品和拉黑的作者">🚫 ${n}</button>` : '') +
-      `<button class="link-btn" id="passBtn" title="修改登录密码">🔑 改密码</button>` +
-      `<button class="link-btn" id="logoutBtn">退出</button>`;
+      `<div class="user-menu" id="userMenu">
+        <button class="user-chip" id="userMenuBtn" title="个人菜单">👤 ${escapeHtml(state.user.nickname || state.user.username)}<span class="um-caret">▾</span></button>
+        <div class="user-dropdown" id="userDropdown">
+          <a class="ud-item" href="/u/${encodeURIComponent(state.user.username)}" data-nav>🏠 我的主页</a>
+          <button class="ud-item" id="statsBtn">📊 数据与推广</button>
+          ${n ? '<button class="ud-item" id="blockedBtn">🚫 屏蔽管理</button>' : ''}
+          <button class="ud-item" id="passBtn">🔑 改密码</button>
+          <button class="ud-item ud-danger" id="logoutBtn">⎋ 退出登录</button>
+        </div>
+      </div>`;
+    // 下拉菜单：点 chip 开合，点外面 / Esc 关闭（document 监听只挂一次）
+    const menu = $('userMenu');
+    $('userMenuBtn').onclick = e => { e.stopPropagation(); menu.classList.toggle('open'); };
+    menu.querySelectorAll('.ud-item').forEach(el => el.addEventListener('click', () => menu.classList.remove('open')));
+    if (!document.__userMenuOutside) {
+      document.__userMenuOutside = true;
+      document.addEventListener('click', e => {
+        const m = document.querySelector('.user-menu.open');
+        if (m && !m.contains(e.target)) m.classList.remove('open');
+      });
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { const m = document.querySelector('.user-menu.open'); if (m) m.classList.remove('open'); }
+      });
+    }
     $('logoutBtn').onclick = doLogout;
     $('statsBtn').onclick = openStats;
     $('checkinBtn').onclick = doCheckin;
