@@ -20,6 +20,7 @@
       <nav class="main-nav">
         <a class="nav-btn" href="/wish" data-nav>🍶 造梦酒肆</a>
         <a class="nav-btn" href="/rank" data-nav>榜单</a>
+        <a class="nav-btn" href="/guide" data-nav>📣 外宣指南</a>
         <button class="nav-btn" id="favBtn">⭐ 收藏</button>
       </nav>
 
@@ -146,6 +147,21 @@
       </div>
       <div class="wish-list" id="wishList"></div>
       <button class="wish-more" id="wishMore" style="display:none">加载更多想法 →</button>
+    </section>
+
+    <!-- 外宣指南：适合独立开发者发新品的地方 + 投稿文案模板 -->
+    <section id="guideView" style="display:none">
+      <div class="page-head wish-page-head">
+        <h2 class="page-title">📣 外宣指南</h2>
+        <p>一处发布，到处露脸——8 个适合独立开发者发新品的地方，附投稿入口和避坑要点</p>
+      </div>
+      <div class="guide-howto">
+        <div class="guide-step"><b>1</b><span>打开任意作品详情，点「📣 外宣包」，按平台生成投稿文案</span></div>
+        <div class="guide-step"><b>2</b><span>复制文案 + 保存作品截图，去对应平台投稿（下面每个都有直达入口）</span></div>
+        <div class="guide-step"><b>3</b><span>别一把梭：每个平台重写开头一句，社区都看得出复制粘贴</span></div>
+      </div>
+      <div class="guide-list" id="guideList"></div>
+      <p class="guide-note" id="guideNote"></p>
     </section>
 
     <!-- 作者主页 -->
@@ -501,6 +517,7 @@
           <button class="btn-like" id="detailLike">♥ 点赞 <span id="detailLikes">0</span></button>
           <button class="btn-like btn-fav" id="detailFav" title="收藏后可在顶部「收藏」里找到">☆ 收藏</button>
           <button class="btn-share" id="shareCardBtn" title="生成一张带二维码的分享图，发朋友圈/小红书都行">🖼 分享卡片</button>
+          <button class="btn-share btn-pack" id="promoKitBtn" title="按平台生成投稿文案，复制就能去外站投">📣 外宣包</button>
           <span id="detailLinks" class="detail-links"></span>
           <button class="btn-link btn-code" id="detailRedeem" style="display:none">🎁 兑换码</button>
           <button class="btn-ghost btn-code-manage" id="detailCodes" style="display:none">🎟 管理兑换码</button>
@@ -765,6 +782,23 @@
       <div class="share-actions">
         <button class="btn-primary" id="shareDownload">⬇ 保存图片</button>
         <button class="btn-report" id="shareCopyText">📋 复制文案</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-mask" id="promoKitModal" style="display:none">
+    <div class="modal pk-modal">
+      <div class="modal-head">
+        <h2>📣 外宣包</h2>
+        <button class="close-btn" id="closePromoKit">✕</button>
+      </div>
+      <p class="pk-tip">选一个平台，文案已按它的口味排好版，复制过去就能投。</p>
+      <div class="pk-tabs" id="pkTabs" role="group" aria-label="选择平台"></div>
+      <div class="pk-meta" id="pkMeta"></div>
+      <pre class="pk-copy" id="pkCopy"></pre>
+      <div class="pk-actions">
+        <button class="btn-primary" id="pkCopyBtn">📋 复制文案</button>
+        <a class="btn-ghost pk-go" id="pkGo" target="_blank" rel="noopener">去投稿 ↗</a>
       </div>
     </div>
   </div>

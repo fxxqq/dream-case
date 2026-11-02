@@ -1363,21 +1363,24 @@ function navigate(path) {
 }
 
 function closeAllViews() {
-  ['homeView', 'rankView', 'wishView', 'authorView'].forEach(id => { $(id).style.display = 'none'; });
+  ['homeView', 'rankView', 'wishView', 'guideView', 'authorView'].forEach(id => { $(id).style.display = 'none'; });
   hideModal(detailModal);
 }
 
-// 导航高亮：榜单页亮「榜单」，造梦酒肆页亮「造梦酒肆」，其余按当前排序/收藏态亮对应按钮
+// 导航高亮：榜单页亮「榜单」，造梦酒肆页亮「造梦酒肆」，外宣指南页亮「外宣指南」，其余按当前排序/收藏态亮对应按钮
 function updateNavActive() {
   const onRank = location.pathname === '/rank';
   const onWish = location.pathname === '/wish';
+  const onGuide = location.pathname === '/guide';
   const rankLink = document.querySelector('.nav-btn[href="/rank"]');
   if (rankLink) rankLink.classList.toggle('active', onRank);
   const wishLink = document.querySelector('.nav-btn[href="/wish"]');
   if (wishLink) wishLink.classList.toggle('active', onWish);
+  const guideLink = document.querySelector('.nav-btn[href="/guide"]');
+  if (guideLink) guideLink.classList.toggle('active', onGuide);
   document.querySelectorAll('#sortToggle .st-btn').forEach(b =>
-    b.classList.toggle('active', !onRank && !onWish && b.dataset.sort === state.sort));
-  $('favBtn').classList.toggle('active', !onRank && !onWish && state.favoritesOnly);
+    b.classList.toggle('active', !onRank && !onWish && !onGuide && b.dataset.sort === state.sort));
+  $('favBtn').classList.toggle('active', !onRank && !onWish && !onGuide && state.favoritesOnly);
 }
 
 // ---------- 分享归因：?ref= 落地 ----------
@@ -1519,6 +1522,14 @@ function route() {
     restoreScroll();
     return;
   }
+  if (path === '/guide') {
+    $('guideView').style.display = 'block';
+    setTitle('外宣指南');
+    loadGuide();
+    updateNavActive();
+    restoreScroll();
+    return;
+  }
   $('homeView').style.display = 'block';
   setTitle(state.q ? `搜索「${state.q}」` : '');
   if (!keepList) {
@@ -1644,6 +1655,10 @@ async function openWork(id, push = true) {
 
     // 兑换码按钮：作品挂了码就显示领取入口；作者/管理员显示管理入口
     renderCodeButtons(w);
+
+    // 外宣包：把作品信息拼成各平台的投稿文案（所有人都能用，不涉及权限）
+    const pkBtn = $('promoKitBtn');
+    if (pkBtn) { pkBtn.style.display = ''; pkBtn.onclick = () => openPromoKit(w); }
 
     // 完整页面（独立 URL，可分享、可被搜索引擎收录）
     $('fullPageBtn').href = '/w/' + encodeURIComponent(w.id) + '?full=1';
@@ -3085,7 +3100,275 @@ function setupWish() {
   $('ideaDoneModal').onclick = e => { if (e.target === $('ideaDoneModal')) hideModal($('ideaDoneModal')); };
 }
 
-// ---------- 站内宣传（积分兑换，展示 + 点击双计费） ----------
+// ---------- 外宣指南 + 外宣包 ----------
+// 平台清单来自服务端 /api/platforms（promo-guide.js 单一数据源），这里只负责渲染和按平台拼投稿文案。
+let guideData = null;
+
+// 平台清单只拉一次，指南页和外宣包共用
+async function loadPlatforms() {
+  if (guideData) return guideData;
+  try { guideData = await (await fetch('/api/platforms')).json(); }
+  catch { guideData = null; }
+  return guideData;
+}
+
+async function loadGuide() {
+  const list = $('guideList');
+  const data = await loadPlatforms();
+  if (!data) { list.innerHTML = '<div class="empty">平台清单加载失败，刷新再试</div>'; return; }
+  const ps = data.platforms || [];
+  list.innerHTML = ps.map((p, i) => `
+    <article class="guide-card">
+      <div class="guide-card-head">
+        <span class="guide-no">${i + 1}</span>
+        <div class="guide-title-wrap">
+          <h3>${p.emoji || '🔗'} ${escapeHtml(p.name)}</h3>
+          <span class="guide-region">${escapeHtml(p.region || '')}</span>
+        </div>
+        <a class="guide-go" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">去投稿 ↗</a>
+      </div>
+      <p class="guide-fits"><b>适合投：</b>${escapeHtml(p.fits || '')}</p>
+      <p class="guide-tip">${escapeHtml(p.tip || '')}</p>
+      <div class="guide-tags">${(p.tags || []).map(t => `<span>${escapeHtml(t)}</span>`).join('')}</div>
+    </article>`).join('');
+  $('guideNote').textContent = guideData.extra || '';
+}
+
+// 作品 → 投稿文案
+function promoBase(w) {
+  const types = (w.types && w.types.length ? w.types : [w.type]).filter(Boolean).join(' / ') || '作品';
+  const one = String(w.intro || w.prompt || '').replace(/\s+/g, ' ').trim();
+  const page = location.origin + '/w/' + w.id;
+  const links = w.links || {};
+  const firstLink = w.site || Object.values(links).filter(Boolean)[0] || w.link || page;
+  return {
+    name: w.title,
+    types,
+    one: one || '（详情页里还没有简介，建议先补一句）',
+    short: one.slice(0, 40) || w.title,
+    cat: w.category || '',
+    page,
+    link: firstLink,
+    repo: w.repo || ''
+  };
+}
+
+// 每个平台一种排版；key 与 promo-guide.js 保持一致，缺 key 时用通用模板兜底
+const PROMO_TPL = {
+  producthunt: b => `【Product Hunt 投放素材】
+
+Tagline（60 字符内，英文最好）
+${b.name} – ${b.short}
+
+一句话介绍
+${b.name} 是一个${b.cat}类的${b.types}。${b.one}
+
+First comment（发布后自己回第一条，别浪费）
+Hi hunters! I built ${b.name} because …
+· 解决什么问题：
+· 和同类比不一样在哪：
+· 价格 / 是否免费：
+
+链接：${b.link}
+详情页（截图可直接从这里取）：${b.page}
+
+封面建议 1270×760，再附 3 张真实截图或 1 段 GIF。`,
+
+  hn: b => `【Hacker News · Show HN】
+
+Title（固定格式，一句话说清它是什么）
+Show HN: ${b.name} – <one-line English pitch>
+
+正文（英文短句即可，别用营销词）
+${b.one}
+
+What it does: <两三句，具体到能做什么>
+How it's built: <技术栈一句话，HN 很吃这个>
+Link: ${b.link}${b.repo ? `\nSource: ${b.repo}` : ''}
+
+提醒：被质疑时在评论区老实回答技术细节，比帖子本身更能拉分。`,
+
+  v2ex: b => `【V2EX · 分享创造】
+
+节点：分享创造
+标题：${b.name} —— ${b.short}
+
+正文：
+大家好，我做了 ${b.name}，一个${b.cat}类的${b.types}。
+
+${b.one}
+
+起因是：（写一句你自己遇到的痛点，越具体越好）
+
+现在能做什么：
+· 
+· 
+
+地址：${b.link}
+${b.repo ? `源码：${b.repo}\n` : ''}站内详情：${b.page}
+
+欢迎拍砖，问题我在评论区回。`,
+
+  sspai: b => `【少数派投稿大纲】
+
+标题建议：${b.name}：<一句话说出它帮你省掉了什么麻烦>
+
+一、我原来被这件事怎么折磨（真实场景）
+二、它现在能做什么（配 3~5 张真实使用截图）
+三、我平时怎么用它（写一个具体场景，比如周一早上整理素材）
+四、不适合谁（诚实写边界，编辑很看重这个）
+
+开头段落可以直接用：
+${b.one}
+
+素材：${b.page}（截图、GIF 都在详情页里）`,
+
+  appinn: b => `【小众软件自荐】
+
+主题：自荐一个小工具：${b.name}（${b.types}）
+
+你好，我是 ${b.name} 的作者。
+
+一句话：${b.one}
+
+· 平台：${b.types}
+· 价格：<免费 / 付费，写清楚>
+· 地址：${b.link}
+· 截图：<附 2~3 张>
+
+简短就好，别写成长篇软文。`,
+
+  coolapk: b => `【酷安发布素材】
+
+应用名：${b.name}
+一句话简介（30 字内）：${b.short}
+
+详细介绍：
+${b.one}
+
+· 主要功能：
+· 权限说明：<为什么需要这些权限，酷安用户很在意>
+· 隐私政策：<链接>
+
+首次版本更新说明：
+1. 首个版本上线
+
+下载 / 地址：${b.link}`,
+
+  jike: b => `【即刻文案】
+
+${b.name}，${b.short}
+
+${b.one}
+
+做了 X 天，踩到的坑：
+· 
+· 
+
+链接放评论区，主楼先讲故事。
+
+#独立开发 #产品 #${b.cat}`,
+
+  hellogithub: b => `【HelloGitHub 自荐 issue】
+
+标题：[自荐] ${b.name} - ${b.short}
+
+正文：
+· 项目地址：${b.repo || b.link}
+· 一句话介绍：${b.one}
+· 适用人群：
+· 亮点（3 条）：
+  1. 
+  2. 
+· 是否有中文文档：是 / 否
+· 截图：<附 1~2 张>
+
+README 记得补一句话简介 + 截图 + 快速上手命令，这是被收录的硬门槛。`
+};
+
+const PROMO_GENERIC = b => `【通用投稿文案】
+
+标题：${b.name} —— ${b.short}
+
+${b.one}
+
+· 形态：${b.types}
+· 分类：${b.cat}
+· 地址：${b.link}
+${b.repo ? `· 源码：${b.repo}\n` : ''}· 详情：${b.page}`;
+
+let pkState = { work: null, key: '', touched: false };
+
+function openPromoKit(w) {
+  if (!w) return;
+  pkState.work = w;
+  pkState.touched = false;
+  const ps = (guideData && guideData.platforms) || [];
+  pkState.key = ps.length ? ps[0].key : 'generic';
+  showModal($('promoKitModal'));
+  renderPromoKit();
+  // 平台清单还没拉到：弹窗先出来，拉完再补上标签和对应模板（用户没手动选过才自动切到第一个）
+  if (!guideData) loadPlatforms().then(() => {
+    const list = (guideData && guideData.platforms) || [];
+    if (!pkState.touched && list.length) pkState.key = list[0].key;
+    renderPromoKit();
+  });
+}
+
+function renderPromoKit() {
+  const w = pkState.work;
+  if (!w) return;
+  const ps = (guideData && guideData.platforms) || [];
+  $('pkTabs').innerHTML = ps.map(p =>
+    `<button type="button" class="pk-tab${p.key === pkState.key ? ' active' : ''}" data-key="${escapeHtml(p.key)}">
+       <span>${p.emoji || '🔗'}</span>${escapeHtml(p.name.split(' · ')[0])}
+     </button>`).join('');
+  const p = ps.find(x => x.key === pkState.key);
+  const b = promoBase(w);
+  const tpl = PROMO_TPL[pkState.key];
+  $('pkCopy').textContent = (tpl || PROMO_GENERIC)(b);
+  $('pkMeta').innerHTML = p
+    ? `${escapeHtml(p.region || '')} · 适合投：${escapeHtml((p.fits || '').slice(0, 60))}`
+    : '通用模板';
+  const go = $('pkGo');
+  if (p) { go.href = p.url; go.style.display = ''; go.textContent = `去 ${p.name.split(' · ')[0]} 投稿 ↗`; }
+  else { go.style.display = 'none'; }
+}
+
+async function copyPromoText() {
+  const text = $('pkCopy').textContent || '';
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('文案已复制，去对应平台粘贴即可 📋');
+  } catch {
+    // 老浏览器 / 非 https 的兜底
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); showToast('文案已复制 📋'); }
+    catch { showToast('复制失败，手动选中复制一下'); }
+    ta.remove();
+  }
+}
+
+let pkBound = false;
+function setupPromoKit() {
+  if (pkBound) return;
+  pkBound = true;
+  $('closePromoKit').onclick = () => hideModal($('promoKitModal'));
+  $('promoKitModal').onclick = e => { if (e.target === $('promoKitModal')) hideModal($('promoKitModal')); };
+  $('pkCopyBtn').onclick = copyPromoText;
+  $('pkTabs').addEventListener('click', e => {
+    const b = e.target.closest('.pk-tab');
+    if (!b) return;
+    pkState.key = b.dataset.key;
+    pkState.touched = true;
+    renderPromoKit();
+  });
+}
 // 规则：用分享积分买「被看到」的次数，每真实曝光一次扣 1 次，投完自动下线；
 // 内容只能取自自己名下、已过审的作品，不能自定义文案或挂站外链接。
 const REDEEM_STATUS = {
@@ -4086,6 +4369,7 @@ async function init() {
   captureRef();   // 先处理 ?ref=：记下分享者并上报，再把参数从地址栏摘掉
   loadFooterFriends();  // 页脚友情链接（后台可配，空则不展示）
   loadFooterStats();    // 页脚站点 PV/UV + 提交作品引导
+  loadPlatforms();      // 外宣指南平台清单：顺手预取，详情页点「外宣包」时不用等
   // 支持 /?q=关键词 直接进入搜索结果（与站点搜索结构化数据一致）
   const q = (new URLSearchParams(location.search).get('q') || '').trim();
   if (q) {
@@ -4110,6 +4394,7 @@ async function init() {
   setupSubmitChoice();
   setupFeedback();
   setupInstall();
+  setupPromoKit();  // 外宣包弹窗（按钮在详情页，弹窗只需要绑一次）
   // 造梦酒肆是独立页面，进入 /wish 时再初始化（见 route）
   // 本周精选：滚动/窗口变化时同步箭头状态
   $('featRow').addEventListener('scroll', updateFeatNav, { passive: true });

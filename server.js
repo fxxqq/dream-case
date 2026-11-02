@@ -10,6 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const seo = require('./seo');
+const { PLATFORMS, EXTRA } = require('./promo-guide');
 
 const PORT = process.env.PORT || 3000;
 const REVIEW_MODE = process.env.REVIEW_MODE === '1'; // 打开后新投稿需审核
@@ -1735,6 +1736,9 @@ app.get('/api/type-meta', (req, res) => {
 });
 // 推荐位（工具/资源）
 app.get('/api/tools', (req, res) => res.json(tools.filter(t => t.active !== false)));
+
+// 外宣指南平台清单（前端「外宣指南」页与「外宣包」共用）
+app.get('/api/platforms', (req, res) => res.json({ platforms: PLATFORMS, extra: EXTRA }));
 
 // ---------- 广告（公开） ----------
 // 前台一次拿全量启用中的广告，自己按 slot 分发；返回体很小（每支广告只有几十字节）。
@@ -3933,8 +3937,57 @@ app.get('/wish', (req, res) => {
   sendHtml(res, shell(headHtml, isBotUa(req) ? block : '')); // 真人不输出 SEO 区块（SPA 自己渲染，避免闪现+塌陷）
 });
 
+// 外宣指南：适合独立开发者发新品的地方（服务端渲染，利于收录；前端另有 SPA 视图）
+app.get('/guide', (req, res) => {
+  const base = seo.baseUrl(req);
+  const headHtml = seo.head({
+    title: `外宣指南 - 8 个适合独立开发者发新品的地方 - ${seo.SITE_NAME}`,
+    description: truncateText(
+      '一处发布，到处露脸：Product Hunt、Hacker News、V2EX 分享创造、少数派、小众软件、酷安、即刻、HelloGitHub——每个平台的适合投什么、投稿入口、避坑要点，外加可一键复制的投稿文案模板。', 150),
+    keywords: '外宣指南,产品推广,独立开发者,发新品,Product Hunt,V2EX,少数派,小众软件,酷安,即刻,HelloGitHub,推广渠道',
+    canonical: base + '/guide',
+    type: 'website',
+    jsonLd: [
+      seo.breadcrumbLd(base, [{ name: '首页', href: '/' }, { name: '外宣指南' }]),
+      {
+        '@context': 'https://schema.org',
+        '@type': 'ItemList',
+        name: '适合独立开发者发新品的平台',
+        url: base + '/guide',
+        numberOfItems: PLATFORMS.length,
+        itemListElement: PLATFORMS.map((p, i) => ({
+          '@type': 'ListItem',
+          position: i + 1,
+          name: p.name,
+          url: p.url
+        }))
+      }
+    ]
+  });
 
-// 分类页 /c/:name 与形态页 /t/:name（服务端渲染，利于收录）
+  const block = `<div id="seoContent" class="seo-wrap">
+  ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name: '外宣指南' }])}
+  <div class="page-head">
+    <h1>📣 外宣指南</h1>
+    <p>一处发布，到处露脸——8 个适合独立开发者发新品的地方</p>
+  </div>
+  <ol class="seo-rank seo-guide">
+    ${PLATFORMS.map((p, i) => `<li>
+      <span class="rank-no">${i + 1}</span>
+      <div class="rank-main">
+        <div class="rank-title">${p.emoji} ${seo.esc(p.name)}</div>
+        <div class="rank-meta">${seo.esc(p.region)} · 适合：${seo.esc(p.fits)}</div>
+        <p class="seo-guide-tip">${seo.esc(p.tip)}</p>
+      </div>
+      <a class="rank-score" href="${seo.esc(p.url)}" target="_blank" rel="noopener nofollow">去投稿 →</a>
+    </li>`).join('')}
+  </ol>
+  <p class="seo-guide-note">${seo.esc(EXTRA)}</p>
+  <p class="seo-guide-note">在任意作品详情页点「📣 外宣包」，就能拿到按上面每个平台定制好的投稿文案，复制即可。</p>
+  <p class="seo-more"><a class="btn-ghost" href="/">← 返回首页</a></p>
+</div>`;
+  sendHtml(res, shell(headHtml, isBotUa(req) ? block : ''));
+});
 function listPageRoute(kind) {
   return (req, res) => {
     const base = seo.baseUrl(req);
