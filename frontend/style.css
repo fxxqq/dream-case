@@ -1225,6 +1225,7 @@ body.on-work .load-more-wrap { display: none !important; }
 .seo-related { padding-bottom: 40px; }
 .seo-related h2 { font-size: 16px; margin: 26px 0 12px; }
 .page-title { font-size: 24px; }
+.page-title .ico { margin-right: 9px; }
 
 /* ========== 作品「完整页面」（/w/:id?full=1） ========== */
 .seo-full .seo-article { max-width: 860px; }
