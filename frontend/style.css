@@ -607,6 +607,13 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .btn-fav { background: #fffaf0; color: #d97706; border: 1px solid #f3d9a4; }
 .btn-fav:hover { background: #fdf0d5; }
 .btn-fav.faved { background: #f59e0b; border-color: #f59e0b; color: #fff; }
+/* 分享卡片：与点赞/收藏同规格的浅紫胶囊，挂在动作区 */
+.btn-share {
+  background: #f3f1ff; color: var(--primary); border: 1px solid #d9d4f8;
+  padding: 10px 16px; border-radius: 10px; font-size: 14px; cursor: pointer;
+}
+.btn-share:hover { background: #eae6ff; }
+.detail-actions .btn-share { padding: 9px 14px; font-size: 13px; }
 
 /* 点赞 / 收藏 / 打开网站 一行放下，不换行 */
 .detail-actions { display: flex; gap: 8px; flex-wrap: wrap; }
