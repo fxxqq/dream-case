@@ -11,10 +11,11 @@
     <div class="container header-inner">
       <a class="logo" href="/" data-nav>✦ 造梦橱窗</a>
 
-      <div class="search-box">
+      <!-- role=search + name=q + autocomplete=off：告诉浏览器这是搜索框，别按用户名输入框配对自动填充账号 -->
+      <form class="search-box" role="search" onsubmit="return false;">
         <span class="search-icon">🔍</span>
-        <input id="searchInput" type="search" placeholder="搜索作品、作者、关键词…" />
-      </div>
+        <input id="searchInput" type="search" name="q" autocomplete="off" placeholder="搜索作品、作者、关键词…" />
+      </form>
 
       <nav class="main-nav">
         <a class="nav-btn" href="/wish" data-nav>✨ 许愿墙</a>
@@ -323,7 +324,7 @@
       </div>
       <div class="nick-body">
         <label class="nick-label" for="nickInput">昵称（2–16 个字）</label>
-        <input id="nickInput" class="nick-input" maxlength="16" placeholder="例如：做小程序的老张" />
+        <input id="nickInput" class="nick-input" maxlength="16" autocomplete="off" placeholder="例如：做小程序的老张" />
         <p class="nick-tip">
           登录账号 <b id="nickAccount"></b> 不会变——作品、收藏、作者主页都还是你的，
           只是页面上显示成这个昵称。<br />昵称 7 天可以改一次。
