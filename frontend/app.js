@@ -1,6 +1,9 @@
 // 造梦橱窗 - 前端逻辑
 'use strict';
 
+// 站点图标（统一在 /icons.js 里定义）：取不到就返回空串，不影响页面其他内容
+const ic = (name, size) => (window.Icons ? Icons.icon(name, size) : '');
+
 let CATEGORIES = ['全部'];
 let typeCounts = {}, catCounts = {}, totalWorks = 0; let osCounts = { open: 0, closed: 0 }; // 筛选下拉选项的计数
 let TYPES = ['全部', 'Web', 'iOS', 'Android', 'macOS', 'Windows', 'Linux', '小程序', '浏览器插件', '机器人', 'API', '其他'];
@@ -321,7 +324,7 @@ function renderAuthBox() {
     const unread = Number(state.user.unreadNotices || 0);
     box.innerHTML =
       `<button class="link-btn checkin-entry${ckDone ? ' is-done' : ' is-todo'}" id="checkinBtn"
-         title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天，明天再来` : `每日签到领 ${ck.todayPoints || 2} 分，连签 7 天有全勤奖`}"><span class="lb-ico">${ckDone ? '✓' : '📅'}</span>${ckDone ? `已签${ck.streak > 1 ? ' ' + ck.streak + ' 天' : ''}` : `签到 +${ck.todayPoints || 2}`}<span class="ck-pts">💎 ${pts}</span></button>` +
+         title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天，明天再来` : `每日签到领 ${ck.todayPoints || 2} 分，连签 7 天有全勤奖`}"><span class="lb-ico">${ckDone ? '✓' : `<span class="ico">${ic('checkin')}</span>`}</span>${ckDone ? `已签${ck.streak > 1 ? ' ' + ck.streak + ' 天' : ''}` : `签到 +${ck.todayPoints || 2}`}<span class="ck-pts">💎 ${pts}</span></button>` +
       `<button class="link-btn notice-entry${unread ? ' has-new' : ''}" id="noticeBtn" title="${unread ? unread + ' 条未读消息' : '站内消息'}"><span class="nb-ico">🔔</span><span class="nb-dot"${unread ? '' : ' style="display:none"'}>${unread > 99 ? '99+' : unread}</span></button>` +
       `<div class="user-menu" id="userMenu">
         <button class="user-chip" id="userMenuBtn" title="个人菜单">👤 ${escapeHtml(state.user.nickname || state.user.username)}<span class="um-caret">▾</span></button>
@@ -411,7 +414,7 @@ function checkinCardHtml(ck) {
   return `
     <div class="checkin-card${done ? ' is-done' : ''}">
       <div class="ck-head">
-        <div class="ck-title">📅 每日签到${ck.streak ? `<span class="ck-streak">连续 ${ck.streak} 天</span>` : ''}</div>
+        <div class="ck-title"><span class="ico">${ic('checkin')}</span> 每日签到${ck.streak ? `<span class="ck-streak">连续 ${ck.streak} 天</span>` : ''}</div>
         <button type="button" class="checkin-go" id="checkinGo"${done ? ' disabled' : ''}>${done ? '今日已签 ✓' : `签到 +${ck.todayPoints || 2} 分`}</button>
       </div>
       <div class="ck-days">${dots}</div>
