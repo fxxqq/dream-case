@@ -1250,6 +1250,7 @@ body.on-work .load-more-wrap { display: none !important; }
 .ud-item:hover { background: #f1f2fb; color: var(--primary); }
 .ud-item.ud-danger { color: var(--danger); }
 .ud-item.ud-danger:hover { background: #fdf0f0; color: var(--danger); }
+.ud-sep { height: 1px; margin: 4px 6px; background: var(--border); }
 .link-btn {
   background: none; border: none; color: var(--muted); font-size: 13px; cursor: pointer; padding: 4px 6px;
 }
@@ -1914,3 +1915,30 @@ body.on-work .load-more-wrap { display: none !important; }
 .nick-msg.err { color: var(--danger); }
 .nick-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 2px; }
 .nick-actions .btn-ghost { margin-right: auto; }
+
+/* 注销账号弹窗 */
+.modal.modal-delacc { max-width: 470px; }
+.del-warn {
+  padding: 12px 14px; border: 1px solid #f6c6c8; border-radius: 10px;
+  background: #fff6f6; color: #8a2f33; font-size: 12.5px; line-height: 1.75;
+}
+.del-warn b { color: #b91c1c; }
+.del-warn ul { margin: 6px 0 0; padding-left: 18px; }
+.del-warn li + li { margin-top: 2px; }
+.del-choice { display: flex; flex-direction: column; gap: 8px; }
+.del-opt {
+  display: flex; gap: 9px; align-items: flex-start; margin: 0; cursor: pointer;
+  padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 10px; background: #fff;
+  font-size: 13.5px; line-height: 1.5; transition: border-color .15s, background .15s;
+}
+.del-opt:hover { border-color: #d9d4f8; background: #fbfaff; }
+.del-opt input { margin: 3px 0 0; accent-color: var(--primary); flex: none; }
+.del-opt span { display: block; color: var(--text); }
+.del-opt em { display: block; margin-top: 2px; font-style: normal; font-size: 12px; color: var(--muted); }
+.del-opt:has(input:checked) { border-color: var(--primary); background: #f7f6ff; }
+.btn-danger {
+  background: var(--danger); color: #fff; border: 1px solid var(--danger);
+  padding: 9px 18px; border-radius: 10px; font-size: 14px; cursor: pointer;
+}
+.btn-danger:hover { background: #b91c1c; border-color: #b91c1c; }
+.btn-danger:disabled { opacity: .6; cursor: default; }

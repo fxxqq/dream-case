@@ -328,7 +328,9 @@ function renderAuthBox() {
           <button class="ud-item" id="statsBtn">📊 数据与推广</button>
           ${n ? '<button class="ud-item" id="blockedBtn">🚫 屏蔽管理</button>' : ''}
           <button class="ud-item" id="passBtn">🔑 改密码</button>
-          <button class="ud-item ud-danger" id="logoutBtn">⎋ 退出登录</button>
+          <button class="ud-item" id="logoutBtn">⎋ 退出登录</button>
+          <div class="ud-sep"></div>
+          <button class="ud-item ud-danger" id="delAccBtn">⚠ 注销账号</button>
         </div>
       </div>`;
     // 下拉菜单：点 chip 开合，点外面 / Esc 关闭（document 监听只挂一次）
@@ -349,6 +351,7 @@ function renderAuthBox() {
     $('statsBtn').onclick = openStats;
     $('checkinBtn').onclick = doCheckin;
     $('passBtn').onclick = openPassModal;
+    $('delAccBtn').onclick = openDelAcc;
     const bb = $('blockedBtn');
     if (bb) bb.onclick = () => openBlockedList('works');
   } else {
@@ -503,7 +506,8 @@ async function loadMe() {
     const data = await (await fetch('/api/me')).json();
     state.user = data.username
       ? { id: data.id || '', username: data.username, nickname: data.nickname || '',
-          checkin: data.checkin || {}, points: data.points || 0 }   // 带上签到状态和积分，顶部按钮要用
+          checkin: data.checkin || {}, points: data.points || 0,
+          worksCount: Number(data.worksCount || 0) }   // 带上签到状态、积分和作品数，顶部按钮 / 注销弹窗要用
       : null;
     state.favs = Array.isArray(data.favs) ? data.favs : [];
     state.blocked = Array.isArray(data.blocked) ? data.blocked : [];
@@ -3706,7 +3710,89 @@ async function submitPass() {
   }
 }
 
-// 兑换码按钮显隐：作品挂了码 → 领取入口；作者/管理员 → 管理入口
+// ---------- 注销账号 ----------
+// 双确认（账号名 + 密码）；作品可选「保留（解除归属）」或「一并删除」，成功后本机立即变游客态
+let confirmedWipeWorks = false;   // 勾了「连同作品一起删除」时，需要再点一次才真正提交
+
+function setDelAccMsg(text, kind) {
+  const el = $('delAccMsg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'nick-msg' + (kind ? ' ' + kind : '');
+}
+
+function openDelAcc() {
+  if (!state.user) { openAuth('login'); return; }
+  const u = state.user;
+  $('delAccName').textContent = u.username;
+  $('delAccNameHint').textContent = u.username;
+  $('delAccPts').textContent = Number(u.points || 0);
+  $('delAccWorks').textContent = Number(u.worksCount || 0);
+  $('delAccNameInput').value = '';
+  $('delAccPass').value = '';
+  const first = document.querySelector('#delWorkChoice input[name="delWorks"][value="keep"]');
+  if (first) first.checked = true;
+  confirmedWipeWorks = false;
+  setDelAccMsg('');
+  $('delAccSubmit').disabled = false;
+  document.querySelectorAll('#delWorkChoice input[name="delWorks"]').forEach(r => {
+    r.onchange = () => { confirmedWipeWorks = false; setDelAccMsg(''); };
+  });
+  $('closeDelAcc').onclick = () => hideModal($('delAccModal'));
+  $('delAccCancel').onclick = () => hideModal($('delAccModal'));
+  $('delAccModal').onclick = e => { if (e.target === $('delAccModal')) hideModal($('delAccModal')); };
+  $('delAccSubmit').onclick = submitDelAcc;
+  $('delAccNameInput').onkeydown = e => { if (e.key === 'Enter') $('delAccPass').focus(); };
+  $('delAccPass').onkeydown = e => { if (e.key === 'Enter') submitDelAcc(); };
+  showModal($('delAccModal'));
+  setTimeout(() => $('delAccNameInput').focus(), 60);
+}
+
+async function submitDelAcc() {
+  if (!state.user) return;
+  const name = $('delAccNameInput').value.trim();
+  const pass = $('delAccPass').value;
+  if (!name) return setDelAccMsg('请先输入账号名确认', 'err');
+  if (name !== state.user.username) return setDelAccMsg('账号名不一致，请完整输入「' + state.user.username + '」', 'err');
+  if (!pass) return setDelAccMsg('请输入登录密码', 'err');
+  const checked = document.querySelector('#delWorkChoice input[name="delWorks"]:checked');
+  const wipe = (checked && checked.value) === 'wipe';
+  if (wipe && !confirmedWipeWorks) {
+    // 删除作品这一步再加一道确认，避免手滑把作品全删了
+    confirmedWipeWorks = true;
+    setDelAccMsg('再点一次「永久注销」确认：作品和图片会一起删除，无法找回', 'err');
+    return;
+  }
+  const btn = $('delAccSubmit');
+  btn.disabled = true;
+  setDelAccMsg('正在注销…');
+  try {
+    const r = await fetch('/api/me/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmName: name, password: pass, deleteWorks: wipe })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { setDelAccMsg(d.error || '注销失败，稍后再试', 'err'); return; }
+    hideModal($('delAccModal'));
+    confirmedWipeWorks = false;
+    state.user = null;
+    state.favs = [];
+    state.blocked = [];
+    state.blockedUsers = [];
+    state.myClaims = [];
+    renderAuthBox();
+    if (detailModal.style.display === 'flex') hideModal(detailModal);
+    showToast(wipe && d.worksDeleted ? `账号已注销，${d.worksDeleted} 件作品已删除` : '账号已注销，感谢你来过');
+    if (location.pathname === '/') loadWorks();
+  } catch {
+    setDelAccMsg('网络异常，稍后再试', 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+
 function renderCodeButtons(w) {
   const rb = $('detailRedeem'), mb = $('detailCodes');
   if (!rb || !mb) return;

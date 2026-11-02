@@ -1078,7 +1078,8 @@ app.get('/api/me', (req, res) => {
         blockedUsers: Array.isArray(user.blockedUsers) ? user.blockedUsers : [],
         favs: Array.isArray(user.favs) ? user.favs : [],
         checkin: checkinView(user),
-        points: shareStatsOf(user.id).points
+        points: shareStatsOf(user.id).points,
+        worksCount: works.filter(w => w.userId === user.id && !w.deleted).length
       }
     : { user: null });
 });
@@ -1155,6 +1156,143 @@ app.post('/api/me/password', (req, res) => {
   }
   if (kicked) saveSessions();
   res.json({ ok: true, kicked });
+});
+
+// ---- 注销账号（不可恢复） ----
+// 双确认：密码 + 完整账号名。作品可选「保留（解除归属，署名保留）」或「一并删除」；
+// 评论/许愿墙内容保留但匿名化；认领申请、广告投放、积分与分享记录、被领兑换码一并清理。
+const DELETED_AUTHOR = '已注销用户';
+
+app.post('/api/me/delete', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('delacct:' + user.id, 5, 3600e3)) {
+    return res.status(429).json({ error: '操作太频繁了，请稍后再试' });
+  }
+  const body = req.body || {};
+  if (String(body.confirmName || '').trim() !== user.username) {
+    return res.status(400).json({ error: '请完整输入你的账号名以确认注销' });
+  }
+  if (!checkPassword(user, String(body.password || ''))) {
+    return res.status(400).json({ error: '密码不正确' });
+  }
+
+  const wipeWorks = body.deleteWorks === true || String(body.deleteWorks) === '1';
+  const mine = works.filter(w => w.userId === user.id && !w.deleted);
+  let worksDeleted = 0;
+
+  if (wipeWorks) {
+    const ids = new Set(mine.map(w => w.id));
+    works = works.filter(w => !ids.has(w.id));
+    worksDeleted = ids.size;
+    comments = comments.filter(c => !ids.has(c.workId));
+    invalidateCommentCounts();
+    mine.forEach(w => {
+      [w.image, w.thumb, w.qrcode].concat(w.images || []).forEach(img => {
+        if (!img) return;
+        const p = path.join(UPLOAD_DIR, path.basename(img));
+        if (fs.existsSync(p)) { try { fs.unlinkSync(p); } catch (e) { /* 图片删不掉不影响注销 */ } }
+      });
+      delete codeStore[w.id];   // 作品的兑换码一起清掉
+    });
+    saveCodesSoon();
+    saveWorks();
+    saveComments();
+  } else {
+    // 保留作品：解除账号归属（别人 / 同名新账号都接管不了），署名原样保留
+    mine.forEach(w => {
+      delete w.userId;
+      delete w.ownerReal;
+      delete w.authorReal;
+      w.claimOpen = false;
+    });
+    if (mine.length) saveWorks();
+  }
+
+  // 收藏：作品上的聚合计数回退，行为日志清掉
+  let favRollback = false;
+  (user.favs || []).forEach(id => {
+    const w = works.find(x => x.id === id);
+    if (w && typeof w.favs === 'number' && w.favs > 0) { w.favs -= 1; favRollback = true; }
+  });
+  if (favRollback) saveWorks();
+  favLog = favLog.filter(e => e.userId !== user.id);
+
+  // 评论 / 许愿墙：内容保留，作者名匿名化（不留下昵称线索）
+  let cmtAnon = false;
+  comments.forEach(c => {
+    if (c.userId !== user.id) return;
+    delete c.userId;
+    c.username = DELETED_AUTHOR;
+    cmtAnon = true;
+  });
+  if (cmtAnon) saveComments();
+  let ideaAnon = false;
+  ideas.forEach(i => {
+    if (i.userId !== user.id) return;
+    delete i.userId;
+    i.author = DELETED_AUTHOR;
+    ideaAnon = true;
+  });
+  if (ideaAnon) saveIdeas();
+
+  // 认领申请：随账号撤回
+  const claimBefore = claims.length;
+  claims = claims.filter(c => c.userId !== user.id);
+  if (claims.length !== claimBefore) saveClaims();
+
+  // 进行中的广告投放：结束（账号没了，没人能管理，继续挂只会白烧曝光）
+  let adEnded = false;
+  redemptions.forEach(r => {
+    if (r.userId !== user.id) return;
+    adEnded = true;
+    if (r.status === 'active') { r.status = 'cancelled'; r.endedAt = Date.now(); }
+  });
+  if (adEnded) saveRedemptions();
+
+  // 兑换码：这个账号领走的码退回「未领」，别人还能领
+  let codesFreed = 0;
+  Object.keys(codeStore).forEach(wid => {
+    const rec = codeStore[wid];
+    if (!rec || !rec.claimed) return;
+    const key = 'u:' + user.id;
+    const code = rec.claimed[key];
+    if (!code) return;
+    delete rec.claimed[key];
+    const item = (rec.codes || []).find(c => c.code === code);
+    if (item && item.takenBy === key) { item.status = 'available'; item.takenBy = ''; item.takenAt = null; }
+    codesFreed++;
+  });
+  if (codesFreed) saveCodesSoon();
+
+  // 积分与分享记录（含 IP 明细里指向该账号的键）
+  delete shareData.users[user.id];
+  Object.keys(shareData.ips || {}).forEach(ip => {
+    const rec = shareData.ips[ip];
+    if (!rec || typeof rec !== 'object') return;
+    ['v', 'd'].forEach(k => {
+      if (!rec[k]) return;
+      Object.keys(rec[k]).forEach(x => { if (String(x).startsWith(user.id + '|')) delete rec[k][x]; });
+    });
+    if (rec.refRegs && rec.refRegs[user.id]) delete rec.refRegs[user.id];
+    if (rec.attr && rec.attr.uid === user.id) delete rec.attr;
+  });
+  saveShareSoon();
+
+  // 认证创作者标记：账号注销后不再显示认证
+  const cIdx = creators.findIndex(c => c.name === user.username);
+  if (cIdx !== -1) { creators.splice(cIdx, 1); writeJSON('creators.json', creators); }
+
+  // 账号本体 + 所有会话
+  const idx = users.findIndex(u => u.id === user.id);
+  if (idx !== -1) users.splice(idx, 1);
+  saveUsers();
+  for (const k of Object.keys(sessions)) {
+    if (sessions[k] && sessions[k].uid === user.id) delete sessions[k];
+  }
+  saveSessions();
+  clearSession(req, res);
+  res.json({ ok: true, worksDeleted, worksKept: wipeWorks ? 0 : mine.length, codesFreed });
 });
 
 // 屏蔽 / 取消屏蔽某个作品（仅影响当前登录用户看到的列表）

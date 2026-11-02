@@ -376,6 +376,48 @@
     </div>
   </div>
 
+  <!-- 注销账号：双确认（账号名 + 密码），作品可选保留或一并删除 -->
+  <div class="modal-mask" id="delAccModal" style="display:none">
+    <div class="modal modal-nick modal-delacc">
+      <div class="modal-head">
+        <h2>注销账号</h2>
+        <button class="close-btn" id="closeDelAcc" title="关闭">✕</button>
+      </div>
+      <div class="nick-body">
+        <div class="del-warn">
+          <b>注销后不可恢复</b>，请确认下面这些内容你都清楚：
+          <ul>
+            <li>账号 <b id="delAccName"></b>、昵称、积分（<span id="delAccPts">0</span> 分）、收藏、签到记录全部清除，同名账号会释放给其他人注册</li>
+            <li>评论和许愿墙的内容会保留，但显示为「已注销用户」</li>
+            <li>正在进行中的推广投放会停止，已消耗的积分不退回</li>
+            <li>其他设备上的登录状态会立即失效</li>
+          </ul>
+        </div>
+
+        <div class="del-choice" id="delWorkChoice">
+          <label class="del-opt">
+            <input type="radio" name="delWorks" value="keep" checked />
+            <span><b>保留我的作品</b>（<span id="delAccWorks">0</span> 件）<em>继续展示、署名保留，但不再能编辑和管理</em></span>
+          </label>
+          <label class="del-opt">
+            <input type="radio" name="delWorks" value="wipe" />
+            <span><b>连同作品一起删除</b><em>作品、封面/截图、兑换码、作品下的评论一并删除，无法找回</em></span>
+          </label>
+        </div>
+
+        <label class="nick-label" for="delAccNameInput">输入账号名 <b id="delAccNameHint"></b> 确认</label>
+        <input id="delAccNameInput" class="nick-input" maxlength="20" autocomplete="off" placeholder="完整输入你的账号名" />
+        <label class="nick-label" for="delAccPass">登录密码</label>
+        <input id="delAccPass" type="password" class="nick-input" autocomplete="current-password" placeholder="输入当前密码" />
+        <p class="nick-msg" id="delAccMsg"></p>
+        <div class="nick-actions">
+          <button type="button" class="btn-ghost" id="delAccCancel">取消</button>
+          <button type="button" class="btn-danger" id="delAccSubmit">永久注销</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 许愿墙：认领者把做好的作品挂上来 -->
   <div class="modal-mask" id="ideaDoneModal" style="display:none">
     <div class="modal modal-idea">
