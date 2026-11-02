@@ -3023,6 +3023,14 @@ function shell(seoHead, bodyBlock) {
   return html.replace('<!--SEO_HEAD-->', seoHead).replace('<!--SEO_BODY-->', bodyBlock || '');
 }
 
+// 爬虫识别：SEO 内容区块（按分类浏览/最新收录等）只注入给爬虫，真人浏览器不输出——
+// 否则区块先画出来、JS 接管后又移除，首页加载时会闪现一大块再塌掉（用户看到的「最新收录是什么鬼+抖动」）
+// <head> 里的 meta / JSON-LD 对所有人照常输出（分享卡片、搜索摘要都靠它，不受影响）
+const BOT_UA_RE = /bot|crawl|spider|slurp|baidu|bing|yandex|duckduck|sogou|yisou|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegrambot|micromessenger|qqbrowse/i;
+function isBotUa(req) {
+  return BOT_UA_RE.test(String(req.headers['user-agent'] || ''));
+}
+
 function sendHtml(res, html, status = 200) {
   res.status(status)
     .set('Content-Type', 'text/html; charset=utf-8')
@@ -3085,12 +3093,12 @@ app.get('/', (req, res) => {
     jsonLd: seo.websiteLd(base)
   });
 
-  const block = seo.homeBlock(base, {
+  const block = isBotUa(req) ? seo.homeBlock(base, {
     works: withAuthorNames(list.slice(0, 24)),
     categories: orderedCategories(),
     types: WORK_TYPES
-  });
-  sendHtml(res, shell(headHtml, block));
+  }) : ''; // 真人浏览器不输出 SEO 区块：首页由 SPA 自己渲染，避免闪现+塌陷抖动
+  sendHtml(res, shell(headHtml, isBotUa(req) ? block : '')); // 真人不输出 SEO 区块（SPA 自己渲染，避免闪现+塌陷）
 });
 
 app.get('/index.html', (req, res) => res.redirect(301, '/'));
@@ -3212,7 +3220,7 @@ app.get('/u/:name', (req, res) => {
   </div>
   <div class="gallery">${withAuthorNames(list).map(seo.cardHtml).join('') || '<div class="empty"><p>该作者还没有公开作品</p></div>'}</div>
 </div>`;
-  sendHtml(res, shell(headHtml, block));
+  sendHtml(res, shell(headHtml, isBotUa(req) ? block : '')); // 真人不输出 SEO 区块（SPA 自己渲染，避免闪现+塌陷）
 });
 
 // 榜单页
@@ -3278,7 +3286,7 @@ app.get('/rank', (req, res) => {
   </ol>
   <p class="seo-more"><a class="btn-ghost" href="/">← 返回首页</a></p>
 </div>`;
-  sendHtml(res, shell(headHtml, block));
+  sendHtml(res, shell(headHtml, isBotUa(req) ? block : '')); // 真人不输出 SEO 区块（SPA 自己渲染，避免闪现+塌陷）
 });
 
 // 许愿墙：说出想要的作品，社区创作者来认领实现（服务端渲染，利于收录）
@@ -3341,7 +3349,7 @@ app.get('/wish', (req, res) => {
   </ol>
   <p class="seo-more"><a class="btn-ghost" href="/">← 返回首页</a></p>
 </div>`;
-  sendHtml(res, shell(headHtml, block));
+  sendHtml(res, shell(headHtml, isBotUa(req) ? block : '')); // 真人不输出 SEO 区块（SPA 自己渲染，避免闪现+塌陷）
 });
 
 
