@@ -1583,13 +1583,14 @@ body.on-work .load-more-wrap { display: none !important; }
   font-size: 11.5px; font-weight: 500; color: #a2600a;
   background: #fff3d9; border-radius: 999px; padding: 1px 8px;
 }
-.ck-btn {
+/* 数据看板签到卡里的「签到」按钮（曾用 .ck-btn 与评论/提问 tab 撞名，覆盖了 tab 样式导致选中高亮看起来反了） */
+.checkin-go {
   flex: none; font-size: 12.5px; font-weight: 600; color: #fff; cursor: pointer;
   background: var(--primary); border: none; border-radius: 999px; padding: 6px 14px;
   transition: background .15s, opacity .15s;
 }
-.ck-btn:hover:not(:disabled) { background: var(--primary-dark); }
-.ck-btn:disabled { background: #dfe1ec; color: var(--muted); cursor: default; }
+.checkin-go:hover:not(:disabled) { background: var(--primary-dark); }
+.checkin-go:disabled { background: #dfe1ec; color: var(--muted); cursor: default; }
 .ck-days { display: flex; gap: 6px; margin: 10px 0 8px; }
 .ck-dot {
   flex: 1; height: 24px; border-radius: 7px; font-size: 11.5px;

@@ -399,7 +399,7 @@ function checkinCardHtml(ck) {
     <div class="checkin-card${done ? ' is-done' : ''}">
       <div class="ck-head">
         <div class="ck-title">📅 每日签到${ck.streak ? `<span class="ck-streak">连续 ${ck.streak} 天</span>` : ''}</div>
-        <button type="button" class="ck-btn" id="checkinGo"${done ? ' disabled' : ''}>${done ? '今日已签 ✓' : `签到 +${ck.todayPoints || 2} 分`}</button>
+        <button type="button" class="checkin-go" id="checkinGo"${done ? ' disabled' : ''}>${done ? '今日已签 ✓' : `签到 +${ck.todayPoints || 2} 分`}</button>
       </div>
       <div class="ck-days">${dots}</div>
       <div class="ck-tip">每天 +2 分，连续第 ${cycle} 天额外 +${ck.bonusPoints || 6} 分；断签从头算。积分可直接兑换「站内推广」。</div>
