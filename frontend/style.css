@@ -1698,6 +1698,9 @@ body.on-work .load-more-wrap { display: none !important; }
 .checkin-entry.is-done { color: var(--muted); }
 /* 积分小徽章：未签时金黄、已签后随整体转灰 */
 .checkin-entry .ck-pts {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   margin-left: 6px;
   padding: 1px 7px;
   border-radius: 999px;
@@ -1707,6 +1710,8 @@ body.on-work .load-more-wrap { display: none !important; }
   color: #d48806;
   white-space: nowrap;
 }
+.checkin-entry .ck-pts .ico { width: 13px; height: 13px; }
+.checkin-entry .ck-pts .ico svg { width: 100%; height: 100%; }
 .checkin-entry.is-done .ck-pts { background: #f2f2f6; color: var(--muted); }
 
 /* ========== 站内消息 ========== */
