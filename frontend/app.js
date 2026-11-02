@@ -837,7 +837,12 @@ function renderAdSlot(el, slot) {
     return;
   }
   const closed = adClosedMap();
-  const list = ADS.filter(a => a.slot === slot && !isAdClosed(a, closed));
+  let list = ADS.filter(a => a.slot === slot && !isAdClosed(a, closed));
+  // 详情位：正在浏览的作品不给自己打广告（站内推广恰好推广的就是当前作品时排除）
+  if (slot === 'detail' && state.currentWork && state.currentWork.id) {
+    const curUrl = '/w/' + encodeURIComponent(state.currentWork.id);
+    list = list.filter(a => a.url !== curUrl);
+  }
   if (!list.length) {
     el.innerHTML = '';
     el.style.display = 'none';
