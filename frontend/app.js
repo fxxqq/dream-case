@@ -1580,6 +1580,22 @@ function cancelReply() {
   syncCommentKindUI();
 }
 
+// 「评论 / 提问」切换：事件委托绑在 document 上，独立于 setupDetailActions——
+// 即使详情弹窗其他按钮的绑定因 HTML/JS 版本错位抛错，这里也不受牵连（曾因此点提问没反应）
+function setupCommentKindTabs() {
+  try {
+    document.addEventListener('click', e => {
+      const btn = e.target.closest && e.target.closest('#commentKind .ck-btn');
+      if (!btn) return;
+      if (state.replyTo) cancelReply();
+      state.commentKind = btn.dataset.kind;
+      syncCommentKindUI();
+      const inp = $('commentInput');
+      if (inp) inp.focus();
+    });
+  } catch (err) { console.warn('评论类型切换绑定失败', err); }
+}
+
 async function loadComments(workId) {
   const listEl = $('commentList');
   const countEl = $('commentCount');
@@ -2357,7 +2373,10 @@ function setupDetailActions() {
   });
 
   // 屏蔽这个作品：加入本人的屏蔽列表，列表/榜单/精选里立刻消失
-  $('blockWork').onclick = async () => {
+  // 两个较新的按钮加存在性守卫：旧缓存 HTML 里可能没有，缺失就跳过，
+  // 别让 TypeError 把后面的评论区绑定全部带崩
+  const blockWorkBtn = $('blockWork');
+  if (blockWorkBtn) blockWorkBtn.onclick = async () => {
     const w = state.currentWork;
     if (!w) return;
     if (!state.user) { openAuth('login'); return; }
@@ -2385,7 +2404,8 @@ function setupDetailActions() {
   };
 
   // 拉黑 / 取消拉黑作者：TA 的所有作品都不再展示给我（含以后新发的）
-  $('blockAuthor').onclick = async () => {
+  const blockAuthorBtn = $('blockAuthor');
+  if (blockAuthorBtn) blockAuthorBtn.onclick = async () => {
     const w = state.currentWork;
     if (!w || !w.author) return;
     if (!state.user) { openAuth('login'); return; }
@@ -2419,15 +2439,6 @@ function setupDetailActions() {
     finally { btn.disabled = false; }
   };
 
-  // 评论 / 提问切换
-  document.querySelectorAll('#commentKind .ck-btn').forEach(btn => {
-    btn.onclick = () => {
-      if (state.replyTo) cancelReply();
-      state.commentKind = btn.dataset.kind;
-      syncCommentKindUI();
-      $('commentInput').focus();
-    };
-  });
   $('commentReplyCancel').onclick = () => { cancelReply(); $('commentInput').focus(); };
 
   // 评论列表内的「回复 / 删除」（事件委托，列表重渲染也不用重新绑定）
@@ -3491,6 +3502,7 @@ async function init() {
   await loadAds();
   setupHeader();
   setupUploadForm();
+  setupCommentKindTabs(); // 先绑评论/提问切换，别被详情弹窗其他绑定的问题牵连
   setupDetailActions();
   setupAuthForms();
   setupSubmitChoice();
