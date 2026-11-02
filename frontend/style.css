@@ -34,6 +34,8 @@ body {
   position: sticky; top: 0; z-index: 10;
 }
 .header-inner { display: flex; align-items: center; gap: 24px; height: 60px; }
+/* 收藏按钮滚动锚点：给吸顶头部（60px）留出偏移，别把标题压在头下面 */
+#worksHead { scroll-margin-top: 74px; }
 .logo { font-weight: 700; font-size: 18px; color: var(--primary); }
 nav { display: flex; gap: 8px; flex: 1; }
 .nav-btn {
@@ -719,7 +721,10 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .header-inner { gap: 16px; }
 .logo { text-decoration: none; white-space: nowrap; }
 .main-nav { display: flex; gap: 4px; flex: 1; align-items: center; min-width: 0; }
-.main-nav .nav-btn { text-decoration: none; line-height: 1.4; white-space: nowrap; flex: none; }
+.main-nav .nav-btn {
+  text-decoration: none; line-height: 1.4; white-space: nowrap; flex: none;
+  display: inline-flex; align-items: center; gap: 5px;
+}
 .nav-btn.active { color: var(--primary); background: #eeeefc; font-weight: 600; }
 
 .search-box {
@@ -863,8 +868,10 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .view-toggle .vt-btn {
   width: 30px; height: 26px; border: none; border-radius: 999px; cursor: pointer;
   background: transparent; color: #9aa0b5; font-size: 13px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
   transition: background .15s, color .15s, box-shadow .15s;
 }
+.view-toggle .vt-btn .ico { font-size: 15px; } /* 线性图标比文字略大半档，笔画清晰 */
 .view-toggle .vt-btn:hover { color: var(--primary); }
 .view-toggle .vt-btn.active {
   background: #fff; color: var(--primary); font-weight: 600;
@@ -964,9 +971,11 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 /* 榜单 */
 .page-head { padding: 36px 0 20px; }
 .page-head h1 { font-size: 24px; margin-bottom: 6px; }
-.page-head p { color: var(--muted); font-size: 14px; }
+.page-head p { color: var(--muted); font-size: 14px; margin-top: 8px; }
 .rank-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-.rank-tabs-by { margin-bottom: 18px; }
+/* 周期 + 排序两个下拉胶囊并排一行（与首页筛选 dd-filter 同款）；勾选标记推到行尾 */
+.rank-dd-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.rank-dd-row .dd-opt.active::after { margin-left: auto; }
 .rank-tab {
   padding: 6px 16px; border-radius: 999px; border: 1px solid var(--border);
   background: #fff; cursor: pointer; font-size: 13.5px; font-family: inherit;
@@ -974,9 +983,6 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 }
 .rank-tab:hover { border-color: var(--primary); color: var(--primary); }
 .rank-tab.active { background: #1f2330; border-color: #1f2330; color: #fff; }
-/* 排序维度用主题色区分，和上面的时间范围分开辨识 */
-.rank-tab-by { font-weight: 500; }
-.rank-tab-by.active { background: var(--primary); border-color: var(--primary); color: #fff; }
 .rank-list { display: flex; flex-direction: column; gap: 10px; padding-bottom: 48px; }
 .rank-legend { font-size: 12.5px; color: var(--muted); background: #f7f7fc; border-radius: 10px; padding: 9px 13px; margin-bottom: 12px; line-height: 1.6; }
 .rank-legend b { color: var(--text); }
@@ -1090,20 +1096,25 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   .header-inner > .btn-primary { padding: 8px 13px; font-size: 13.5px; }
 }
 
-/* 手机端头部紧凑版：logo+提交按钮一行 / 搜索一行 / 导航+用户一行 */
+/* 手机端头部紧凑版：logo+提交按钮一行 / 搜索一行 / 导航+用户区同行 */
 @media (max-width: 640px) {
-  .header-inner { flex-wrap: wrap; height: auto; padding: 8px 0; gap: 8px 10px; }
+  .header-inner { flex-wrap: wrap; height: auto; padding: 6px 0; gap: 5px 8px; }
   .logo { font-size: 16px; }
-  .header-inner > .btn-primary { order: 1; margin-left: auto; padding: 7px 13px; font-size: 13px; border-radius: 8px; }
+  .header-inner > .btn-primary { order: 1; margin-left: auto; padding: 6px 12px; font-size: 13px; border-radius: 8px; }
   .search-box { flex: 1 1 100%; order: 2; }
-  .search-box input { padding: 7px 12px 7px 30px; font-size: 13px; }
-  .main-nav { order: 3; flex: 0 0 auto; width: auto; gap: 2px; margin-right: auto; }
-  .main-nav .nav-btn { padding: 5px 10px; font-size: 13px; }
-  .auth-box { order: 4; margin-left: auto; gap: 1px; justify-content: flex-end; flex-wrap: wrap; min-width: 0; }
-  .user-chip { max-width: 96px; overflow: hidden; text-overflow: ellipsis; padding: 5px 10px; font-size: 13px; gap: 4px; }
-  .auth-box .link-btn { font-size: 12px; padding: 5px 4px; white-space: nowrap; }
+  .search-box input { padding: 6px 12px 6px 30px; font-size: 13px; }
+  /* 第三行：导航靠左占满剩余空间，用户区靠右，两者同一行 */
+  .main-nav { order: 3; flex: 1 1 auto; min-width: 0; width: auto; gap: 0; margin-right: 0; overflow-x: auto; }
+  .main-nav .nav-btn { padding: 4px 7px; font-size: 12.5px; gap: 4px; }
+  .auth-box { order: 4; margin-left: auto; gap: 0; justify-content: flex-end; flex-wrap: nowrap; flex: 0 0 auto; min-width: 0; }
+  .user-chip { max-width: 88px; overflow: hidden; text-overflow: ellipsis; padding: 4px 8px; font-size: 12.5px; gap: 4px; }
+  .auth-box .link-btn { font-size: 12px; padding: 4px 3px; white-space: nowrap; }
   .auth-box .lb-ico { display: none; }
-  .auth-box .auth-open { padding: 6px 12px; font-size: 13px; }
+  .auth-box .auth-open { padding: 5px 10px; font-size: 12.5px; }
+
+  /* 窄屏（≤480）：导航只留图标，签到/用户只留徽章，第三行放得下不换行 */
+  .main-nav .nav-btn { gap: 0; }
+  .checkin-entry .ck-pts { padding: 2px 7px; font-size: 11.5px; }
 
   /* 「本周精选」标题不再被副标题挤换行 */
   .section-head { gap: 8px; }
@@ -1113,6 +1124,16 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   .featured-head .featured-nav { display: none; }
   .featured-head .sub-wide { display: none; }
   .featured-head .sub-narrow { display: inline; }
+}
+
+/* 窄屏（≤480）：导航收成纯图标（font-size:0 隐藏文字节点），签到文案/昵称隐藏只留徽章 */
+@media (max-width: 480px) {
+  .main-nav .nav-btn { font-size: 0; padding: 5px 7px; }
+  .main-nav .nav-btn .ico { width: 17px; height: 17px; font-size: 17px; }
+  .main-nav .nav-btn .ico[data-ico="rank"] { width: 22px; height: 22px; font-size: 22px; }
+  .checkin-entry .ck-label { display: none; }
+  .user-chip .uc-name { display: none; }
+  .user-chip { max-width: none; }
 }
 
 body.scroll-locked { overflow: hidden; }
@@ -1225,7 +1246,7 @@ body.on-work .load-more-wrap { display: none !important; }
 .seo-related { padding-bottom: 40px; }
 .seo-related h2 { font-size: 16px; margin: 26px 0 12px; }
 .page-title { font-size: 24px; }
-.page-title .ico { margin-right: 9px; }
+.page-title .ico { margin-right: 15px; }
 
 /* ========== 作品「完整页面」（/w/:id?full=1） ========== */
 .seo-full .seo-article { max-width: 860px; }
@@ -1689,7 +1710,7 @@ body.on-work .load-more-wrap { display: none !important; }
 
 /* ========== 每日签到 ========== */
 /* 顶部入口：未签到是主色+浅底胶囊强调，签过转灰 */
-.checkin-entry { color: var(--primary); }
+.checkin-entry { color: var(--primary); display: inline-flex; align-items: center; }
 .checkin-entry.is-todo {
   background: var(--primary-soft, #eef1ff);
   border-radius: 999px;
@@ -2140,9 +2161,12 @@ body.on-work .load-more-wrap { display: none !important; }
   vertical-align: -0.15em;
 }
 .ico svg { width: 100%; height: 100%; display: block; }
+/* 形态 SVG 图标：和旁边 emoji 视觉等大（emoji 天生占 1.1~1.2em） */
+.tico { font-size: 1.12em; }
 
-/* 领奖台造型扁宽，按 1em 会显得比旁边图标小一圈，单独放一档 */
-.nav-btn .ico[data-ico="rank"] { width: 1.35em; height: 1.35em; vertical-align: -0.28em; }
+/* 领奖台造型扁宽，按 1em 会显得比旁边图标小一圈，单独放一档
+   （nav-btn 已是 flex 居中，无需再手调 vertical-align） */
+.nav-btn .ico[data-ico="rank"] { width: 1.35em; height: 1.35em; }
 .page-title .ico[data-ico="rank"] { width: 1.15em; height: 1.15em; vertical-align: -0.22em; }
 
 /* ---- 收藏紫星 / 用户图标的两态与对齐（ic() 输出裸 svg，选择器不带 .ico） ---- */
@@ -2162,4 +2186,5 @@ body.on-work .load-more-wrap { display: none !important; }
 .btn-fav.faved { background: #5b5bd6; border-color: #5b5bd6; color: #fff; }
 .btn-fav.faved svg { filter: brightness(0) invert(1); }
 .user-chip { display: inline-flex; align-items: center; gap: 5px; }
+.user-chip .uc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .user-chip svg { width: 17px; height: 17px; }

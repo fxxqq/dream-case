@@ -66,7 +66,8 @@
 
       <div class="filter-row" id="filterRow"></div>
 
-      <div class="list-head">
+      <!-- worksHead：收藏按钮的滚动锚点——从其他页点收藏会平滑滚到这里，直接看到「我的收藏」列表 -->
+      <div class="list-head" id="worksHead">
         <span class="list-head-left">
           <span id="listTitle">全部作品</span>
           <span class="list-count" id="workCount">加载中…</span>
@@ -77,8 +78,8 @@
             <button class="st-btn" data-sort="hot">最热</button>
           </div>
           <div class="view-toggle" id="viewToggle" role="group" aria-label="展示方式">
-            <button class="vt-btn active" data-view="card" title="卡片视图" aria-label="卡片视图">▦</button>
-            <button class="vt-btn" data-view="list" title="列表视图" aria-label="列表视图">☰</button>
+            <button class="vt-btn active" data-view="card" title="卡片视图" aria-label="卡片视图"><i class="ico" data-ico="viewcard"></i></button>
+            <button class="vt-btn" data-view="list" title="列表视图" aria-label="列表视图"><i class="ico" data-ico="viewlist"></i></button>
           </div>
         </div>
       </div>
@@ -110,17 +111,32 @@
       <div class="page-head">
         <h2 class="page-title"><i class="ico" data-ico="rank"></i> 作品榜单</h2>
       </div>
-      <div class="rank-tabs" id="rankTabs">
-        <button class="rank-tab active" data-period="week">周榜</button>
-        <button class="rank-tab" data-period="month">月榜</button>
-        <button class="rank-tab" data-period="all">总榜</button>
-      </div>
-      <div class="rank-tabs rank-tabs-by" id="rankByTabs">
-        <button class="rank-tab rank-tab-by active" data-by="hot">🏆 综合</button>
-        <button class="rank-tab rank-tab-by" data-by="likes">♥ 按点赞</button>
-        <button class="rank-tab rank-tab-by" data-by="favs">★ 按收藏</button>
-        <button class="rank-tab rank-tab-by" data-by="pv">📊 按 PV</button>
-        <button class="rank-tab rank-tab-by" data-by="uv">🧑 按 UV</button>
+      <!-- 周期 + 排序都收进下拉胶囊，与首页「形态/分类/开源」筛选同款，并排一行 -->
+      <div class="rank-dd-row">
+        <div class="dd-filter" id="rankPeriodDD">
+          <button type="button" class="dd-btn" id="rankPeriodBtn">
+            <span class="dd-ico">🗓️</span><span class="dd-label">周期</span>
+            <b class="dd-value" id="rankPeriodValue">周榜</b><span class="dd-caret">▾</span>
+          </button>
+          <div class="dd-panel" id="rankPeriodPanel">
+            <button type="button" class="dd-opt active" data-period="week"><span class="dd-opt-label">🗓️ 周榜</span></button>
+            <button type="button" class="dd-opt" data-period="month"><span class="dd-opt-label">📆 月榜</span></button>
+            <button type="button" class="dd-opt" data-period="all"><span class="dd-opt-label">♾️ 总榜</span></button>
+          </div>
+        </div>
+        <div class="dd-filter" id="rankByDD">
+          <button type="button" class="dd-btn" id="rankByBtn">
+            <span class="dd-ico">🏆</span><span class="dd-label">排序</span>
+            <b class="dd-value" id="rankByValue">综合</b><span class="dd-caret">▾</span>
+          </button>
+          <div class="dd-panel" id="rankByPanel">
+            <button type="button" class="dd-opt active" data-by="hot"><span class="dd-opt-label">🏆 综合</span></button>
+            <button type="button" class="dd-opt" data-by="likes"><span class="dd-opt-label">♥ 按点赞</span></button>
+            <button type="button" class="dd-opt" data-by="favs"><span class="dd-opt-label">★ 按收藏</span></button>
+            <button type="button" class="dd-opt" data-by="pv"><span class="dd-opt-label">📊 按 PV</span></button>
+            <button type="button" class="dd-opt" data-by="uv"><span class="dd-opt-label">🧑 按 UV</span></button>
+          </div>
+        </div>
       </div>
       <div class="ad-slot" data-ad-slot="rank"></div>
       <p class="rank-legend">♥ 获赞 · ★ 被收藏 · <b>📊 PV</b> 本周期页面浏览量 · <b>🧑 UV</b> 本周期独立访客数（按所选维度降序，当前维度数字加粗）</p>

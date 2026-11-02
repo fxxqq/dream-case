@@ -48,6 +48,13 @@ const nickModal = $('nickModal');
 const toast = $('toast');
 
 const TYPE_ICONS = { 'Web': '🌐', 'iOS': '🍎', 'Android': '🤖', 'macOS': '💻', 'Windows': '🪟', 'Linux': '🐧', '小程序': '📱', '浏览器插件': '🧩', '机器人': '🦾', 'API': '🔌', '其他': '✨' };
+// 形态的 SVG 图标（icons.js）：UI 控件（下拉/角标/表单胶囊）优先用它；
+// 没映射的形态回退 emoji；纯文本场景（typeText，会被 escapeHtml）始终用 emoji
+const TYPE_SVG = { 'Web': 'web' };
+function typeIcoHtml(t) {
+  const k = TYPE_SVG[t];
+  return k ? `<span class="ico tico">${ic(k)}</span>` : (TYPE_ICONS[t] || '✨');
+}
 
 // ---------- 弹窗滚动锁定 ----------
 // 锁定背景滚动，但用 padding-right 补偿滚动条宽度，
@@ -150,7 +157,7 @@ function renderLinkInputs(types, values) {
     box.innerHTML = nonMini.map(t => {
       const c = linkConfOf(t);
       return `<div class="lpt-row">
-        <span class="lpt-name">${TYPE_ICONS[t] || '✨'} ${escapeHtml(t)}</span>
+        <span class="lpt-name">${typeIcoHtml(t)} ${escapeHtml(t)}</span>
         <input type="text" name="link_${escapeHtml(t)}" data-ltype="${escapeHtml(t)}" maxlength="500"
           placeholder="${escapeHtml(c.ph.replace(' *', ''))}" value="${escapeHtml(prev[t] || '')}" />
       </div>`;
@@ -324,10 +331,10 @@ function renderAuthBox() {
     const unread = Number(state.user.unreadNotices || 0);
     box.innerHTML =
       `<button class="link-btn checkin-entry${ckDone ? ' is-done' : ' is-todo'}" id="checkinBtn"
-         title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天，明天再来` : `每日签到领 ${ck.todayPoints || 2} 盏灯火，连签 7 天有全勤奖`}"><span class="lb-ico">${ckDone ? '✓' : `<span class="ico">${ic('checkin')}</span>`}</span>${ckDone ? `已签${ck.streak > 1 ? ' ' + ck.streak + ' 天' : ''}` : `签到 +${ck.todayPoints || 2}`}<span class="ck-pts"><span class="ico">${ic('lamp')}</span>${pts}</span></button>` +
+         title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天，明天再来` : `每日签到领 ${ck.todayPoints || 2} 盏灯火，连签 7 天有全勤奖`}"><span class="lb-ico">${ckDone ? '✓' : `<span class="ico">${ic('checkin')}</span>`}</span>${ckDone ? '' : `<span class="ck-label">签到 +${ck.todayPoints || 2}</span>`}<span class="ck-pts"><span class="ico">${ic('lamp')}</span>${pts}</span></button>` +
       `<button class="link-btn notice-entry${unread ? ' has-new' : ''}" id="noticeBtn" title="${unread ? unread + ' 条未读消息' : '站内消息'}"><span class="nb-ico">🔔</span><span class="nb-dot"${unread ? '' : ' style="display:none"'}>${unread > 99 ? '99+' : unread}</span></button>` +
       `<div class="user-menu" id="userMenu">
-        <button class="user-chip" id="userMenuBtn" title="个人菜单">${ic('user')} ${escapeHtml(state.user.nickname || state.user.username)}<span class="um-caret">▾</span></button>
+        <button class="user-chip" id="userMenuBtn" title="个人菜单">${ic('user')} <span class="uc-name">${escapeHtml(state.user.nickname || state.user.username)}</span><span class="um-caret">▾</span></button>
         <div class="user-dropdown" id="userDropdown">
           <a class="ud-item" href="/u/${encodeURIComponent(state.user.username)}" data-nav>🏠 我的主页</a>
           <button class="ud-item" id="statsBtn">📊 我的数据</button>
@@ -1068,7 +1075,7 @@ function renderTypePicker() {
   const names = TYPES.filter(t => t !== '全部');
   box.innerHTML = names.map((t, i) => {
     const on = checked.length ? checked.indexOf(t) !== -1 : i === 0; // 默认勾第一个
-    return `<label class="type-opt"><input type="checkbox" name="types" value="${escapeHtml(t)}"${on ? ' checked' : ''} /><span>${TYPE_ICONS[t] || '✨'} ${escapeHtml(t)}</span></label>`;
+    return `<label class="type-opt"><input type="checkbox" name="types" value="${escapeHtml(t)}"${on ? ' checked' : ''} /><span>${typeIcoHtml(t)} ${escapeHtml(t)}</span></label>`;
   }).join('');
 }
 
@@ -1290,11 +1297,14 @@ function renderFilters() {
   ];
   row.innerHTML = conf.map(c => {
     const cur = c.kind === 'type' ? state.type : c.kind === 'os' ? state.openSource : state.category;
+    // 形态选中值带 SVG 图标时走 valueHtml（含 HTML），其余仍是纯文本 value
+    const valHtml = c.kind === 'type' && state.type !== '全部' && TYPE_SVG[state.type]
+      ? `${typeIcoHtml(state.type)} ${escapeHtml(state.type)}` : null;
     return `
     <div class="dd-filter" data-kind="${c.kind}">
       <button type="button" class="dd-btn${c.active ? ' has-value' : ''}">
         <span class="dd-ico">${c.icon}</span><span class="dd-label">${c.label}</span>
-        <b class="dd-value">${escapeHtml(c.value)}</b><span class="dd-caret">▾</span>
+        <b class="dd-value">${valHtml || escapeHtml(c.value)}</b><span class="dd-caret">▾</span>
       </button>
       <div class="dd-panel">
         ${c.opts.map(o => {
@@ -1303,7 +1313,7 @@ function renderFilters() {
           else if (c.kind === 'type') n = typeCounts[o] || 0;
           else if (c.kind === 'os') n = osCounts[o === '是' ? 'open' : 'closed'] || 0;
           else n = catCounts[o] || 0;
-          const icon = c.kind === 'type' && o !== '全部' ? (TYPE_ICONS[o] || '') + ' '
+          const icon = c.kind === 'type' && o !== '全部' ? typeIcoHtml(o) + ' '
             : c.kind === 'os' && o === '是' ? '🔓 '
             : c.kind === 'os' && o === '否' ? '🔒 ' : '';
           return `
@@ -1363,6 +1373,16 @@ function removeSeoBlock() {
 function navigate(path) {
   history.pushState({}, '', path);
   route();
+}
+
+// 平滑滚到作品列表区（「我的收藏」标题处）。
+// 只在开启收藏过滤时调用；延迟等路由/骨架屏渲染完，避免滚了个寂寞或被高度塌陷拽回去。
+// 若列表本来就在视野顶部，scrollIntoView 只是微量校正，不会有跳动感。
+function scrollWorksHeadSoon() {
+  setTimeout(() => {
+    const head = $('worksHead');
+    if (head) head.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 350);
 }
 
 function closeAllViews() {
@@ -1615,13 +1635,20 @@ async function loadAuthor(name) {
 
 // ---------- 榜单 ----------
 const rankState = { period: 'week', by: 'hot' };
+const BY_SHORT = { hot: '综合', likes: '按点赞', favs: '按收藏', pv: '按 PV', uv: '按 UV' };
+const PERIOD_SHORT = { week: '周榜', month: '月榜', all: '总榜' };
 async function loadRank(period, by) {
   if (period) rankState.period = period;
   if (by) rankState.by = by;
-  document.querySelectorAll('.rank-tab[data-period]').forEach(b =>
+  // 周期/排序都已收进下拉胶囊：同步面板勾选态与按钮上的当前值
+  document.querySelectorAll('#rankPeriodPanel .dd-opt').forEach(b =>
     b.classList.toggle('active', b.dataset.period === rankState.period));
-  document.querySelectorAll('.rank-tab[data-by]').forEach(b =>
+  const periodVal = $('rankPeriodValue');
+  if (periodVal) periodVal.textContent = PERIOD_SHORT[rankState.period] || rankState.period;
+  document.querySelectorAll('#rankByPanel .dd-opt').forEach(b =>
     b.classList.toggle('active', b.dataset.by === rankState.by));
+  const byVal = $('rankByValue');
+  if (byVal) byVal.textContent = BY_SHORT[rankState.by] || rankState.by;
   try {
     const list = await (await fetch(`/api/rank?period=${rankState.period}&by=${rankState.by}&limit=20`)).json();
     const cur = rankState.by;
@@ -1666,7 +1693,7 @@ async function openWork(id, push = true) {
     $('detailTitle').innerHTML = escapeHtml(w.title) +
       (w.repo ? ` <a class="badge-repo badge-repo-inline" href="${escapeHtml(w.repo)}" target="_blank" rel="noopener" title="打开源码仓库">📁 源码</a>` : '');
     $('detailCategory').innerHTML =
-      typesOf(w).map(t => `<span class="badge-type">${TYPE_ICONS[t] || '✨'} ${escapeHtml(t)}</span>`).join('') +
+      typesOf(w).map(t => `<span class="badge-type">${typeIcoHtml(t)} ${escapeHtml(t)}</span>`).join('') +
       `<span class="badge-cat">${escapeHtml(w.category)}</span>` +
       osBadgeHtml(w) +
       paidBadgeHtml(w) +
@@ -4020,7 +4047,15 @@ function setupHeader() {
     }
     state.favoritesOnly = !state.favoritesOnly;
     $('favBtn').classList.toggle('active', state.favoritesOnly);
-    if (location.pathname !== '/') navigate('/'); else loadWorks();
+    if (location.pathname !== '/') {
+      navigate('/');
+      // 从其他页点收藏：别停在首页顶部，滚到列表区让「我的收藏」直接出现在眼前
+      if (state.favoritesOnly) scrollWorksHeadSoon();
+    } else {
+      // 就在首页：开着过滤时如果列表区不在视野里（比如还在看精选），也带过去
+      loadWorks();
+      if (state.favoritesOnly) scrollWorksHeadSoon();
+    }
   };
 
   // 造梦酒肆：回首页并平滑滚到造梦酒肆区块，短暂高亮提示位置
@@ -4039,11 +4074,22 @@ function setupHeader() {
 
   $('loadMore').onclick = () => { state.page += 1; loadWorks(false); };
 
-  $('rankTabs').addEventListener('click', e => {
-    if (e.target.dataset.period) loadRank(e.target.dataset.period);
-  });
-  $('rankByTabs').addEventListener('click', e => {
-    if (e.target.dataset.by) loadRank(null, e.target.dataset.by);
+  // 榜单两个下拉共用一套开合逻辑
+  [['rankPeriodBtn', 'rankPeriodDD', 'rankPeriodPanel', 'period'],
+   ['rankByBtn', 'rankByDD', 'rankByPanel', 'by']].forEach(([btnId, ddId, panelId, attr]) => {
+    $(btnId).addEventListener('click', e => {
+      e.stopPropagation();
+      const dd = $(ddId);
+      const wasOpen = dd.classList.contains('open');
+      closeAllDD();
+      if (!wasOpen) dd.classList.add('open');
+    });
+    $(panelId).addEventListener('click', e => {
+      const t = e.target.closest('.dd-opt');
+      if (!t || !t.dataset[attr]) return;
+      closeAllDD();
+      loadRank(t.dataset.period || null, t.dataset.by || null);
+    });
   });
 
   // SPA 链接拦截
