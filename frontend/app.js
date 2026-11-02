@@ -1185,7 +1185,7 @@ function renderSkeleton() {
   if (gallery.children.length) return; // 已有内容（切换筛选等场景）就不动
   $('workCount').textContent = '加载中…';
   $('empty').style.display = 'none';
-  const n = 12;
+  const n = 15;  // 桌面一行 5 个 → 骨架正好 3 排
   let html = '';
   for (let i = 0; i < n; i++) {
     html += `<div class="sk-card" aria-hidden="true">
@@ -1204,7 +1204,7 @@ async function loadWorks(reset = true) {
   if (reset) { state.page = 1; renderSkeleton(); } // 先不清空容器，等数据到达再替换，避免页面高度塌陷把滚动位置钳回顶部
   const params = new URLSearchParams({
     sort: state.sort, type: state.type, category: state.category,
-    page: state.page, pageSize: 12
+    page: state.page, pageSize: 15
   });
   if (state.q) params.set('q', state.q);
   if (state.openSource === '是') params.set('os', 'open');

@@ -2147,8 +2147,8 @@ app.get('/api/works', (req, res) => {
   const { q, category, type, sort } = req.query;
   const page = Math.max(1, parseInt(req.query.page) || 1);
   // pageSize=all（兼容旧的 limit=500）→ 返回全部，用于全量统计
-  const rawSize = String(req.query.pageSize || req.query.limit || '12');
-  const pageSize = rawSize === 'all' ? Number.MAX_SAFE_INTEGER : Math.min(48, Math.max(1, parseInt(rawSize) || 12));
+  const rawSize = String(req.query.pageSize || req.query.limit || '15');
+  const pageSize = rawSize === 'all' ? Number.MAX_SAFE_INTEGER : Math.min(48, Math.max(1, parseInt(rawSize) || 15));
 
   const user = currentUser(req);
   let list = filterBlocked(works.filter(isVisible), user);
