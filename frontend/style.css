@@ -741,7 +741,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   border-radius: 10px; font-size: 14px; background: #f7f7fb; outline: none;
 }
 .search-box input:focus { border-color: var(--primary); background: #fff; }
-.search-icon { position: absolute; left: 10px; font-size: 13px; opacity: .6; }
+.search-icon { position: absolute; left: 10px; font-size: 14px; opacity: .55; }
 
 /* 精选 */
 .featured-section { margin-top: 28px; }
@@ -1011,6 +1011,9 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   flex-shrink: 0; text-align: right; font-size: 12.5px; color: var(--muted); line-height: 1.45;
 }
 .rank-score span { white-space: nowrap; }
+/* 筛选下拉按钮/面板选项、开源值里的线性小图标 */
+.dd-ico .ico { font-size: 1.1em; }
+.dd-lico { font-size: 1.05em; vertical-align: -0.15em; margin-right: 2px; }
 /* 当前排序维度的那个数字加重，一眼看出按什么排的 */
 .rank-score span.on { color: var(--text); font-weight: 700; }
 /* 统计迷你线性图标：跟字色走（当前维度 span.on 自动加重变色） */

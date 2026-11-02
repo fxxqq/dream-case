@@ -1278,33 +1278,34 @@ function renderFilters() {
   if (!row) return;
   const conf = [
     {
-      kind: 'type', icon: '🧩', label: '形态',
+      kind: 'type', icon: 'shapes', label: '形态',
       value: state.type === '全部' ? '全部形态' : `${TYPE_ICONS[state.type] || ''} ${state.type}`,
       active: state.type !== '全部',
       opts: TYPES
     },
     {
-      kind: 'category', icon: '🗂️', label: '分类',
+      kind: 'category', icon: 'folder', label: '分类',
       value: state.category, active: state.category !== '全部',
       opts: CATEGORIES
     },
     {
-      kind: 'os', icon: '🔓', label: '开源',
-      value: state.openSource === '全部' ? '全部' : state.openSource === '是' ? '🔓 是' : '🔒 否',
-      active: state.openSource !== '全部',
+      kind: 'os', icon: 'lock-open', label: '开源',
+      value: state.openSource, active: state.openSource !== '全部',
       opts: ['全部', '是', '否']
     }
   ];
   row.innerHTML = conf.map(c => {
     const cur = c.kind === 'type' ? state.type : c.kind === 'os' ? state.openSource : state.category;
-    // 形态选中值带 SVG 图标时走 valueHtml（含 HTML），其余仍是纯文本 value
+    // 选中值带 SVG 图标时走 valueHtml（含 HTML），其余仍是纯文本 value
     const valHtml = c.kind === 'type' && state.type !== '全部' && TYPE_SVG[state.type]
       ? `${typeIcoHtml(state.type)} ${escapeHtml(state.type)}` : null;
+    const osValHtml = c.kind === 'os' && state.openSource !== '全部'
+      ? `<span class="ico dd-lico">${ic(state.openSource === '是' ? 'lock-open' : 'lock')}</span> ${escapeHtml(state.openSource)}` : null;
     return `
     <div class="dd-filter" data-kind="${c.kind}">
       <button type="button" class="dd-btn${c.active ? ' has-value' : ''}">
-        <span class="dd-ico">${c.icon}</span><span class="dd-label">${c.label}</span>
-        <b class="dd-value">${valHtml || escapeHtml(c.value)}</b><span class="dd-caret">▾</span>
+        <span class="dd-ico"><span class="ico">${ic(c.icon)}</span></span><span class="dd-label">${c.label}</span>
+        <b class="dd-value">${valHtml || osValHtml || escapeHtml(c.value)}</b><span class="dd-caret">▾</span>
       </button>
       <div class="dd-panel">
         ${c.opts.map(o => {
@@ -1314,8 +1315,7 @@ function renderFilters() {
           else if (c.kind === 'os') n = osCounts[o === '是' ? 'open' : 'closed'] || 0;
           else n = catCounts[o] || 0;
           const icon = c.kind === 'type' && o !== '全部' ? typeIcoHtml(o) + ' '
-            : c.kind === 'os' && o === '是' ? '🔓 '
-            : c.kind === 'os' && o === '否' ? '🔒 ' : '';
+            : c.kind === 'os' && o !== '全部' ? `<span class="ico dd-lico">${ic(o === '是' ? 'lock-open' : 'lock')}</span> ` : '';
           return `
           <button type="button" class="dd-opt${o === cur ? ' active' : ''}" data-v="${escapeHtml(o)}">
             <span class="dd-opt-label">${icon}${escapeHtml(o)}</span>
