@@ -3849,7 +3849,7 @@ app.get('/rank', (req, res) => {
   const block = `<div id="seoContent" class="seo-wrap">
   ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name: '作品榜单' }])}
   <div class="page-head">
-    <h1>作品榜单</h1>
+    <h1><span class="ico">${Icons.ICONS.rank}</span> 作品榜单</h1>
     <p>当前按${BY_TEXT[by]}排序，展示最受欢迎的作品</p>
   </div>
   <div class="rank-tabs">
