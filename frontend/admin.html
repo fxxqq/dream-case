@@ -104,6 +104,20 @@
     .field input[type="file"] { padding:8px; font-size:13px; }
     .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 
+    /* 作者字段搜索：输入即时搜站内用户，点选直接分配 */
+    .author-ac { position:relative; }
+    .ac-list {
+      position:absolute; z-index:6; left:0; right:0; top:calc(100% + 4px);
+      background:#fff; border:1px solid var(--border); border-radius:10px;
+      box-shadow:0 8px 24px rgba(20,22,40,.14); max-height:220px; overflow:auto;
+    }
+    .ac-item { display:flex; align-items:center; gap:8px; padding:8px 12px; cursor:pointer; font-size:13px; }
+    .ac-item:hover, .ac-item.is-on { background:#f2f3fa; }
+    .ac-item .ac-name { font-weight:600; }
+    .ac-item small { color:var(--muted); font-size:11.5px; }
+    .ac-item .ac-works { margin-left:auto; }
+    .ac-empty { padding:10px 12px; font-size:12.5px; color:var(--muted); }
+
     /* ---- 与前台投稿弹窗统一的控件（胶囊单选 / 拖拽上传 / 预览网格） ---- */
     .form-hint { font-size:12px; color:var(--muted); background:#f7f7fb; border-radius:8px; padding:8px 10px; margin:2px 0 14px; }
     .os-picker { display:flex; flex-wrap:wrap; gap:8px; margin:2px 0 4px; }
@@ -353,7 +367,10 @@
         <div class="grid2">
           <div class="field">
             <label>作者</label>
-            <input name="author" maxlength="50" placeholder="默认：管理员" />
+            <div class="author-ac">
+              <input name="author" id="workAuthor" maxlength="50" placeholder="默认：管理员（输入可搜索站内用户）" autocomplete="off" />
+              <div class="ac-list" id="authorAc" style="display:none"></div>
+            </div>
           </div>
           <div class="field">
             <label>状态</label>
@@ -2151,6 +2168,44 @@
         } catch (err) { toast(err.message); }
       }
     });
+
+    // ---- 作者字段：搜索站内用户直接分配 ----
+    (function () {
+      const input = document.getElementById('workAuthor');
+      const box = document.getElementById('authorAc');
+      if (!input || !box) return;
+      let timer = null;
+      async function load() {
+        try {
+          const q = input.value.trim();
+          const list = await api('/api/admin/users' + (q ? '?q=' + encodeURIComponent(q) : ''));
+          const top = list.slice(0, 8);
+          if (!top.length) {
+            box.innerHTML = '<div class="ac-empty">没有匹配的注册用户，可直接填任意名字</div>';
+            box.style.display = 'block';
+            return;
+          }
+          box.innerHTML = top.map(u =>
+            `<div class="ac-item" data-name="${esc(u.username)}">
+               <span class="ac-name">@${esc(u.username)}</span>
+               ${u.name && u.name !== u.username ? `<small>${esc(u.name)}</small>` : ''}
+               <small class="ac-works">${u.works} 件作品</small>
+             </div>`).join('');
+          box.style.display = 'block';
+        } catch { box.style.display = 'none'; }   // 未登录/口令失效时静默
+      }
+      input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 200); });
+      input.addEventListener('focus', load);
+      input.addEventListener('blur', () => setTimeout(() => { box.style.display = 'none'; }, 150));
+      box.addEventListener('mousedown', e => {
+        const it = e.target.closest('.ac-item');
+        if (!it) return;
+        e.preventDefault();   // 防止输入框先失焦把列表收起
+        input.value = it.dataset.name;
+        box.style.display = 'none';
+        input.dispatchEvent(new Event('input', { bubbles: true }));  // 草稿保存逻辑照常触发
+      });
+    })();
 
     // 自动登录：记住的口令先静默校验一次，有效直接进后台，无效（改过口令）退回登录框
     if (KEY) api('/api/admin/stats').then(enter).catch(() => backToLogin());
