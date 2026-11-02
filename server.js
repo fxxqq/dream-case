@@ -139,7 +139,7 @@ function saveAds() { writeJSON('ads.json', ads); }
 const AD_SLOTS = [
   { key: 'home-top', name: '首页顶部横幅', where: '首页 Hero 下方、本周精选上方', size: '建议 1400 × 280' },
   { key: 'home-bottom', name: '首页列表底部', where: '作品列表末尾、加载更多上方', size: '建议 1400 × 240' },
-  { key: 'detail', name: '作品详情页', where: '详情弹窗内、评论区下方', size: '建议 1200 × 240' },
+  { key: 'detail', name: '作品详情页', where: '详情弹窗内、评论区上方', size: '建议 1200 × 240' },
   { key: 'rank', name: '榜单页顶部', where: '榜单标题下方', size: '建议 1400 × 240' },
   { key: 'footer', name: '全站页脚上方', where: '所有页面底部通栏', size: '建议 1400 × 200' }
 ];
