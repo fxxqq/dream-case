@@ -934,6 +934,14 @@ function normLinksMap(raw, types) {
   return Object.keys(out).length ? out : null;
 }
 
+// 官网（作品的主页/官方网站，所有形态通用，选填）
+function normSite(raw) {
+  let s = String(raw || '').trim();
+  if (!s) return '';
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s;
+  return s.slice(0, 500);
+}
+
 // 每个作品的评论数：懒加载缓存，评论增删后置空重算
 let commentCounts = null;
 function countComments(id) {
@@ -974,6 +982,7 @@ function publicWork(w, user) {
     categories: catsOf(w),
     type: types[0], types: types,
     intro: w.prompt || '', link: w.link || '',
+    site: w.site || '',
     ...(w.links && Object.keys(w.links).length ? { links: w.links } : {}),
     image: w.image, thumb: w.thumb || w.image, qrcode: w.qrcode || '',
     images: Array.isArray(w.images) ? w.images.slice(0, 9) : [],
@@ -2125,6 +2134,7 @@ app.post('/api/works', (req, res) => {
       type: types[0],
       types: types,
       link: linkVal ? linkVal.slice(0, 500) : '',
+      site: normSite(req.body.site),
       image: '/uploads/' + image.filename,
       thumb: thumb ? '/uploads/' + thumb.filename : '/uploads/' + image.filename,
       qrcode: qrcode ? '/uploads/' + qrcode.filename : '',
@@ -2201,6 +2211,7 @@ app.put('/api/works/:id', (req, res) => {
       if (lv && !/^https?:\/\//i.test(lv)) lv = 'https://' + lv;
       w.link = lv.slice(0, 500);
     }
+    if (req.body.site !== undefined) w.site = normSite(req.body.site); // 官网：传了就更新（可清空）
 
     applyImageChanges(w, req);
 
@@ -2677,6 +2688,7 @@ app.post('/api/admin/works', requireAdmin, (req, res) => {
       type: types[0],
       types: types,
       link: linkVal ? linkVal.slice(0, 500) : '',
+      site: normSite(req.body.site),
       image: '/uploads/' + image.filename,
       thumb: thumb ? '/uploads/' + thumb.filename : '/uploads/' + image.filename,
       qrcode: qrcode ? '/uploads/' + qrcode.filename : '',
@@ -2756,6 +2768,7 @@ app.put('/api/admin/works/:id', requireAdmin, (req, res) => {
       if (lv && !/^https?:\/\//i.test(lv)) lv = 'https://' + lv;
       w.link = lv.slice(0, 500);
     }
+    if (req.body.site !== undefined) w.site = normSite(req.body.site); // 官网：传了就更新（可清空）
 
     applyImageChanges(w, req);
 

@@ -1520,9 +1520,12 @@ async function openWork(id, push = true) {
       .map(t => ({ t, url: (w.links && w.links[t]) || '' }))
       .filter(e => e.url);
     if (!linkEntries.length && w.link) linkEntries.push({ t: null, url: w.link });
+    // 官网按钮：填了官网且没有和某个平台链接重复时，放在最前面
+    const siteUrl = String(w.site || '').trim();
+    if (siteUrl && !linkEntries.some(e => e.url === siteUrl)) linkEntries.unshift({ t: null, url: siteUrl, site: true });
     $('detailLinks').innerHTML = linkEntries.map(e =>
       `<a class="btn-link" target="_blank" rel="noopener" href="${escapeHtml(e.url)}">${
-        e.t ? escapeHtml(LINK_LABEL[e.t] || '🔗 访问作品') : escapeHtml(linkLabelOf(tl))
+        e.site ? '🏠 官网' : e.t ? escapeHtml(LINK_LABEL[e.t] || '🔗 访问作品') : escapeHtml(linkLabelOf(tl))
       }</a>`).join('');
 
     // （源码入口已上移到标题标签行 badge-repo，按钮行不再重复放）
@@ -2049,7 +2052,7 @@ function setupUploadForm() {
         openSource: (form.querySelector('input[name="openSource"]:checked') || {}).value || '',
         repo: form.repo.value,
         paid: (form.querySelector('input[name="paid"]:checked') || {}).value || '',
-        prompt: form.prompt.value, links: collectLinkValues(form), t: Date.now()
+        prompt: form.prompt.value, site: form.site.value, links: collectLinkValues(form), t: Date.now()
       }));
     } catch {}
   }
@@ -2067,6 +2070,7 @@ function setupUploadForm() {
       if (d.customCat) { newCatInput.style.display = 'block'; newCatInput.value = d.customCat; }
       else { newCatInput.style.display = 'none'; newCatInput.value = ''; }
       form.prompt.value = d.prompt || '';
+      form.site.value = d.site || '';
       // 兼容旧草稿的单 link 字段：填进当前主形态的输入框
       if (d.links && Object.keys(d.links).length) pendingLinkValues = d.links;
       else if (d.link && d.link.trim()) {
@@ -2108,6 +2112,7 @@ function setupUploadForm() {
     setSelectedTypes(typesOf(w));
     form.title.value = w.title;
     form.prompt.value = w.intro || '';
+    form.site.value = w.site || ''; // 官网回填
     // 编辑回填：按形态的 links 优先，旧数据的单 link 落到第一个非小程序形态的输入框
     {
       const nonMini = typesOf(w).filter(t => t !== '小程序');

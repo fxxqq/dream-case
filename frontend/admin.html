@@ -280,6 +280,10 @@
           </select>
         </div>
         <div class="field">
+          <label>官网（选填，作品的主页 / 官方网站）</label>
+          <input type="text" name="site" maxlength="500" placeholder="https://example.com" />
+        </div>
+        <div class="field">
           <label id="adminLinkLabel">链接（网站地址 / 下载链接 / 体验链接，按形态必填）</label>
           <div id="adminLinkInputs"></div><!-- 链接输入框由 JS 按所选形态渲染：单形态一个，多形态每个形态一个 -->
         </div>
@@ -847,6 +851,7 @@
           adminRenderLinkInputs();
         }
         workForm.prompt.value = w.intro || '';
+        workForm.site.value = w.site || ''; // 官网回填
         existingCover = w.image || '';
         existingQr = w.qrcode || '';
         originalImages = (w.images || []).slice();
@@ -880,7 +885,7 @@
           openSource: workForm.openSource.value,
           repo: workForm.repo.value,
           paid: workForm.paid.value,
-          prompt: workForm.prompt.value, t: Date.now()
+          prompt: workForm.prompt.value, site: workForm.site.value, t: Date.now()
         }));
       } catch {}
     }
@@ -907,6 +912,7 @@
         }
         adminRenderLinkInputs();
         workForm.prompt.value = d.prompt || '';
+        workForm.site.value = d.site || '';
         return true;
       } catch { return false; }
     }
