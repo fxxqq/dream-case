@@ -218,6 +218,7 @@
         <button class="tab" data-tab="ads">广告位</button>
         <button class="tab" data-tab="creators">认证创作者</button>
         <button class="tab" data-tab="points">送积分</button>
+        <button class="tab" data-tab="friends">友情链接</button>
       </div>
 
       <div class="panel" id="panel"></div>
@@ -511,6 +512,7 @@
       if (tab === 'ads') return loadAds();
       if (tab === 'creators') return loadCreators();
       if (tab === 'points') return loadPoints();
+      if (tab === 'friends') return loadFriends();
     }
 
     // ---- 作品 ----
@@ -1479,6 +1481,63 @@
         try {
           await api('/api/admin/categories/' + encodeURIComponent(e.target.dataset.cat), { method: 'DELETE' });
           toast('已删除'); loadCategories();
+        } catch (err) { toast(err.message); }
+      }
+    });
+
+    // ---- 友情链接 ----
+    async function loadFriends() {
+      try {
+        const list = await api('/api/admin/friends');
+        panel.innerHTML = `
+          <div class="form-inline">
+            <input id="friendName" placeholder="名称，如：某某博客" maxlength="20" style="width:180px" />
+            <input id="friendUrl" placeholder="https:// 链接" maxlength="500" />
+            <button class="btn btn-primary" id="addFriendBtn">添加</button>
+          </div>
+          <div class="hint">展示在网站页脚「友情链接」一行，顺序即展示顺序。最多 50 条；建议只加正规站点，友链影响站点口碑与 SEO。</div>
+          ` + (list.length ? list.map((f, i) => `
+            <div class="row">
+              <div class="row-main"><div class="row-title">${esc(f.name)} <span class="tag">${esc(f.url)}</span></div></div>
+              <div class="row-actions">
+                <button class="btn btn-ghost btn-sm" data-fup="${i}" ${i === 0 ? 'disabled' : ''}>↑</button>
+                <button class="btn btn-ghost btn-sm" data-fdown="${i}" ${i === list.length - 1 ? 'disabled' : ''}>↓</button>
+                <button class="btn btn-danger btn-sm" data-fdel="${esc(f.url)}">删除</button>
+              </div>
+            </div>`).join('') : '<div class="empty">还没有友情链接，先添加一条</div>');
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    panel.addEventListener('click', async e => {
+      if (e.target.id === 'addFriendBtn') {
+        const name = $('friendName').value.trim();
+        const url = $('friendUrl').value.trim();
+        if (!name || !url) return toast('请填写名称和链接');
+        try {
+          await api('/api/admin/friends', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, url }) });
+          toast('已添加'); loadFriends();
+        } catch (err) { toast(err.message); }
+        return;
+      }
+      const up = e.target.dataset.fup, down = e.target.dataset.fdown;
+      if (up !== undefined || down !== undefined) {
+        const urls = Array.from(panel.querySelectorAll('[data-fdel]')).map(b => b.dataset.fdel);
+        const i = parseInt(up !== undefined ? up : down, 10);
+        const j = up !== undefined ? i - 1 : i + 1;
+        if (isNaN(i) || j < 0 || j >= urls.length) return;
+        [urls[i], urls[j]] = [urls[j], urls[i]];
+        try {
+          await api('/api/admin/friends/reorder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ urls }) });
+          loadFriends();
+        } catch (err) { toast(err.message); }
+        return;
+      }
+      const del = e.target.dataset.fdel;
+      if (del) {
+        if (!confirm('删除友情链接「' + del + '」？')) return;
+        try {
+          await api('/api/admin/friends/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: del }) });
+          toast('已删除'); loadFriends();
         } catch (err) { toast(err.message); }
       }
     });

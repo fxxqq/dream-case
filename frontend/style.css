@@ -195,6 +195,13 @@ img.fit-show { object-fit: contain; z-index: 1; position: relative; }
 /* Footer */
 .site-footer { border-top: 1px solid var(--border); padding: 20px 0; color: var(--muted); font-size: 13px; margin-top: auto; }
 
+/* 页脚友情链接 */
+.footer-friends { margin-bottom: 10px; line-height: 1.9; }
+.footer-friends .ff-label { opacity: .75; margin-right: 4px; }
+.footer-friends a { color: var(--muted); text-decoration: none; }
+.footer-friends a:hover { color: var(--primary); }
+.footer-friends .ff-sep { margin: 0 6px; opacity: .4; }
+
 /* Modal */
 .modal-mask {
   position: fixed; inset: 0; background: rgba(20,20,35,.5); z-index: 100;
@@ -1653,6 +1660,18 @@ body.on-work .load-more-wrap { display: none !important; }
 .auth-modal form { display: block; }
 .auth-switch { margin-top: 14px; font-size: 13px; color: var(--muted); text-align: center; }
 .auth-switch a { color: var(--primary); text-decoration: none; font-weight: 600; }
+
+/* 登录时用户名不存在 → 一键转注册的提示区 */
+.auth-upgrade {
+  margin-top: 12px; padding: 12px 14px; border: 1px solid var(--primary);
+  border-radius: 10px; background: #f4f4ff; font-size: 13px;
+}
+.auth-upgrade p { margin: 0 0 10px; line-height: 1.6; }
+.auth-upgrade .btn-block { margin-bottom: 8px; }
+.auth-upgrade-cancel {
+  display: block; margin: 0 auto; background: none; border: none; padding: 0;
+  font-size: 12.5px; color: var(--muted); cursor: pointer; text-decoration: underline;
+}
 .remember-row {
   display: flex; align-items: center; gap: 8px;
   margin: 4px 0 0; font-size: 13px; color: var(--muted);

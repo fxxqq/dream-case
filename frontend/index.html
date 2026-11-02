@@ -170,6 +170,7 @@
 
   <footer class="site-footer">
     <div class="container footer-inner">
+      <div class="footer-friends" id="footerFriends" style="display:none"></div>
       <div class="footer-meta">
         <span>造梦橱窗 · 收录大家的网站、小程序、桌面客户端、机器人等作品</span>
         <a class="footer-icp" href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
@@ -560,6 +561,11 @@
           <span>记住我（30 天内免登录）</span>
         </label>
         <button type="submit" class="btn-primary btn-block" id="loginBtn2">登录</button>
+        <div class="auth-upgrade" id="loginUpgrade" style="display:none">
+          <p id="loginUpgradeText"></p>
+          <button type="button" class="btn-primary btn-block" id="upgradeRegBtn">一键注册并登录</button>
+          <button type="button" class="auth-upgrade-cancel" id="upgradeCancel">不对，换个用户名</button>
+        </div>
         <p class="auth-switch">还没有账号？<a href="#" id="toRegister">注册一个 →</a></p>
       </form>
 

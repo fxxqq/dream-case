@@ -95,6 +95,14 @@ function saveReports() { writeJSON('reports.json', reports); }
 function saveTools() { writeJSON('tools.json', tools); }
 function saveCategories() { writeJSON('categories.json', categories); }
 
+// 友情链接：站长安插的外站入口，展示在页脚（[{ name, url }]，数组顺序即展示顺序）
+let friends = readJSON('friends.json', []);
+if (!Array.isArray(friends)) friends = [];
+friends = friends
+  .map(f => ({ name: String((f && f.name) || '').slice(0, 20), url: String((f && f.url) || '').slice(0, 500) }))
+  .filter(f => f.name && /^https?:\/\/.+/i.test(f.url));
+const saveFriends = () => writeJSON('friends.json', friends);
+
 // 作品的分类列表：新数据用 categories 数组（1-3 个），老数据只有 category 单值
 function catsOf(w) {
   if (Array.isArray(w.categories) && w.categories.length) return w.categories.filter(c => categories.includes(c));
@@ -1032,7 +1040,9 @@ app.post('/api/login', (req, res) => {
   }
   const { username, password } = req.body || {};
   const user = users.find(u => u.username === String(username || '').trim());
-  if (!user || !checkPassword(user, String(password || ''))) {
+  // 用户名不存在：告诉前端「可一键转注册」（前端会展示确认提示，不会静默创建）
+  if (!user) return res.status(404).json({ error: '该用户名还没有注册', notFound: true });
+  if (!checkPassword(user, String(password || ''))) {
     return res.status(401).json({ error: '用户名或密码错误' });
   }
   setSession(res, user, isRemember(req.body));
@@ -2823,6 +2833,40 @@ app.delete('/api/admin/categories/:name', requireAdmin, (req, res) => {
   if (categories.length === before) return res.status(404).json({ error: '分类不存在' });
   saveCategories();
   res.json({ ok: true, categories: orderedCategories() });
+});
+
+// 友情链接
+app.get('/api/friends', (req, res) => res.json(friends));
+app.get('/api/admin/friends', requireAdmin, (req, res) => res.json(friends));
+app.post('/api/admin/friends', requireAdmin, (req, res) => {
+  const name = String((req.body || {}).name || '').trim();
+  const url = String((req.body || {}).url || '').trim();
+  if (!name || name.length > 20) return res.status(400).json({ error: '名称需 1-20 字' });
+  if (!/^https?:\/\/.+/i.test(url)) return res.status(400).json({ error: '链接需以 http(s):// 开头' });
+  if (url.length > 500) return res.status(400).json({ error: '链接过长' });
+  if (friends.length >= 50) return res.status(400).json({ error: '友情链接最多 50 条' });
+  if (friends.some(f => f.url === url)) return res.status(400).json({ error: '该链接已存在' });
+  friends.push({ name, url });
+  saveFriends();
+  res.status(201).json({ ok: true });
+});
+app.post('/api/admin/friends/reorder', requireAdmin, (req, res) => {
+  const urls = Array.isArray(req.body && req.body.urls) ? req.body.urls.map(String) : null;
+  if (!urls) return res.status(400).json({ error: '缺少排序列表' });
+  const known = new Map(friends.map(f => [f.url, f]));
+  const next = urls.map(u => known.get(u)).filter(Boolean);
+  if (next.length !== friends.length) return res.status(400).json({ error: '顺序数据不完整，请刷新后重试' });
+  friends = next;
+  saveFriends();
+  res.json({ ok: true });
+});
+app.post('/api/admin/friends/delete', requireAdmin, (req, res) => {
+  const url = String((req.body || {}).url || '');
+  const i = friends.findIndex(f => f.url === url);
+  if (i === -1) return res.status(404).json({ error: '链接不存在' });
+  friends.splice(i, 1);
+  saveFriends();
+  res.json({ ok: true });
 });
 
 // 形态管理

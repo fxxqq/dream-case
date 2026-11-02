@@ -534,6 +534,8 @@ function setupAuthForms() {
 
   $('loginForm').addEventListener('submit', async e => {
     e.preventDefault();
+    const box = $('loginUpgrade');
+    if (box) box.style.display = 'none'; // 重新提交时先收起上次的转注册提示
     const btn = $('loginBtn2');
     btn.disabled = true; btn.textContent = '登录中...';
     try {
@@ -545,11 +547,39 @@ function setupAuthForms() {
         body: JSON.stringify(payload)
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '登录失败');
+      if (!res.ok) {
+        // 用户名不存在：给出「用这个名字和刚输的密码直接注册」的确认入口（不静默创建，防手滑打错名字多出账号）
+        if (data.notFound) { showLoginUpgrade(String(fd.get('username') || ''), String(fd.get('password') || ''), payload.remember); return; }
+        throw new Error(data.error || '登录失败');
+      }
       afterAuth(data);
     } catch (err) { showToast(err.message); }
     finally { btn.disabled = false; btn.textContent = '登录'; }
   });
+
+// 登录时用户名不存在 → 展示「一键转注册」确认区（复用刚输入的用户名和密码，走完整注册校验）
+function showLoginUpgrade(username, password, remember) {
+  const box = $('loginUpgrade');
+  if (!box || !username) { showToast('该用户名还没有注册'); return; }
+  $('loginUpgradeText').innerHTML =
+    `用户名「<b>${escapeHtml(username)}</b>」还没注册。要直接用它创建账号吗？（密码就是刚输入的这个，至少 6 位）`;
+  $('upgradeRegBtn').onclick = async () => {
+    const btn = $('upgradeRegBtn');
+    btn.disabled = true; btn.textContent = '注册中...';
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, remember: !!remember, ref: (refStore() || {}).ref || '' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '注册失败');
+      afterAuth(data);
+    } catch (err) { showToast(err.message); }
+    finally { btn.disabled = false; btn.textContent = '一键注册并登录'; }
+  };
+  $('upgradeCancel').onclick = () => { box.style.display = 'none'; };
+  box.style.display = '';
+}
 
   $('registerForm').addEventListener('submit', async e => {
     e.preventDefault();
@@ -3703,6 +3733,7 @@ async function init() {
   // 作品详情页 /w/ 除外（完整页面模式要展示它，route 里再处理）
   if (!location.pathname.startsWith('/w/')) removeSeoBlock();
   captureRef();   // 先处理 ?ref=：记下分享者并上报，再把参数从地址栏摘掉
+  loadFooterFriends();  // 页脚友情链接（后台可配，空则不展示）
   // 支持 /?q=关键词 直接进入搜索结果（与站点搜索结构化数据一致）
   const q = (new URLSearchParams(location.search).get('q') || '').trim();
   if (q) {
@@ -3727,6 +3758,19 @@ async function init() {
   $('featRow').addEventListener('scroll', updateFeatNav, { passive: true });
   window.addEventListener('resize', updateFeatNav);
   route();
+}
+
+// ---------- 友情链接（页脚，后台「友情链接」配置） ----------
+async function loadFooterFriends() {
+  try {
+    const list = await (await fetch('/api/friends')).json();
+    const box = $('footerFriends');
+    if (!box || !Array.isArray(list) || !list.length) return;
+    box.style.display = '';
+    box.innerHTML = '<span class="ff-label">友情链接：</span>' +
+      list.map(f => `<a href="${escapeHtml(f.url)}" target="_blank" rel="noopener nofollow">${escapeHtml(f.name)}</a>`)
+        .join('<span class="ff-sep">·</span>');
+  } catch { /* 拿不到就不展示，无害 */ }
 }
 
 // ---------- PWA：注册 Service Worker 与自动更新 ----------
