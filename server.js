@@ -2492,14 +2492,14 @@ app.post('/api/works', (req, res) => {
     };
     if (linksMap) work.links = linksMap;
     works.push(work);
-    grantOpenSourceBonus(work);   // 开源作品送 50 积分（匿名投稿没有账号，跳过）
+    const osBonusNow = grantOpenSourceBonus(work);   // 开源作品送 50 积分（匿名投稿没有账号，跳过）
     saveWorks();
     res.status(201).json({
       ...publicWork(work, user),
       status: work.status,
       needReview,
       anonymous: !user,
-      osBonus: work.osBonus || 0
+      osBonus: osBonusNow   // 只报本次实发，避免前端误弹「已到账」
     });
   });
 });
@@ -2559,9 +2559,9 @@ app.put('/api/works/:id', (req, res) => {
 
     applyImageChanges(w, req);
 
-    grantOpenSourceBonus(w);   // 编辑时改成开源也补送（一件作品只送一次）
+    const osBonusNow = grantOpenSourceBonus(w);   // 编辑时改成开源也补送（一件作品只送一次）
     saveWorks();
-    res.json({ ...publicWork(w, user), osBonus: w.osBonus || 0 });
+    res.json({ ...publicWork(w, user), osBonus: osBonusNow });
   });
 });
 
@@ -3119,9 +3119,9 @@ app.put('/api/admin/works/:id', requireAdmin, (req, res) => {
 
     applyImageChanges(w, req);
 
-    grantOpenSourceBonus(w);   // 后台改成开源（且作品已归属某账号）同样补送一次
+    const osBonusNow = grantOpenSourceBonus(w);   // 后台改成开源（且作品已归属某账号）同样补送一次
     saveWorks();
-    res.json({ ...publicWork(w), status: w.status || 'approved', osBonus: w.osBonus || 0 });
+    res.json({ ...publicWork(w), status: w.status || 'approved', osBonus: osBonusNow });
   });
 });
 
