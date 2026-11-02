@@ -2287,7 +2287,7 @@ app.put('/api/works/:id', (req, res) => {
     }
     const nextLink = (link !== undefined ? String(link).trim() : '')
       || (linksMap && (linksMap.Web || Object.values(linksMap)[0]))
-      || (w.link || '');
+      || (req.body.links !== undefined ? '' : (w.link || '')); // 带 links 时不再兜底旧 w.link
     const nextQr = (req.files && req.files.qrcode && req.files.qrcode[0]) ? 'new'
       : (String(req.body.removeQrcode) === '1' ? '' : (w.qrcode || ''));
     const typeErr = validateTypeRequired(nextTypes, nextLink, nextQr);
@@ -2304,6 +2304,8 @@ app.put('/api/works/:id', (req, res) => {
       if (Array.isArray(w.categories) && w.categories.length) w.categories = [category, ...w.categories.slice(1)];
     }
     if (req.body.types !== undefined || type) applyTypes(w, normalizeTypes(req.body.types || type));
+    // links 字段接管后同步遗留单链接：全清空时一并清掉，否则回填/展示会"复活"
+    if (req.body.links !== undefined) w.link = (linksMap && (linksMap.Web || Object.values(linksMap)[0])) || '';
     if (req.body.openSource !== undefined) w.openSource = parseOpenSource(req.body.openSource);
     if (req.body.repo !== undefined) w.repo = normRepo(req.body.repo);
     if (w.openSource === true && !w.repo) return res.status(400).json({ error: '标注开源时请填写源码仓库地址' });
@@ -2833,7 +2835,7 @@ app.put('/api/admin/works/:id', requireAdmin, (req, res) => {
     }
     const nextLink = (link !== undefined ? String(link).trim() : '')
       || (linksMap && (linksMap.Web || Object.values(linksMap)[0]))
-      || (w.link || '');
+      || (req.body.links !== undefined ? '' : (w.link || '')); // 带 links 时不再兜底旧 w.link
     const nextQr = (req.files && req.files.qrcode && req.files.qrcode[0]) ? 'new'
       : (String(req.body.removeQrcode) === '1' ? '' : (w.qrcode || ''));
     const typeErr = validateTypeRequired(nextTypes, nextLink, nextQr);
@@ -2865,6 +2867,8 @@ app.put('/api/admin/works/:id', requireAdmin, (req, res) => {
     if (req.body.repo !== undefined) w.repo = normRepo(req.body.repo);
     if (w.openSource === true && !w.repo) return res.status(400).json({ error: '标注开源时请填写源码仓库地址' });
     if (req.body.paid !== undefined) w.paid = parsePaid(req.body.paid);
+    // links 字段接管后同步遗留单链接：全清空时一并清掉，否则回填/展示会"复活"
+    if (req.body.links !== undefined) w.link = (linksMap && (linksMap.Web || Object.values(linksMap)[0])) || '';
     if (link !== undefined) {
       let lv = String(link).trim();
       if (lv && !/^https?:\/\//i.test(lv)) lv = 'https://' + lv;
