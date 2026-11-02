@@ -325,6 +325,30 @@
     </div>
   </div>
 
+  <!-- 修改密码 -->
+  <div class="modal-mask" id="passModal" style="display:none">
+    <div class="modal modal-nick">
+      <div class="modal-head">
+        <h2>修改密码</h2>
+        <button class="close-btn" id="closePass" title="关闭">✕</button>
+      </div>
+      <div class="nick-body">
+        <label class="nick-label" for="passCurrent">当前密码</label>
+        <input id="passCurrent" type="password" class="nick-input" autocomplete="current-password" placeholder="输入现在的密码" />
+        <label class="nick-label" for="passNew">新密码（至少 6 位）</label>
+        <input id="passNew" type="password" class="nick-input" autocomplete="new-password" placeholder="新密码，至少 6 位" />
+        <label class="nick-label" for="passNew2">确认新密码</label>
+        <input id="passNew2" type="password" class="nick-input" autocomplete="new-password" placeholder="再输一遍新密码" />
+        <p class="nick-tip">改完密码后，其他设备会自动退出登录，当前这台设备不受影响。</p>
+        <p class="nick-msg" id="passMsg"></p>
+        <div class="nick-actions">
+          <button type="button" class="btn-ghost" id="passCancel">取消</button>
+          <button type="button" class="btn-primary" id="passSave">确认修改</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 许愿墙：认领者把做好的作品挂上来 -->
   <div class="modal-mask" id="ideaDoneModal" style="display:none">
     <div class="modal modal-idea">

@@ -281,10 +281,12 @@ function renderAuthBox() {
          title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天` : `每日签到领 ${ck.todayPoints || 2} 分`}"><span class="lb-ico">📅</span>${ckDone ? `已签${ck.streak > 1 ? ' ' + ck.streak + '天' : ''}` : '签到'}</button>` +
       `<button class="link-btn stats-entry" id="statsBtn" title="我的作品数据与站内推广"><span class="lb-ico">📊</span>数据与推广</button>` +
       (n ? `<button class="link-btn blocked-entry" id="blockedBtn" title="查看已屏蔽的作品和拉黑的作者">🚫 ${n}</button>` : '') +
+      `<button class="link-btn" id="passBtn" title="修改登录密码">🔑 改密码</button>` +
       `<button class="link-btn" id="logoutBtn">退出</button>`;
     $('logoutBtn').onclick = doLogout;
     $('statsBtn').onclick = openStats;
     $('checkinBtn').onclick = doCheckin;
+    $('passBtn').onclick = openPassModal;
     const bb = $('blockedBtn');
     if (bb) bb.onclick = () => openBlockedList('works');
   } else {
@@ -3367,6 +3369,56 @@ async function submitNick(reset) {
     if (location.pathname.startsWith('/u/')) loadAuthor(decodeURIComponent(location.pathname.slice(3)));
   } catch {
     setNickMsg('网络异常，稍后再试', 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------- 修改密码 ----------
+function setPassMsg(text, kind) {
+  const el = $('passMsg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'nick-msg' + (kind ? ' ' + kind : '');
+}
+
+function openPassModal() {
+  if (!state.user) { openAuth('login'); return; }
+  ['passCurrent', 'passNew', 'passNew2'].forEach(id => { $(id).value = ''; });
+  setPassMsg('');
+  $('closePass').onclick = () => hideModal($('passModal'));
+  $('passCancel').onclick = () => hideModal($('passModal'));
+  $('passModal').onclick = e => { if (e.target === $('passModal')) hideModal($('passModal')); };
+  $('passSave').onclick = submitPass;
+  $('passNew2').onkeydown = e => { if (e.key === 'Enter') submitPass(); };
+  showModal($('passModal'));
+  setTimeout(() => $('passCurrent').focus(), 60);
+}
+
+async function submitPass() {
+  const cur = $('passCurrent').value;
+  const p1 = $('passNew').value;
+  const p2 = $('passNew2').value;
+  if (!cur) return setPassMsg('请先输入当前密码', 'err');
+  if (p1.length < 6) return setPassMsg('新密码至少 6 位', 'err');
+  if (p1.length > 64) return setPassMsg('新密码最多 64 位', 'err');
+  if (p1 !== p2) return setPassMsg('两次输入的新密码不一样', 'err');
+  if (p1 === cur) return setPassMsg('新密码不能和当前密码一样', 'err');
+  const btn = $('passSave');
+  btn.disabled = true;
+  setPassMsg('提交中…');
+  try {
+    const r = await fetch('/api/me/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword: cur, newPassword: p1 })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) { setPassMsg(data.error || '修改失败，稍后再试', 'err'); return; }
+    hideModal($('passModal'));
+    showToast(data.kicked ? `密码已修改，${data.kicked} 台其他设备已退出登录` : '密码已修改');
+  } catch {
+    setPassMsg('网络异常，稍后再试', 'err');
   } finally {
     btn.disabled = false;
   }

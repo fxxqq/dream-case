@@ -1084,6 +1084,36 @@ app.post('/api/me/nickname', (req, res) => {
   res.json({ ok: true, nickname: user.nickname, displayName: displayNameOf(user.username), nicknameNextAt: nickNextAt(user) });
 });
 
+// ---- 修改密码 ----
+app.post('/api/me/password', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('pwd:' + user.id, 5, 3600e3)) {
+    return res.status(429).json({ error: '尝试太频繁了，请一小时后再试' });
+  }
+  const { currentPassword, newPassword } = req.body || {};
+  if (!checkPassword(user, String(currentPassword || ''))) {
+    return res.status(400).json({ error: '当前密码不正确' });
+  }
+  const np = String(newPassword || '');
+  if (np.length < 6) return res.status(400).json({ error: '新密码至少 6 位' });
+  if (np.length > 64) return res.status(400).json({ error: '新密码最多 64 位' });
+  if (checkPassword(user, np)) return res.status(400).json({ error: '新密码不能和当前密码一样' });
+  // 换新盐重新哈希
+  user.salt = crypto.randomBytes(16).toString('hex');
+  user.pass = hashPassword(np, user.salt);
+  user.passChangedAt = new Date().toISOString();
+  saveUsers();
+  // 改密后把其他设备全部踢下线（当前这个会话保留，免得自己被登出）
+  const sid = parseCookies(req).sid;
+  let kicked = 0;
+  for (const k of Object.keys(sessions)) {
+    if (sessions[k].uid === user.id && k !== sid) { delete sessions[k]; kicked++; }
+  }
+  if (kicked) saveSessions();
+  res.json({ ok: true, kicked });
+});
+
 // 屏蔽 / 取消屏蔽某个作品（仅影响当前登录用户看到的列表）
 app.post('/api/works/:id/block', (req, res) => {
   const user = requireUser(req, res);
