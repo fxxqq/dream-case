@@ -439,6 +439,8 @@
           <button class="btn-like" id="detailLike">♥ 点赞 <span id="detailLikes">0</span></button>
           <button class="btn-like btn-fav" id="detailFav" title="收藏后可在顶部「收藏」里找到">☆ 收藏</button>
           <span id="detailLinks" class="detail-links"></span>
+          <button class="btn-link btn-code" id="detailRedeem" style="display:none">🎁 兑换码</button>
+          <button class="btn-ghost btn-code-manage" id="detailCodes" style="display:none">🎟 管理兑换码</button>
         </div>
 
         <div class="detail-qr" id="detailQrBox" style="display:none">
@@ -626,6 +628,33 @@
 
         <button type="submit" class="btn-primary btn-block" id="feedbackSubmit">提交反馈</button>
       </form>
+    </div>
+  </div>
+
+  <!-- 兑换码：领取结果 -->
+  <div class="modal-mask" id="codeModal" style="display:none">
+    <div class="modal modal-code">
+      <div class="modal-head">
+        <h2>🎁 你的兑换码</h2>
+        <button class="close-btn" id="closeCode">✕</button>
+      </div>
+      <p class="form-hint">每个 IP 只能领一个，先到先得。截图或复制保存好，关掉弹窗后可随时回来重新查看。</p>
+      <div class="code-display" id="codeDisplay">----</div>
+      <button type="button" class="btn-primary btn-block" id="copyCodeBtn">📋 复制兑换码</button>
+    </div>
+  </div>
+
+  <!-- 兑换码：作者管理 -->
+  <div class="modal-mask" id="codeManageModal" style="display:none">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>🎟 管理兑换码</h2>
+        <button class="close-btn" id="closeCodeManage">✕</button>
+      </div>
+      <p class="form-hint">把你发布的兑换码粘进来（支持换行 / 逗号分隔，批量添加）。访客领取时每个 IP 只能领一个，领取后立即从池子里扣掉。</p>
+      <textarea id="codeAddInput" rows="4" placeholder="每行一个兑换码，例如：&#10;DREAM-2026-XXXX&#10;DREAM-2026-YYYY"></textarea>
+      <button type="button" class="btn-primary btn-block" id="codeAddBtn" style="margin:10px 0 14px">＋ 添加兑换码</button>
+      <div class="code-manage-list" id="codeManageList"></div>
     </div>
   </div>
 

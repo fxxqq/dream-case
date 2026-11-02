@@ -991,6 +991,8 @@ function publicWork(w, user) {
     repo: w.repo || '',
     paid: !!w.paid,
     verified: !!creator,
+    codesTotal: codesOf(w.id).length,
+    codesLeft: codesOf(w.id).filter(c => c.status === 'available').length,
     faved: !!(user && Array.isArray(user.favs) && user.favs.includes(w.id)),
     owned: !!(user && w.userId && user.id === w.userId),
     claimed: !!w.userId,
@@ -2068,6 +2070,101 @@ app.get('/api/authors/:name', (req, res) => {
 });
 
 // 作品详情（浏览量 +1；作者/管理员可用 ?nopv=1 跳过计数，比如自己生成分享卡片时）
+// ---------- 作品兑换码 ----------
+// 结构：{ '<workId>': { codes: [{ code, status:'available'|'taken', takenAt, takenBy }], claimed: { 'u:<uid>'/'ip:<ip>': '<code>' } } }
+// 作者发布一批兑换码，访客领取：每个 IP（登录则每个账号）对同一作品只能领一个
+let codeStore = readJSON('codes.json', {});
+let codeSaveTimer = null;
+function saveCodesSoon() {
+  if (codeSaveTimer) return;
+  codeSaveTimer = setTimeout(() => {
+    codeSaveTimer = null;
+    writeJSON('codes.json', codeStore);
+  }, 500);
+}
+function codesOf(workId) { return (codeStore[workId] && codeStore[workId].codes) || []; }
+function claimKeyOf(req, user) { return user && user.id ? 'u:' + user.id : 'ip:' + clientIp(req); }
+function canManageCodes(w, user, req) { return !!user && ((w.userId && w.userId === user.id) || isAdmin(req)); }
+
+// 作者查看自己作品的兑换码列表
+app.get('/api/works/:id/codes', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  if (!canManageCodes(w, user, req)) return res.status(403).json({ error: '只能管理自己作品的兑换码' });
+  res.json({ codes: codesOf(w.id) });
+});
+
+// 作者批量添加兑换码（支持换行/逗号/分号分隔，去重，单作品上限 200）
+app.post('/api/works/:id/codes', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  if (!canManageCodes(w, user, req)) return res.status(403).json({ error: '只能管理自己作品的兑换码' });
+  const raw = String((req.body || {}).codes || '');
+  const tokens = raw.split(/[\s,，;；]+/).map(s => s.trim()).filter(Boolean);
+  if (!tokens.length) return res.status(400).json({ error: '请输入兑换码，多个用换行或逗号隔开' });
+  const rec = codeStore[w.id] || (codeStore[w.id] = { codes: [], claimed: {} });
+  const exist = new Set(rec.codes.map(c => c.code));
+  let added = 0, dup = 0;
+  for (const t of tokens) {
+    if (rec.codes.length >= 200) return res.status(400).json({ error: '每个作品最多 200 个兑换码' });
+    if (t.length > 60) return res.status(400).json({ error: '单个兑换码最长 60 字符' });
+    if (exist.has(t)) { dup += 1; continue; }
+    exist.add(t);
+    rec.codes.push({ code: t, status: 'available', takenAt: null, takenBy: '' });
+    added += 1;
+  }
+  if (added) saveCodesSoon();
+  res.json({ ok: true, added, dup, total: rec.codes.length });
+});
+
+// 作者删除未被领取的兑换码
+app.post('/api/works/:id/codes/delete', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const w = works.find(x => x.id === req.params.id);
+  if (!w) return res.status(404).json({ error: '作品不存在' });
+  if (!canManageCodes(w, user, req)) return res.status(403).json({ error: '只能管理自己作品的兑换码' });
+  const code = String((req.body || {}).code || '').trim();
+  const rec = codeStore[w.id];
+  if (!rec) return res.status(404).json({ error: '没有兑换码' });
+  const target = rec.codes.find(c => c.code === code);
+  if (!target) return res.status(404).json({ error: '兑换码不存在' });
+  if (target.status === 'taken') return res.status(400).json({ error: '已被领取的码不能删除' });
+  rec.codes = rec.codes.filter(c => c.code !== code);
+  saveCodesSoon();
+  res.json({ ok: true, total: rec.codes.length });
+});
+
+// 访客领取兑换码：登录按账号、匿名按 IP，同一作品只能领一个；重复请求原样返回已领的码
+app.post('/api/works/:id/redeem', (req, res) => {
+  if (!rateLimit('redeem:' + clientIp(req), 12, 3600000)) {
+    return res.status(429).json({ error: '操作太频繁，请稍后再试' });
+  }
+  const w = works.find(x => x.id === req.params.id);
+  if (!w || !isVisible(w)) return res.status(404).json({ error: '作品不存在或未通过审核' });
+  const user = currentUser(req);
+  const rec = codeStore[w.id];
+  const key = claimKeyOf(req, user);
+  if (rec && rec.claimed && rec.claimed[key]) {
+    return res.json({ ok: true, code: rec.claimed[key], again: true });
+  }
+  if (!rec || !rec.codes) return res.status(400).json({ error: '这个作品还没有兑换码' });
+  const avail = rec.codes.filter(c => c.status === 'available');
+  if (!avail.length) return res.status(400).json({ error: '兑换码已被领完，等作者补充吧' });
+  // 随机发一个，防排序猜测
+  const pick = avail[Math.floor(Math.random() * avail.length)];
+  pick.status = 'taken';
+  pick.takenAt = new Date().toISOString();
+  pick.takenBy = key;
+  rec.claimed[key] = pick.code;
+  saveCodesSoon();
+  res.json({ ok: true, code: pick.code, left: avail.length - 1 });
+});
+
 app.get('/api/works/:id', (req, res) => {
   const w = works.find(x => x.id === req.params.id);
   if (!w || (!isVisible(w) && !isAdmin(req))) return res.status(404).json({ error: '作品不存在或未通过审核' });

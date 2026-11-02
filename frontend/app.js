@@ -1530,6 +1530,9 @@ async function openWork(id, push = true) {
 
     // （源码入口已上移到标题标签行 badge-repo，按钮行不再重复放）
 
+    // 兑换码按钮：作品挂了码就显示领取入口；作者/管理员显示管理入口
+    renderCodeButtons(w);
+
     // 完整页面（独立 URL，可分享、可被搜索引擎收录）
     $('fullPageBtn').href = '/w/' + encodeURIComponent(w.id) + '?full=1';
 
@@ -2459,6 +2462,98 @@ function setupDetailActions() {
     if (!w) return;
     hideModal(detailModal);
     navigate('/u/' + encodeURIComponent(w.author));  };
+
+  // ---- 兑换码：访客领取 ----
+  $('detailRedeem').onclick = async () => {
+    const w = state.currentWork;
+    if (!w) return;
+    const btn = $('detailRedeem');
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/works/${w.id}/redeem`, { method: 'POST' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || '领取失败');
+      $('codeDisplay').textContent = d.code;
+      showModal($('codeModal'));
+      if (!d.again && w.codesLeft > 0) { w.codesLeft = Math.max(0, w.codesLeft - 1); btn.textContent = w.codesLeft > 0 ? `🎁 兑换码（剩 ${w.codesLeft}）` : '🎁 查看我领的码'; }
+    } catch (err) { showToast(err.message); }
+    finally { btn.disabled = false; }
+  };
+
+  $('closeCode').onclick = () => hideModal($('codeModal'));
+  $('codeModal').onclick = e => { if (e.target === $('codeModal')) hideModal($('codeModal')); };
+  $('copyCodeBtn').onclick = async () => {
+    const code = $('codeDisplay').textContent;
+    try { await navigator.clipboard.writeText(code); showToast('兑换码已复制'); }
+    catch { showToast(code); }
+  };
+
+  // ---- 兑换码：作者管理 ----
+  $('detailCodes').onclick = () => {
+    if (!state.currentWork) return;
+    $('codeAddInput').value = '';
+    $('codeManageList').innerHTML = '<div class="code-empty">加载中…</div>';
+    showModal($('codeManageModal'));
+    loadCodeManage();
+  };
+  $('closeCodeManage').onclick = () => hideModal($('codeManageModal'));
+  $('codeManageModal').onclick = e => { if (e.target === $('codeManageModal')) hideModal($('codeManageModal')); };
+
+  $('codeAddBtn').onclick = async () => {
+    const w = state.currentWork;
+    const text = $('codeAddInput').value.trim();
+    if (!w || !text) { showToast('先粘贴或输入兑换码'); return; }
+    const btn = $('codeAddBtn');
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/works/${w.id}/codes`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codes: text })
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || '添加失败');
+      $('codeAddInput').value = '';
+      showToast(d.dup ? `添加 ${d.added} 个，跳过重复 ${d.dup} 个` : `已添加 ${d.added} 个兑换码`);
+      loadCodeManage();
+      if (w.codesTotal !== undefined) { w.codesTotal += d.added; w.codesLeft += d.added; renderCodeButtons(w); }
+    } catch (err) { showToast(err.message); }
+    finally { btn.disabled = false; }
+  };
+
+  async function loadCodeManage() {
+    const w = state.currentWork;
+    if (!w) return;
+    try {
+      const res = await fetch(`/api/works/${w.id}/codes`, { credentials: 'same-origin' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || '加载失败');
+      const list = d.codes || [];
+      $('codeManageList').innerHTML = list.length
+        ? list.map(c => `<div class="code-row${c.status === 'taken' ? ' taken' : ''}">
+            <span class="code-val">${escapeHtml(c.code)}</span>
+            <span class="code-state">${c.status === 'taken' ? '已被领取' : '未领取'}</span>
+            ${c.status === 'taken' ? '' : `<button type="button" class="code-del" data-code="${escapeHtml(c.code)}">删除</button>`}
+          </div>`).join('')
+        : '<div class="code-empty">还没有兑换码，在上面粘贴添加吧</div>';
+    } catch (err) { $('codeManageList').innerHTML = `<div class="code-empty">${escapeHtml(err.message)}</div>`; }
+  }
+
+  $('codeManageList').addEventListener('click', async e => {
+    const b = e.target.closest && e.target.closest('.code-del');
+    if (!b) return;
+    const w = state.currentWork;
+    if (!w) return;
+    try {
+      const res = await fetch(`/api/works/${w.id}/codes/delete`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: b.dataset.code })
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || '删除失败');
+      showToast('已删除');
+      loadCodeManage();
+    } catch (err) { showToast(err.message); }
+  });
 
   $('copyLinkBtn').onclick = async () => {
     // 登录用户分享时带上自己的 ref：好友通过它访问 / 注册，会算到你的分享成绩里
@@ -3609,6 +3704,19 @@ async function submitPass() {
   } finally {
     btn.disabled = false;
   }
+}
+
+// 兑换码按钮显隐：作品挂了码 → 领取入口；作者/管理员 → 管理入口
+function renderCodeButtons(w) {
+  const rb = $('detailRedeem'), mb = $('detailCodes');
+  if (!rb || !mb) return;
+  if (w.codesTotal > 0) {
+    rb.style.display = 'inline-block';
+    rb.textContent = w.codesLeft > 0 ? `🎁 兑换码（剩 ${w.codesLeft}）` : '🎁 查看我领的码';
+  } else {
+    rb.style.display = 'none';
+  }
+  mb.style.display = w.owned ? 'inline-block' : 'none';
 }
 
 // ---------- 意见反馈 ----------
