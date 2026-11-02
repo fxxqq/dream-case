@@ -1478,13 +1478,15 @@
         panel.innerHTML = list.map(r => `
           <div class="row">
             <div class="row-main">
-              <div class="row-title">${esc(r.workTitle)} <span class="tag ${r.status === '待处理' ? 'warn' : 'ok'}">${esc(r.status)}</span></div>
+              <div class="row-title">${esc(r.workTitle)} <span class="tag ${r.status === '待处理' ? 'warn' : 'ok'}">${esc(r.status)}${r.action === 'takedown' ? ' · 已下架' : ''}</span></div>
               <div class="row-meta">原因：${esc(r.reason)}${r.description ? ' · ' + esc(r.description) : ''}
                 ${r.contact ? ' · 联系方式：' + esc(r.contact) : ''} · ${new Date(r.createdAt).toLocaleString('zh-CN')}</div>
             </div>
             <div class="row-actions">
               <a class="btn btn-ghost btn-sm" href="/w/${r.workId}" target="_blank">查看作品</a>
-              ${r.status === '待处理' ? `<button class="btn btn-ok btn-sm" data-report="${r.id}">标记已处理</button>` : ''}
+              ${r.status === '待处理' ? `
+                <button class="btn btn-danger btn-sm" data-takedown="${r.id}">下架并告知原因</button>
+                <button class="btn btn-ok btn-sm" data-report="${r.id}">标记已处理</button>` : ''}
             </div>
           </div>`).join('');
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
@@ -1589,12 +1591,28 @@
 
     panel.addEventListener('click', async e => {
       const btn = e.target.closest('[data-report]');
-      if (!btn) return;
-      try {
-        await api(`/api/admin/reports/${btn.dataset.report}/resolve`, { method: 'POST' });
-        toast('已标记处理');
-        loadStats(); loadReports();
-      } catch (err) { toast(err.message); }
+      if (btn) {
+        try {
+          await api(`/api/admin/reports/${btn.dataset.report}/resolve`, { method: 'POST' });
+          toast('已标记处理');
+          loadStats(); loadReports();
+        } catch (err) { toast(err.message); }
+        return;
+      }
+      // 下架作品并站内通知作者原因
+      const tk = e.target.closest('[data-takedown]');
+      if (tk) {
+        const note = prompt('下架原因（将通过站内消息告知作者，留空则使用投诉原因）：');
+        if (note === null) return;   // 取消
+        try {
+          await api(`/api/admin/reports/${tk.dataset.takedown}/takedown`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note: note.trim() })
+          });
+          toast('已下架，并已通知作者');
+          loadStats(); loadReports();
+        } catch (err) { toast(err.message); }
+      }
     });
 
     // ---- 评论管理 ----

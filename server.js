@@ -2559,6 +2559,9 @@ app.put('/api/works/:id', (req, res) => {
 
     applyImageChanges(w, req);
 
+    // 被下架的作品编辑后自动回到待审核，改好重新提交即可恢复
+    if (w.status === 'rejected') { w.status = 'pending'; delete w.offlineReason; }
+
     const osBonusNow = grantOpenSourceBonus(w);   // 编辑时改成开源也补送（一件作品只送一次）
     saveWorks();
     res.json({ ...publicWork(w, user), osBonus: osBonusNow });
@@ -3149,6 +3152,33 @@ app.post('/api/admin/reports/:id/resolve', requireAdmin, (req, res) => {
   if (!r) return res.status(404).json({ error: '投诉不存在' });
   r.status = '已处理';
   saveReports();
+  res.json({ ok: true });
+});
+
+// 投诉处理：下架作品并站内通知作者原因
+app.post('/api/admin/reports/:id/takedown', requireAdmin, (req, res) => {
+  const r = reports.find(x => x.id === req.params.id);
+  if (!r) return res.status(404).json({ error: '投诉不存在' });
+  const w = works.find(x => x.id === r.workId);
+  if (!w) return res.status(404).json({ error: '作品不存在或已删除' });
+  const note = String((req.body && req.body.note) || '').trim().slice(0, 200);
+  const reason = note || `${r.reason}${r.description ? '：' + r.description : ''}`;
+  w.status = 'rejected';
+  w.offlineReason = reason;
+  w.offlineAt = new Date().toISOString();
+  saveWorks();
+  r.status = '已处理';
+  r.action = 'takedown';
+  r.note = reason;
+  r.handledAt = new Date().toISOString();
+  saveReports();
+  if (w.userId) {
+    addNotice(w.userId, {
+      kind: 'system',
+      title: `「${w.title}」已被下架`,
+      text: `原因：${reason}。修改内容后重新提交，审核通过即可恢复展示；如有异议可通过页面底部「意见建议」联系我们。`
+    });
+  }
   res.json({ ok: true });
 });
 
