@@ -205,6 +205,7 @@
         <button class="tab" data-tab="tools">推荐位</button>
         <button class="tab" data-tab="ads">广告位</button>
         <button class="tab" data-tab="creators">认证创作者</button>
+        <button class="tab" data-tab="points">送积分</button>
       </div>
 
       <div class="panel" id="panel"></div>
@@ -497,6 +498,7 @@
       if (tab === 'tools') return loadTools();
       if (tab === 'ads') return loadAds();
       if (tab === 'creators') return loadCreators();
+      if (tab === 'points') return loadPoints();
     }
 
     // ---- 作品 ----
@@ -1668,6 +1670,59 @@
           toast('已删除');
         }
       } catch (err) { toast(err.message); }
+    });
+
+    // ---- 送积分 ----
+    async function loadPoints() {
+      try {
+        const list = await api('/api/admin/users');
+        panel.innerHTML = `
+          <div class="form-inline">
+            <input id="pointsSearch" placeholder="搜索账号或昵称…" />
+          </div>
+          <div class="hint">给用户加积分（用于兑换「站内推广」）；扣分填负数，扣到 0 为止。改动会记进对方账本。</div>
+          <div id="pointsList">` + (list.length ? list.map(u => `
+            <div class="row" data-uid="${esc(u.id)}">
+              <div class="row-main">
+                <div class="row-title">@${esc(u.name)} <span class="tag">${esc(u.username)}</span></div>
+                <div class="row-meta">积分 <b class="pt-val">${u.points}</b> · ${u.works} 件作品 · ${esc((u.createdAt || '').slice(0, 10))}</div>
+              </div>
+              <div class="row-actions">
+                <input class="pt-input" type="number" value="100" style="width:80px" />
+                <button class="btn btn-primary btn-sm pt-give">送分</button>
+                <button class="btn btn-danger btn-sm pt-take">扣分</button>
+              </div>
+            </div>`).join('') : '<div class="empty">没有匹配的用户</div>') + `</div>`;
+        $('pointsSearch').oninput = e => {
+          const q = e.target.value.trim().toLowerCase();
+          panel.querySelectorAll('#pointsList .row').forEach(r => {
+            r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+          });
+        };
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    panel.addEventListener('click', async e => {
+      const give = e.target.classList.contains('pt-give');
+      const take = e.target.classList.contains('pt-take');
+      if (give || take) {
+        const row = e.target.closest('.row');
+        const uid = row.dataset.uid;
+        const val = parseInt(row.querySelector('.pt-input').value, 10);
+        if (!Number.isFinite(val) || val === 0) return toast('请输入非 0 整数');
+        const delta = take ? -Math.abs(val) : Math.abs(val);
+        const name = row.querySelector('.row-title').textContent.trim();
+        if (take && !confirm(`确定从 ${name} 扣 ${Math.abs(val)} 分？`)) return;
+        try {
+          const r = await api('/api/admin/points', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: uid, delta })
+          });
+          row.querySelector('.pt-val').textContent = r.points;
+          row.querySelector('.pt-input').value = 100;
+          toast(`${r.name} ${delta > 0 ? '+' : ''}${delta} 分，现有 ${r.points} 分`);
+        } catch (err) { toast(err.message); }
+      }
     });
 
     // ---- 认证创作者 ----

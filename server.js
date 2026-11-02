@@ -2964,6 +2964,42 @@ app.delete('/api/admin/creators/:name', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---- 用户列表（送积分用）：账号 / 昵称 / 当前积分 / 注册时间 ----
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  const q = String(req.query.q || '').trim().toLowerCase();
+  let list = users.map(u => ({
+    id: u.id,
+    username: u.username,
+    name: displayNameOf(u.username),
+    points: shareStatsOf(u.id).points,
+    createdAt: u.createdAt,
+    works: works.filter(w => w.userId === u.id).length
+  }));
+  // 新注册的排前面，方便找到刚来的人
+  list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  if (q) list = list.filter(u => u.username.toLowerCase().includes(q) || u.name.toLowerCase().includes(q));
+  res.json(list.slice(0, 50));
+});
+
+// ---- 管理员送积分 / 扣积分（delta 可负，账本统一走 addPoints）----
+app.post('/api/admin/points', requireAdmin, (req, res) => {
+  const { userId, delta, note } = req.body || {};
+  const u = users.find(x => x.id === String(userId || ''));
+  if (!u) return res.status(404).json({ error: '用户不存在' });
+  const d = parseInt(delta, 10);
+  if (!Number.isFinite(d) || d === 0) return res.status(400).json({ error: '分值必须是 非0 整数' });
+  if (Math.abs(d) > 100000) return res.status(400).json({ error: '单次最多 ±100000 分' });
+  const points = addPoints(u.id, d, 'admin');
+  res.json({
+    ok: true,
+    username: u.username,
+    name: displayNameOf(u.username),
+    delta: d,
+    points,
+    note: String(note || '').slice(0, 100)
+  });
+});
+
 // ---- 认领申请审核 ----
 app.get('/api/admin/claims', requireAdmin, (req, res) => {
   const map = new Map(works.map(w => [w.id, w]));
