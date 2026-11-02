@@ -830,6 +830,12 @@ function renderAdSlot(el, slot) {
   if (!el) return;
   clearInterval(el._adTimer);           // 重新渲染前先停掉旧的轮播
   el._adTimer = null;
+  // 详情位特殊：点开的是自己的作品时不展示（给自己推自己的广告很怪）
+  if (slot === 'detail' && state.currentWork && state.currentWork.owned) {
+    el.innerHTML = '';
+    el.style.display = 'none';
+    return;
+  }
   const closed = adClosedMap();
   const list = ADS.filter(a => a.slot === slot && !isAdClosed(a, closed));
   if (!list.length) {
@@ -1542,6 +1548,9 @@ async function openWork(id, push = true) {
     $('blockAuthor').style.display = (!canManage && state.user && w.claimed && w.author && w.author !== '匿名')
       ? 'inline-block' : 'none';
     $('blockAuthor').textContent = blockedAuthor ? '↩ 已拉黑作者 · 恢复' : '⛔ 拉黑作者';
+
+    // 站内推广位：自己的作品不给自己展示（换了作品重开详情要重算一次）
+    renderAdSlot(document.querySelector('.ad-slot-detail'), 'detail');
 
     // 认领入口：只有管理员开放了认领的作品才显示（自己的作品不显示）
     const entry = $('claimEntry');
