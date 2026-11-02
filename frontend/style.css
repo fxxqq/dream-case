@@ -1375,6 +1375,22 @@ body.on-work .load-more-wrap { display: none !important; }
 }
 .stats-redeem:hover { background: #ebe9ff; border-color: #b9b3ff; }
 
+/* ========== 开源作品奖励卡片（推广中心） ========== */
+.os-bonus {
+  margin: 0 0 18px; padding: 12px 14px;
+  background: linear-gradient(135deg, #f1fbf5, #fafdfb);
+  border: 1px solid #d7efe2; border-radius: 12px;
+}
+.os-bonus .ob-head { font-size: 13px; font-weight: 700; color: #1b7a52; margin-bottom: 6px; }
+.os-bonus p { font-size: 12px; line-height: 1.75; color: var(--muted); margin: 0 0 5px; }
+.os-bonus p b { color: #1b7a52; }
+.os-bonus .ob-btn {
+  margin-top: 4px; padding: 6px 11px; font-size: 12px; font-weight: 600; cursor: pointer;
+  color: #1b7a52; background: #fff; border: 1px solid #c9e8d8; border-radius: 8px;
+  transition: background .15s, border-color .15s;
+}
+.os-bonus .ob-btn:hover { background: #eefaf3; border-color: #a8dbc2; }
+
 /* ========== 积分兑换广告位 ========== */
 .modal.modal-redeem { max-width: 660px; }
 .redeem-body { padding: 0; }   /* 外层 .modal 已有 24px 内边距 */
@@ -1835,7 +1851,7 @@ body.on-work .load-more-wrap { display: none !important; }
   border-radius: 4px; background: rgba(255, 255, 255, .22); letter-spacing: .04em;
   flex: none;
 }
-/* 积分兑换来的「站内推广」用暖色徽标，和运营的「广告」区分开 */
+/* 积分兑换来的「站内宣传」用暖色徽标，和运营的「广告」区分开 */
 .ad-badge.is-redeem { background: rgba(255, 196, 92, .92); color: #5c4200; }
 .ad-card.ad-text-card .ad-badge.is-redeem {
   background: #fff7e8; color: #a86e00; border-color: #f2dfb6;

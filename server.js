@@ -1751,7 +1751,7 @@ function publicAd(a) {
     kind: a.kind || (a.image ? 'image' : 'text'),
     title: a.title || '', desc: a.desc || '',
     image: a.image || '', url: a.url, cta: a.cta || '', sort: a.sort || 0,
-    source: a.source || 'admin'   // 前台据此区分「广告」（运营）和「站内推广」（积分兑换）
+    source: a.source || 'admin'   // 前台据此区分「广告」（运营）和「站内宣传」（积分兑换）
   };
 }
 function activeAds() {
@@ -1884,6 +1884,40 @@ function addPoints(uid, delta, kind, workId) {
   pushShareLog(rec, kind, workId, delta);
   saveShareSoon();
   return rec.points;
+}
+
+// ---------- 开源作品奖励 ----------
+// 标注开源的原创作品，系统一次性送 50 积分并给上传者发站内消息（积分可用于站内宣传）。
+// 防刷两条：① 一件作品只送一次（反复开关不再发，靠 w.osBonusAt 记住）；
+//          ② 同一个源码仓库只认第一次（换标题重复提交同一个 repo 不再给分）。
+const OS_BONUS_POINTS = 50;
+function repoKeyOf(url) {
+  return String(url || '').trim().toLowerCase()
+    .replace(/^https?:\/\//, '').replace(/^www\./, '')
+    .replace(/\/+$/, '').replace(/\.git$/, '');
+}
+function grantOpenSourceBonus(w) {
+  if (!w || w.openSource !== true || !w.userId || w.osBonusAt) return 0;
+  const user = users.find(u => u.id === w.userId);
+  if (!user) return 0;
+  const key = repoKeyOf(w.repo);
+  if (key && works.some(x => x !== w && x.osBonusAt && repoKeyOf(x.repo) === key)) {
+    w.osBonus = 0;
+    w.osBonusSkip = 'repo_used';   // 同一仓库已奖励过，记一笔便于后台排查
+    return 0;
+  }
+  w.osBonusAt = new Date().toISOString();
+  w.osBonus = OS_BONUS_POINTS;
+  delete w.osBonusSkip;
+  const points = addPoints(w.userId, OS_BONUS_POINTS, 'os', w.id);
+  addNotice(w.userId, {
+    kind: 'points',
+    title: `开源作品奖励 +${OS_BONUS_POINTS} 积分`,
+    text: `「${w.title}」已标注为开源，系统赠送 ${OS_BONUS_POINTS} 积分，可在「推广中心」用于站内宣传。源码 star 超过 1000 的话，可以联系站长按 star 数再送等额积分。`,
+    points,
+    delta: OS_BONUS_POINTS
+  });
+  return OS_BONUS_POINTS;
 }
 
 // ---------- 每日签到 ----------
@@ -2458,12 +2492,14 @@ app.post('/api/works', (req, res) => {
     };
     if (linksMap) work.links = linksMap;
     works.push(work);
+    grantOpenSourceBonus(work);   // 开源作品送 50 积分（匿名投稿没有账号，跳过）
     saveWorks();
     res.status(201).json({
       ...publicWork(work, user),
       status: work.status,
       needReview,
-      anonymous: !user
+      anonymous: !user,
+      osBonus: work.osBonus || 0
     });
   });
 });
@@ -2523,8 +2559,9 @@ app.put('/api/works/:id', (req, res) => {
 
     applyImageChanges(w, req);
 
+    grantOpenSourceBonus(w);   // 编辑时改成开源也补送（一件作品只送一次）
     saveWorks();
-    res.json(publicWork(w, user));
+    res.json({ ...publicWork(w, user), osBonus: w.osBonus || 0 });
   });
 });
 
@@ -3082,8 +3119,9 @@ app.put('/api/admin/works/:id', requireAdmin, (req, res) => {
 
     applyImageChanges(w, req);
 
+    grantOpenSourceBonus(w);   // 后台改成开源（且作品已归属某账号）同样补送一次
     saveWorks();
-    res.json({ ...publicWork(w), status: w.status || 'approved' });
+    res.json({ ...publicWork(w), status: w.status || 'approved', osBonus: w.osBonus || 0 });
   });
 });
 

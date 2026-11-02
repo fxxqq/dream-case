@@ -415,7 +415,7 @@ function checkinCardHtml(ck) {
         <button type="button" class="checkin-go" id="checkinGo"${done ? ' disabled' : ''}>${done ? '今日已签 ✓' : `签到 +${ck.todayPoints || 2} 分`}</button>
       </div>
       <div class="ck-days">${dots}</div>
-      <div class="ck-tip">每天 +2 分，连续第 ${cycle} 天额外 +${ck.bonusPoints || 6} 分；断签从头算。积分可直接兑换「站内推广」。</div>
+      <div class="ck-tip">每天 +2 分，连续第 ${cycle} 天额外 +${ck.bonusPoints || 6} 分；断签从头算。积分可直接兑换「站内宣传」。</div>
     </div>`;
 }
 
@@ -912,7 +912,7 @@ function adHtml(a) {
       target="_blank" rel="noopener nofollow sponsored" data-ad="${escapeHtml(a.id)}">
       ${img}
       <span class="ad-body">
-        <span class="ad-badge${a.source === 'redeem' ? ' is-redeem' : ''}">${a.source === 'redeem' ? '站内推广' : '广告'}</span>
+        <span class="ad-badge${a.source === 'redeem' ? ' is-redeem' : ''}">${a.source === 'redeem' ? '站内宣传' : '广告'}</span>
         ${a.title ? `<b class="ad-title">${escapeHtml(a.title)}</b>` : ''}
         ${a.desc ? `<span class="ad-desc">${escapeHtml(a.desc)}</span>` : ''}
         <span class="ad-cta">${escapeHtml(a.cta || '了解更多')} →</span>
@@ -973,7 +973,7 @@ function renderAdSlot(el, slot) {
   }
   const closed = adClosedMap();
   let list = ADS.filter(a => a.slot === slot && !isAdClosed(a, closed));
-  // 详情位：正在浏览的作品不给自己打广告（站内推广恰好推广的就是当前作品时排除）
+  // 详情位：正在浏览的作品不给自己打广告（站内宣传恰好推广的就是当前作品时排除）
   if (slot === 'detail' && state.currentWork && state.currentWork.id) {
     const curUrl = '/w/' + encodeURIComponent(state.currentWork.id);
     list = list.filter(a => a.url !== curUrl);
@@ -1700,7 +1700,7 @@ async function openWork(id, push = true) {
       ? 'inline-block' : 'none';
     $('blockAuthor').textContent = blockedAuthor ? '↩ 已拉黑作者 · 恢复' : '⛔ 拉黑作者';
 
-    // 站内推广位：自己的作品不给自己展示（换了作品重开详情要重算一次）
+    // 站内宣传位：自己的作品不给自己展示（换了作品重开详情要重算一次）
     renderAdSlot(document.querySelector('.ad-slot-detail'), 'detail');
 
     // 认领入口：只有管理员开放了认领的作品才显示（自己的作品不显示）
@@ -2210,6 +2210,8 @@ function setupUploadForm() {
     const os = (form.querySelector('input[name="openSource"]:checked') || {}).value || '';
     const show = os === '1';
     $('repoField').style.display = show ? 'block' : 'none';
+    const hint = $('osBonusHint');
+    if (hint) hint.style.display = show ? 'block' : 'none';   // 开源奖励说明跟着显示
     form.repo.required = show;
     if (!show) form.repo.value = '';
   }
@@ -2482,11 +2484,15 @@ function setupUploadForm() {
       if (!wasEdit) clearDraft();
       hideModal(uploadModal);
       resetUploadForm();
+      const bonus = Number(data.osBonus) || 0;
       showToast(
-        wasEdit ? '修改已保存 ✅'
+        wasEdit
+          ? (bonus > 0 ? '修改已保存 ✅ 开源奖励 +50 积分已到账' : '修改已保存 ✅')
         : data.anonymous ? '已提交，审核通过后上线（注册可免审直发）'
         : data.needReview ? '提交成功，等待审核通过后展示'
+        : bonus > 0 ? '提交成功 🎉 开源奖励 +50 积分已到账'
         : '提交成功 🎉');
+      if (bonus > 0) loadMe();   // 头部积分数字立刻刷新
       state.sort = 'latest';
       document.querySelectorAll('#sortToggle .st-btn').forEach(b =>
         b.classList.toggle('active', b.dataset.sort === 'latest'));
@@ -3078,7 +3084,7 @@ function setupWish() {
   $('ideaDoneModal').onclick = e => { if (e.target === $('ideaDoneModal')) hideModal($('ideaDoneModal')); };
 }
 
-// ---------- 站内推广（积分兑换，展示 + 点击双计费） ----------
+// ---------- 站内宣传（积分兑换，展示 + 点击双计费） ----------
 // 规则：用分享积分买「被看到」的次数，每真实曝光一次扣 1 次，投完自动下线；
 // 内容只能取自自己名下、已过审的作品，不能自定义文案或挂站外链接。
 const REDEEM_STATUS = {
@@ -3416,13 +3422,24 @@ async function openStats(mode) {
   const shareTip = `分享奖励：好友通过你的链接访问 +1 分，好友注册 +20 分。同一 IP 对同一分享者每天最多计 3 次、
       同一 IP 全站每天最多 10 次、同一 IP 最多计入 2 个邀请注册——换浏览器或清缓存都刷不动。`;
 
+  // 开源作品奖励：标注开源自动 +50（一件一次）；GitHub star ≥1000 可联系站长领等额积分
+  const osBonusHtml = `
+    <div class="os-bonus">
+      <div class="ob-head">🔓 开源作品奖励</div>
+      <p>作品标注「开源」，系统自动送 <b>50 积分</b>（一件作品一次，同一个源码仓库只认第一次），可直接用于站内宣传。</p>
+      <p>源码在 GitHub 已经拿到 <b>1000+ star</b>？联系站长，按 star 数再送等额积分（1000 star = 1000 分）。</p>
+      <button type="button" class="ob-btn" data-fb="合作/其他"
+        data-fb-hint="我要申请开源作品的 star 奖励，作品链接和源码仓库：">📮 联系站长领 star 奖励</button>
+    </div>`;
+
   // 推广中心：签到 + 积分 + 分享成绩 + 积分达人榜（和作品数据无关，没有作品也能看）
   if (mode === 'promo') {
     body.innerHTML = `
       ${ckCard}
       <div class="stats-summary">${shareCards}</div>
+      ${osBonusHtml}
       <div class="stats-actions">
-        <button type="button" class="stats-redeem" id="goRedeem">🎯 用积分上「站内推广」</button>
+        <button type="button" class="stats-redeem" id="goRedeem">🎯 用积分上「站内宣传」</button>
       </div>
       ${boardHtml}
       <p class="stats-tip">${shareTip}</p>`;
