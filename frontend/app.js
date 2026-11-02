@@ -331,7 +331,7 @@ function renderAuthBox() {
     const unread = Number(state.user.unreadNotices || 0);
     box.innerHTML =
       `<button class="link-btn checkin-entry${ckDone ? ' is-done' : ' is-todo'}" id="checkinBtn"
-         title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天，明天再来` : `每日签到领 ${ck.todayPoints || 2} 盏灯火，连签 7 天有全勤奖`}"><span class="lb-ico">${ckDone ? '✓' : `<span class="ico">${ic('checkin')}</span>`}</span>${ckDone ? '' : `<span class="ck-label">签到 +${ck.todayPoints || 2}</span>`}<span class="ck-pts"><span class="ico">${ic('lamp')}</span>${pts}</span></button>` +
+         title="${ckDone ? `今天已签到 · 连续 ${ck.streak || 0} 天，明天再来` : `每日签到领 ${ck.todayPoints || 2} 盏灯火，连签 7 天有全勤奖`}">${ckDone ? '' : `<span class="lb-ico"><span class="ico">${ic('checkin')}</span></span><span class="ck-label">签到 +${ck.todayPoints || 2}</span>`}<span class="ck-pts"><span class="ico">${ic('lamp')}</span>${pts}</span></button>` +
       `<button class="link-btn notice-entry${unread ? ' has-new' : ''}" id="noticeBtn" title="${unread ? unread + ' 条未读消息' : '站内消息'}"><span class="nb-ico">🔔</span><span class="nb-dot"${unread ? '' : ' style="display:none"'}>${unread > 99 ? '99+' : unread}</span></button>` +
       `<div class="user-menu" id="userMenu">
         <button class="user-chip" id="userMenuBtn" title="个人菜单">${ic('user')} <span class="uc-name">${escapeHtml(state.user.nickname || state.user.username)}</span><span class="um-caret">▾</span></button>
@@ -750,7 +750,7 @@ function cardHtml(w, opts = {}) {
           <span class="card-tags"><span class="card-cat">${escapeHtml(w.category)}</span>${osBadgeHtml(w)}${paidBadgeHtml(w)}</span>
         </div>
         <div class="card-meta" style="margin-top:6px">
-          <span>♥ ${w.likes} · <span class="fav-num" data-fav-count="${w.id}" data-count="${w.favs || 0}" data-prefix="★ ">★ ${w.favs || 0}</span> · 👁 ${w.views}${cc ? ` · <span class="cmt-num" data-comment-count="${w.id}" data-count="${cc}" data-prefix="💬 ">💬 ${cc}</span>` : ''}</span>
+          <span class="stat-line"><span class="ico s-ico">${ic('heart')}</span>${w.likes} · <span class="ico s-ico">${ic('star')}</span><span class="fav-num" data-fav-count="${w.id}" data-count="${w.favs || 0}" data-prefix="">${w.favs || 0}</span> · <span class="ico s-ico">${ic('eye')}</span>${w.views}${cc ? ` · <span class="ico s-ico">${ic('chat')}</span><span class="cmt-num" data-comment-count="${w.id}" data-count="${cc}" data-prefix="">${cc}</span>` : ''}</span>
           <span>${formatDate(w.createdAt)}</span>
         </div>
       </div>
@@ -1126,7 +1126,7 @@ async function loadFeatured() {
         <div class="featured-body">
           <div class="featured-title" title="${escapeHtml(w.title)}">${w.adminPick ? '<span class="feat-tag" title="近期数据表现亮眼">✦ 热门</span>' : ''}${escapeHtml(w.title)}</div>
           ${w.intro ? `<div class="featured-intro">${escapeHtml(w.intro)}</div>` : ''}
-          <div class="featured-meta">👁 ${w.pv7 || 0} 次打开 · 👤 ${w.uv7 || 0} 访客 · ⭐ ${w.favs || 0} 收藏</div>
+          <div class="featured-meta"><span class="ico s-ico">${ic('eye')}</span>${w.pv7 || 0} 次打开 · <span class="ico s-ico">${ic('person')}</span>${w.uv7 || 0} 访客 · <span class="ico s-ico">${ic('star')}</span>${w.favs || 0} 收藏</div>
         </div>
         <span class="feat-arrow">↗</span>
       </div>`).join('');
@@ -1699,7 +1699,7 @@ async function openWork(id, push = true) {
       paidBadgeHtml(w) +
       (w.featured ? '<span class="badge-featured">✨ 精选</span>' : '');
     $('detailAuthor').innerHTML = `${w.verified ? '<i class="verified">✔</i> ' : ''}${escapeHtml(aname(w))}`;
-    $('detailStats').innerHTML = `♥ ${w.likes} 点赞 · ★ <span class="fav-num" data-fav-count="${w.id}" data-count="${w.favs || 0}" data-prefix="">${w.favs || 0}</span> 人收藏 · 💬 <span class="cmt-num" data-comment-count="${w.id}" data-count="${w.commentCount || 0}" data-prefix="">${w.commentCount || 0}</span> 评论 · 👁 ${w.views} 浏览 · ${formatDate(w.createdAt)}`;
+    $('detailStats').innerHTML = `<span class="ico s-ico">${ic('heart')}</span>${w.likes} 点赞 · <span class="ico s-ico">${ic('star')}</span><span class="fav-num" data-fav-count="${w.id}" data-count="${w.favs || 0}" data-prefix="">${w.favs || 0}</span> 人收藏 · <span class="ico s-ico">${ic('chat')}</span><span class="cmt-num" data-comment-count="${w.id}" data-count="${w.commentCount || 0}" data-prefix="">${w.commentCount || 0}</span> 评论 · <span class="ico s-ico">${ic('eye')}</span>${w.views} 浏览 · ${formatDate(w.createdAt)}`;
     $('detailPrompt').textContent = w.intro || '';
     $('detailLikes').textContent = w.likes;
 

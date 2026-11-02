@@ -204,6 +204,9 @@ img.fit-show { object-fit: contain; z-index: 1; position: relative; }
 .cmt-num { color: #6d78c9; font-variant-numeric: tabular-nums; }
 .card-meta > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-meta > span:last-child { flex-shrink: 0; }
+/* 卡片 meta / 精选卡 / 详情页统计行的线性小图标：略放半档保证笔画清晰 */
+.stat-line .s-ico, .featured-meta .s-ico, .detail-stats .s-ico { font-size: 1.08em; vertical-align: -0.16em; margin-right: 3px; }
+
 .detail-stats .fav-num { font-weight: 600; }
 
 .empty { text-align: center; padding: 80px 0; color: var(--muted); }
