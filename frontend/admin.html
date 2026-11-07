@@ -23,6 +23,10 @@
     .btn { border:none; border-radius:8px; padding:8px 16px; font-size:13px; cursor:pointer; }
     .btn-primary { background:var(--primary); color:#fff; }
     .btn-ghost { background:#fff; border:1px solid var(--border); color:var(--text); }
+    .btn-ghost.danger { color:#d83a3a; border-color:#f0b4b4; }
+    .btn-ghost.danger:hover { background:#fff5f5; }
+    .os-recall { display:flex; align-items:center; gap:12px; }
+    .os-recall .hint { padding:0; color:var(--muted); font-size:12.5px; }
     .btn-danger { background:#fff0f1; color:var(--danger); border:1px solid #f6c6c8; }
     .btn-ok { background:#e7f8ec; color:var(--ok); border:1px solid #bfe8ca; }
     .btn-sm { padding:5px 10px; font-size:12px; }
@@ -34,10 +38,12 @@
     .login input[type=checkbox] { width:auto; margin:0; accent-color:#5b5bd6; }
     .login .remember { display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--muted); margin:-2px 0 16px; cursor:pointer; user-select:none; }
 
-    .stats { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }
-    .stat { background:#fff; border:1px solid var(--border); border-radius:8px; padding:6px 14px; display:flex; align-items:baseline; gap:6px; }
-    .stat b { font-size:16px; }
+    /* 顶部统计：纯文字一行，需人工处理的项标红 */
+    .stats { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 18px; margin:14px 0 12px; font-size:12.5px; line-height:1.9; color:var(--muted); }
+    .stat { display:inline-flex; align-items:baseline; gap:5px; white-space:nowrap; }
+    .stat b { font-size:13.5px; font-weight:600; color:var(--text); font-variant-numeric:tabular-nums; }
     .stat span { color:var(--muted); font-size:12px; }
+    .stat.need b, .stat.need span { color:var(--danger); font-weight:600; }
 
     /* 外宣渠道来源：来自外宣包 ?fr= 标记的落地访问 */
     .promo-src { background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin:0 0 14px; }
@@ -48,6 +54,22 @@
     .ps-bar { flex:1; height:6px; background:#f2f2f8; border-radius:99px; overflow:hidden; }
     .ps-bar i { display:block; height:100%; background:var(--primary, #5b5bd6); border-radius:99px; }
     .ps-num { min-width:150px; text-align:right; color:var(--muted); font-size:12px; }
+
+    /* 流量构成：来源 / 设备 / 落地页 三列并排（窄屏落成一列） */
+    .tr-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px 22px; }
+    .tr-col h5 { margin:0 0 2px; font-size:12px; font-weight:600; color:#666; }
+    .tr-col .ps-row { font-size:12.5px; padding:5px 0; }
+    .tr-col .ps-name { min-width:66px; max-width:108px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .tr-col .ps-num { min-width:30px; }
+    .tr-devs { display:flex; flex-wrap:wrap; gap:6px; padding:7px 0 0; }
+    .tr-devs span { background:#f4f4fb; border-radius:99px; padding:3px 9px; font-size:12.5px; color:#555; }
+    .tr-devs b { color:#222; }
+    .tr-devs .tr-dim { background:#fff6e8; color:#8a6100; }
+
+    /* 站内搜索词：只记词、不记人（无 IP / 无账号）；「无结果」标红＝站里缺这类作品 */
+    .sk-name { min-width:96px; max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sk-zero { color:var(--danger); font-weight:600; }
+    .sk-empty { color:var(--muted); font-size:12.5px; }
 
     /* 左侧菜单 + 右侧内容 布局 */
     .admin-layout { display:flex; align-items:flex-start; gap:18px; }
@@ -91,17 +113,70 @@
     .row-meta .row-link { color:#5b5bd6; word-break:break-all; }
     .row-meta .row-link.repo { color:#0a7d43; }
     .row-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    /* 分类改名：行内输入框，宽度跟着行内容走，别把行撑破 */
+    .cat-edit { width:100%; max-width:280px; padding:7px 10px; border:1px solid var(--primary); border-radius:8px; font-size:13.5px; font-weight:600; background:#fff; outline:none; }
     .tag { display:inline-block; font-size:11px; padding:2px 8px; border-radius:999px; background:#eeeefc; color:var(--primary); margin-left:6px; }
     .tag.warn { background:#fff7e6; color:#d48806; }
     .tag.bad { background:#fff0f1; color:var(--danger); }
     .tag.ok { background:#e7f8ec; color:var(--ok); }
+    .tag.utag { background:#fff7e6; color:#b8860b; font-weight:600; }
+    .tag.src { background:#eef4ff; color:#2f6bff; cursor:pointer; }
+    /* 用户标签：行内编辑器 + 标签库条 */
+    /* 用户行允许换行：标签编辑器要独占一整行，否则会把名字挤成竖排 */
+    .row.row-user { flex-wrap: wrap; }
+    .row .tags-editor {
+      display:none; flex-wrap:wrap; align-items:center; gap:8px;
+      flex-basis:100%; padding:10px 12px; margin-top:10px;
+      background:#fafaff; border:1px dashed #c9c9ea; border-radius:10px;
+    }
+    .tags-editor .te-label { font-size:12px; color:var(--muted); }
+    .te-chip {
+      border:1px solid #d9dce6; background:#fff; color:#555; font-size:12.5px;
+      padding:4px 12px; border-radius:999px; cursor:pointer;
+    }
+    .te-chip.on { background:#fff7e6; border-color:#b8860b; color:#b8860b; font-weight:600; }
+    /* 一键激励弹窗里的标签选择：换行排列，样式沿用 .te-chip */
+    .rw-tags { display:flex; flex-wrap:wrap; gap:6px; }
+    .rw-tags .te-chip:active { transform:scale(.97); }
+    .te-input { width:170px; padding:6px 10px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; }
+    .taglib-bar {
+      display:flex; flex-wrap:wrap; align-items:center; gap:8px;
+      margin:0 18px 16px; padding:10px 14px; background:#f7f7fc; border-radius:10px;
+    }
+    .taglib-bar .tl-title { font-size:12px; color:var(--muted); }
+    .tl-chip {
+      display:inline-flex; align-items:center; gap:5px;
+      background:#fff7e6; color:#b8860b; font-size:12.5px; font-weight:600;
+      padding:4px 10px; border-radius:999px;
+    }
+    .tl-chip i { font-style:normal; cursor:pointer; opacity:.65; font-size:12px; }
+    .tl-chip i:hover { opacity:1; }
+    .taglib-bar input { width:150px; padding:6px 10px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; }
     .empty { padding:40px; text-align:center; color:var(--muted); font-size:14px; }
     .form-inline { display:flex; gap:10px; padding:16px 18px; flex-wrap:wrap; }
     .form-inline input { flex:1; min-width:140px; padding:9px 12px; border:1px solid var(--border); border-radius:10px; font-size:13px; background:#fafafe; }
     .hint { padding:0 18px 16px; color:var(--muted); font-size:12px; }
 
+    /* 形态新增区：名称/emoji/按钮一行 + 下面一排图标选择 */
+    .type-add { padding:16px 18px 2px; }
+    .type-add-row { display:flex; gap:10px; flex-wrap:wrap; }
+    .type-add-row input { flex:1; min-width:140px; padding:9px 12px; border:1px solid var(--border); border-radius:10px; font-size:13px; background:#fafafe; }
+    .type-add-row input.type-emoji { flex:0 0 170px; min-width:0; }
+    .type-icons { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+    .tic-pick { display:inline-flex; align-items:center; gap:5px; height:32px; padding:0 9px; border:1px solid var(--border); border-radius:8px; background:#fff; font-size:12px; color:#4b4f5b; cursor:pointer; transition:border-color .15s, background .15s, color .15s; }
+    .tic-pick svg { width:14px; height:14px; }
+    .tic-pick svg path { fill: currentColor; }
+    .tic-pick em { font-style:normal; }
+    .tic-pick:hover { border-color:#b9bbf0; }
+    .tic-pick.on { border-color:var(--primary); background:#eef0ff; color:var(--primary); }
+    .row-title .tico { display:inline-flex; vertical-align:-2px; }
+    .row-title .tico svg { width:15px; height:15px; }
+    .row-title .tico svg path { fill: currentColor; }
+    /* 行内小图标（♥ 👁 👍 🔧 换成 SVG 后跟文字对齐、跟随字色） */
+    .row-meta svg, .os-opt svg { vertical-align:-2px; margin-right:2px; stroke-width:2.2; }
+
     /* 作品编辑弹窗 */
-    .modal-mask { position:fixed; inset:0; background:rgba(20,22,30,.45); display:none; align-items:center; justify-content:center; z-index:60; padding:20px; }
+    .modal-mask { position:fixed; inset:0; background:rgba(20,22,30,.45); display:none; align-items:center; justify-content:center; z-index:60; padding:20px; user-select:none; -webkit-user-select:none; }
     .modal { background:#fff; border-radius:16px; width:100%; max-width:640px; max-height:90vh; overflow:auto; padding:24px; }
     .modal h2 { font-size:17px; margin-bottom:16px; }
     .field { margin-bottom:14px; }
@@ -113,6 +188,27 @@
     .field textarea { resize:vertical; }
     .field input[type="file"] { padding:8px; font-size:13px; }
     .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+    /* 精选时长选择 */
+    .feat-days { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+    .feat-day { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border:1px solid var(--border); border-radius:999px; font-size:13px; cursor:pointer; background:#fafafe; }
+    .feat-day:hover { border-color:var(--primary); }
+    .feat-day input { accent-color:var(--primary); margin:0; }
+
+    /* 作者回复收件箱 */
+    .replies-head { font-size:13px; color:var(--muted); margin-bottom:14px; }
+    .reply-thread { background:#fff; border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:14px; }
+    .reply-thread-head { font-size:13px; color:var(--muted); margin-bottom:10px; }
+    .reply-msgs { display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
+    .rmsg { font-size:13px; line-height:1.6; padding:8px 12px; border-radius:10px; max-width:92%; }
+    .rmsg-user { background:#f4f4fb; align-self:flex-start; }
+    .rmsg-admin { background:var(--primary-weak, #eef0ff); align-self:flex-end; }
+    .rmsg b { margin-right:4px; }
+    .rtime { font-size:11px; color:var(--muted); margin-left:6px; }
+    .reply-send { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; }
+    .reply-send textarea { flex:1 1 240px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; font-size:13px; font-family:inherit; resize:vertical; background:#fafafe; }
+    /* 反馈行的三个按钮整组换行，别拆散 */
+    .fb-acts { display:flex; gap:6px; margin-left:auto; }
 
     /* 作者字段搜索：输入即时搜站内用户，点选直接分配 */
     .author-ac { position:relative; }
@@ -130,12 +226,13 @@
 
     /* ---- 与前台投稿弹窗统一的控件（胶囊单选 / 拖拽上传 / 预览网格） ---- */
     .form-hint { font-size:12px; color:var(--muted); background:#f7f7fb; border-radius:8px; padding:8px 10px; margin:2px 0 14px; }
-    .os-picker { display:flex; flex-wrap:wrap; gap:8px; margin:2px 0 4px; }
-    .os-picker .os-opt { display:inline-flex; align-items:center; position:relative; margin:0; font-size:13px; font-weight:500; cursor:pointer; }
+    .form-hint.err { color:#c9302c; background:#fdf1f0; }
+    .os-picker { display:flex; flex-wrap:wrap; gap:7px; margin:2px 0 4px; }
+    .os-picker .os-opt { display:inline-flex; align-items:center; position:relative; margin:0; flex:0 0 auto; font-size:12.5px; font-weight:500; cursor:pointer; }
     .os-picker .os-opt input { position:absolute; opacity:0; width:0; height:0; pointer-events:none; }
     .os-picker .os-opt span {
-      display:inline-flex; align-items:center; gap:4px; padding:7px 14px;
-      border:1.5px solid var(--border); border-radius:999px; background:#fff; color:#4a4f5e;
+      display:inline-flex; align-items:center; justify-content:center; gap:4px; padding:4px 10px;
+      border:1px solid var(--border); border-radius:999px; background:#fff; color:#4a4f5e;
       transition:background .15s, color .15s, border-color .15s, transform .15s;
       user-select:none; white-space:nowrap;
     }
@@ -304,6 +401,39 @@
     #refreshBtn.show { display:inline-flex; }
     #refreshBtn.busy .refresh-ico { animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== 移动端适配（≤700px）：行内容独占一行、按钮换到下一行，别把标题挤成竖排 ===== */
+    @media (max-width: 700px) {
+      .wrap { padding:0 10px 40px; }
+      .header-inner { padding:0 10px; gap:10px; height:54px; }
+      .logo { font-size:15px; }
+      .btn { padding:8px 12px; }
+      .stats { margin:10px 0 8px; gap:2px 12px; }
+      .row { flex-wrap:wrap; row-gap:8px; padding:12px; }
+      .row img { width:56px; height:44px; }
+      /* 按钮组强制独占一行：标题/正文就不再被挤成一字一行 */
+      .row-actions { flex:1 1 100%; }
+      .row-actions .btn { padding:7px 12px; white-space:nowrap; }
+      /* 反馈/回复操作条：手机上按钮独占一行、平铺宽度，别缩成竖排窄条 */
+      .fb-acts { flex:1 1 100%; margin-left:0; }
+      .fb-acts .btn { flex:1; white-space:nowrap; }
+      .reply-send textarea { flex:1 1 100%; }
+      .form-inline { padding:12px; gap:8px; }
+      .form-inline input { min-width:0; }
+      .taglib-bar { margin:0 12px 12px; }
+      .cat-edit { max-width:100%; }
+      .hint { padding:0 12px 12px; }
+      .ad-group-head, .ad-row, .ad-empty { padding-left:12px; padding-right:12px; }
+      .ad-thumb { width:88px; height:44px; }
+      .modal-mask { padding:10px; }
+      .modal { padding:16px; }
+      .login { margin:60px auto; padding:22px; width:calc(100% - 24px); }
+      .ps-num { min-width:0; }
+      .sk-name { max-width:130px; }
+      /* 三列并排在手机上放不下：落成一列，顺序仍是 来源 → 设备 → 落地页 */
+      .tr-grid { grid-template-columns:1fr; gap:12px; }
+      .tr-col .ps-name { max-width:150px; }
+    }
   </style>
 </head>
 <body>
@@ -315,6 +445,9 @@
         <span class="pv-item"><em>今日</em><b id="uvToday">0</b> UV</span>
         <span class="pv-item"><em>累计</em><b id="pvTotal">0</b> PV</span>
         <span class="pv-item"><em>累计</em><b id="uvTotal">0</b> UV</span>
+        <!-- 小程序渠道单独统计（不和网页 PV/UV 混算：手机 NAT 共享 IP，混进网页 UV 会失真） -->
+        <span class="pv-item" title="小程序今日访问次数 / 独立设备数"><em>小程序今日</em><b id="miniPvToday">0</b> 次 / <b id="miniUvToday">0</b> 人</span>
+        <span class="pv-item" title="小程序累计访问次数 / 独立设备数"><em>小程序累计</em><b id="miniPvTotal">0</b> 次 / <b id="miniUvTotal">0</b> 人</span>
       </span>
       <a class="btn btn-ghost" href="/">返回网站</a>
       <span class="spacer"></span>
@@ -340,20 +473,27 @@
         <aside class="side" id="tabs">
           <span class="side-group">审核</span>
           <button class="tab active" data-tab="pending">待审核</button>
+          <button class="tab" data-tab="offline">已下架</button>
           <button class="tab" data-tab="reports">投诉处理</button>
           <button class="tab" data-tab="claims">认领申请</button>
           <button class="tab" data-tab="feedback">意见反馈</button>
           <span class="side-group">内容</span>
           <button class="tab" data-tab="all">全部作品</button>
           <button class="tab" data-tab="comments">评论管理</button>
-          <button class="tab" data-tab="ideas">造梦酒肆</button>
+          <button class="tab" data-tab="ideas">造梦酒馆</button>
+          <span class="side-group">用户</span>
+          <button class="tab" data-tab="users">用户管理</button>
+          <span class="side-group">数据</span>
+          <button class="tab" data-tab="traffic">流量构成</button>
+          <button class="tab" data-tab="searchkw">搜索词</button>
           <span class="side-group">配置</span>
           <button class="tab" data-tab="categories">分类管理</button>
           <button class="tab" data-tab="types">形态管理</button>
           <button class="tab" data-tab="tools">推荐位</button>
           <button class="tab" data-tab="ads">广告位</button>
-          <button class="tab" data-tab="creators">认证创作者</button>
-          <button class="tab" data-tab="points">送灯火</button>
+          <button class="tab" data-tab="broadcast">群发通知</button>
+          <button class="tab" data-tab="replies">作者回复</button>
+          <button class="tab" data-tab="gift">兑换码</button>
           <button class="tab" data-tab="friends">友情链接</button>
         </aside>
 
@@ -379,9 +519,10 @@
           <div class="field">
             <label>作者</label>
             <div class="author-ac">
-              <input name="author" id="workAuthor" maxlength="50" placeholder="默认：管理员（输入可搜索站内用户）" autocomplete="off" />
+              <input name="author" id="workAuthor" maxlength="50" placeholder="填站内账号名会自动绑定归属；留空默认管理员" autocomplete="off" />
               <div class="ac-list" id="authorAc" style="display:none"></div>
             </div>
+            <p class="cat-hint">归属只认账号：填的账号名在站内存在就绑给 TA；还没注册的名字，作品会停在「未认领」，以后有人注册同名也拿不走，需要你在列表里用「指定账号」绑定。</p>
           </div>
           <div class="field">
             <label>状态</label>
@@ -392,6 +533,14 @@
             </select>
           </div>
         </div>
+        <div class="field" id="adminAnonField">
+          <label>匿名发布</label>
+          <div class="os-picker" id="anonPicker">
+            <label class="os-opt"><input type="radio" name="anonymous" value="0" /><span>实名（署名作者）</span></label>
+            <label class="os-opt"><input type="radio" name="anonymous" value="1" /><span>匿名（代传，可被认领）</span></label>
+          </div>
+          <p class="cat-hint" id="adminAnonHint">匿名后前台统一显示「匿名」，作品无归属、开放认领，真正的作者可提交证据认领走；后台仍可见并编辑。新建作品默认匿名。</p>
+        </div>
         <div class="field">
           <label>作品形态 *（可多选，比如既是网站又有小程序）</label>
           <div class="type-picker" id="adminTypePicker"></div>
@@ -399,16 +548,16 @@
         <div class="field">
           <label>应用分类 *（可多选，最多 3 个）</label>
           <div class="type-picker" id="adminCatPicker"></div>
-          <p class="cat-hint" id="adminCatHint">最多选择 3 个，第一个是主分类</p>
+          <p class="cat-hint" id="adminCatHint">最多选择 3 个，先点的是主分类（选中胶囊标「主」）</p>
           <input type="text" id="adminNewCategory" maxlength="20"
                  placeholder="输入新分类名称，回车确认" style="display:none; margin-top:8px" />
         </div>
         <div class="field">
           <label>作品介绍 / 使用说明</label>
-          <textarea name="prompt" rows="3" maxlength="1000"
+          <textarea name="prompt" rows="3" maxlength="3000"
                     placeholder="介绍一下：做什么用的、怎么体验、有什么亮点"></textarea>
         </div>
-        <div class="field">
+        <div class="field" id="adminSiteField">
           <label>官网（选填，作品的主页 / 官方网站）</label>
           <input type="text" name="site" maxlength="500" placeholder="https://example.com" autocomplete="off" />
         </div>
@@ -432,7 +581,7 @@
           <label>作品封面 / 截图 *</label>
           <label class="upload-dropzone">
             <input type="file" name="image" accept="image/*" />
-            <span class="dropzone-icon">🖼️</span>
+            <span class="dropzone-icon" data-ico="image" data-ico-size="20"></span>
             <span class="dropzone-text" id="coverText">点击上传封面图<br /><small>支持 JPG / PNG / WebP，也可直接 Ctrl+V 粘贴截图</small></span>
           </label>
           <div class="preview-box" id="previewBox">
@@ -456,15 +605,23 @@
             <label class="os-opt"><input type="radio" name="openSource" value="1" /><span>开源（代码公开）</span></label>
           </div>
         </div>
+        <div class="field" id="osRecallRow" style="display:none">
+          <label>开源奖励</label>
+          <div class="os-recall">
+            <span class="hint" id="osRecallHint"></span>
+            <button type="button" class="btn-ghost danger" id="recallOsBtn">收回开源奖励 50 盏</button>
+          </div>
+        </div>
         <div class="field" id="repoField" style="display:none">
           <label>源码仓库地址 *</label>
           <input type="text" name="repo" maxlength="500" placeholder="https://github.com/用户名/仓库" />
+          <p class="form-hint" id="repoHint">只收国内外开源代码托管站的仓库页面：GitHub、Gitee、GitLab、Bitbucket、GitCode、AtomGit、Codeberg、SourceForge、CODING、阿里云效等。</p>
         </div>
         <div class="field">
           <label>是否收费（选填）</label>
           <div class="os-picker" id="paidPicker">
             <label class="os-opt"><input type="radio" name="paid" value="" checked /><span>免费（不标注）</span></label>
-            <label class="os-opt"><input type="radio" name="paid" value="1" /><span>💰 需要付费</span></label>
+            <label class="os-opt"><input type="radio" name="paid" value="1" /><span><i class="ico" data-ico="coin" data-ico-size="14"></i> 需要付费</span></label>
           </div>
           <div class="os-picker" id="paidModelPicker" style="display:none; margin-top:8px">
             <label class="os-opt"><input type="radio" name="paidModel" value="" checked /><span>形式不定</span></label>
@@ -473,7 +630,7 @@
             <label class="os-opt"><input type="radio" name="paidModel" value="onetime" /><span>单篇购买</span></label>
             <label class="os-opt"><input type="radio" name="paidModel" value="subscription" /><span>订阅制</span></label>
             <label class="os-opt"><input type="radio" name="paidModel" value="trial" /><span>试用后付费</span></label>
-            <label class="os-opt"><input type="radio" name="paidModel" value="donation" /><span>打赏/赞助</span></label>
+            <label class="os-opt"><input type="radio" name="paidModel" value="donation" /><span>送灯火</span></label>
           </div>
         </div>
         <div class="modal-foot">
@@ -537,13 +694,96 @@
     </div>
   </div>
 
+  <!-- 用户管理：送 / 扣灯火弹窗（数量 + 附言都在这里填，附言必填防止忘写） -->
+  <div class="modal-mask" id="pointsMask">
+    <div class="modal" style="max-width:440px">
+      <h2 id="ptTitle">送灯火</h2>
+      <div class="field">
+        <label>给谁</label>
+        <input id="ptWho" disabled />
+      </div>
+      <div class="field">
+        <label>数量 *</label>
+        <input type="number" id="ptDelta" value="100" />
+        <div class="hint" style="padding:6px 0 0;font-size:12px" id="ptDeltaHint"></div>
+      </div>
+      <div class="field">
+        <label>附言（必填） <em style="color:#e5484d;font-style:normal">*</em></label>
+        <input id="ptNote" maxlength="100" placeholder="写清灯火来由，如：开源奖励 50 盏 / 2300 star 兑 2300 盏" />
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" id="ptCancel">取消</button>
+        <button type="button" class="btn btn-primary" id="ptOk">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 一键激励：贴荣誉标签 + 送灯火，一次做完，对方收到站内消息 -->
+  <div class="modal-mask" id="rewardMask">
+    <div class="modal" style="max-width:480px">
+      <h2>激励创作者</h2>
+      <div class="hint" style="margin-bottom:14px">贴荣誉标签和送灯火一次完成。灯火填 0 表示只贴标签；不管贴标签还是送灯火，对方都会收到站内消息。</div>
+      <div class="field">
+        <label>给谁</label>
+        <input id="rwWho" disabled />
+      </div>
+      <div class="field">
+        <label>荣誉标签</label>
+        <div class="rw-tags" id="rwTags"></div>
+        <div class="hint" style="padding:6px 0 0;font-size:12px">点一下选中 / 取消，已贴的默认选中。要新增标签名，先去上面的「标签库」加一个。</div>
+      </div>
+      <div class="field">
+        <label>送灯火</label>
+        <input type="number" id="rwDelta" value="50" />
+        <div class="hint" style="padding:6px 0 0;font-size:12px">填 0 = 只贴标签不送灯火。会计入对方账本。</div>
+      </div>
+      <div class="field">
+        <label>附言 <em style="color:#e5484d;font-style:normal">（送灯火时必填）</em></label>
+        <input id="rwNote" maxlength="100" placeholder="写清来由，如：反馈被采纳：首页筛选条建议" />
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" id="rwCancel">取消</button>
+        <button type="button" class="btn btn-primary" id="rwOk">确认激励</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 设为精选：选择展示时长（默认 3 天） -->
+  <div class="modal-mask" id="featModal">
+    <div class="modal" style="max-width:420px">
+      <h2>设为精选</h2>
+      <div class="hint" style="margin-bottom:14px">精选期间作品会在精选位和卡片上带「精选」徽章；到期后自动消失。会发站内消息通知作者，作者可直接回复你。</div>
+      <div class="feat-days" id="featDays">
+        <label class="feat-day"><input type="radio" name="featDays" value="1" /> 1 天</label>
+        <label class="feat-day"><input type="radio" name="featDays" value="3" checked /> 3 天</label>
+        <label class="feat-day"><input type="radio" name="featDays" value="7" /> 7 天</label>
+        <label class="feat-day"><input type="radio" name="featDays" value="15" /> 15 天</label>
+        <label class="feat-day"><input type="radio" name="featDays" value="30" /> 30 天</label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" id="featCancel">取消</button>
+        <button type="button" class="btn btn-primary" id="featConfirm">设为精选</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/icons.js"></script>
   <script>
     // 口令保存：勾「记住」存 localStorage（关浏览器/换标签页都在），不勾只存 sessionStorage（关了就没）
     let KEY = '';
     try { KEY = localStorage.getItem('adminKey') || sessionStorage.getItem('adminKey') || ''; } catch { /* ignore */ }
+    // 记住上次停留的 tab，刷新后还停在那里（校验一下，防止 key 改名后失效）
     let currentTab = 'pending';
+    try {
+      const saved = localStorage.getItem('adminTab');
+      if (saved && document.querySelector('#tabs .tab[data-tab="' + saved + '"]')) {
+        currentTab = saved;
+        document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === saved));
+      }
+    } catch { /* ignore */ }
     const $ = id => document.getElementById(id);
     const panel = $('panel');
+    let lastStats = null;   // loadStats 的最新一份，搜索词 tab 直接复用，不重复打接口
 
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
     const api = (path, opts = {}) => {
@@ -556,7 +796,7 @@
     };
     const toast = msg => {
       let t = document.getElementById('t');
-      if (!t) { t = document.createElement('div'); t.id = 't'; t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#1f2330;color:#fff;padding:10px 22px;border-radius:999px;font-size:14px;z-index:99'; document.body.appendChild(t); }
+      if (!t) { t = document.createElement('div'); t.id = 't'; t.style.cssText = 'position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:#fff;color:#2b2f38;padding:10px 18px;border-radius:12px;font-size:14px;z-index:99;border:1px solid rgba(31,35,48,.08);box-shadow:0 8px 28px rgba(31,35,48,.14), 0 2px 8px rgba(31,35,48,.08)'; document.body.appendChild(t); }
       t.textContent = msg; t.style.opacity = 1;
       clearTimeout(t._x); t._x = setTimeout(() => t.style.opacity = 0, 2000);
     };
@@ -628,34 +868,106 @@
         $('uvToday').textContent = s.uvToday || 0;
         $('pvTotal').textContent = s.pv || 0;
         $('uvTotal').textContent = s.uv || 0;
+        // 小程序渠道：单独一桶，网页 PV/UV 不含这部分
+        $('miniPvToday').textContent = s.miniPvToday || 0;
+        $('miniUvToday').textContent = s.miniUvToday || 0;
+        $('miniPvTotal').textContent = s.miniPv || 0;
+        $('miniUvTotal').textContent = s.miniUv || 0;
+        // 待审核/待投诉/待反馈/待认领：有活的项文字标红，0 不标
+        const NEED = ['待审核', '待处理投诉', '待看反馈', '待审认领'];
         $('stats').innerHTML = [
           ['注册用户', s.users || 0], ['今日新增', s.usersToday || 0], ['近 7 天新增', s.users7 || 0],
-          ['作品总数', s.total], ['已通过', s.approved], ['待审核', s.pending],
+          ['小程序注册', s.usersMini || 0],
+          ['作品总数', s.total], ['已通过', s.approved], ['待审核', s.pending], ['已下架', s.offline || 0],
           ['待处理投诉', s.reports], ['待看反馈', s.feedback], ['待审认领', s.claims || 0],
           ['总浏览', s.views], ['总点赞', s.likes]
-        ].map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
+        ].map(([k, v]) => `<span class="stat${NEED.includes(k) && Number(v) > 0 ? ' need' : ''}"><b>${v}</b><span>${k}</span></span>`).join('');
         // 外宣渠道来源：外宣包链接带 ?fr=<平台>，落地时上报，按访问量排序
         const promo = Array.isArray(s.promo) ? s.promo : [];
         const psBox = $('promoSrc');
         if (promo.length) {
           const max = Math.max(...promo.map(p => p.pv || 0), 1);
           psBox.style.display = '';
-          psBox.innerHTML = `<h4>外宣渠道来源<span>访问来自外宣包里的 ?fr= 标记，只做统计、不产生积分</span></h4>` +
+          psBox.innerHTML = `<h4>外宣渠道来源<span>访问本身不产生灯火；带 ref 的外宣链接带来的注册已计入「外宣注册」。兑换 = 用这个渠道的兑换码领灯火的人（老用户也算）</span></h4>` +
             promo.map(p => `
               <div class="ps-row">
                 <span class="ps-name">${esc(p.name || p.key)}</span>
                 <span class="ps-bar"><i style="width:${Math.max(4, Math.round((p.pv || 0) / max * 100))}%"></i></span>
-                <span class="ps-num">${p.pv || 0} 访问 · ${p.uv || 0} 人 · ${p.works || 0} 件作品 · ${(p.lastAt || '').slice(5, 10).replace('-', '/') || '—'}</span>
+                <span class="ps-num">${p.pv || 0} 访问 · ${p.uv || 0} 人 · ${p.regs || 0} 注册 · ${p.redeems || 0} 兑换 · ${p.fromUsers || 0} 人来自此渠道 · ${p.works || 0} 件作品 · ${(p.lastAt || '').slice(5, 10).replace('-', '/') || '—'}</span>
               </div>`).join('');
         } else {
           psBox.style.display = 'none';
         }
+        // 站内搜索词：挪到独立的「搜索词」tab，不再常驻每个页面占空间
+        lastStats = s;
+        if (currentTab === 'searchkw') renderSearchKw(s);
+        if (currentTab === 'traffic') renderTraffic(s);
         // 待处理数直接标在对应标签上，一眼看到哪里有活
-        updateTabBadges({ pending: s.pending, reports: s.reports, claims: s.claims || 0, feedback: s.feedback });
+        updateTabBadges({ pending: s.pending, offline: s.offline || 0, reports: s.reports, claims: s.claims || 0, feedback: s.feedback });
       } catch (e) {
         if (e.status === 401 || e.status === 403) backToLogin('口令已失效，请重新输入');
         else toast(e.message);
       }
+    }
+
+    // ---- 流量构成 tab：从哪来 / 什么设备 / 第一眼落在哪（近 7 天） ----
+    // 数据是 /api/track 顺带记的画像维度，和 PV/UV 同一批人、同一套口径：
+    // 排除名单里的身份、单日刷量过多的身份都不计入，所以站长自己刷不会把这三块带偏。
+    // 和外宣渠道看板的区别：那边是「我们主动投的 ?fr= 链接」，这边是「自然来路」——
+    // 外宣链接落地通常没有 referrer，会落在「直接访问」里，两个数别互相印证。
+    const DEV_LABEL = [['mobile', '手机'], ['desktop', '电脑'], ['wechat', '微信内'], ['tablet', '平板'], ['unknown', '未知 UA'], ['bot', '爬虫'], ['mini', '小程序']];
+    async function loadTraffic() {
+      try {
+        // loadStats 刚拉过就直接复用；否则自己拉一份（切 tab / 点刷新都走这里）
+        renderTraffic(lastStats || await api('/api/admin/stats'));
+      } catch (e) {
+        if (e.status === 401 || e.status === 403) backToLogin('口令已失效，请重新输入');
+        else panel.innerHTML = '<div class="empty">加载失败：' + esc(e.message) + '</div>';
+      }
+    }
+    function renderTraffic(s) {
+      const t = (s && s.traffic) || {};
+      const refs = Array.isArray(t.refs) ? t.refs : [];
+      const land = Array.isArray(t.landings) ? t.landings : [];
+      const devs = t.devs || {};
+      const visits = t.visits || 0;
+      if (!refs.length && !land.length && !visits) {
+        panel.innerHTML = '<div class="empty">还没有流量数据。等有真人访问之后，这里会按来源、设备、落地页排出来。</div>';
+        return;
+      }
+      const rowsOf = (list, nameOf) => {
+        const max = Math.max(...list.map(x => x.count || 0), 1);
+        return list.map(x => `
+          <div class="ps-row">
+            <span class="ps-name" title="${esc(nameOf(x))}">${esc(nameOf(x))}</span>
+            <span class="ps-bar"><i style="width:${Math.max(4, Math.round((x.count || 0) / max * 100))}%"></i></span>
+            <span class="ps-num">${x.count || 0}</span>
+          </div>`).join('');
+      };
+      const chips = DEV_LABEL
+        .filter(([k]) => (devs[k] || 0) > 0)
+        .map(([k, label]) => `<span class="${k === 'bot' || k === 'mini' ? 'tr-dim' : ''}"><b>${devs[k]}</b> ${label}</span>`)
+        .join('') || '<span class="tr-dim">还没有设备数据</span>';
+      const since = t.since ? `${t.since.slice(5).replace('-', '/')} 起 · ${t.days || 0} 天有数据 · ` : '';
+      panel.innerHTML = `
+        <div class="promo-src">
+          <h4>流量构成<span>近 ${t.window || 7} 天 · ${since}网页访问 ${visits} 次（不含小程序）
+            · 排除名单与单日刷量过多的身份不计入；外宣链接没有 referrer，会算「直接访问」</span></h4>
+          <div class="tr-grid">
+            <div class="tr-col">
+              <h5>来源</h5>
+              ${refs.length ? rowsOf(refs, x => x.name) : '<div class="sk-empty">还没有来源数据</div>'}
+            </div>
+            <div class="tr-col">
+              <h5>设备</h5>
+              <div class="tr-devs">${chips}</div>
+            </div>
+            <div class="tr-col">
+              <h5>落地页</h5>
+              ${land.length ? rowsOf(land, x => x.label ? '作品 · ' + x.label : x.path) : '<div class="sk-empty">还没有落地页数据</div>'}
+            </div>
+          </div>
+        </div>`;
     }
 
     function updateTabBadges(map) {
@@ -680,13 +992,16 @@
       const t = btn.dataset.tab;
       if (!t) return;
       currentTab = t;
+      try { localStorage.setItem('adminTab', t); } catch { /* ignore */ }
       document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
       renderTab(t);
     };
 
     function renderTab(tab) {
+      if (repliesTimer) { clearInterval(repliesTimer); repliesTimer = null; }
       panel.innerHTML = '<div class="empty">加载中…</div>';
       if (tab === 'pending') return loadWorks('pending');
+      if (tab === 'offline') return loadWorks('offline');
       if (tab === 'all') return loadWorks('全部');
       if (tab === 'reports') return loadReports();
       if (tab === 'claims') return loadClaims();
@@ -697,9 +1012,109 @@
       if (tab === 'types') return loadTypes();
       if (tab === 'tools') return loadTools();
       if (tab === 'ads') return loadAds();
-      if (tab === 'creators') return loadCreators();
-      if (tab === 'points') return loadPoints();
+      if (tab === 'users') return loadUsers();
+      if (tab === 'broadcast') return loadBroadcast();
+      if (tab === 'replies') return loadReplies();
+      if (tab === 'gift') return loadGift();
       if (tab === 'friends') return loadFriends();
+      if (tab === 'searchkw') return loadSearchKw();
+      if (tab === 'traffic') return loadTraffic();
+    }
+
+    // ---- 搜索词 tab：站内真实搜索意图（来源 /api/works?q=），只记词不记人 ----
+    async function loadSearchKw() {
+      try {
+        // loadStats 刚拉过就直接复用；否则自己拉一份（切 tab / 点刷新都走这里）
+        renderSearchKw(lastStats || await api('/api/admin/stats'));
+      } catch (e) {
+        if (e.status === 401 || e.status === 403) backToLogin('口令已失效，请重新输入');
+        else panel.innerHTML = '<div class="empty">加载失败：' + esc(e.message) + '</div>';
+      }
+    }
+
+    function renderSearchKw(s) {
+      const sk = (s && s.search) || {};
+      const rows = (sk.top && sk.top.length)
+        ? (() => {
+            const maxSk = Math.max(...sk.top.map(x => x.n || 0), 1);
+            return sk.top.map(x => `
+              <div class="ps-row">
+                <span class="ps-name sk-name" title="${esc(x.q)}">${esc(x.q)}</span>
+                <span class="ps-bar"><i style="width:${Math.max(4, Math.round((x.n || 0) / maxSk * 100))}%"></i></span>
+                <span class="ps-num">${x.n} 次${x.zero ? ` · <b class="sk-zero">${x.zero} 次无结果</b>` : ''} · 7 天 ${x.n7 || 0} · ${(x.last || '').slice(5, 10).replace('-', '/') || '—'}</span>
+              </div>`).join('');
+          })()
+        : '<div class="sk-empty">还没有人搜过。站内每执行一次搜索都会记一条，这里会按次数排出来。</div>';
+      panel.innerHTML = `
+        <div class="promo-src">
+          <h4>站内搜索词<span>今日 ${sk.todayN || 0} 次 · 近 7 天 ${sk.weekN || 0} 次 · 共 ${sk.words || 0} 个词 · 只记词不记人（无 IP / 无账号）</span></h4>
+          ${rows}
+        </div>`;
+    }
+
+    function featDaysLeft(u) { try { const d = Math.ceil((new Date(u).getTime() - Date.now()) / 86400000); return d > 0 ? d : 0; } catch { return 0; } }
+
+    // 设为精选：选择展示时长（1/3/7/15/30 天，默认 3 天）
+    function openFeatModal(id, w) {
+      const mask = $('featModal');
+      const box = $('featDays');
+      box.querySelectorAll('input[name="featDays"]').forEach(r => { r.checked = r.value === '3'; });
+      $('featConfirm').onclick = async () => {
+        const sel = box.querySelector('input[name="featDays"]:checked');
+        const days = Number(sel ? sel.value : 3) || 3;
+        try {
+          const r = await api(`/api/admin/works/${id}/feature`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ days }) });
+          w.featured = true; w.featuredUntil = r.featuredUntil;
+          toast(`已设为精选（${days} 天）`);
+          hideModal(mask);
+          patchRow(id);
+          notifySite();
+        } catch (e) { toast(e.message || '操作失败'); }
+      };
+      $('featCancel').onclick = () => hideModal(mask);
+      bindMaskClose(mask, () => hideModal(mask));
+      showModal(mask);
+    }
+
+    // 后台收件箱：作者就精选 / 消息发起的回复会话（双向）
+    let repliesTimer = null;
+    async function loadReplies() {
+      if (repliesTimer) { clearInterval(repliesTimer); repliesTimer = null; }
+      async function draw() {
+        let threads = [];
+        try { const d = await api('/api/admin/replies'); threads = (d && d.threads) || []; } catch { threads = []; }
+        if (!threads.length) { panel.innerHTML = '<div class="empty">还没有作者回复。把作品设为精选后，作者会收到通知，可在这里直接对话。</div>'; return; }
+        panel.innerHTML = `<div class="replies-head">作者回复（精选 / 消息往来）· 共 ${threads.length} 个会话</div>` + threads.map(t => `
+          <div class="reply-thread" data-thread="${t.id}">
+            <div class="reply-thread-head">「${esc(t.workTitle || '')}」 · @${esc(t.authorName || t.authorId)}${t.unread ? ` <span class="tag warn">${t.unread} 未读</span>` : ''}</div>
+            <div class="reply-msgs">
+              ${t.messages.map(m => `<div class="rmsg rmsg-${m.from}"><b>${m.from === 'admin' ? '管理员' : esc(m.fromName || '作者')}</b>：${esc(m.text)} <span class="rtime">${new Date(m.at).toLocaleString('zh-CN')}</span></div>`).join('')}
+            </div>
+            <div class="reply-send">
+              <textarea data-thread="${t.id}" rows="2" maxlength="300" placeholder="回复 @${esc(t.authorName || t.authorId)}…"></textarea>
+              <button class="btn-primary btn-sm" data-reply-send="${t.id}">回信</button>
+            </div>
+          </div>`).join('');
+        threads.forEach(t => { if (t.unread) api('/api/admin/replies/' + t.id + '/read', { method: 'POST' }).catch(() => {}); });
+        panel.querySelectorAll('[data-reply-send]').forEach(btn => {
+          btn.onclick = async () => {
+            const tid = btn.dataset.replySend;
+            const ta = panel.querySelector('textarea[data-thread="' + tid + '"]');
+            const text = (ta && ta.value || '').trim();
+            if (!text) return;
+            btn.disabled = true;
+            try {
+              await api('/api/admin/replies', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ threadId: tid, text }) });
+              ta.value = '';
+              draw();
+              toast('已回信');
+            } catch (e) { toast(e.message || '发送失败'); }
+            btn.disabled = false;
+          };
+        });
+      }
+      await draw();
+      repliesTimer = setInterval(draw, 15000);
     }
 
     // ---- 作品 ----
@@ -724,39 +1139,51 @@
                 ${w.status === 'pending' ? '<span class="tag warn">待审核</span>' : ''}
                 ${w.anon ? '<span class="tag">匿名投稿</span>' : ''}
                 ${w.anonymous ? '<span class="tag">匿名发布</span>' : ''}
-                ${w.status === 'rejected' ? '<span class="tag bad">已拒绝</span>' : ''}
-                ${w.featured ? '<span class="tag ok">精选</span>' : ''}
+                ${w.status === 'rejected' ? '<span class="tag bad">管理员下架</span>' : ''}
+                ${w.hidden ? '<span class="tag bad">作者下架</span>' : ''}
+                ${w.featured ? '<span class="tag ok">精选' + (w.featuredUntil ? '·剩' + featDaysLeft(w.featuredUntil) + '天' : '') + '</span>' : ''}
                 ${w.pinned ? '<span class="tag">置顶</span>' : ''}
-                ${w.openSource === true ? '<span class="tag ok">开源</span>' : w.openSource === false ? '<span class="tag">闭源</span>' : ''}
+                ${w.openSource === true ? '<span class="tag ok">开源</span>' : ''}
                 ${w.paid ? `<span class="tag warn">付费${w.paidModel && PAID_MODELS[w.paidModel] ? ' · ' + PAID_MODELS[w.paidModel] : ''}</span>` : ''}
                 ${w.claimable ? `<span class="tag warn" title="${w.claimed ? '已开放认领，审核通过会转移归属' : '无归属作品（匿名投稿 / 后台代传）默认可认领'}">可认领</span>` : ''}
+                ${w.blockCount ? `<span class="tag warn" title="被 ${w.blockCount} 个账号屏蔽${w.blockOwnerCount ? `（其中站长 ${w.blockOwnerCount} 位，按 3 分计）` : ''}${w.blockShift ? ` · 首页「最新」已降 ${w.blockShift} 位` : ` · 权重不足 2 分，暂不降权`}">屏蔽 ${w.blockCount}${w.blockOwnerCount ? `（站长 ${w.blockOwnerCount}）` : ''}</span>` : ''}
               </div>
-              <div class="row-meta">@${esc(w.author)}${w.anonymous && (w.authorReal || w.ownerReal) ? `（原提交：${esc(w.authorReal || '')}${w.ownerReal ? ' / @' + esc(w.ownerReal) : ''}）` : ''} · ${esc(w.category)} · ♥${w.likes} · 👁${w.views}
+              <div class="row-meta">@${esc(w.author)}${w.anonymous && (w.authorReal || w.ownerReal) ? `（原提交：${esc(w.authorReal || '')}${w.ownerReal ? ' / @' + esc(w.ownerReal) : ''}）` : ''} · ${esc(w.category)} · ${Icons.icon('heart', 12)}${w.likes} · ${Icons.icon('eye', 12)}${w.views}
                 · <span class="pvuv" title="今日 PV ${w.pvToday || 0} · UV ${w.uvToday || 0}">PV ${w.pv || 0} · UV ${w.uv || 0}</span>
                 ${w.reports ? `· <span style="color:#e5484d">投诉 ${w.reports}</span>` : ''}
+                ${w.offlineAt ? `· 下架于 ${new Date(w.offlineAt).toLocaleString('zh-CN')}` : ''}
+                ${w.offlineReason ? `<span style="color:#a32d2d">· 下架原因：${esc(w.offlineReason)}</span>` : ''}
+                ${w.aiReview && w.aiReview.pass === false ? `<span style="color:#a32d2d">· AI 初审不通过：${esc(w.aiReview.reason || '未说明原因')}</span>` : ''}
+                ${w.aiReview && w.aiReview.pass === null ? `<span style="color:var(--muted)">· AI 初审不可用：${esc(w.aiReview.note || '转人工')}</span>` : ''}
+                ${w.aiReview && w.aiReview.pass === true && w.status === 'pending' ? '<span style="color:#2e7d32">· AI 初审通过（等人工复核）</span>' : ''}
                 ${w.link ? `· <a href="${esc(w.link)}" target="_blank" rel="noopener" class="row-link" title="${esc(w.link)}">${esc(shortUrl(w.link))}</a>` : ''}
                 ${w.repo ? `· <a href="${esc(w.repo)}" target="_blank" rel="noopener" class="row-link repo" title="源码：${esc(w.repo)}">源码：${esc(shortUrl(w.repo, 30))}</a>` : ''}</div>
             </div>
             <div class="row-actions">
               <button class="btn btn-ghost btn-sm" data-act="edit" data-id="${w.id}">编辑</button>
-              ${w.status !== 'approved' ? `<button class="btn btn-ok btn-sm" data-act="approve" data-id="${w.id}">通过</button>` : ''}
-              ${w.status !== 'rejected' ? `<button class="btn btn-danger btn-sm" data-act="reject" data-id="${w.id}">拒绝</button>` : ''}
+              ${(w.status === 'rejected' || w.hidden) ? `<a class="btn btn-ghost btn-sm" href="/w/${w.id}?key=${encodeURIComponent(KEY)}" target="_blank" rel="noopener">查看</a>` : ''}
+              ${w.status === 'pending' ? `<button class="btn btn-ok btn-sm" data-act="approve" data-id="${w.id}">通过</button>` : ''}
+              ${(w.status === 'rejected' || w.hidden) ? `<button class="btn btn-ok btn-sm" data-act="relist" data-id="${w.id}">恢复上架</button>` : ''}
+              ${w.status !== 'rejected' ? `<button class="btn btn-danger btn-sm" data-act="reject" data-id="${w.id}">${w.status === 'pending' ? '拒绝' : '下架'}</button>` : ''}
               <button class="btn btn-ghost btn-sm" data-act="feature" data-id="${w.id}">${w.featured ? '取消精选' : '设为精选'}</button>
               <button class="btn btn-ghost btn-sm" data-act="pin" data-id="${w.id}">${w.pinned ? '取消置顶' : '置顶'}</button>
               <button class="btn btn-ghost btn-sm" data-act="claimopen" data-id="${w.id}">${w.claimable ? '关闭认领' : '开放认领'}</button>
               <button class="btn btn-ghost btn-sm" data-act="anonymous" data-id="${w.id}">${w.anonymous ? '取消匿名' : '设为匿名'}</button>
               <button class="btn btn-ghost btn-sm" data-act="assign" data-id="${w.id}" title="把作品指定给站内某个账号名下">指定账号</button>
+              ${w.blockShift ? `<button class="btn btn-ghost btn-sm" data-act="blockreset" data-id="${w.id}" title="清除屏蔽降权：用户仍然看不到它，只是这票不再影响首页排序">清除降权</button>` : ''}
               <button class="btn btn-danger btn-sm" data-act="del" data-id="${w.id}">删除</button>
             </div>
           </div>`;
     }
 
     // 只替换这一行（或直接移除），不重渲染整个列表 → 页面不跳动、滚动位置不变
+    const isOfflineRow = x => (x.status || 'approved') === 'rejected' || !!x.hidden;
     function patchRow(id) {
       const el = panel.querySelector(`.row[data-row="${id}"]`);
       const w = WORK_CACHE[id];
       if (!el) return;
-      const stay = w && (curStatus === '全部' || w.status === curStatus);
+      const stay = w && (curStatus === '全部'
+        || (curStatus === 'offline' ? isOfflineRow(w) : w.status === curStatus));
       if (!stay) { el.style.transition = 'opacity .2s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 200); return; }
       const tmp = document.createElement('div');
       tmp.innerHTML = rowHtml(w).trim();
@@ -770,8 +1197,9 @@
         list.forEach(w => { WORK_CACHE[w.id] = w; });
         const head = `<div class="form-inline" style="border-bottom:1px solid var(--border)">
             <button class="btn btn-primary" id="newWorkBtn">＋ 新建作品</button>
+            ${status === 'offline' ? `<span style="color:var(--muted);font-size:12px">共 ${list.length} 件 · 点「查看」核对内容后「恢复上架」，作品会立刻回到首页和榜单（浏览/点赞/灯火数据都保留）</span>` : ''}
           </div>`;
-        if (!list.length) { panel.innerHTML = head + '<div class="empty">暂无作品</div>'; return; }
+        if (!list.length) { panel.innerHTML = head + `<div class="empty">${status === 'offline' ? '没有被下架的作品' : '暂无作品'}</div>`; return; }
         panel.innerHTML = head + list.map(rowHtml).join('');
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
@@ -779,6 +1207,32 @@
     // ---- 新建 / 编辑弹窗 ----
     const editorMask = $('editorMask');
     const workForm = $('workForm');
+
+    // 遮罩点击关闭：必须「按下」和「抬起」都发生在遮罩上才算。
+    // 只在 click 里判断 e.target 是不够的——在弹窗里拖选文字、拖滚动条时把鼠标松开在遮罩上，
+    // 浏览器会把 click 派发到两者共同祖先（也就是遮罩），导致弹窗"自己"关闭。
+    // 弹窗开关小助手（与其他弹窗的 style.display 写法保持一致）
+    function showModal(mask) { mask.style.display = 'flex'; }
+    function hideModal(mask) { mask.style.display = 'none'; }
+
+    function bindMaskClose(mask, onClose) {
+      if (mask.dataset.maskCloseBound) return;
+      mask.dataset.maskCloseBound = '1';
+      let sx = 0, sy = 0, dist = 0, startedOnMask = false;
+      mask.addEventListener('pointerdown', e => {
+        startedOnMask = e.isPrimary !== false && e.target === mask;
+        dist = 0; sx = e.clientX; sy = e.clientY;
+      });
+      mask.addEventListener('pointermove', e => {
+        if (!startedOnMask) return;
+        dist = Math.max(dist, Math.hypot(e.clientX - sx, e.clientY - sy));
+      });
+      mask.addEventListener('click', e => {
+        const hit = startedOnMask && e.target === mask && dist <= 12;
+        startedOnMask = false;
+        if (hit) onClose();
+      });
+    }
 
     // 作品形态（多选）：形态清单由后台「形态管理」维护，这里动态渲染
     async function loadTypeOptions() {
@@ -827,6 +1281,9 @@
       // 与前台一致：只有选了「小程序」才显示二维码字段
       const needQr = allTypes.includes('小程序');
       $('adminQrField').style.display = needQr ? 'block' : 'none';
+      // Web 形态的「网站地址」就是作品入口，官网字段纯属重复 → 勾了 Web 就隐藏（值保留，只是不显示）
+      const siteField = $('adminSiteField');
+      if (siteField) siteField.style.display = allTypes.includes('Web') ? 'none' : 'block';
       $('adminLinkLabel').style.display = types.length ? 'block' : 'none';
       const prev = adminPendingLinkValues || adminCollectLinks();
       adminPendingLinkValues = null;
@@ -843,12 +1300,31 @@
 
     // ---- 分类（多选，最多 3 个）----
     let adminCatList = [];
-    function adminSelectedCats() {
-      return [...document.querySelectorAll('#adminCatPicker input[name="cats"]:checked')].map(i => i.value);
+    let adminPickedCats = []; // 有序：第 0 个为主分类（先点先得）
+    function adminSelectedCats() { return adminPickedCats.slice(); }
+    function markAdminCatOrder() {
+      const picker = $('adminCatPicker');
+      if (!picker) return;
+      picker.querySelectorAll('label.type-opt').forEach(lbl => {
+        const cb = lbl.querySelector('input[name="cats"]');
+        const span = lbl.querySelector('span');
+        if (!cb || !span) return;
+        const old = span.querySelector('.cat-idx');
+        if (old) old.remove();
+        const idx = adminPickedCats.indexOf(cb.value);
+        lbl.classList.toggle('is-main', idx === 0);
+        if (idx !== -1) {
+          const b = document.createElement('i');
+          b.className = 'cat-idx';
+          b.textContent = idx === 0 ? '主' : String(idx + 1);
+          span.appendChild(b);
+        }
+      });
     }
-    function renderAdminCats(checked) {
+    function renderAdminCats(ordered) {
+      adminPickedCats = (ordered || []).slice();
       $('adminCatPicker').innerHTML = adminCatList.map(c =>
-        `<label class="type-opt"><input type="checkbox" name="cats" value="${esc(c)}"${checked.includes(c) ? ' checked' : ''} /><span>${esc(c)}</span></label>`).join('')
+        `<label class="type-opt"><input type="checkbox" name="cats" value="${esc(c)}"${adminPickedCats.includes(c) ? ' checked' : ''} /><span>${esc(c)}</span></label>`).join('')
         + `<button type="button" class="type-opt cat-add" id="adminCatAddBtn" title="创建并选择新分类"><span>＋ 新分类</span></button>`;
       const addBtn = $('adminCatAddBtn');
       if (addBtn) addBtn.onclick = e => {
@@ -857,8 +1333,9 @@
         inp.style.display = 'block';
         inp.focus();
       };
-      const n = adminSelectedCats().length;
-      $('adminCatHint').textContent = n ? `已选 ${n}/3 个，第一个是主分类` : '最多选择 3 个，第一个是主分类';
+      markAdminCatOrder();
+      const n = adminPickedCats.length;
+      $('adminCatHint').textContent = n ? `已选 ${n}/3 个，主分类：${adminPickedCats[0]}` : '最多选择 3 个，先点的是主分类';
     }
     function adminSetCats(list) {
       const want = (list || []).filter(c => adminCatList.includes(c)).slice(0, 3);
@@ -866,11 +1343,19 @@
     }
     $('adminCatPicker').addEventListener('change', e => {
       if (e.target.name !== 'cats') return;
-      if (adminSelectedCats().length > 3) {
-        e.target.checked = false;
-        toast('最多选择 3 个分类');
+      if (e.target.checked) {
+        if (!adminPickedCats.includes(e.target.value)) {
+          if (adminPickedCats.length >= 3) {
+            e.target.checked = false;
+            toast('最多选择 3 个分类');
+            return;
+          }
+          adminPickedCats.push(e.target.value);
+        }
+      } else {
+        adminPickedCats = adminPickedCats.filter(c => c !== e.target.value);
       }
-      renderAdminCats(adminSelectedCats());
+      renderAdminCats(adminPickedCats);
     });
     // 新分类：回车确认后先创建，再自动勾选（与前台投稿弹窗一致）
     {
@@ -901,14 +1386,45 @@
       });
       inp.addEventListener('blur', () => { if (!inp.value.trim()) inp.style.display = 'none'; });
     }
-    // 开源 = 是 → 才需要填源码仓库
+    // 开源 = 是 → 才需要填源码仓库；仓库地址必须是开源代码托管站（与 server.js 的 REPO_HOSTS 一致）
+    const REPO_HOSTS = [
+      'github.com', 'gitlab.com', 'bitbucket.org', 'sourceforge.net', 'codeberg.org', 'git.sr.ht', 'huggingface.co',
+      'gitee.com', 'gitcode.com', 'atomgit.com', 'codeup.aliyun.com', 'coding.net', 'gitlink.org.cn'
+    ];
+    const REPO_HINT_OK = '只收国内外开源代码托管站的仓库页面：GitHub、Gitee、GitLab、Bitbucket、GitCode、AtomGit、Codeberg、SourceForge、CODING、阿里云效等。';
+    const REPO_HINT_BAD = '这个站点不在名单里：请填 GitHub / Gitee / GitLab / Bitbucket / GitCode / AtomGit 等开源代码托管站的仓库页；自建 GitLab 请联系站长人工核验。';
+    function repoHostOk(v) {
+      const s = String(v || '').trim();
+      if (!s) return true;
+      let host = '';
+      try {
+        host = new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s).hostname.toLowerCase().replace(/^www\./, '');
+      } catch { return false; }
+      return REPO_HOSTS.some(base => host === base || host.endsWith('.' + base));
+    }
+    function refreshRepoHint() {
+      const el = $('repoHint');
+      if (!el) return;
+      const v = (workForm.repo.value || '').trim();
+      // 老数据原样保存放行：编辑时仓库没动就不拦，否则改个标题都保存不了
+      const was = editingId ? String((WORK_CACHE[editingId] || {}).repo || '').trim() : '';
+      const legacy = !!v && v === was && !repoHostOk(v);
+      const bad = !!v && !legacy && !repoHostOk(v);
+      el.classList.toggle('err', bad);
+      el.textContent = bad ? REPO_HINT_BAD
+        : legacy ? '这是原来填的仓库地址（不在开源托管站名单内）。不改就保持原样；要改请换成 GitHub、Gitee 等开源代码托管站的仓库页。'
+        : REPO_HINT_OK;
+    }
+    workForm.repo.addEventListener('input', refreshRepoHint);
+    workForm.repo.addEventListener('blur', refreshRepoHint);
     workForm.querySelectorAll('input[name="openSource"]').forEach(r => {
       r.addEventListener('change', () => {
         $('repoField').style.display = getFormRadio('openSource') === '1' ? 'block' : 'none';
+        refreshRepoHint();
       });
     });
     // 收费形式：勾「需要付费」才展开；点形式自动勾「需要付费」；改回免费时清掉形式
-    const PAID_MODELS = { freemium: '部分免费', member: '会员专享', onetime: '单篇购买', subscription: '订阅制', trial: '试用后付费', donation: '打赏/赞助' };
+    const PAID_MODELS = { freemium: '部分免费', member: '会员专享', onetime: '单篇购买', subscription: '订阅制', trial: '试用后付费', donation: '送灯火' };
     const updatePaidModelField = () => {
       const paid = getFormRadio('paid') === '1';
       $('paidModelPicker').style.display = paid ? 'flex' : 'none';
@@ -937,6 +1453,8 @@
     let originalImages = [];    // 编辑时服务器上原有的宣传图
     let galItems = [];          // 有序宣传图：{kind:'old',url} | {kind:'new',file,src}
     let qrCleared = false;      // 二维码被手动删除
+    // 封面被手动移除（预览不再回退显示原图；封面是必填项，必须重新上传才能保存）
+    let coverCleared = false;
 
     // 原有但已从列表里删掉的宣传图
     const removedGallery = () => {
@@ -1033,12 +1551,13 @@
     function renderCoverPreview() {
       const f = workForm.image.files[0];
       const box = $('previewBox');
-      const src = f ? URL.createObjectURL(f) : (existingCover || '');
+      const src = f ? URL.createObjectURL(f) : (coverCleared ? '' : (existingCover || ''));
       box.style.display = src ? 'block' : 'none';
       if (src) $('previewImg').src = src; else $('previewImg').removeAttribute('src');
       setCoverDropText(f ? '已选择新封面，点击可更换<br /><small>也可直接 Ctrl+V 粘贴截图</small>'
+        : (coverCleared ? '封面已移除，请上传一张新的封面图<br /><small>支持 JPG / PNG / WebP，也可直接 Ctrl+V 粘贴截图</small>'
         : (existingCover ? '保留原封面，点击可更换<br /><small>也可直接 Ctrl+V 粘贴截图</small>'
-                         : '点击上传封面图<br /><small>支持 JPG / PNG / WebP，也可直接 Ctrl+V 粘贴截图</small>'));
+                         : '点击上传封面图<br /><small>支持 JPG / PNG / WebP，也可直接 Ctrl+V 粘贴截图</small>')));
     }
 
     function renderQrPreview() {
@@ -1052,7 +1571,17 @@
     // 封面 / 二维码的「✕ 删除」（静态按钮，只绑一次）
     $('coverClear').onclick = e => {
       e.preventDefault();
+      const hadOld = !!existingCover && !coverCleared;
+      const hadNew = workForm.image.files.length > 0;
+      // 封面是必填项，移除只是为了让运营换图（旧图在保存后才会被替换/清理），先确认一下防误触
+      if (hadOld && !confirm('移除这张封面？\n移除后必须上传一张新封面才能保存。')) return;
       workForm.image.value = '';
+      if (hadOld) {
+        coverCleared = true;    // 预览不再回退到原封面，保存前必须重新上传
+        toast('封面已移除，请上传一张新的封面图');
+      } else if (hadNew) {
+        toast('已取消这张新封面');
+      }
       renderCoverPreview();
     };
     $('qrClear').onclick = e => {
@@ -1080,10 +1609,20 @@
       return on ? on.value : '';
     };
 
+    // 匿名开关：勾选后作者输入框禁用并灰化（后台代传场景下作者填了也没用，前台一律显示「匿名」）
+    function syncAnonAuthorState() {
+      const anon = getFormRadio('anonymous') === '1';
+      const ai = workForm.author;
+      ai.disabled = anon;
+      ai.style.opacity = anon ? '0.5' : '';
+      ai.placeholder = anon ? '匿名作品无需填写（前台显示「匿名」）' : '填站内账号名会自动绑定归属；留空默认管理员';
+    }
+    document.querySelectorAll('#anonPicker input').forEach(r => r.addEventListener('change', syncAnonAuthorState));
+
     async function openEditor(id) {
       editingId = id || null;
       workForm.reset();
-      existingCover = ''; existingQr = ''; originalImages = []; galItems = []; qrCleared = false;
+      existingCover = ''; existingQr = ''; originalImages = []; galItems = []; qrCleared = false; coverCleared = false;
       setPasteTarget('image');
       const w = id ? WORK_CACHE[id] : null;
       $('editorTitle').textContent = w ? '编辑作品：' + w.title : '新建作品';
@@ -1096,7 +1635,13 @@
       setFormRadio('openSource', w ? (w.openSource === true ? '1' : '0') : '0');
       setFormRadio('paid', w && w.paid ? '1' : '');
       setFormRadio('paidModel', w && w.paid ? (w.paidModel || '') : '');
+      setFormRadio('anonymous', w ? (w.anonymous === true ? '1' : '0') : '1');
+      syncAnonAuthorState();
       $('repoField').style.display = getFormRadio('openSource') === '1' ? 'block' : 'none';
+      // 一键收回：仅当该作品已发放且未收回、且归属了账号时显示
+      const canRecall = !!(w && w.osBonusAt && !w.osBonusRecalled && w.userId);
+      $('osRecallRow').style.display = canRecall ? 'flex' : 'none';
+      if (canRecall) $('osRecallHint').textContent = `已发放开源奖励 ${w.osBonus || 50} 盏`;
       updatePaidModelField();
       let draftRestored = false;
       if (!w) {
@@ -1128,6 +1673,7 @@
       renderQrPreview();
       renderGalleryPreview();
       editorMask.style.display = 'flex';
+      editorSnapshot = snapshotEditor(); // 记下打开时的样子，关闭前比对是否改过
       if (draftRestored) toast('已恢复上次未提交的草稿（图片需重新选择）');
       setTimeout(() => workForm.title.focus(), 50);
     }
@@ -1142,6 +1688,27 @@
       if (galItems.length) return true;
       return false;
     }
+
+    // 编辑模式：弹窗打开时给表单拍个快照，关闭前比对，避免误关丢掉刚改的内容
+    let editorSnapshot = '';
+    function snapshotEditor() {
+      const parts = [];
+      workForm.querySelectorAll('input, textarea, select').forEach(el => {
+        if (!el.name) return;
+        if (el.type === 'file') parts.push(el.name + '=' + [...el.files].map(f => f.name + ':' + f.size).join(','));
+        else if (el.type === 'radio') parts.push(el.name + '=' + (el.checked ? el.value : ''));
+        else if (el.type === 'checkbox') parts.push(el.name + '=' + el.checked);
+        else parts.push(el.name + '=' + el.value);
+      });
+      parts.push('links=' + JSON.stringify(adminCollectLinks()));
+      parts.push('types=' + adminSelectedTypes().join(','));
+      parts.push('cats=' + adminSelectedCats().join(','));
+      parts.push('gal=' + galItems.map(it => it.kind === 'old' ? it.url : 'new:' + (it.file ? it.file.name + ':' + it.file.size : '')).join('|'));
+      parts.push('cover=' + (existingCover && !coverCleared && !workForm.image.files.length ? 'kept' : 'new'));
+      parts.push('qr=' + (existingQr && !workForm.qrcode.files.length && !qrCleared ? 'kept' : 'changed'));
+      return parts.join('\n');
+    }
+    const editorChanged = () => snapshotEditor() !== editorSnapshot;
     function saveDraft() {
       if (editingId) return; // 编辑模式不存草稿
       try {
@@ -1153,6 +1720,7 @@
           repo: workForm.repo.value,
           paid: getFormRadio('paid'),
           paidModel: getFormRadio('paidModel'),
+          anonymous: getFormRadio('anonymous'),
           prompt: workForm.prompt.value, site: workForm.site.value, t: Date.now()
         }));
       } catch {}
@@ -1173,6 +1741,8 @@
         workForm.repo.value = d.repo || '';
         setFormRadio('paid', d.paid === '1' ? '1' : '');
         setFormRadio('paidModel', d.paid === '1' ? (d.paidModel || '') : '');
+        setFormRadio('anonymous', d.anonymous === '1' ? '1' : '0');
+        syncAnonAuthorState();
         $('repoField').style.display = getFormRadio('openSource') === '1' ? 'block' : 'none';
         updatePaidModelField();
         // 兼容旧草稿的单 link 字段
@@ -1191,15 +1761,34 @@
     workForm.addEventListener('change', () => saveDraft());
 
     function tryCloseEditor() {
-      if (!editingId && editorDirty()) {
-        saveDraft();
-        if (!confirm('内容还没提交，已自动存为草稿，下次打开「新建作品」会恢复（图片需重新选择）。确定关闭吗？')) return;
+      if (!editingId) {
+        if (editorDirty()) {
+          saveDraft();
+          if (!confirm('内容还没提交，已自动存为草稿，下次打开「新建作品」会恢复（图片需重新选择）。确定关闭吗？')) return;
+        }
+      } else if (editorChanged()) {
+        // 编辑已有作品：误关 = 白改一通，先问一句
+        if (!confirm('这件作品还有没保存的修改，确定关闭并放弃吗？')) return;
       }
       editorMask.style.display = 'none';
     }
     $('cancelEdit').onclick = tryCloseEditor;
-    editorMask.onclick = e => { if (e.target === editorMask) tryCloseEditor(); };
-    workForm.image.onchange = e => { renderCoverPreview(); };
+    bindMaskClose(editorMask, tryCloseEditor);
+
+    // 单行输入框里按回车不要提交整张表单（以前会直接保存并关掉弹窗，像"自己关了"）。
+    // 多行文本框回车照常换行；按钮、文件框、联想/新分类等自己处理回车的先 preventDefault 的也不拦。
+    workForm.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || e.defaultPrevented) return;
+      if (e.isComposing || e.keyCode === 229) return; // 中文输入法选词的回车交给输入法，别插手
+      const t = e.target;
+      if (!t || t.tagName !== 'INPUT') return;
+      if (['file', 'checkbox', 'radio', 'submit', 'button'].includes(t.type)) return;
+      e.preventDefault();
+    });
+    workForm.image.onchange = e => {
+      if (workForm.image.files[0]) coverCleared = false; // 选了新封面，移除标记失效
+      renderCoverPreview();
+    };
     workForm.qrcode.onchange = e => {
       if (workForm.qrcode.files[0]) qrCleared = false;
       renderQrPreview();
@@ -1323,18 +1912,29 @@
           const hasQr = workForm.qrcode.files.length > 0 || (existingQr && !qrCleared);
           if (!hasQr) throw new Error('形态含「小程序」，请上传小程序码 / 二维码');
         }
+        // 源码仓库：标了开源就必须填，而且必须是开源代码托管站的页面（老数据没改动则放行）
+        const repoVal = (workForm.repo.value || '').trim();
+        if (getFormRadio('openSource') === '1' && !repoVal) throw new Error('标注开源请填写源码仓库地址');
+        const repoWas = editingId ? String((WORK_CACHE[editingId] || {}).repo || '').trim() : '';
+        if (repoVal && repoVal !== repoWas && !repoHostOk(repoVal)) {
+          refreshRepoHint();
+          throw new Error('源码仓库地址只能是 GitHub / Gitee / GitLab 等开源代码托管站的页面');
+        }
 
         const fd = new FormData(workForm);
         // 按形态的多个链接：统一走 links 字段，散的 link/link_xxx 不单独传
         Object.keys(pickedLinks).forEach(t => fd.delete('link_' + t));
         fd.delete('link');
         fd.set('links', JSON.stringify(pickedLinks));
-        // 分类多选（最多 3 个），第一个是主分类；category 字段兼容老逻辑
+        // 分类多选（最多 3 个），第 0 个为主分类；category 字段兼容老逻辑
         const pickedCats = adminSelectedCats();
         if (!pickedCats.length) throw new Error('请至少选择一个分类');
         fd.set('categories', JSON.stringify(pickedCats));
         fd.set('category', pickedCats[0]);
-        if (!editingId && !workForm.image.files.length) throw new Error('请上传封面图');
+        // 封面必填：新建、或编辑时手动移除过封面，都必须重新上传一张
+        if (!workForm.image.files.length && (!editingId || coverCleared)) {
+          throw new Error(coverCleared ? '封面已被移除，请上传新的封面图再保存' : '请上传封面图');
+        }
 
         // 图片压缩（封面 1600 + 缩略图 520，宣传图 1600）
         const cover = workForm.image.files[0];
@@ -1368,10 +1968,26 @@
         const path = editingId ? '/api/admin/works/' + editingId : '/api/admin/works';
         btn.disabled = true;
         btn.textContent = '保存中…';
-        await api(path, { method: editingId ? 'PUT' : 'POST', body: fd });
+        const d = await api(path, { method: editingId ? 'PUT' : 'POST', body: fd });
         if (!editingId) clearDraft(); // 创建成功，草稿完成使命
         editorMask.style.display = 'none';
-        toast(editingId ? '已保存修改' : '作品已创建');
+        // 开源奖励由后端在保存时发放：把「送了 50 盏灯火」显式说出来，
+        // 否则运营点一下开源毫无感觉，事后也不知道这笔灯火是谁送的
+        const osBonus = Number((d && d.osBonus) || 0);
+        const osPicked = getFormRadio('openSource') === '1';
+        let savedMsg = editingId ? '已保存修改' : '作品已创建';
+        // 只有这次真的动过作者名才解释归属，避免每次保存都弹一句
+        const authorNow = (workForm.author.value || '').trim();
+        const authorWas = editingId ? ((WORK_CACHE[editingId] || {}).author || '') : '';
+        const authorTouched = !!authorNow && (!editingId || authorNow !== authorWas);
+        if (!editingId && d && d.anonymous) savedMsg += ' · 已按匿名发布（开放认领）';
+        else if (authorTouched && d && d.authorBound) savedMsg += ` · 已归到 @${d.authorBound} 名下`;
+        else if (authorTouched && d && d.authorPending) savedMsg += ' · 作者名暂无对应账号，作品停在「未认领」（谁注册同名也拿不走，需你来「指定账号」）';
+        if (d && d.uploadReward) savedMsg += ` · 上传奖励 ${d.uploadReward.amount} 盏（48 小时后到账，会通知 TA）`;
+        if (osBonus > 0) savedMsg += ` · 已送作者 ${osBonus} 盏灯火（开源奖励，已发站内消息）`;
+        else if (d && d.osDowngraded) savedMsg += ' · 已改为闭源（开源奖励保留，已通知作者）';
+        else if (osPicked && !editingId) savedMsg += ' · 作品未归属账号，开源奖励未发放（指定作者后再保存可补发）';
+        toast(savedMsg);
         notifySite();
         loadStats();
         renderTab(currentTab);
@@ -1381,6 +1997,19 @@
         btn.disabled = false;
         btn.textContent = oldText;
       }
+    });
+
+    // 一键收回开源奖励：二次确认 → 扣回作者灯火 → 通知作者
+    $('recallOsBtn').addEventListener('click', async () => {
+      if (!editingId) return;
+      if (!confirm('确认收回该作品的开源奖励 50 盏灯火？\n将扣回作者灯火并通知作者，此操作不可自动撤回。')) return;
+      try {
+        const r = await api('/api/admin/works/' + editingId + '/recall-os-bonus', { method: 'POST' });
+        $('osRecallRow').style.display = 'none';
+        toast(`已收回开源奖励 50 盏灯火（作者当前 ${r.points} 盏）`);
+        loadStats();
+        renderTab(currentTab);
+      } catch (err) { toast(err.message); }
     });
 
     // 用 canvas 压缩图片
@@ -1410,6 +2039,14 @@
       if (act === 'edit') { openEditor(id); return; }
       try {
         const w = WORK_CACHE[id] || {};
+        if (act === 'blockreset') {
+          if (!confirm(`清除「${w.title}」的屏蔽降权？\n· 它会回到按发布时间应该在的位置\n· 屏蔽过它的用户仍然看不到它（个人偏好保留，只清「计票」）\n· 之后 30 天内新的屏蔽才会重新计入`)) return;
+          const r = await api(`/api/admin/works/${id}/block-reset`, { method: 'POST' });
+          Object.assign(w, r);
+          toast('已清除降权，它回到原来的位置');
+          patchRow(id);
+          return;
+        }
         if (act === 'del') {
           if (!confirm('确定删除这个作品？图片也会一起删除')) return;
           await api('/api/admin/works/' + id, { method: 'DELETE' });
@@ -1421,9 +2058,16 @@
           return;
         }
         if (act === 'feature') {
-          const r = await api(`/api/admin/works/${id}/feature`, { method: 'POST' });
-          w.featured = r.featured;
-          toast(r.featured ? '已设为精选' : '已取消精选');
+          if (w.featured) {
+            if (!confirm('取消精选？该作品将从精选位和精选徽章消失。')) return;
+            const r = await api(`/api/admin/works/${id}/feature`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ off: true }) });
+            w.featured = false; w.featuredUntil = null;
+            toast('已取消精选');
+            patchRow(id);
+            notifySite();
+          } else {
+            openFeatModal(id, w);
+          }
         } else if (act === 'pin') {
           const r = await api(`/api/admin/works/${id}/pin`, { method: 'POST' });
           w.pinned = r.pinned;
@@ -1460,7 +2104,7 @@
           if (name === null) return;
           const uname = name.trim().replace(/^@/, '');
           if (!uname) return;
-          if (!confirm(`确定把「${w.title}」指定给 @${uname}？\n· 作品将归到该账号名下：前台署名、TA 的「我的作品 / 数据看板」、推广与灯火归属都算 TA 的\n· 原来的匿名发布 / 待认领状态会一并清除`)) return;
+          if (!confirm(`确定把「${w.title}」指定给 @${uname}？\n· 作品将归到该账号名下：前台署名、TA 的「我的作品 / 数据看板」、推荐与灯火归属都算 TA 的\n· 原来的匿名发布 / 待认领状态会一并清除\n· 上传奖励视同投稿：TA 的首件 +200、之后每件 +20（48 小时后到账，到账时通知 TA）`)) return;
           const r = await api(`/api/admin/works/${id}/assign`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1469,11 +2113,29 @@
           w.author = r.author;
           w.anonymous = false; w.authorReal = ''; w.ownerReal = '';
           w.claimable = r.claimable; w.claimed = true;
-          toast(`已指定给 @${r.author}`);
+          toast(`已指定给 @${r.author}`
+            + (r.uploadReward ? ` · 上传奖励 ${r.uploadReward.amount} 盏（48 小时后到账）` : '')
+            + (r.osBonus > 0 ? ` · 并补发开源奖励 ${r.osBonus} 盏灯火` : ''));
+        } else if (act === 'relist') {
+          if (!confirm(`恢复上架「${w.title}」？\n· 作品会立刻重新出现在首页、榜单和搜索结果里\n· 浏览、点赞、灯火、推荐数据全部保留\n· 作者会收到一条站内通知`)) return;
+          await api(`/api/admin/works/${id}/relist`, { method: 'POST' });
+          w.status = 'approved'; w.hidden = false;
+          delete w.offlineReason; delete w.offlineAt;
+          toast('已恢复上架，前台马上可见');
+          loadStats();
         } else {
           await api(`/api/admin/works/${id}/${act}`, { method: 'POST' });
-          w.status = act === 'approve' ? 'approved' : 'rejected';
-          toast(act === 'approve' ? '已通过' : '已拒绝');
+          if (act === 'approve') {
+            w.status = 'approved';
+            delete w.offlineReason; delete w.offlineAt;
+          } else {
+            w.status = 'rejected';
+            w.hidden = false;
+            w.offlineAt = new Date().toISOString();
+            if (!w.offlineReason) w.offlineReason = '管理员手动下架';
+          }
+          toast(act === 'approve' ? '已通过' : '已下架');
+          loadStats();                // 审核/拒绝会改待审核、已通过计数，同步刷新角标
         }
         WORK_CACHE[id] = w;
         notifySite();                 // 前台静默同步（不重载页面）
@@ -1490,6 +2152,9 @@
         panel.innerHTML = `<div class="form-inline" style="border-bottom:1px solid var(--border)">
             <b style="font-size:14px">待审核 ${pending}</b>
             <span style="color:var(--muted);font-size:12px">通过后作品会归到申请人账号下，作者名改为其用户名，之后他可以在前台编辑管理</span>
+          </div>
+          <div class="hint" style="padding:8px 18px;color:#d48806;background:#fffbe6;border-bottom:1px solid var(--border)">
+            ⚠️ 申请人名字和作品署名相同<strong>不算证据</strong>（名字谁都能注册）。请核对证据里的后台截图 / 域名归属 / 源码作者等实据再通过。
           </div>` + list.map(c => `
           <div class="row">
             ${c.workThumb ? `<img src="${esc(c.workThumb)}" alt="" />` : ''}
@@ -1503,6 +2168,9 @@
               <div class="row-meta">申请人 <b>@${esc(c.username)}</b> · 申请时间 ${new Date(c.createdAt).toLocaleString('zh-CN')}
                 ${c.contact ? ' · 联系方式：' + esc(c.contact) : ''}</div>
               <div class="row-meta" style="white-space:pre-wrap;background:#f7f7fb;border-radius:8px;padding:8px 10px;margin-top:6px">${esc(c.evidence)}</div>
+              ${c.aiReview && c.aiReview.pass === false ? `<div class="row-meta" style="color:#e5484d">AI 初审不通过：${esc(c.aiReview.reason || '未说明原因')}</div>` : ''}
+              ${c.aiReview && c.aiReview.pass === null ? `<div class="row-meta" style="color:var(--muted)">AI 初审不可用：${esc(c.aiReview.note || '转人工')}</div>` : ''}
+              ${c.aiReview && c.aiReview.pass === true ? '<div class="row-meta" style="color:#2e7d32">AI 初审未见违规（仅参考，仍需核对证据实据）</div>' : ''}
               ${c.note ? `<div class="row-meta" style="color:#e5484d">备注：${esc(c.note)}</div>` : ''}
             </div>
             <div class="row-actions">
@@ -1523,8 +2191,12 @@
       try {
         if (ok) {
           if (!confirm('确认通过？作品将归属该申请人，作者名会改成他的用户名')) return;
-          await api(`/api/admin/claims/${id}/approve`, { method: 'POST' });
-          toast('已通过，作品已归属申请人');
+          const r = await api(`/api/admin/claims/${id}/approve`, { method: 'POST' });
+          const bits = [];
+          if (r && r.uploadReward) bits.push(`上传奖励 ${r.uploadReward.amount} 盏（48 小时后到账）`);
+          if (r && r.osBonus) bits.push(`开源奖励 ${r.osBonus} 盏`);
+          if (r && r.settledTips) bits.push(`匿名期间 ${r.settledTips} 盏灯火已转给 TA`);
+          toast('已通过，作品已归属申请人' + (bits.length ? '；' + bits.join('；') : ''));
           notifySite();
           loadStats();
         } else {
@@ -1561,7 +2233,7 @@
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
 
-    // ---- 造梦酒肆（想法） ----
+    // ---- 造梦酒馆（想法） ----
     async function loadIdeasAdmin() {
       try {
         const list = await api('/api/admin/ideas');
@@ -1578,7 +2250,7 @@
                 <span style="color:var(--muted);font-size:12px;margin-left:6px">@${esc(i.author)} · ${new Date(i.createdAt).toLocaleString('zh-CN')}</span>
               </div>
               <div class="row-meta" style="font-size:13.5px;font-weight:600;color:var(--text)">${esc(i.title)}</div>
-              <div class="row-meta">👍 ${i.wants} 人想要${i.claimer ? ` · 🔧 ${esc(i.claimer.name)} 在做` : ''}${i.work ? ` · ✓ 已实现：${esc(i.work.title)}` : ''}</div>
+              <div class="row-meta">${Icons.icon('thumb', 13)} ${i.wants} 人想要${i.claimer ? ` · ${Icons.icon('gear', 13)} ${esc(i.claimer.name)} 在做` : ''}${i.work ? ` · ✓ 已实现：${esc(i.work.title)}` : ''}</div>
             </div>
             <div class="row-actions">
               <button class="btn btn-sm" data-idea-hide="${i.id}" data-next="${i.hidden ? '0' : '1'}">${i.hidden ? '恢复展示' : '隐藏'}</button>
@@ -1609,28 +2281,43 @@
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
 
-    // ---- 意见反馈 ----
+    // ---- 意见反馈（直接在对话里回复，对方在站内消息 /「我的反馈」里继续聊）----
     async function loadFeedback() {
       try {
         const list = await api('/api/admin/feedback');
         if (!list.length) { panel.innerHTML = '<div class="empty">还没有人反馈</div>'; return; }
-        panel.innerHTML = list.map(f => `
-          <div class="row">
-            <div class="row-main">
-              <div class="row-title">
-                <span class="tag">${esc(f.type)}</span>
-                <span class="tag ${f.status === '待查看' ? 'warn' : 'ok'}">${esc(f.status)}</span>
-                <span style="color:var(--muted);font-size:12px;margin-left:6px">${esc(f.username ? '@' + f.username : '匿名用户')} · ${new Date(f.createdAt).toLocaleString('zh-CN')}</span>
-              </div>
-              <div class="row-meta" style="white-space:pre-wrap">${esc(f.content)}</div>
-              ${f.contact ? `<div class="row-meta">联系方式：${esc(f.contact)}</div>` : ''}
+        panel.innerHTML = `<div class="replies-head">共 ${list.length} 条反馈 · 回复后，登录用户会在右上角消息里收到，也能继续回你；游客下次打开「我的反馈」能看到</div>` +
+          list.map(f => `
+          <div class="reply-thread" data-fb="${f.id}">
+            <div class="reply-thread-head">
+              <span class="tag">${esc(f.type)}</span>
+              <span class="tag ${f.status === '待查看' ? 'warn' : 'ok'}">${esc(f.status)}</span>
+              <span style="margin-left:6px">${f.userId ? '@' + esc(f.username || f.userId) : '匿名用户'}</span>
+              <span style="margin-left:8px">${new Date(f.createdAt).toLocaleString('zh-CN')}</span>
+              ${f.canReply && !f.canNotify ? '<span class="tag" style="margin-left:8px">游客 · 靠「我的反馈」回看</span>' : ''}
             </div>
-            <div class="row-actions">
+            <div class="reply-msgs">
+              ${(f.thread || []).map(m => `<div class="rmsg rmsg-${m.from === 'admin' ? 'admin' : 'user'}"><b>${m.from === 'admin' ? '我' : esc((m.fromName && m.fromName !== '我' ? m.fromName : '') || (f.userId ? (f.username || '用户') : '用户'))}</b>：${esc(m.text)} <span class="rtime">${new Date(m.at).toLocaleString('zh-CN')}</span></div>`).join('')}
+            </div>
+            ${f.contact ? `<div class="row-meta" style="margin-bottom:8px">联系方式：${esc(f.contact)}</div>` : ''}
+            ${f.canReply ? `
+            <div class="reply-send">
+              <textarea data-fb-text="${f.id}" rows="2" maxlength="500" placeholder="回复对方…"></textarea>
+              <div class="fb-acts">
+                <button class="btn-primary btn-sm" data-fb-reply="${f.id}">回复</button>
+                <button class="btn btn-ok btn-sm" data-fb-status="${f.id}" data-next="${f.status === '待查看' ? '已处理' : '待查看'}">
+                  ${f.status === '待查看' ? '标记已处理' : '改回待查看'}
+                </button>
+                <button class="btn btn-danger btn-sm" data-fb-del="${f.id}">删除</button>
+              </div>
+            </div>` : `
+            <div class="fb-acts" style="justify-content:flex-start">
+              <span class="row-meta" style="margin-right:auto">改版前的老反馈：对方没有回信通道，需要的话用上面的联系方式联系</span>
               <button class="btn btn-ok btn-sm" data-fb-status="${f.id}" data-next="${f.status === '待查看' ? '已处理' : '待查看'}">
                 ${f.status === '待查看' ? '标记已处理' : '改回待查看'}
               </button>
               <button class="btn btn-danger btn-sm" data-fb-del="${f.id}">删除</button>
-            </div>
+            </div>`}
           </div>`).join('');
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
@@ -1638,6 +2325,23 @@
     panel.addEventListener('click', async e => {
       const st = e.target.closest('[data-fb-status]');
       const del = e.target.closest('[data-fb-del]');
+      const rep = e.target.closest('[data-fb-reply]');
+      if (rep) {
+        const id = rep.dataset.fbReply;
+        const ta = panel.querySelector(`textarea[data-fb-text="${id}"]`);
+        const text = (ta && ta.value || '').trim();
+        if (!text) { toast('回复内容不能为空'); return; }
+        rep.disabled = true;
+        try {
+          await api(`/api/admin/feedback/${id}/reply`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+          });
+          toast('已回复，对方可以在消息里接着回你');
+          loadStats(); loadFeedback();
+        } catch (err) { toast(err.message); rep.disabled = false; }
+        return;
+      }
       if (st) {
         try {
           await api(`/api/admin/feedback/${st.dataset.fbStatus}/status`, {
@@ -1720,28 +2424,40 @@
 
     // ---- 分类 ----
     let CAT_ORDER = [];
+    let CAT_EDIT = null;   // 正在改名的分类：点「改名」后这一行原地变成输入框
     async function loadCategories() {
       try {
         const list = await api('/api/admin/categories');   // [{ name, count }]
         CAT_ORDER = list.map(c => c.name);
+        if (CAT_EDIT && !CAT_ORDER.includes(CAT_EDIT)) CAT_EDIT = null;
         panel.innerHTML = `
           <div class="form-inline">
             <input id="newCat" placeholder="新增分类名称" maxlength="20" />
             <button class="btn btn-primary" id="addCatBtn">添加</button>
           </div>
-          <div class="hint">顺序即前台筛选下拉的顺序；「其他」固定排在最后，不能移动或删除。删除分类不会影响已发布作品的分类标签。</div>
+          <div class="hint">顺序即前台筛选下拉的顺序（前台只显示有作品的分类）。改名会把已发布作品的分类一起换成新名字；删除分类不会影响已发布作品的分类标签。</div>
           ` + list.map((c, i) => {
-            const last = c.name === '其他';
+            const editing = CAT_EDIT === c.name;
             return `
             <div class="row">
-              <div class="row-main"><div class="row-title">${esc(c.name)} <span class="tag">${c.count || 0} 件作品</span></div></div>
+              ${editing
+                ? `<div class="row-main"><input class="cat-edit" id="catRenameInput" maxlength="20" value="${esc(c.name)}" /></div>`
+                : `<div class="row-main"><div class="row-title">${esc(c.name)} <span class="tag">${c.count || 0} 件作品</span></div></div>`}
               <div class="row-actions">
-                <button class="btn btn-ghost btn-sm" data-cup="${esc(c.name)}" ${last || i === 0 ? 'disabled' : ''}>↑</button>
-                <button class="btn btn-ghost btn-sm" data-cdown="${esc(c.name)}" ${last || i === list.length - 1 ? 'disabled' : ''}>↓</button>
-                <button class="btn btn-danger btn-sm" data-cat="${esc(c.name)}" ${last ? 'disabled' : ''}>删除</button>
+                ${editing ? `
+                <button class="btn btn-primary btn-sm" data-csave="${esc(c.name)}">保存</button>
+                <button class="btn btn-ghost btn-sm" data-ccancel="1">取消</button>` : `
+                <button class="btn btn-ghost btn-sm" data-crename="${esc(c.name)}">改名</button>
+                <button class="btn btn-ghost btn-sm" data-cup="${esc(c.name)}" ${i === 0 ? 'disabled' : ''}>↑</button>
+                <button class="btn btn-ghost btn-sm" data-cdown="${esc(c.name)}" ${i === list.length - 1 ? 'disabled' : ''}>↓</button>
+                <button class="btn btn-danger btn-sm" data-cat="${esc(c.name)}">删除</button>`}
               </div>
             </div>`;
           }).join('');
+        if (CAT_EDIT) {
+          const inp = $('catRenameInput');
+          if (inp) { inp.focus(); inp.select(); }
+        }
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
 
@@ -1757,6 +2473,34 @@
           toast('已添加'); loadCategories();
         } catch (err) { toast(err.message); }
       }
+      if (e.target.dataset.crename) {
+        CAT_EDIT = e.target.dataset.crename;
+        loadCategories();
+        return;
+      }
+      if (e.target.dataset.ccancel) {
+        CAT_EDIT = null;
+        loadCategories();
+        return;
+      }
+      if (e.target.dataset.csave) {
+        const oldName = e.target.dataset.csave;
+        const inp = $('catRenameInput');
+        const name = (inp ? inp.value : '').trim();
+        if (!name) return toast('分类名不能为空');
+        if (name === oldName) { CAT_EDIT = null; return loadCategories(); }
+        try {
+          const r = await api('/api/admin/categories/' + encodeURIComponent(oldName) + '/rename', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+          });
+          CAT_EDIT = null;
+          toast(`已改名为「${name}」${r && r.moved ? `，${r.moved} 件作品的分类已同步` : ''}`);
+          loadCategories();
+          if (typeof loadCatOptions === 'function') loadCatOptions();   // 后台投稿表单的分类下拉也跟着更新
+        } catch (err) { toast(err.message); }
+        return;
+      }
       const up = e.target.dataset.cup;
       const down = e.target.dataset.cdown;
       if (up || down) {
@@ -1764,8 +2508,6 @@
         const i = names.indexOf(up || down);
         const j = up ? i - 1 : i + 1;
         if (i < 0 || j < 0 || j >= names.length) return;
-        // 「其他」不能参与交换
-        if (names[i] === '其他' || names[j] === '其他') return;
         [names[i], names[j]] = [names[j], names[i]];
         try {
           await api('/api/admin/categories/reorder', {
@@ -1781,6 +2523,19 @@
           await api('/api/admin/categories/' + encodeURIComponent(e.target.dataset.cat), { method: 'DELETE' });
           toast('已删除'); loadCategories();
         } catch (err) { toast(err.message); }
+      }
+    });
+
+    // 改名输入框：回车保存、Esc 取消
+    panel.addEventListener('keydown', e => {
+      if (!CAT_EDIT || e.target.id !== 'catRenameInput') return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const save = panel.querySelector('[data-csave]');
+        if (save) save.click();
+      } else if (e.key === 'Escape') {
+        CAT_EDIT = null;
+        loadCategories();
       }
     });
 
@@ -1843,40 +2598,89 @@
 
     // ---- 形态 ----
     let TYPE_ORDER = [];
+    let TYPE_ICON_LIB = [];        // [{ key, label }]：可选的单色图标
+    let pickIcon = 'other';        // 当前选中的图标 key
+    let pickEmoji = false;         // true = 不用图标库，改用自定义 emoji
+    const typeIconSvg = key => (window.Icons && Icons.ICONS[key]) || '';
+
+    async function loadTypeIcons() {
+      if (TYPE_ICON_LIB.length) return TYPE_ICON_LIB;
+      try { TYPE_ICON_LIB = await api('/api/type-icons'); } catch { TYPE_ICON_LIB = []; }
+      return TYPE_ICON_LIB;
+    }
+
+    function typeIconPickerHtml() {
+      if (!TYPE_ICON_LIB.length) return '';
+      return `
+        <div class="type-icons" id="typeIconPick">
+          ${TYPE_ICON_LIB.map(i => `
+            <button type="button" class="tic-pick${!pickEmoji && pickIcon === i.key ? ' on' : ''}" data-ticon="${esc(i.key)}" title="${esc(i.label)}">
+              ${typeIconSvg(i.key)}<em>${esc(i.label)}</em>
+            </button>`).join('')}
+          <button type="button" class="tic-pick tic-emoji${pickEmoji ? ' on' : ''}" data-ticon="__emoji" title="用自己的 emoji">
+            <em>✨ emoji</em>
+          </button>
+        </div>`;
+    }
+
     async function loadTypes() {
+      await loadTypeIcons();
       try {
         const list = await api('/api/admin/types');
         TYPE_ORDER = list.map(t => t.name);
         panel.innerHTML = `
-          <div class="form-inline">
-            <input id="newTypeName" placeholder="新增形态名称，如：工具" maxlength="10" />
-            <input id="newTypeIcon" placeholder="图标 emoji（选填）" maxlength="4" style="width:150px" />
-            <button class="btn btn-primary" id="addTypeBtn">添加</button>
+          <div class="type-add">
+            <div class="type-add-row">
+              <input id="newTypeName" placeholder="新增形态名称，如：硬件" maxlength="10" />
+              <input id="newTypeIcon" placeholder="emoji（选填，纯文本场景兜底）" maxlength="4" class="type-emoji" style="${pickEmoji ? '' : 'display:none'}" />
+              <button class="btn btn-primary" id="addTypeBtn">添加</button>
+            </div>
+            ${typeIconPickerHtml()}
           </div>
-          <div class="hint">形态决定投稿表单的选项、作品标签与前台筛选顺序；已有作品的形态不能直接删除，请先把作品改成其他形态。</div>
+          <div class="hint">图标从上面选一个，就是新形态在前台显示的单色图标（和其他形态风格一致）；不想用图标库就点「✨ emoji」自己填一个。</div>
           ` + list.map((t, i) => `
             <div class="row">
               <div class="row-main">
-                <div class="row-title">${t.icon || '✨'} ${esc(t.name)} <span class="tag">${t.count || 0} 件作品</span></div>
+                <div class="row-title"><span class="tico">${t.svg ? typeIconSvg(t.svg) : (t.icon || '✨')}</span> ${esc(t.name)} <span class="tag">${t.count || 0} 件作品</span></div>
               </div>
               <div class="row-actions">
                 <button class="btn btn-ghost btn-sm" data-tup="${esc(t.name)}" ${i === 0 ? 'disabled' : ''}>↑</button>
                 <button class="btn btn-ghost btn-sm" data-tdown="${esc(t.name)}" ${i === list.length - 1 ? 'disabled' : ''}>↓</button>
-                <button class="btn btn-danger btn-sm" data-tdel="${esc(t.name)}" ${t.name === '网站' ? 'disabled' : ''}>删除</button>
+                <button class="btn btn-danger btn-sm" data-tdel="${esc(t.name)}" ${t.name === 'Web' ? 'disabled' : ''}>删除</button>
               </div>
             </div>`).join('');
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
 
     panel.addEventListener('click', async e => {
+      // 选图标：点一下选中，emoji 那格会额外露出输入框
+      const pick = e.target.closest('.tic-pick');
+      if (pick && pick.dataset.ticon) {
+        const key = pick.dataset.ticon;
+        const emojiBox = $('newTypeIcon');
+        if (key === '__emoji') {
+          pickEmoji = true;
+          if (emojiBox) { emojiBox.style.display = ''; emojiBox.focus(); }
+        } else {
+          pickEmoji = false;
+          pickIcon = key;
+          if (emojiBox) emojiBox.style.display = 'none';
+        }
+        panel.querySelectorAll('#typeIconPick .tic-pick').forEach(b => {
+          b.classList.toggle('on', pickEmoji ? b.dataset.ticon === '__emoji' : (!pickEmoji && b.dataset.ticon === pickIcon));
+        });
+        return;
+      }
       if (e.target.id === 'addTypeBtn') {
         const name = $('newTypeName').value.trim();
         const icon = $('newTypeIcon').value.trim();
         if (!name) return toast('请输入形态名称');
         try {
+          const payload = { name, icon };
+          if (!pickEmoji) payload.svg = pickIcon;
           await api('/api/admin/types', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, icon })
+            body: JSON.stringify(payload)
           });
           toast('已添加形态'); loadTypes();
         } catch (err) { toast(err.message); }
@@ -1918,7 +2722,7 @@
             <input id="toolUrl" placeholder="https://..." />
             <button class="btn btn-primary" id="addToolBtn">添加</button>
           </div>
-          <div class="hint">推荐位展示在作品详情页底部，适合放工具联盟 / 返佣链接</div>
+          <div class="hint">【功能备注】推荐位 = 手工维护的外部工具/资源推荐位，展示在<b>作品详情弹窗底部</b>（评论区下方，「同类工具推荐」卡片），前端最多取前 3 条展示，点击新窗口跳转外部链接。适合放工具联盟 / 返佣链接。注意和「广告位」「推荐」是两码事——广告位是站长在后台上线的投放位，「推荐」是作者用灯火兑换的自荐位，这里只是手动挂外部工具链接。数据存在 data/tools.json（active:false 的条目不展示）</div>
           ` + (list.length ? list.map(t => `
             <div class="row">
               <div class="row-main">
@@ -1968,13 +2772,21 @@
         AD_LIST = data.ads || [];
         panel.innerHTML = `
           <div class="hint" style="padding:16px 18px">
-            广告位是页面里的固定空位：在这里挂上内容，前台对应位置就会显示；一个位置挂多支时自动轮流播放，
+            广告位是页面里的固定空位：在这里挂上内容，前台对应位置就会显示；一个位置挂多支时，
+            <b>详情页 / 榜单页顶部每次随机展示一条</b>（各家机会均等，不做顺序轮播），其余位置轮流播放或并列显示，
             没有广告的位置完全不占地方。<br />
+            刚完成灯火兑换的作者，本机 10 分钟内会优先看到自己那条以便验证投放生效，其他访客看到的仍是随机结果。<br />
             每条广告有两种形式：<b>图文</b>（图片铺底 + 标题文案，适合品牌曝光）、<b>纯文字</b>（浅色卡片只用文字，加载更快，适合公告/规则/站内提醒）。<br />
             PV = 被展示的次数（每次展示 +1）；UV = 去重访客（登录用户按账号、未登录按 IP，与站点 UV 口径一致）。
             点击率 = 点击 ÷ PV。<br />
+            积分兑换来的「推荐」另有一行<b>计费口径</b>：计费曝光 / 计费点击是真正扣掉买家额度的部分；
+            PV 和点击里含防刷超额后的免费流量，排查消耗、算钱时只看计费口径。<br />
+            防刷规则：同一访客（登录按账号、未登录按这台设备的浏览器）一天最多扣 1 次曝光、3 次点击，超出后照常展示、照记 PV，
+            但不再扣买家的灯火；换 IP 刷也刷不动预算（单 IP 另有 20 次/天的计费兜底）。<br />
             访客可以点广告右上角的 × 关掉不想看的广告：关掉后本地记住 90 天内不再出现，改了这条广告的文案或图片会重新出现。
-            关闭不计入停用，也不影响统计口径。
+            关闭不计入停用，也不影响统计口径。<br />
+            点击 UV（去重点击人数）和关闭人数是 <b>2026-11-04 起</b>才开始记录的：此前的点击只有累计总数（无人数拆分），
+            关闭此前只存在访客自己的浏览器里、服务端无从补记——上线后新数据完整。
           </div>
           ${AD_SLOTS.map(adGroupHtml).join('')}`;
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
@@ -1998,7 +2810,7 @@
 
     function adRowHtml(a, i, total) {
       const on = a.active !== false;
-      const st = a.stats || { pv: 0, uv: 0, todayPv: 0, todayUv: 0, clicks: 0, ctr: 0 };
+      const st = a.stats || { pv: 0, uv: 0, todayPv: 0, todayUv: 0, clicks: 0, ctr: 0, clickUv: 0, closePv: 0, closeUv: 0 };
       const isText = a.kind === 'text';
       return `<div class="ad-row" data-adrow="${a.id}">
         ${isText
@@ -2015,15 +2827,18 @@
             <span title="累计曝光次数">PV ${st.pv}</span> ·
             <span title="累计独立访客（登录按账号、未登录按 IP 去重）">UV ${st.uv}</span> ·
             今日 PV ${st.todayPv} / UV ${st.todayUv} ·
-            点击 ${st.clicks} · 点击率 ${(st.ctr || 0).toFixed(1)}%
+            点击 ${st.clicks}（<span title="去重点击人数，2026-11-04 起记录；之前的点击只有累计总数，没有人数拆分">UV ${st.clickUv}</span>） ·
+            点击率 ${(st.ctr || 0).toFixed(1)}% ·
+            <span title="点 × 关掉这条广告的人数，2026-11-04 起记录；更早的关闭只存在访客浏览器里，无从补记">关闭 ${st.closeUv} 人 / ${st.closePv} 次</span>
+            ${a.billed ? `<br /><span class="ad-billed" title="真正扣掉买家额度的部分，不含防刷超额后的免费流量">计费曝光 ${a.billed.views}/${a.billed.viewsTotal} · 计费点击 ${a.billed.clicks}/${a.billed.clicksTotal}</span>` : ''}
           </div>
         </div>
         <div class="row-actions">
           <button class="btn btn-ghost btn-sm" data-admove="up" data-id="${a.id}" ${i === 0 ? 'disabled' : ''} title="上移">↑</button>
           <button class="btn btn-ghost btn-sm" data-admove="down" data-id="${a.id}" ${i === total - 1 ? 'disabled' : ''} title="下移">↓</button>
           <button class="btn btn-ghost btn-sm" data-adedit="${a.id}">编辑</button>
-          <button class="btn ${on ? 'btn-ghost' : 'btn-ok'} btn-sm" data-adtoggle="${a.id}">${on ? '停用' : '启用'}</button>
-          <button class="btn btn-danger btn-sm" data-addel="${a.id}">删除</button>
+          <button class="btn ${on ? 'btn-ghost' : 'btn-ok'} btn-sm" data-adtoggle="${a.id}" data-id="${a.id}">${on ? '停用' : '启用'}</button>
+          <button class="btn btn-danger btn-sm" data-addel="${a.id}" data-id="${a.id}">删除</button>
         </div>
       </div>`;
     }
@@ -2074,7 +2889,7 @@
       $('adImagePreview').innerHTML = '';
     });
     $('adCancel').onclick = () => { $('adMask').style.display = 'none'; };
-    $('adMask').onclick = e => { if (e.target === $('adMask')) $('adMask').style.display = 'none'; };
+    bindMaskClose($('adMask'), () => { $('adMask').style.display = 'none'; });
 
     $('adForm').onsubmit = async e => {
       e.preventDefault();
@@ -2097,7 +2912,8 @@
 
     panel.addEventListener('click', async e => {
       const t = e.target;
-      const id = t.dataset.id;
+      // 停用 / 删除按钮自己带 data-id；万一漏了，兜底从各自标记属性里取，避免拼出 /ads/undefined 打到 404
+      const id = t.dataset.id || t.dataset.adtoggle || t.dataset.addel;
       if (t.dataset.adnew) return openAdEditor(null, t.dataset.adnew);
       if (t.dataset.adedit) return openAdEditor(t.dataset.adedit);
       try {
@@ -2122,101 +2938,727 @@
       } catch (err) { toast(err.message); }
     });
 
-    // ---- 送灯火 ----
-    async function loadPoints() {
+    // ---- 用户管理：搜人 / 送灯火 / 设为认证作者（按最近活跃排序，服务端分页每页 20 条） ----
+    let userQuery = '';
+    let userSrc = '';   // 来源渠道筛选（链接 ?fr= 或兑换码配的渠道）
+    let userPage = 1;
+
+    // 服务器存的是 UTC ISO 串，直接 slice 会差 8 小时（如北京 09:33 显示成 01:33），统一转本地时区
+    function fmtDateTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso);
+      const p = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+    function fmtDate(iso) { return fmtDateTime(iso).slice(0, 10); }
+
+    function userRowHtml(u) {
+      return `
+        <div class="row row-user" data-uid="${esc(u.id)}" data-uname="${esc(u.username)}">
+          <div class="row-main">
+            <div class="row-title">@${esc(u.name)} <span class="tag">${esc(u.username)}</span>
+              ${u.verified ? '<span class="tag ok">认证作者</span>' : ''}
+              ${u.isOwner ? '<span class="tag bad" title="站长：屏蔽作品按 3 分计，一个人就能触发首页「最新」降权">站长</span>' : ''}
+              ${u.blockedCount ? `<span class="tag" title="自己屏蔽过的作品数（只影响 TA 自己的列表）">屏蔽 ${u.blockedCount}</span>` : ''}
+              ${u.acqFr ? `<span class="tag src" title="来源渠道（首触${u.acqAt ? ' ' + esc(fmtDate(u.acqAt)) : ''}）">来源 ${esc(u.acqFrName || u.acqFr)}</span>` : ''}
+              ${u.regFrom === 'mini' ? '<span class="tag src" title="通过小程序「微信一键登录」建号">小程序</span>' : ''}
+              ${(u.sameIp && u.sameIp.length) ? (() => { const rest = u.sameIp.slice(0, 3).join('、') + (u.sameIp.length > 3 ? ` 等${u.sameIp.length + 1}个号` : ''); return `<span class="tag bad" title="与以下账号注册 IP 相同，疑似同一人/小号（按注册 IP 判断，仅供参考）：${esc(u.sameIp.join('、'))}">⚠ 同IP ×${u.sameIp.length + 1}：${esc(rest)}</span>`; })() : ''}
+              ${(u.tags || []).map(t => `<span class="tag utag" data-tag="${esc(t)}">${esc(t)}</span>`).join('')}
+            </div>
+            <div class="row-meta">灯火 <b class="pt-val">${u.points}</b> · ${u.works} 件作品 · 注册 ${u.createdAt ? esc(fmtDate(u.createdAt)) : '—'} · 最后活跃 ${u.lastActiveAt ? esc(fmtDateTime(u.lastActiveAt)) : '—'}${u.verified && u.bio ? ` · 认证简介：${esc(u.bio)}` : ''}</div>
+            <div class="row-meta" style="margin-top:2px;opacity:.85">消耗灯火 <b>${u.consumed ? u.consumed.total : 0}</b> 盏（推荐 ${u.consumed ? u.consumed.promo : 0} · 打赏送出 ${u.consumed ? u.consumed.tip : 0}）</div>
+          </div>
+          <div class="row-actions">
+            <button class="btn btn-primary btn-sm rw-open">激励</button>
+            <button class="btn btn-ghost btn-sm tags-edit">标签</button>
+            <button class="btn btn-ghost btn-sm uv-toggle" data-verified="${u.verified ? '1' : '0'}">${u.verified ? '取消认证' : '设为认证作者'}</button>
+            <button class="btn btn-ghost btn-sm owner-toggle" data-owner="${u.isOwner ? '1' : '0'}" title="站长屏蔽作品时按 3 分计（普通用户 1 分，≥2 分触发首页「最新」降权）">${u.isOwner ? '取消站长' : '设为站长'}</button>
+            <button class="btn btn-ghost btn-sm pt-give">送灯火</button>
+            <button class="btn btn-danger btn-sm pt-take">扣灯火</button>
+          </div>
+          <div class="tags-editor" style="display:none"></div>
+        </div>`;
+    }
+
+    let usersCache = [];   // 当前用户列表（标签编辑器从这里取 / 回写 tags）
+    let adminTaglib = [];  // 标签库
+
+    async function loadUsers() {
       try {
-        const list = await api('/api/admin/users');
+        const qs = '?page=' + userPage
+          + (userQuery.trim() ? '&q=' + encodeURIComponent(userQuery.trim()) : '')
+          + (userSrc ? '&src=' + encodeURIComponent(userSrc) : '');
+        const [data, creatorList, lib] = await Promise.all([
+          api('/api/admin/users' + qs), api('/api/admin/creators'), api('/api/admin/taglib')
+        ]);
+        const list = Array.isArray(data) ? data : (data.users || []);   // 兼容旧数组结构
+        const total = data.total != null ? data.total : list.length;
+        const pageSize = data.pageSize || 20;
+        const pageCount = Math.max(1, Math.ceil(total / pageSize));
+        usersCache = list;
+        adminTaglib = Array.isArray(lib) ? lib : [];
+        // 认证里对不上账号的历史条目单独列出，避免彻底看不见
+        const orphans = creatorList.filter(c => c.hasAccount === false);
+        const pagerHtml = pageCount > 1 ? `
+          <div class="pager" style="display:flex;align-items:center;gap:8px;margin-top:12px">
+            <button class="btn btn-ghost btn-sm" id="userPrev" ${userPage <= 1 ? 'disabled' : ''}>上一页</button>
+            <span class="hint" style="padding:0">第 ${userPage} / ${pageCount} 页</span>
+            <button class="btn btn-ghost btn-sm" id="userNext" ${userPage >= pageCount ? 'disabled' : ''}>下一页</button>
+          </div>` : '';
         panel.innerHTML = `
           <div class="form-inline">
-            <input id="pointsSearch" placeholder="搜索账号或昵称…" />
+            <input id="userSearch" placeholder="搜索账号或昵称…" />
+            <select id="userSrcSel" style="max-width:180px" title="按来源渠道筛选：链接 ?fr= 带来的、或用这个渠道的兑换码领过的">
+              <option value="">全部来源</option>
+              ${((lastStats && Array.isArray(lastStats.promo)) ? lastStats.promo : [])
+                .map(p => `<option value="${esc(p.key)}"${userSrc === p.key ? ' selected' : ''}>${esc(p.name || p.key)}${p.fromUsers ? `（${p.fromUsers} 人）` : ''}</option>`).join('')}
+            </select>
+            <span class="hint" style="margin:0 0 0 auto;padding:0">共 ${total} 位用户 · 按最近活跃排序</span>
           </div>
-          <div class="hint">给用户加灯火（用于兑换「站内宣传」）；扣灯火填负数，扣到 0 为止。改动会记进对方账本。开源作品：系统送 50 盏（自动）；GitHub star ≥ 1000 的，按 star 数送等额灯火（如 2300 star 送 2300 盏，附言写清依据）。</div>
-          <div id="pointsList">` + (list.length ? list.map(u => `
-            <div class="row" data-uid="${esc(u.id)}">
+          <div class="hint"><b>激励</b>：贴标签 + 送灯火一键完成（选标签、填灯火数、写附言，提交后一次生效），最常用的入口。只想单独改标签用「标签」，只想单独调灯火用「送灯火 / 扣灯火」。<br />
+          灯火：数量和附言在弹窗里填，<b>附言必填</b>（写清来由，会记进对方账本并通知本人）。扣灯火扣到 0 为止。开源作品系统自动送 50 盏；GitHub star 每涨 1 个系统自动 +1 盏（每 6 小时同步，单仓库每日封顶 2000），非 GitHub 仓库按 1000+ star 人工核对发放。<br />
+          <b>认证作者</b>：设为认证后，TA 的作品卡片、详情页和作者主页都会显示 ✔，并自动给对方发一条站内消息；取消认证同样会通知本人。<br />
+          <b>标签</b>：点用户行的「标签」可以给 TA 贴 / 摘荣誉标签（如「优秀产品体验官」），贴上后展示在 TA 的作品卡片、详情页和作者主页，并通知本人。标签库里可以新增标签、改名（改名会同步所有人身上的标签）。<br />
+          <b>⚠ 同IP</b>：注册 IP 相同的账号会互相标记（红色标签列出对方昵称），疑似同一人/小号——注意同一 WiFi 下也可能是不同人，仅供参考。</div>
+          <div class="taglib-bar" id="taglibBar"></div>
+          <div id="userList">` + (list.length ? list.map(userRowHtml).join('') : '<div class="empty">没有匹配的用户</div>') + `</div>` +
+          pagerHtml +
+          (orphans.length ? `
+          <div class="hint" style="margin-top:16px">以下认证在站内找不到对应账号（✔ 挂不上，本人也收不到通知），建议取消：</div>
+          <div id="orphanList">` + orphans.map(c => `
+            <div class="row" data-orphan="${esc(c.name)}">
               <div class="row-main">
-                <div class="row-title">@${esc(u.name)} <span class="tag">${esc(u.username)}</span></div>
-                <div class="row-meta">灯火 <b class="pt-val">${u.points}</b> · ${u.works} 件作品 · ${esc((u.createdAt || '').slice(0, 10))}</div>
+                <div class="row-title">@${esc(c.name)} <span class="tag warn">站内无此账号</span></div>
+                <div class="row-meta">${esc(c.bio || '')}</div>
               </div>
-              <div class="row-actions">
-                <input class="pt-note" type="text" maxlength="60" placeholder="附言（选填）" style="width:130px" />
-                <input class="pt-input" type="number" value="100" style="width:80px" />
-                <button class="btn btn-primary btn-sm pt-give">送灯火</button>
-                <button class="btn btn-danger btn-sm pt-take">扣灯火</button>
-              </div>
-            </div>`).join('') : '<div class="empty">没有匹配的用户</div>') + `</div>`;
-        $('pointsSearch').oninput = e => {
-          const q = e.target.value.trim().toLowerCase();
-          panel.querySelectorAll('#pointsList .row').forEach(r => {
-            r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
-          });
+              <div class="row-actions"><button class="btn btn-danger btn-sm uv-orphan-del">取消认证</button></div>
+            </div>`).join('') + `</div>` : '');
+        $('userSearch').value = userQuery;
+        let timer = null;
+        $('userSearch').oninput = e => {
+          clearTimeout(timer);
+          timer = setTimeout(() => { userQuery = e.target.value; userPage = 1; loadUsers(); }, 300);
         };
+        const srcSel = $('userSrcSel');
+        if (srcSel) srcSel.onchange = () => { userSrc = srcSel.value; userPage = 1; loadUsers(); };
+        const prev = $('userPrev'), next = $('userNext');
+        if (prev) prev.onclick = () => { if (userPage > 1) { userPage--; loadUsers(); } };
+        if (next) next.onclick = () => { userPage++; loadUsers(); };
+        renderTaglibBar();
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
 
+    // ---- 标签编辑：行内小工具（渲染 + 贴/摘 + 标签库条） ----
+    function tagsOf(row) {
+      const u = usersCache.find(x => x.id === row.dataset.uid);
+      return u ? (u.tags || []) : [];
+    }
+
+    // 把用户身上的标签胶囊同步回行标题（只重建 .utag，认证等其他节点不动）
+    function syncRowTags(row) {
+      const title = row.querySelector('.row-title');
+      if (!title) return;
+      title.querySelectorAll('.utag').forEach(x => x.remove());
+      (tagsOf(row) || []).forEach(t => {
+        const s = document.createElement('span');
+        s.className = 'tag utag';
+        s.dataset.tag = t;
+        s.textContent = t;
+        title.appendChild(s);
+      });
+    }
+
+    async function setUserTags(row, tags) {
+      const uid = row.dataset.uid;
+      const uname = row.dataset.uname || '';
+      try {
+        const r = await api('/api/admin/users/tags', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: uid, tags })
+        });
+        const u = usersCache.find(x => x.id === uid);
+        if (u) u.tags = r.tags;
+        syncRowTags(row);
+        const ed = row.querySelector('.tags-editor');
+        if (ed && ed.style.display !== 'none') renderTagsEditor(row);
+        toast('已更新 @' + uname + ' 的标签');
+      } catch (err) { toast(err.message); }
+    }
+
+    async function toggleUserTag(row, t) {
+      const cur = tagsOf(row) || [];
+      const next = cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t];
+      if (next.length > 6) { toast('一个用户最多贴 6 个标签'); return; }
+      await setUserTags(row, next);
+    }
+
+    function renderTagsEditor(row) {
+      const ed = row.querySelector('.tags-editor');
+      const cur = tagsOf(row) || [];
+      ed.innerHTML = `<span class="te-label">荣誉标签（点击贴 / 摘，立即生效并通知本人）：</span>` +
+        adminTaglib.map(t => `<button type="button" class="te-chip${cur.includes(t) ? ' on' : ''}" data-tag="${esc(t)}">${esc(t)}</button>`).join('') +
+        `<input class="te-input" maxlength="20" placeholder="新标签名，回车添加" />` +
+        `<button type="button" class="btn btn-ghost btn-sm te-add">＋添加</button>`;
+      const input = ed.querySelector('.te-input');
+      input.onkeydown = ev => {
+        if (ev.key === 'Enter') { ev.preventDefault(); ed.querySelector('.te-add').click(); }
+      };
+    }
+
+    function renderTaglibBar() {
+      const bar = document.getElementById('taglibBar');
+      if (!bar) return;
+      bar.innerHTML = `<span class="tl-title">标签库：</span>` +
+        (adminTaglib.length
+          ? adminTaglib.map(t => `<span class="tl-chip">${esc(t)}<i class="tl-rename" data-tag="${esc(t)}" title="改名">✎</i><i class="tl-del" data-tag="${esc(t)}" title="删除">✕</i></span>`).join('')
+          : '<span class="tl-empty">（空）</span>') +
+        `<input id="tlAddInput" maxlength="20" placeholder="新增标签…" /><button type="button" class="btn btn-ghost btn-sm" id="tlAddBtn">＋新增</button>`;
+    }
+
     panel.addEventListener('click', async e => {
+      // 取消「站内无此账号」的认证
+      if (e.target.classList.contains('uv-orphan-del')) {
+        const name = e.target.closest('.row').dataset.orphan;
+        if (!confirm(`取消 @${name} 的认证？`)) return;
+        try {
+          await api('/api/admin/creators/' + encodeURIComponent(name), { method: 'DELETE' });
+          toast('已取消认证'); loadUsers();
+        } catch (err) { toast(err.message); }
+        return;
+      }
+
+      // 认证作者开关
+      if (e.target.classList.contains('uv-toggle')) {
+        const row = e.target.closest('.row');
+        const uname = row.dataset.uname || '';
+        const verified = e.target.dataset.verified === '1';
+        try {
+          if (verified) {
+            if (!confirm(`取消 @${uname} 的认证作者标识？\n· 作品卡片、详情页、作者主页的 ✔ 会消失\n· 会给本人发一条站内消息`)) return;
+            await api('/api/admin/creators/' + encodeURIComponent(uname), { method: 'DELETE' });
+            toast('已取消认证');
+          } else {
+            const bio = prompt(`把 @${uname} 设为认证作者 ✔\n可填一句认证简介（选填，留空直接确定即可）`, '');
+            if (bio === null) return;
+            const r = await api('/api/admin/creators', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: uname, bio: bio.trim() })
+            });
+            toast(r && r.notified ? `已设为认证作者，已通知 @${uname}` : '已设为认证作者');
+          }
+          loadUsers();
+        } catch (err) { toast(err.message); }
+        return;
+      }
+
+      // 站长开关：屏蔽权重 3（普通登录用户 1），用于首页「最新」的屏蔽降权
+      if (e.target.classList.contains('owner-toggle')) {
+        const row = e.target.closest('.row');
+        const uname = row.dataset.uname || '';
+        const isOwner = e.target.dataset.owner === '1';
+        if (!isOwner && !confirm(`把 @${uname} 设为站长？\n· TA 屏蔽任何作品时按 3 分计（普通用户 1 分）\n· 门槛是 2 分，也就是 TA 一个人就能让作品在首页「最新」往后退\n· 后台作品列表会单独标出「站长 N」这一票，随时可清除降权`)) return;
+        if (isOwner && !confirm(`取消 @${uname} 的站长权重？之后 TA 的屏蔽按普通用户 1 分计。`)) return;
+        try {
+          await api('/api/admin/owners', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: uname, on: !isOwner })
+          });
+          toast(isOwner ? '已取消站长权重' : '已设为站长（屏蔽按 3 分计）');
+          loadUsers();
+        } catch (err) { toast(err.message); }
+        return;
+      }
+
+      // ---- 标签库条：新增 / 改名 / 删除 ----
+      if (e.target.id === 'tlAddBtn') {
+        const input = document.getElementById('tlAddInput');
+        const name = (input.value || '').trim();
+        if (!name) { input.focus(); return; }
+        try {
+          adminTaglib = await api('/api/admin/taglib', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+          });
+          toast('标签已加入标签库'); renderTaglibBar();
+        } catch (err) { toast(err.message); }
+        return;
+      }
+      if (e.target.classList.contains('tl-rename')) {
+        const from = e.target.dataset.tag;
+        const to = (prompt(`把标签「${from}」改名为：`, from) || '').trim();
+        if (!to || to === from) return;
+        try {
+          const r = await api('/api/admin/taglib/rename', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from, to })
+          });
+          adminTaglib = r.taglib;
+          toast(r.changed ? `已改名，同步更新了 ${r.changed} 位用户身上的标签` : '已改名'); loadUsers();
+        } catch (err) { toast(err.message); }
+        return;
+      }
+      if (e.target.classList.contains('tl-del')) {
+        const name = e.target.dataset.tag;
+        if (!confirm(`删除标签「${name}」？\n所有人身上的这个标签会一起摘掉。`)) return;
+        try {
+          const r = await api('/api/admin/taglib/delete', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+          });
+          adminTaglib = r.taglib;
+          toast(r.changed ? `已删除，摘掉了 ${r.changed} 位用户身上的标签` : '已删除'); loadUsers();
+        } catch (err) { toast(err.message); }
+        return;
+      }
+
+      // ---- 用户行「标签」按钮：展开 / 收起行内编辑器 ----
+      if (e.target.classList.contains('tags-edit')) {
+        const row = e.target.closest('.row');
+        const ed = row.querySelector('.tags-editor');
+        const wasOpen = ed.style.display !== 'none';
+        panel.querySelectorAll('.tags-editor').forEach(x => { x.style.display = 'none'; }); // 同时只开一个
+        if (!wasOpen) { renderTagsEditor(row); ed.style.display = 'flex'; }
+        return;
+      }
+
+      // 编辑器里点标签：立即给这个用户贴 / 摘
+      if (e.target.classList.contains('te-chip')) {
+        const row = e.target.closest('.row');
+        toggleUserTag(row, e.target.dataset.tag, e.target);
+        return;
+      }
+
+      // 编辑器里新建标签并贴上（自动进标签库）
+      if (e.target.classList.contains('te-add')) {
+        const row = e.target.closest('.row');
+        const input = row.querySelector('.te-input');
+        const name = (input.value || '').trim();
+        if (!name) { input.focus(); return; }
+        try {
+          if (!adminTaglib.includes(name)) {
+            adminTaglib = await api('/api/admin/taglib', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name })
+            });
+            renderTaglibBar();
+          }
+          await setUserTags(row, [...(tagsOf(row) || []), name]);
+          input.value = '';
+        } catch (err) { toast(err.message); }
+        return;
+      }
+
+      // 送 / 扣灯火：弹窗填写数量 + 附言（附言必填，防止忘写来由）
       const give = e.target.classList.contains('pt-give');
       const take = e.target.classList.contains('pt-take');
       if (give || take) {
         const row = e.target.closest('.row');
-        const uid = row.dataset.uid;
-        const val = parseInt(row.querySelector('.pt-input').value, 10);
-        if (!Number.isFinite(val) || val === 0) return toast('请输入非 0 整数');
-        const delta = take ? -Math.abs(val) : Math.abs(val);
-        const noteEl = row.querySelector('.pt-note');
-        const note = noteEl ? noteEl.value.trim() : '';
-        const name = row.querySelector('.row-title').textContent.trim();
-        if (take && !confirm(`确定从 ${name} 扣 ${Math.abs(val)} 分？`)) return;
-        try {
-          const r = await api('/api/admin/points', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: uid, delta, note })
-          });
-          row.querySelector('.pt-val').textContent = r.points;
-          row.querySelector('.pt-input').value = 100;
-          if (noteEl) noteEl.value = '';
-          toast(`${r.name} ${delta > 0 ? '+' : ''}${delta} 分，现有 ${r.points} 分（已发消息通知）`);
-        } catch (err) { toast(err.message); }
+        ptsTarget = {
+          uid: row.dataset.uid,
+          uname: row.dataset.uname || '',
+          name: (row.querySelector('.row-title').textContent.trim().split(/\s+/)[0] || '').replace(/^@/, ''),
+          take: !!take
+        };
+        $('ptTitle').textContent = (take ? '从 @' + ptsTarget.uname + ' 扣灯火' : '给 @' + ptsTarget.uname + ' 送灯火');
+        $('ptWho').value = `@${ptsTarget.name}（${ptsTarget.uname}）`;
+        $('ptDelta').value = 100;
+        $('ptDeltaHint').textContent = take ? '填多少扣多少，扣到 0 为止，会计入对方账本' : '会计入对方账本，对方会收到站内消息通知';
+        $('ptNote').value = '';
+        $('pointsMask').style.display = 'flex';
+        setTimeout(() => $('ptDelta').focus(), 50);
       }
     });
 
-    // ---- 认证创作者 ----
-    async function loadCreators() {
+    // 灯火弹窗：关闭 / 确认
+    let ptsTarget = null;
+    $('ptCancel').onclick = () => { $('pointsMask').style.display = 'none'; };
+    bindMaskClose($('pointsMask'), () => { $('pointsMask').style.display = 'none'; });
+    $('ptOk').onclick = async () => {
+      if (!ptsTarget) return;
+      const val = parseInt($('ptDelta').value, 10);
+      if (!Number.isFinite(val) || val === 0) return toast('请输入非 0 整数');
+      const note = $('ptNote').value.trim();
+      if (!note) { $('ptNote').focus(); return toast('附言必填：写清灯火来由，对方账本里能看到'); }
+      const delta = ptsTarget.take ? -Math.abs(val) : Math.abs(val);
+      if (ptsTarget.take && !confirm(`确定从 @${ptsTarget.uname} 扣 ${Math.abs(val)} 盏灯火？`)) return;
       try {
-        const list = await api('/api/admin/creators');
-        panel.innerHTML = `
-          <div class="form-inline">
-            <input id="creatorName" placeholder="作者昵称（与投稿时一致）" maxlength="50" />
-            <input id="creatorBio" placeholder="简介（选填）" maxlength="200" />
-            <button class="btn btn-primary" id="addCreatorBtn">认证</button>
-          </div>
-          <div class="hint">认证后该作者的作品会显示 ✔ 标识，作者主页也会显示认证徽章</div>
-          ` + (list.length ? list.map(c => `
-            <div class="row">
+        const r = await api('/api/admin/points', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: ptsTarget.uid, delta, note })
+        });
+        const row = panel.querySelector(`#userList .row[data-uid="${ptsTarget.uid}"]`);
+        if (row) row.querySelector('.pt-val').textContent = r.points;
+        $('pointsMask').style.display = 'none';
+        toast(`@${r.name} ${delta > 0 ? '+' : ''}${delta} 盏，现有 ${r.points} 盏（已发消息通知）`);
+      } catch (err) { toast(err.message); }
+    };
+
+    // ---- 一键激励：贴标签 + 送灯火 + 站内消息，一次做完 ----
+    // 日常运营最常用：给反馈被采纳的用户贴荣誉标签，顺手送灯火，附言写清来由。
+    // 复用 /api/admin/users/tags 与 /api/admin/points 两个接口，各自都会给本人发站内消息。
+    let rwTarget = null;
+    let rwTags = [];   // 弹窗里当前选中的标签
+
+    function renderRwTags() {
+      const box = $('rwTags');
+      if (!adminTaglib.length) {
+        box.innerHTML = '<span class="hint" style="padding:0">标签库是空的，先去上面的「标签库」新增一个</span>';
+        return;
+      }
+      box.innerHTML = adminTaglib.map(t =>
+        `<button type="button" class="te-chip${rwTags.includes(t) ? ' on' : ''}" data-tag="${esc(t)}">${esc(t)}</button>`
+      ).join('');
+    }
+
+    $('rwTags').onclick = e => {
+      const b = e.target.closest('.te-chip');
+      if (!b) return;
+      const t = b.dataset.tag;
+      if (rwTags.includes(t)) rwTags = rwTags.filter(x => x !== t);
+      else {
+        if (rwTags.length >= 6) { toast('一个用户最多贴 6 个标签'); return; }
+        rwTags = [...rwTags, t];
+      }
+      renderRwTags();
+    };
+
+    panel.addEventListener('click', e => {
+      if (!e.target.classList.contains('rw-open')) return;
+      const row = e.target.closest('.row');
+      if (!row) return;
+      const uname = row.dataset.uname || '';
+      rwTarget = { uid: row.dataset.uid, uname, row };
+      rwTags = (tagsOf(row) || []).slice();
+      $('rwWho').value = '@' + uname + '（' + (row.querySelector('.row-title').textContent.trim().split(/\s+/)[0] || '').replace(/^@/, '') + '）';
+      $('rwDelta').value = 50;
+      $('rwNote').value = '';
+      renderRwTags();
+      $('rewardMask').style.display = 'flex';
+      setTimeout(() => $('rwDelta').focus(), 50);
+    });
+
+    $('rwCancel').onclick = () => { $('rewardMask').style.display = 'none'; };
+    bindMaskClose($('rewardMask'), () => { $('rewardMask').style.display = 'none'; });
+
+    $('rwOk').onclick = async () => {
+      if (!rwTarget) return;
+      const before = (tagsOf(rwTarget.row) || []).slice();
+      const added = rwTags.filter(t => !before.includes(t));
+      const removed = before.filter(t => !rwTags.includes(t));
+      const val = parseInt($('rwDelta').value, 10) || 0;
+      const note = $('rwNote').value.trim();
+      if (!added.length && !removed.length && !val) return toast('先选个标签，或填个灯火数量');
+      if (val && !note) { $('rwNote').focus(); return toast('送灯火要写附言：写清来由，对方账本里能看到'); }
+      const btn = $('rwOk');
+      btn.disabled = true;
+      try {
+        let tagMsg = '';
+        if (added.length || removed.length) {
+          const r = await api('/api/admin/users/tags', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: rwTarget.uid, tags: rwTags })
+          });
+          const u = usersCache.find(x => x.id === rwTarget.uid);
+          if (u) u.tags = r.tags;
+          syncRowTags(rwTarget.row);
+          const ed = rwTarget.row.querySelector('.tags-editor');
+          if (ed && ed.style.display !== 'none') renderTagsEditor(rwTarget.row);
+          tagMsg = added.length ? '贴上 ' + added.join('、') : '摘下 ' + removed.join('、');
+        }
+        let ptMsg = '';
+        if (val) {
+          const r = await api('/api/admin/points', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            // chronTags：本次鼓励新增的标签。编年史只在「贴了没记过的新标签 + 本人第一次获灯」时才记录，
+            // 纯送灯火或老标签只发站内消息，不再上编年史
+            body: JSON.stringify({ userId: rwTarget.uid, delta: Math.abs(val), note, chronTags: added })
+          });
+          const pv = rwTarget.row.querySelector('.pt-val');
+          if (pv) pv.textContent = r.points;
+          ptMsg = `送 ${Math.abs(val)} 盏（余额 ${r.points}）`;
+        }
+        $('rewardMask').style.display = 'none';
+        toast(`@${rwTarget.uname}：` + [tagMsg, ptMsg].filter(Boolean).join('，') + ' —— 已发站内消息通知');
+      } catch (err) { toast(err.message); }
+      finally { btn.disabled = false; }
+    };
+
+    // ---- 群发通知：给有作品的用户（或全部用户）发站内消息 ----
+    async function loadBroadcast() {
+      panel.innerHTML = `
+        <div class="hint">给站内用户群发一条站内消息，对方登录后顶部铃铛可见（60 秒内自动弹出提示）。适合 announce 类消息，例如：<b>最近新增了 xx 展位，用灯火就能把你的作品挂上去</b>。默认只发给有作品的用户，不打扰围观的路人。</div>
+        <div class="form-inline" style="margin-top:10px">
+          <input id="bcTitle" maxlength="60" placeholder="标题，如：上新了！新增 2 个展位开放兑换" style="flex:1;min-width:240px" />
+        </div>
+        <div class="form-inline">
+          <textarea id="bcText" rows="4" maxlength="300" placeholder="正文，如：最近多了「榜单页顶部」「详情页」两个展位，进入「推荐」用灯火就能把你的作品挂上去，先到先得。" style="flex:1;min-width:240px"></textarea>
+        </div>
+        <div class="form-inline">
+          <label style="display:flex;align-items:center;gap:6px"><input type="radio" name="bcScope" value="with-works" checked /> 仅有作品的用户</label>
+          <label style="display:flex;align-items:center;gap:6px"><input type="radio" name="bcScope" value="all" /> 全部用户</label>
+          <label style="display:flex;align-items:center;gap:6px;margin-left:12px"><input type="checkbox" id="bcGuest" /> 游客也可见（顶部公告条）</label>
+          <span style="margin-left:auto">将发送给 <b id="bcCount">…</b> 位用户</span>
+          <button class="btn btn-primary" id="bcSend">发送</button>
+        </div>
+        <div class="hint">每人一条，计入对方消息列表（最多保留 50 条）。发送后不可撤回，发之前先确认文案。<br />重复发送同一条文案会自动去重：已收过的人不会再进铃铛，游客公告条也只更新原公告不重复挂；改了文案才算新公告。<br />这类消息属于「站方公告」：用户在「账号设置 → 系统消息提示」里屏蔽后，消息照样进铃铛，只是不再弹窗提示。</div>
+        <div class="hint" style="margin-top:14px"><b>游客公告条</b>：未登录的访客没有铃铛收不到站内消息；勾选「游客也可见」会把同一条文案挂到站内页面顶部的公告条上，游客也能看到（访客自己点 ✕ 关掉后不再弹）。已挂出的公告可在下方下架。</div>
+        <div id="gnList" style="margin-top:8px"></div>`;
+      async function refreshCount() {
+        const scope = (panel.querySelector('input[name="bcScope"]:checked') || {}).value || 'with-works';
+        try {
+          const r = await api('/api/admin/broadcast/count?scope=' + scope);
+          $('bcCount').textContent = r.count;
+        } catch { $('bcCount').textContent = '?'; }
+      }
+      panel.querySelectorAll('input[name="bcScope"]').forEach(r => r.onchange = refreshCount);
+      refreshCount();
+      $('bcSend').onclick = async () => {
+        const title = $('bcTitle').value.trim();
+        const text = $('bcText').value.trim();
+        const scope = (panel.querySelector('input[name="bcScope"]:checked') || {}).value || 'with-works';
+        const guest = !!($('bcGuest') && $('bcGuest').checked);
+        if (!title && !text) return toast('标题和正文至少填一个');
+        const n = $('bcCount').textContent;
+        const tip = guest
+          ? `确定群发这条消息给 ${n} 位用户，并挂到游客公告条？发送后不可撤回。`
+          : `确定群发这条消息给 ${n} 位用户？发送后不可撤回。`;
+        if (!confirm(tip)) return;
+        try {
+          const r = await api('/api/admin/broadcast', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, text, scope, guest })
+          });
+          // 同文案重发会被自动去重：铃铛里不会重复出现，游客条也是更新原公告
+          const dup = r.deduped ? `，${r.deduped} 人已收过自动跳过` : '';
+          toast(`已发送给 ${r.sent} 位用户` + dup + (r.guest ? '，并已挂到游客公告条' : ''));
+          $('bcTitle').value = '';
+          $('bcText').value = '';
+          if ($('bcGuest')) $('bcGuest').checked = false;
+          loadGuestNoticeList();
+        } catch (err) { toast(err.message); }
+      };
+      // 游客公告条：已挂出的公告列表 + 下架
+      loadGuestNoticeList();
+      async function loadGuestNoticeList() {
+        const box = $('gnList');
+        if (!box) return;
+        try {
+          const r = await api('/api/admin/guest-notice');
+          const items = r.items || [];
+          if (!items.length) { box.innerHTML = '<div class="hint">游客公告条现在是空的。</div>'; return; }
+          box.innerHTML = items.map(n => `
+            <div class="row" style="align-items:center">
               <div class="row-main">
-                <div class="row-title">@${esc(c.name)} <span class="tag ok">认证</span></div>
-                <div class="row-meta">${esc(c.bio || '')}</div>
+                <div class="row-title">${esc(n.title || '(无标题)')}</div>
+                <div class="row-meta">${esc(n.text || '')}</div>
+                <div class="row-meta">挂出于 ${n.createdAt ? esc(fmtDate(n.createdAt)) : ''}${n.link ? ` · 链接 ${esc(n.link)}` : ''}${n.key ? ` · key: ${esc(n.key)}` : ''}</div>
               </div>
-              <div class="row-actions"><button class="btn btn-danger btn-sm" data-creator="${esc(c.name)}">取消认证</button></div>
-            </div>`).join('') : '<div class="empty">还没有认证创作者</div>');
+              <div class="row-actions">
+                <button class="btn btn-ghost btn-sm" data-gn-del="${esc(n.id)}">下架</button>
+              </div>
+            </div>`).join('');
+          box.querySelectorAll('[data-gn-del]').forEach(btn => {
+            btn.onclick = async () => {
+              if (!confirm('下架这条游客公告？游客端立刻不再展示。')) return;
+              try {
+                await api('/api/admin/guest-notice/' + btn.dataset.gnDel, { method: 'DELETE' });
+                toast('已下架');
+                loadGuestNoticeList();
+              } catch (err) { toast(err.message); }
+            };
+          });
+        } catch { box.innerHTML = '<div class="hint">游客公告列表加载失败。</div>'; }
+      }
+    }
+
+    // ---- 活动兑换码：码 → 送灯火 ----
+    const giftBtnStyle = 'padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-size:13px;background:#fafafe';
+    function giftRowHtml(a) {
+      const st = a.stat || { codes: 0, used: 0, quota: 0 };
+      const flags = [
+        `<span class="tag ok">${a.points} 盏 / 码</span>`,
+        `<span class="tag">${a.mode === 'public' ? '公开口令' : '批量码'}</span>`,
+        a.fr ? `<span class="tag src" title="兑换成功后，把这批用户标记为来自「${esc(a.frName || a.fr)}」">渠道 ${esc(a.frName || a.fr)}</span>` : '',
+        a.active ? '' : '<span class="tag bad">已停用</span>',
+        a.expired ? '<span class="tag warn">已过期</span>' : ''
+      ].join('');
+      return `
+        <div class="row" data-gift="${esc(a.id)}">
+          <div class="row-main">
+            <div class="row-title">${esc(a.name)}${flags}</div>
+            <div class="row-meta">已兑 <b>${st.used}/${st.quota}</b> · 每人限兑 ${a.perUser || 1} 次 ·
+              ${a.expiresAt ? `有效期至 ${esc(a.expiresAt)}` : '长期有效'} ·
+              ${a.createdAt ? esc(fmtDate(a.createdAt)) : ''} 创建${a.note ? ` · ${esc(a.note)}` : ''}</div>
+          </div>
+          <div class="row-actions">
+            <button class="btn btn-ghost btn-sm" data-gift-copy="${esc(a.id)}">复制码</button>
+            <button class="btn btn-ghost btn-sm" data-gift-detail="${esc(a.id)}">兑换明细</button>
+            <button class="btn btn-ghost btn-sm" data-gift-fr="${esc(a.id)}">改渠道</button>
+            <button class="btn btn-ghost btn-sm" data-gift-toggle="${esc(a.id)}">${a.active ? '停用' : '恢复'}</button>
+            <button class="btn btn-danger btn-sm" data-gift-del="${esc(a.id)}">删除</button>
+          </div>
+        </div>
+        <div id="giftDetail-${esc(a.id)}" style="display:none;padding:0 18px 14px"></div>`;
+    }
+
+    // 渠道候选：和投放链接 ?fr= 同一套 2 字母 key（服务端会归一：vx → v2ex、gz → wechat）
+    const FR_SUGGEST = [['vx', 'V2EX'], ['gz', '公众号'], ['xh', '小红书'], ['zh', '知乎'],
+      ['bl', 'B站'], ['jk', '即刻'], ['sp', '少数派'], ['xm', '小众软件'],
+      ['ph', 'Product Hunt'], ['hn', 'Hacker News'], ['tw', 'X（推特）'], ['wb', '微博']];
+
+    async function loadGift() {
+      try {
+        const list = await api('/api/admin/gift');
+        panel.innerHTML = `
+          <div class="hint" style="padding:16px 18px 0">
+            活动兑换码：用户在前台「推荐 → 🎟 有兑换码？点这里领灯火」输入即可，灯火直接到账、进账本并发站内消息。<br />
+            <b>批量码</b>：一码一人，适合发给具体用户；<b>公开口令</b>：同一个码可被多人各兑一次，适合发群里/写在作品介绍里。<br />
+            <b>渠道</b>（选填）：填 2 个字母，和投放链接的 <code>?fr=</code> 用同一套（<code>vx</code>=V2EX、<code>gz</code>=公众号）。
+            生成的码会用它当前缀（<code>VX-7K3M-9QTP</code>）；兑换成功后这位用户会被打上「来源」标记，后台用户管理可以按来源筛。
+          </div>
+          <div class="form-inline" style="align-items:center">
+            <input id="giftName" maxlength="40" placeholder="活动名称，如「双十一送灯火」" style="flex:2;min-width:200px" />
+            <input id="giftPoints" type="number" value="50" style="max-width:120px" title="每个码送多少盏灯火" />
+            <select id="giftMode" style="${giftBtnStyle}">
+              <option value="batch">批量码（一码一人）</option>
+              <option value="public">公开口令（一码多人）</option>
+            </select>
+            <input id="giftCount" type="number" value="20" style="max-width:110px" title="批量码=生成个数 / 公开口令=最多可兑人数" />
+            <input id="giftPerUser" type="number" value="1" style="max-width:100px" title="同一活动每人最多兑几次" />
+            <input id="giftExpire" type="date" style="${giftBtnStyle};max-width:150px" title="有效期，留空长期有效" />
+            <input id="giftFr" list="giftFrList" maxlength="12" placeholder="渠道 2 字母，如 vx"
+                   style="${giftBtnStyle};max-width:150px" title="选填：填了就按这个渠道打来源标记，码也会用它当前缀" />
+            <datalist id="giftFrList">
+              ${FR_SUGGEST.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}
+            </datalist>
+            <input id="giftCustom" maxlength="30" placeholder="自定义口令（选填）"
+                   style="${giftBtnStyle};max-width:170px;display:none" />
+            <button class="btn btn-primary" id="giftCreate">＋ 创建活动</button>
+          </div>
+          <div id="giftMade" style="padding:0 18px"></div>
+          <div style="border-top:1px solid var(--border)"></div>
+          <div id="giftRows">${list.length ? list.map(giftRowHtml).join('') : '<div class="empty">还没有活动，上面创建一个</div>'}</div>`;
+        const modeSel = $('giftMode');
+        modeSel.onchange = () => {
+          const pub = modeSel.value === 'public';
+          $('giftCustom').style.display = pub ? '' : 'none';
+          $('giftCount').title = pub ? '最多可兑人数' : '生成个数';
+        };
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
 
+    function copyText(text, okMsg) {
+      const done = () => toast(okMsg || '已复制');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(() => copyTextFallback(text, done));
+      } else copyTextFallback(text, done);
+    }
+    function copyTextFallback(text, done) {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch { toast('复制失败，请手动选中复制'); }
+      ta.remove();
+    }
+
     panel.addEventListener('click', async e => {
-      if (e.target.id === 'addCreatorBtn') {
-        const name = $('creatorName').value.trim();
-        if (!name) return toast('请输入作者昵称');
+      const t = e.target;
+      // 创建活动
+      if (t.id === 'giftCreate') {
+        const name = ($('giftName').value || '').trim();
+        if (!name) return toast('给活动起个名字');
+        const body = {
+          name,
+          points: parseInt($('giftPoints').value, 10),
+          mode: $('giftMode').value,
+          count: parseInt($('giftCount').value, 10),
+          perUser: parseInt($('giftPerUser').value, 10),
+          expiresAt: $('giftExpire').value,
+          fr: ($('giftFr').value || '').trim(),
+          code: $('giftCustom').value.trim()
+        };
         try {
-          await api('/api/admin/creators', {
+          const r = await api('/api/admin/gift', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, bio: $('creatorBio').value.trim() })
+            body: JSON.stringify(body)
           });
-          toast('已认证'); loadCreators();
+          await loadGift();
+          const box = $('giftMade');
+          if (box) {
+            box.innerHTML = `
+              <div style="background:#f6f8ff;border:1px solid #e2e6ff;border-radius:12px;padding:12px 14px;margin:4px 0 14px">
+                <div style="font-size:13px;font-weight:600;margin-bottom:8px">
+                  已生成 ${r.codes.length} 个码 · 每个 ${r.activity.points} 盏灯火
+                  <button class="btn btn-ghost btn-sm" id="giftCopyAll" style="margin-left:8px">复制全部</button>
+                </div>
+                <textarea readonly rows="${Math.min(8, Math.max(3, r.codes.length))}"
+                  style="width:100%;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:#fff"
+                >${esc(r.codes.join('\n'))}</textarea>
+              </div>`;
+            $('giftCopyAll').onclick = () => copyText(r.codes.join('\n'), `已复制 ${r.codes.length} 个码`);
+          }
+          toast(`活动已创建，生成 ${r.codes.length} 个码`);
         } catch (err) { toast(err.message); }
+        return;
       }
-      if (e.target.dataset.creator) {
+      // 复制活动下的所有码
+      if (t.dataset.giftCopy) {
         try {
-          await api('/api/admin/creators/' + encodeURIComponent(e.target.dataset.creator), { method: 'DELETE' });
-          toast('已取消认证'); loadCreators();
+          const list = await api('/api/admin/gift/' + encodeURIComponent(t.dataset.giftCopy) + '/codes');
+          copyText(list.map(c => c.code).join('\n'), `已复制 ${list.length} 个码`);
+        } catch (err) { toast(err.message); }
+        return;
+      }
+      // 兑换明细
+      if (t.dataset.giftDetail) {
+        const id = t.dataset.giftDetail;
+        const box = $('giftDetail-' + id);
+        if (!box) return;
+        if (box.style.display !== 'none') { box.style.display = 'none'; return; }
+        try {
+          const list = await api('/api/admin/gift/' + encodeURIComponent(id) + '/codes');
+          box.innerHTML = `<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+            ${list.map(c => `
+              <div style="display:flex;gap:10px;align-items:baseline;padding:8px 12px;border-bottom:1px solid #f2f2f8;font-size:12.5px">
+                <code style="font-family:ui-monospace,Menlo,monospace;min-width:120px">${esc(c.code)}</code>
+                <span style="color:var(--muted)">${c.used}/${c.maxUses} 已兑</span>
+                <span style="flex:1;color:var(--muted)">${c.usedBy.length ? c.usedBy.map(u => esc(u.name)).join('、') : '没人用'}</span>
+              </div>`).join('')}
+          </div>`;
+          box.style.display = 'block';
+        } catch (err) { toast(err.message); }
+        return;
+      }
+      // 改渠道（已发出去的码前缀不变，但兑换时以活动上的渠道为准）
+      if (t.dataset.giftFr) {
+        const input = prompt('渠道 key（2 个字母，和投放链接 ?fr= 同一套：vx=V2EX、gz=公众号；留空=不打来源标记）');
+        if (input === null) return;
+        try {
+          const r = await api('/api/admin/gift/' + encodeURIComponent(t.dataset.giftFr) + '/fr', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fr: input.trim() })
+          });
+          toast(r.fr ? `渠道已设为 ${r.frName || r.fr}` : '已取消来源标记');
+          loadGift();
+        } catch (err) { toast(err.message); }
+        return;
+      }
+      // 停用 / 恢复
+      if (t.dataset.giftToggle) {
+        try {
+          const r = await api('/api/admin/gift/' + encodeURIComponent(t.dataset.giftToggle) + '/toggle', { method: 'POST' });
+          toast(r.active ? '已恢复兑换' : '已停用，码暂时兑不了');
+          loadGift();
+        } catch (err) { toast(err.message); }
+        return;
+      }
+      // 删除活动
+      if (t.dataset.giftDel) {
+        if (!confirm('删除这个活动？它名下的兑换码会一起删除，已经兑换到用户账上的灯火不受影响。')) return;
+        try {
+          await api('/api/admin/gift/' + encodeURIComponent(t.dataset.giftDel), { method: 'DELETE' });
+          toast('已删除'); loadGift();
         } catch (err) { toast(err.message); }
       }
     });
@@ -2230,7 +3672,8 @@
       async function load() {
         try {
           const q = input.value.trim();
-          const list = await api('/api/admin/users' + (q ? '?q=' + encodeURIComponent(q) : ''));
+          const r = await api('/api/admin/users' + (q ? '?q=' + encodeURIComponent(q) : ''));
+          const list = Array.isArray(r) ? r : (r.users || []);   // 兼容旧数组结构
           const top = list.slice(0, 8);
           if (!top.length) {
             box.innerHTML = '<div class="ac-empty">没有匹配的注册用户，可直接填任意名字</div>';

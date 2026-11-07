@@ -21,6 +21,58 @@ ai-works-site/
 | `REVIEW_MODE` | 关 | 设为 `1` 开启"先审后发"：新投稿进入待审核，需在后台通过后才展示 |
 | `RATE_POST_LIMIT` | 5 | 每个 IP 每小时最多发布条数（防灌水） |
 | `SITE_URL` | 自动识别 | 站点对外地址（如 `https://你的域名.com`）。sitemap/robots/ canonical / OG 图都会用到，**建议上线后显式设置**，避免依赖反代头 |
+| `GITHUB_CLIENT_ID` | 空 | GitHub OAuth App 的 Client ID，填了才开启「GitHub 登录」 |
+| `GITHUB_CLIENT_SECRET` | 空 | GitHub OAuth App 的 Client Secret |
+| `GITHUB_CALLBACK_URL` | 自动推断 | 回调地址，须与 GitHub 应用里填的完全一致。反代没透传 `X-Forwarded-Proto/Host` 时才需要手动设 |
+| `GOOGLE_CLIENT_ID` | 空 | Google OAuth 客户端的 Client ID，填了才开启「Google 登录」 |
+| `GOOGLE_CLIENT_SECRET` | 空 | Google OAuth 客户端的 Client Secret |
+| `GOOGLE_CALLBACK_URL` | 自动推断 | 回调地址，同上，须与应用里登记的完全一致 |
+| `DATA_DIR` / `UPLOAD_DIR` | `./data`、`./uploads` | 数据/上传目录，仅自动化测试时改指向临时目录 |
+
+## GitHub 登录 / 绑定（可选）
+
+站点支持两种用法：**没账号时直接用 GitHub 注册登录**；**已有账号可以把 GitHub 绑上来**（之后一键登录，作品和灯火不变）。
+
+1. 打开 https://github.com/settings/developers → **New OAuth App**，填写：
+   - Application name：随便写，例如 `造梦橱窗`
+   - Homepage URL：`https://idea.v5pc.com`
+   - Authorization callback URL：`https://idea.v5pc.com/api/auth/github/callback`（**必须完全一致**，本地调试再建一个应用填 `http://localhost:3000/api/auth/github/callback`）
+2. 拿到 Client ID，点 **Generate a new client secret** 拿到 Secret。
+3. 配置给服务（二选一，推荐第一种）：
+   - 环境变量：`GITHUB_CLIENT_ID=xxx GITHUB_CLIENT_SECRET=yyy pm2 restart ai-works --update-env`
+   - 或写文件 `data/oauth.json`（该目录不入库，密钥不会进 Git）：
+     ```json
+     { "github": { "clientId": "xxx", "clientSecret": "yyy" } }
+     ```
+4. 重启服务后，登录弹窗顶部会出现「使用 GitHub 登录」，个人菜单里出现「GitHub 绑定」。
+
+实现说明：
+- 只申请 `read:user` 权限，仅读取公开资料（用户名、头像），不碰仓库和邮箱。
+- 按 GitHub 用户 id 认人：同一个 GitHub 账号只会对应一个站内账号，不会重复建号。
+- GitHub 新建的账号会随机生成一个用户不知道的密码（`passSet=false`）：可以在「改密码」里直接设置密码（不要求输入原密码），设完就能用账号名 + 密码登录；**没设密码前不允许解绑**，否则解绑后就进不来了。
+- 站内账号名由 GitHub 登录名生成（`-` 转 `_`，截到 20 位），重名自动加 `_2`、`_3`。
+
+## Google 登录 / 绑定（可选）
+
+用法与 GitHub 完全一致：**没账号时直接用 Gmail 注册登录**；**已有账号可以把 Google 绑上来**。
+
+1. 打开 https://console.cloud.google.com/ → 用 Gmail 登录 → 左上角创建项目（名字随意）。
+2. 「APIs & Services」→「OAuth consent screen」：User Type 选 **External**，填应用名、支持邮箱，一路下一步，然后 **Publish App** 发布到生产（保持 Testing 模式会导致授权 7 天过期，且要手动加测试用户）。
+3. 「APIs & Services」→「Credentials」→「Create Credentials」→「OAuth client ID」→ 类型选 **Web application**：
+   - Authorized redirect URIs 填 `https://idea.v5pc.com/api/auth/google/callback`（本地调试再加 `http://localhost:3000/api/auth/google/callback`）
+4. 配置给服务（二选一）：
+   - 环境变量：`GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=yyy pm2 restart ai-works --update-env`
+   - 或写文件 `data/oauth.json`（与 GitHub 同一个文件）：
+     ```json
+     { "github": { "clientId": "xxx", "clientSecret": "yyy" },
+       "google": { "clientId": "xxx", "clientSecret": "yyy" } }
+     ```
+5. 重启服务后，登录弹窗会出现「使用 Google 登录」，个人菜单里出现「Google 绑定」。
+
+实现说明：
+- 只申请 `openid email profile` 三个基础权限（昵称、头像、邮箱），不需要人工审核；首次授权可能显示「未验证应用」提示页，点继续即可。
+- 按 Google 用户唯一 id（`sub`）认人：同一个 Google 账号只会对应一个站内账号，不会重复建号。
+- 建号规则与 GitHub 相同：随机密码 + `passSet=false`，设密码后才能解绑；站内账号名由邮箱前缀生成（`testuser@gmail.com` → `testuser`）。
 
 ## 功能清单（v3）
 - 作品形态：网站 / 小程序 / App / 智能体 / 其他，可按形态+分类+关键词组合筛选；
@@ -29,7 +81,13 @@ ai-works-site/
 - 搜索：标题 / 作者 / 介绍关键词
 - 每件作品独立链接 `/w/:id`，可复制分享；作者主页 `/u/:名字`；榜单页 `/rank`（周榜/月榜/总榜）
 - 首页"本周精选"编辑推荐位 + 置顶，后台一键设置
+- 广告位：页面里的固定空位（首页顶部 / 首页列表底部 / 榜单页顶部 / 详情页 / 全站页脚 / 首页第一格），后台挂图文或纯文字广告
+- 推荐（灯火兑换）：作者用灯火买自己作品的曝光位，可投「作品详情页」「榜单页顶部」「首页第一格」；
+  展示包 / 点击包二选一，按次计费、每日防刷限额、到期或撤下按剩余额度退款；
+  详情页与榜单页顶部多人投放时**每次随机展示一条**（不做顺序轮播，各家机会均等），首页第一格独占 + 排队；
+  榜单页顶部位于榜单列表之外、不占名次编号，带「推荐」角标
 - 收藏（浏览器本地保存）、浏览量与点赞统计
+- 账号：账号密码注册登录 + **GitHub 登录**（已有账号可在个人菜单里绑定，见上一节配置）
 - 上传图片客户端自动压缩并生成缩略图（省流量、列表加载快）
 - 投诉闭环：前台提交 → 后台处理 → 可下架作品
 - 风控：发布/点赞/投诉限流 + 敏感词拦截
@@ -65,6 +123,13 @@ npm install
 npm start
 # 打开 http://localhost:3000   后台: http://localhost:3000/admin
 ```
+Windows 也可以直接双击 `dev.cmd`（等同 `npm start`，会先检查 3000 端口是否被占用）。
+
+> **目录分工（容易踩的坑）**
+> - `ai-works-site/`：主目录。**`deploy.sh` / `发布` 打包上传的就是它**，本地预览也应该跑它（`dev.cmd` 或 `npm start`）。
+> - `works-site/`：WorkBuddy 线上预览副本，只用来给 WorkBuddy 的在线预览生成链接。
+>   它和主目录会逐渐分叉（落后于主目录），**改了它不会随发布上线**。
+> 判断标准很简单：**你想让线上生效的改动，必须落在 `ai-works-site/` 里。**
 
 ## 阿里云部署（一键脚本，推荐）
 打开 `deploy.sh`，把顶部配置区改成你的实际信息（服务器 IP、SSH 用户、管理口令等），然后在项目目录执行：

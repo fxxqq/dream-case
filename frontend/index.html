@@ -3,6 +3,35 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- 首屏直达：先把地址栏对应的视图标记在 <html data-page> 上，交给 style.css 摆好显示/隐藏。
+       外壳 HTML 里默认只有首页视图可见，非首页（/rank、/bar …）要等 app.js 跑完一串接口才切换，
+       那段时间用户看到的是首页（切页「先闪一下首页」就是它）。首次 route() 会摘掉这个属性，交回 JS 控制。 -->
+  <script>
+    (function () {
+      var p = location.pathname.replace(/\/+$/, '') || '/', k = 'home';
+      if (p === '/rank') k = 'rank';
+      else if (p === '/bar') k = 'bar';
+      else if (p === '/mini') k = 'mini';
+      else if (p === '/guide') k = 'guide';
+      else if (p === '/howto') k = 'howto';
+      else if (p === '/promote') k = 'promote';
+      else if (p === '/discover') k = 'discover';
+      else if (p === '/me') k = 'me';
+      else if (p === '/chronicle') k = 'chronicle';
+      else if (p === '/rules') k = 'rules';
+      else if (p === '/invite') k = 'invite';
+      else if (p.indexOf('/u/') === 0) k = 'author';
+      // /w/ 保持 home：详情页是「首页列表 + 弹窗」，首屏本来就要首页视图托底
+    document.documentElement.setAttribute('data-page', k);
+    // hero 进场动画同一标签页只播一次：刷新（含站内跳转回来）不再重播 0.55s 淡入，减少「闪」感。
+    // 标记由 app.js 首屏就绪 1.5s 后写入（保证本屏动画先完整播完）
+    try {
+      if (sessionStorage.getItem('dm_hero_played') === '1') {
+        document.documentElement.classList.add('no-hero-anim');
+      }
+    } catch (e) {}
+  })();
+  </script>
   <!--SEO_HEAD-->
   <link rel="stylesheet" href="/style.css" />
   <script src="/icons.js"></script>
@@ -12,23 +41,78 @@
     <div class="container header-inner">
       <a class="logo" href="/" data-nav><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
 
+      <!-- 手机端：头部收成一行，搜索框藏进这个放大镜，点开在头部下方展开（≤640px 才显示） -->
+      <button id="mSearchBtn" class="m-search-btn" type="button" aria-label="搜索"><i class="ico" data-ico="search"></i></button>
+
       <!-- role=search + name=q + autocomplete=off：告诉浏览器这是搜索框，别按用户名输入框配对自动填充账号 -->
       <form class="search-box" role="search" onsubmit="return false;">
         <span class="search-icon"><i class="ico" data-ico="search"></i></span>
         <input id="searchInput" type="search" name="q" autocomplete="off" placeholder="搜索作品、作者、关键词…" />
+        <!-- 手机端覆盖层展开时的「取消」按钮（PC 隐藏） -->
+        <button type="button" class="search-cancel" id="searchCancel">取消</button>
+        <!-- 聚焦时下拉：最近搜索（本地记住）+ 在搜这些（站点真实分类） -->
+        <div class="search-suggest" id="searchSuggest" hidden>
+          <div class="sg-block" id="sgHistBlock" hidden>
+            <div class="sg-head"><span>最近搜索</span><button type="button" class="sg-clear" id="sgClearHist">清空</button></div>
+            <div class="sg-chips" id="sgHist"></div>
+          </div>
+          <div class="sg-block">
+            <div class="sg-head"><span>在搜这些</span></div>
+            <div class="sg-chips" id="sgHot"></div>
+          </div>
+        </div>
       </form>
 
       <nav class="main-nav">
-        <a class="nav-btn" href="/wish" data-nav><i class="ico" data-ico="wish"></i> 造梦酒肆</a>
-        <a class="nav-btn" href="/rank" data-nav><i class="ico" data-ico="rank"></i> 造梦榜单</a>
-        <button class="nav-btn" id="favBtn"><i class="ico" data-ico="fav"></i> 我的收藏</button>
+        <a class="nav-btn" href="/rank" data-nav><i class="ico" data-ico="rank"></i> 星梦榜</a>
+        <a class="nav-btn" href="/bar" data-nav><i class="ico" data-ico="wish"></i> 造梦酒馆</a>
       </nav>
 
-      <div id="authBox" class="auth-box"></div>
-
       <button id="openUpload" class="btn-primary">＋ 提交作品</button>
+
+      <!-- 预置「登录 / 注册」按钮：游客刷新时首绘就有它，不用等 /api/me 回来才蹦出来；
+           已登录用户会在首绘前被 app.js 按登录态快照整块替换（点击走 authBox 上的事件委托） -->
+      <div id="authBox" class="auth-box"><button type="button" class="btn-ghost auth-open">登录 / 注册</button></div>
     </div>
   </header>
+
+  <!-- 图标提前水合 + 已登录用户登录区快照首绘：原本都等 app.js（300KB+），而真实网络下
+       浏览器早在 app.js 到货前就把页面画出来了——首绘是无图标头部 / 预置登录按钮，
+       app.js 到货后图标、签到、灯火、头像才蹦出来，刷新时整个头部闪一下。
+       解析到这里（首绘之前）就把图标填好、按 localStorage 快照把登录区画成最终样子；
+       app.js 到货后 renderAuthBox 会重画一遍，内容像素一致，无任何跳变。
+       （不做事件绑定：下拉/签到晚几百毫秒能点而已，换取首绘零闪动） -->
+  <script>
+    (function () {
+      if (window.Icons) Icons.hydrate();
+      var s = null;
+      try { s = JSON.parse(localStorage.getItem('dm_me_snapshot') || 'null'); } catch (e) {}
+      if (!s || !s.username) return;
+      var esc = function (t) {
+        return String(t).replace(/[&<>"']/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+      };
+      var ck = s.checkin || {}, pts = Number(s.points || 0), unread = Number(s.unreadNotices || 0);
+      var lamp = Icons.icon('lamp'), bell = Icons.icon('bell');
+      var ckHtml = ck.done
+        ? '<span class="ck-pts"><span class="ico">' + lamp + '</span>' + pts + '</span>'
+        : '<span class="lb-ico"><span class="ico">' + Icons.icon('checkin') + '</span></span>'
+          + '<span class="ck-label">签到 +' + (ck.todayPoints || 2) + '</span>'
+          + '<span class="ck-pts"><span class="ico">' + lamp + '</span>' + pts + '</span>';
+      var box = document.getElementById('authBox');
+      if (!box) return;
+      box.innerHTML =
+        '<button type="button" class="link-btn checkin-entry' + (ck.done ? ' is-done' : ' is-todo') + '">' + ckHtml + '</button>'
+        + '<button type="button" class="link-btn notice-entry"><span class="nb-ico"><span class="ico">' + bell + '</span></span>'
+        + '<span class="nb-dot"' + (unread ? '' : ' style="display:none"') + '>' + (unread > 99 ? '99+' : unread) + '</span></button>'
+        + '<div class="user-menu"><button type="button" class="user-chip">' + Icons.icon('user')
+        + ' <span class="uc-name">' + esc(s.nickname || s.username) + '</span><span class="um-caret">▾</span></button></div>';
+    })();
+  </script>
+
+  <!-- 游客公告条：未登录访客可见的全站公告（登录用户走铃铛，不重复打扰；关闭状态记在本机） -->
+  <div id="guestNoticeBar" class="guest-notice-bar" hidden></div>
 
   <main class="container">
     <!--SEO_BODY-->
@@ -37,16 +121,25 @@
     <section id="homeView">
       <div class="hero">
         <h1>每一个用心的作品，<br class="hero-br" />都值得<span class="grad">被更多人看见</span></h1>
-        <p class="hero-sub">网站、小程序、App、智能体、桌面应用、游戏——都可以提交。</p>
+        <p class="hero-sub">收录独立开发者、创作者自制的网站、小程序、智能体、软件、游戏。你可以<button type="button" class="hero-link" id="heroSubmitLink" title="提交你的作品">提交作品</button>、<a class="hero-link" href="/bar" title="去造梦酒馆投递灵感">投递灵感</a>，也可以<button type="button" class="hero-link" id="heroLightLink" title="登录后为喜欢的创作者点亮灯火">点亮灯火</button>，为喜欢的创作者加油。</p>
+        <!-- 手机端常驻搜索胶囊（对齐小程序首页）：点了打开头部搜索覆盖层，不占头部一行 -->
+        <!-- 原来的「已收录 X 件作品」统计行已删：与列表头「共 X 件」重复 -->
+        <button type="button" class="hero-search" id="heroSearchBtn" aria-label="搜索"><i class="ico" data-ico="search"></i><span>搜作品、作者、关键词</span></button>
       </div>
 
       <!-- 预置等高骨架：精选数据回来前先占位，避免区块突然出现把下方内容推下去（抖动） -->
       <section class="featured-section" id="featuredSection">
         <div class="section-head featured-head">
-          <h2>✨ 本周精选</h2>
-          <span class="section-sub">
-            <span class="sub-wide">按近 7 天数据选出：访客最多的 10 件 ＋ 点赞、收藏最高的各 5 件 · 每天更新</span>
-            <span class="sub-narrow">按数据选出的近期最热作品</span>
+          <h2><i class="ico" data-ico="sparkle"></i> 本周精选</h2>
+          <span class="feat-info" id="featInfo">
+            <button class="feat-info-btn" id="featInfoBtn" type="button" aria-label="精选规则说明" aria-expanded="false">
+              <svg viewBox="0 0 20 20" width="15" height="15" fill="none" aria-hidden="true">
+                <circle cx="10" cy="10" r="8.2" stroke="currentColor" stroke-width="1.5"/>
+                <line x1="10" y1="5.6" x2="10" y2="11.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                <circle cx="10" cy="14" r="1.05" fill="currentColor"/>
+              </svg>
+            </button>
+            <span class="feat-info-pop" role="tooltip">按近 7 天数据选出：访客最多的 10 件 ＋ 点赞、收藏最高的各 5 件 · 每天更新，顺序随机、当天固定</span>
           </span>
           <div class="featured-nav">
             <button class="fn-btn" id="featPrev" aria-label="向左滑动" disabled>‹</button>
@@ -59,12 +152,38 @@
           <div class="feat-sk" aria-hidden="true"><span class="sk-img feat-sk-img"></span><span class="feat-sk-body"><span class="sk-line" style="width:66%"></span><span class="sk-line" style="width:42%"></span><span class="sk-foot"><span class="sk-line" style="width:30%"></span><span class="sk-line" style="width:16%"></span></span></span></div>
           <div class="feat-sk" aria-hidden="true"><span class="sk-img feat-sk-img"></span><span class="feat-sk-body"><span class="sk-line" style="width:58%"></span><span class="sk-line" style="width:44%"></span><span class="sk-foot"><span class="sk-line" style="width:26%"></span><span class="sk-line" style="width:22%"></span></span></span></div>
         </div>
+        <!-- 精选横滑进度条：滑块宽度=可视比例，可拖可点；一屏放得下时整个隐藏 -->
+        <div class="feat-bar" id="featBar" hidden>
+          <span class="feat-bar-thumb" id="featThumb"></span>
+        </div>
       </section>
 
       <!-- 广告位：首页顶部（位置排在「本周精选」下方；内容在后台「广告位」里挂，没有广告时自动隐藏不占位） -->
       <div class="ad-slot" data-ad-slot="home-top"></div>
 
-      <div class="filter-row" id="filterRow"></div>
+      <!-- 即将上线：还在做（预告）和等平台上架审核的作品单独一栏，不混进主信息流 -->
+      <section class="upcoming-section" id="upcomingSection" style="display:none">
+        <div class="section-head upcoming-head">
+          <h2><i class="ico" data-ico="construction"></i> 即将上线</h2>
+          <span class="section-sub">
+            <span class="sub-wide">还在做或等平台审核的作品 · 点「上线提醒我」，上线当天给你发站内消息</span>
+            <span class="sub-narrow">开发中 / 审核中的作品</span>
+          </span>
+          <div class="featured-nav">
+            <button class="fn-btn" id="upPrev" aria-label="向左滑动" disabled>‹</button>
+            <button class="fn-btn" id="upNext" aria-label="向右滑动" disabled>›</button>
+          </div>
+        </div>
+        <div class="upcoming-row" id="upcomingRow"></div>
+      </section>
+
+      <!-- PC：形态 / 分类 / 开源 / 时间 四个下拉胶囊（PC 原样，不动） -->
+      <div class="filter-row pc-only" id="filterRow"></div>
+      <!-- H5 移动端专属：与微信小程序橱窗同款——一行 tab（形态/分类/开源/时间/最新），点开在下方展开胶囊面板 -->
+      <div class="fbar-wrap h5-only" id="filterWrap">
+        <div class="fbar"></div>
+        <div class="fbar-panel" hidden><div class="fbar-chips"></div></div>
+      </div>
 
       <!-- worksHead：收藏按钮的滚动锚点——从其他页点收藏会平滑滚到这里，直接看到「我的收藏」列表 -->
       <div class="list-head" id="worksHead">
@@ -73,12 +192,22 @@
           <span class="list-count" id="workCount">加载中…</span>
         </span>
         <div class="head-controls">
-          <div class="sort-toggle" id="sortToggle" role="group" aria-label="排序方式">
+          <!-- 每行 4 / 5 个：用户自己选，记在本机；窄屏自动回落到响应式列数 -->
+          <div class="cols-toggle" id="colsToggle" role="group" aria-label="每行显示数量">
+            <button class="ct-btn" data-cols="4" title="每行显示 4 个">4 列</button>
+            <button class="ct-btn" data-cols="5" title="每行显示 5 个">5 列</button>
+            <button class="ct-btn" data-cols="6" title="每行显示 6 个">6 列</button>
+          </div>
+          <!-- PC：最新 / 最热 排序切换（PC 原样；H5 由筛选栏的「最新」tab 承担） -->
+          <div class="sort-toggle pc-only" id="sortToggle" role="group" aria-label="排序方式">
             <button class="st-btn active" data-sort="latest">最新</button>
             <button class="st-btn" data-sort="hot">最热</button>
           </div>
+          <!-- 展示方式：卡片 / 列表 -->
+          <!-- 2026-11-07：选中态由 app.js 依 state.view 设置（手机默认列表 / PC 默认卡片），
+               这里不写死 active，否则手机首屏会先亮一下卡片图标再跳成列表 -->
           <div class="view-toggle" id="viewToggle" role="group" aria-label="展示方式">
-            <button class="vt-btn active" data-view="card" title="卡片视图" aria-label="卡片视图"><i class="ico" data-ico="viewcard"></i></button>
+            <button class="vt-btn" data-view="card" title="卡片视图" aria-label="卡片视图"><i class="ico" data-ico="viewcard"></i></button>
             <button class="vt-btn" data-view="list" title="列表视图" aria-label="列表视图"><i class="ico" data-ico="viewlist"></i></button>
           </div>
         </div>
@@ -96,7 +225,7 @@
         <div class="sk-card" aria-hidden="true"><div class="sk-img"></div><div class="sk-body"><div class="sk-line" style="width:64%"></div><div class="sk-line" style="width:44%"></div><div class="sk-foot"><span class="sk-line" style="width:26%"></span><span class="sk-line" style="width:18%"></span></div></div></div>
       </section>
       <div class="empty" id="empty" style="display:none">
-        <div class="empty-icon">🎨</div>
+        <div class="empty-icon"><i class="ico" data-ico="palette"></i></div>
         <p>没有找到作品，换个关键词或分类试试？</p>
       </div>
       <div class="load-more-wrap">
@@ -104,24 +233,53 @@
         <button class="btn-ghost" id="loadMore" style="display:none">加载更多</button>
       </div>
 
+      <!-- 服务端直出的「按分类逛 / 最新收录」区块：真人与爬虫同一份 HTML。
+           放在 #homeView 内，SPA 切到别的视图时会随 homeView 一起隐藏，不会闪现在首屏顶部。 -->
+      <!--SEO_HOME-->
+
     </section>
 
     <!-- 榜单 -->
     <section id="rankView" style="display:none">
-      <div class="page-head">
-        <h2 class="page-title"><i class="ico" data-ico="rank"></i> 作品榜单</h2>
+      <div class="page-head pc-only">
+        <h2 class="page-title"><i class="ico" data-ico="rank"></i> <span class="pc-only">星梦榜</span><span class="h5-only">榜单</span></h2>
       </div>
-      <!-- 周期 + 排序都收进下拉胶囊，与首页「形态/分类/开源」筛选同款，并排一行 -->
-      <div class="rank-dd-row">
+      <!-- H5 移动端榜单（参考小程序榜单页样式）：周期分段器在最上，下面才是今日动态 -->
+      <div class="rk-head h5-only">
+        <div class="rk-seg" id="rankPeriodRow"></div>
+      </div>
+      <!-- 今日动态：只报今天的聚合数字，不排名；数据稀疏时不显空，接口失败则整条不显示（H5/PC 共用） -->
+      <div class="rank-today" id="rankToday"></div>
+      <!-- 推荐位（灯火兑换投放）：紧贴今日动态，「今天有什么新鲜事」都在首屏一眼看到 -->
+      <div class="ad-slot" data-ad-slot="rank"></div>
+      <!-- 维度胶囊行（综合/点赞/收藏/灯火/访客）+ 当前维度的计分说明 -->
+      <div class="rk-dims h5-only" id="rankByRow"></div>
+      <div class="rk-hint h5-only" id="rankHintLine"></div>
+      <!-- 排名列表：名次 + 封面 + 标题 + 右侧分数（不再是首页卡片网格） -->
+      <div class="rk-rows h5-only" id="rankListH5"></div>
+      <div class="load-more-wrap h5-only">
+        <button class="btn-ghost" id="rankMoreH5" style="display:none">加载更多</button>
+      </div>
+
+      <!-- PC：形态 + 周期 + 排序 + 数量 四个下拉胶囊，下面是排行榜行（PC 原样，不动） -->
+      <div class="rank-dd-row pc-only">
+        <div class="dd-filter" id="rankTypeDD">
+          <button type="button" class="dd-btn" id="rankTypeBtn">
+            <span class="dd-ico"><i class="ico" data-ico="shapes"></i></span><span class="dd-label">形态</span>
+            <b class="dd-value" id="rankTypeValue">全部形态</b><span class="dd-caret">▾</span>
+          </button>
+          <!-- 选项由 app.js 动态填充：只列有作品的形态，与首页形态下拉同一套数据 -->
+          <div class="dd-panel" id="rankTypePanel"></div>
+        </div>
         <div class="dd-filter" id="rankPeriodDD">
           <button type="button" class="dd-btn" id="rankPeriodBtn">
-            <span class="dd-ico"><i class="ico" data-ico="checkin"></i></span><span class="dd-label">周期</span>
+            <span class="dd-ico"><i class="ico" data-ico="calendar"></i></span><span class="dd-label">周期</span>
             <b class="dd-value" id="rankPeriodValue">周榜</b><span class="dd-caret">▾</span>
           </button>
           <div class="dd-panel" id="rankPeriodPanel">
-            <button type="button" class="dd-opt active" data-period="week"><span class="dd-opt-label">🗓️ 周榜</span></button>
-            <button type="button" class="dd-opt" data-period="month"><span class="dd-opt-label">📆 月榜</span></button>
-            <button type="button" class="dd-opt" data-period="all"><span class="dd-opt-label">♾️ 总榜</span></button>
+            <button type="button" class="dd-opt active" data-period="week"><span class="dd-opt-label"><i class="ico" data-ico="week"></i> 周榜</span></button>
+            <button type="button" class="dd-opt" data-period="month"><span class="dd-opt-label"><i class="ico" data-ico="month"></i> 月榜</span></button>
+            <button type="button" class="dd-opt" data-period="all"><span class="dd-opt-label"><i class="ico" data-ico="all"></i> 总榜</span></button>
           </div>
         </div>
         <div class="dd-filter" id="rankByDD">
@@ -133,51 +291,138 @@
             <button type="button" class="dd-opt active" data-by="hot"><span class="dd-opt-label"><i class="ico" data-ico="rank"></i> 综合</span></button>
             <button type="button" class="dd-opt" data-by="likes"><span class="dd-opt-label"><i class="ico" data-ico="heart"></i> 按点赞</span></button>
             <button type="button" class="dd-opt" data-by="favs"><span class="dd-opt-label"><i class="ico" data-ico="star"></i> 按收藏</span></button>
-            <button type="button" class="dd-opt" data-by="pv"><span class="dd-opt-label"><i class="ico" data-ico="bars"></i> 按 PV</span></button>
-            <button type="button" class="dd-opt" data-by="uv"><span class="dd-opt-label"><i class="ico" data-ico="person"></i> 按 UV</span></button>
+            <button type="button" class="dd-opt" data-by="tips"><span class="dd-opt-label"><i class="ico" data-ico="lamp"></i> 按打赏人数</span></button>
+            <button type="button" class="dd-opt" data-by="pv"><span class="dd-opt-label"><i class="ico" data-ico="bars"></i> 按访问次数</span></button>
+            <button type="button" class="dd-opt" data-by="uv"><span class="dd-opt-label"><i class="ico" data-ico="person"></i> 按访问人数</span></button>
+          </div>
+        </div>
+        <div class="dd-filter" id="rankLimitDD">
+          <button type="button" class="dd-btn" id="rankLimitBtn">
+            <span class="dd-ico"><i class="ico" data-ico="bars"></i></span><span class="dd-label">数量</span>
+            <b class="dd-value" id="rankLimitValue">20 条</b><span class="dd-caret">▾</span>
+          </button>
+          <div class="dd-panel" id="rankLimitPanel">
+            <button type="button" class="dd-opt active" data-limit="20"><span class="dd-opt-label">20 条</span></button>
+            <button type="button" class="dd-opt" data-limit="50"><span class="dd-opt-label">50 条</span></button>
+            <button type="button" class="dd-opt" data-limit="100"><span class="dd-opt-label">100 条</span></button>
           </div>
         </div>
       </div>
-      <div class="ad-slot" data-ad-slot="rank"></div>
-      <p class="rank-legend"><i class="ico" data-ico="heart"></i> 获赞 · <i class="ico" data-ico="star"></i> 被收藏 · <b><i class="ico" data-ico="bars"></i> PV</b> 本周期页面浏览量 · <b><i class="ico" data-ico="person"></i> UV</b> 本周期独立访客数（按所选维度降序，当前维度数字加粗）</p>
-      <div class="rank-list" id="rankList"></div>
+      <p class="rank-legend pc-only"><i class="ico" data-ico="bolt"></i> <span id="rankLegendText">综合分 = 获赞×5 + 收藏×8 + 评论×1 + 灯火人数×10 + 访问分</span><button type="button" class="rank-rules-btn" id="rankRulesBtn"><i class="ico" data-ico="rules"></i> 榜单规则</button></p>
+      <div class="rank-list pc-only" id="rankList"></div>
     </section>
 
-    <!-- 造梦酒肆：说出你想要的作品，社区里的创作者来认领实现 -->
+    <!-- 造梦酒馆：说出你想要的作品，社区里的创作者来认领实现；上方挂「大家最近在搜」 -->
     <section id="wishView" style="display:none">
-      <div class="page-head wish-page-head">
-        <h2 class="page-title"><i class="ico" data-ico="wish"></i> 造梦酒肆</h2>
-        <p>坐下说一句你想要的作品——社区里的高手会来接；被认领、被实现的想法会挂上作品链接</p>
+      <!-- 顶部导航已有高亮的「造梦酒馆」，这里不再重复一个大标题；只留一点顶部呼吸空间 -->
+      <div class="bar-head">
+        <p class="bar-sub">说出你想要的作品，让创作者把它做出来；也看看别人正在找什么</p>
       </div>
-      <div class="wish-compose">
-        <input id="wishInput" maxlength="80" autocomplete="off"
-               placeholder="我想要一个……（比如：能自动整理下载文件夹的小工具）" />
-        <button class="btn-primary" id="wishSubmit">发布想法</button>
+
+      <!-- 页头数字：这里真能把想法做成作品，先把结果摆出来 -->
+      <div class="bar-stats" id="barStats" hidden></div>
+
+      <!-- 大家最近在搜：真实搜索记录 + 冷启动种子，点一下直接去搜 -->
+      <div class="hot-board" id="hotBoard">
+        <div class="hot-board-head">
+          <span class="hot-board-title"><i class="ico" data-ico="search"></i> 大家最近在搜</span>
+          <span class="hot-board-note">点一下直接搜 · 搜不到的可以直接变成想法</span>
+        </div>
+        <div class="hot-board-list" id="hotList">
+          <span class="hot-board-loading">正在看看大家都在找什么…</span>
+        </div>
+      </div>
+
+      <div class="wish-compose-wrap">
+        <div class="wish-compose">
+          <input id="wishInput" maxlength="80" autocomplete="off"
+                 placeholder="我想要一个……（比如：能自动整理下载文件夹的小工具）" />
+          <button class="btn-primary" id="wishSubmit">发布想法</button>
+        </div>
+        <div class="wish-compose-extra">
+          <button type="button" class="wish-extra-toggle" id="wishExtraToggle" aria-expanded="false">＋ 补充使用场景（选填，让创作者更懂你）</button>
+          <textarea id="wishDetail" maxlength="200" rows="2" hidden
+                    placeholder="比如：希望能离线记录、导出成 PDF 给医生看，别做成必须联网的"></textarea>
+        </div>
       </div>
       <div class="wish-bar">
         <div class="wish-tabs" id="wishTabs" role="group" aria-label="想法排序">
-          <button class="wish-tab active" data-sort="hot">🔥 最多人想要</button>
-          <button class="wish-tab" data-sort="new">🕒 最新想法</button>
+          <button class="wish-tab active" data-sort="hot"><i class="ico" data-ico="fire"></i> 最多人想要</button>
+          <button class="wish-tab" data-sort="week"><i class="ico" data-ico="bolt"></i> 近期热榜</button>
+          <button class="wish-tab" data-sort="new"><i class="ico" data-ico="clock"></i> 最新想法</button>
+          <button class="wish-tab" data-sort="open"><i class="ico" data-ico="gear"></i> 等我认领</button>
+          <button class="wish-tab" data-sort="mine"><i class="ico" data-ico="wish"></i> 我提的</button>
         </div>
         <span class="wish-count" id="wishCount"></span>
       </div>
       <div class="wish-list" id="wishList"></div>
+      <!-- 冷启动补位：想法还少时，把「搜过但站内没有」的词摆出来，点一下就能变成想法 -->
+      <div class="wish-suggest" id="wishSuggest" hidden></div>
       <button class="wish-more" id="wishMore" style="display:none">加载更多想法 →</button>
+
+      <!-- 愿望成真：已经落地成作品的想法，每个都挂着作品链接 -->
+      <div class="wish-done-box" id="wishDoneBox" hidden></div>
+    </section>
+
+    <!-- 小程序专栏：网页里点不开小程序，所以每个作品都配一张小程序码，微信扫一下就能用 -->
+    <section id="miniView" style="display:none">
+      <div class="mini-hero">
+        <div class="mini-hero-main">
+          <span class="mini-eyebrow">MINI PROGRAM COLUMN</span>
+          <h2 class="mini-title">小程序专栏</h2>
+          <p class="mini-lead">小程序在浏览器里点不开，所以这里给每个作品都配了小程序码——微信扫一下直接用，不下载、不注册。收录的都是创作者自己做的小工具，也欢迎你把作品放进来。</p>
+          <div class="mini-stats" id="miniStats"></div>
+        </div>
+
+        <!-- 本站小程序：专栏里第一个能扫码的，先把自己放上 -->
+        <div class="mini-self" id="miniSelf">
+          <div class="mini-self-qr" id="miniSelfQr"><span class="mini-qr-loading">码字生成中…</span></div>
+          <div class="mini-self-main">
+            <span class="mini-self-tag">本站小程序</span>
+            <b class="mini-self-title">造梦橱窗</b>
+            <p class="mini-self-desc">微信里逛橱窗、收藏作品、看星梦榜</p>
+            <span class="mini-self-hint">微信扫码打开</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="mini-bar">
+        <h3 class="mini-bar-title">已收录的小程序</h3>
+        <span class="mini-bar-note" id="miniBarNote"></span>
+      </div>
+      <div class="mini-grid" id="miniList"></div>
+
+      <div class="mini-foot">
+        <div class="mini-foot-main">
+          <b>你的小程序也想上专栏？</b>
+          <p>提交作品时把形态选成「小程序」，再上传一张小程序码，就会被自动收录——毕竟别人在浏览器里真的打不开它。</p>
+        </div>
+        <button class="btn-primary" id="miniSubmit">提交我的小程序</button>
+      </div>
     </section>
 
     <!-- 外宣指南：适合独立开发者发新品的地方 + 投稿文案模板 -->
     <section id="guideView" style="display:none">
       <div class="page-head wish-page-head">
-        <h2 class="page-title">📣 外宣指南</h2>
+        <h2 class="page-title"><i class="ico" data-ico="megaphone"></i> 外宣指南</h2>
         <p>做一次，到 8 个地方露脸——附投稿入口和避坑要点</p>
       </div>
       <div class="guide-howto">
-        <div class="guide-step"><b>1</b><span>打开任意作品详情，点「📣 外宣包」，按平台生成投稿文案</span></div>
+        <div class="guide-step"><b>1</b><span>打开任意作品详情，点「<i class="ico" data-ico="megaphone"></i>外宣包」，按平台生成投稿文案</span></div>
         <div class="guide-step"><b>2</b><span>复制文案 + 保存作品截图，去对应平台投稿（下面每个都有直达入口）</span></div>
         <div class="guide-step"><b>3</b><span>别一把梭：同一个开头贴 8 个社区，一眼就被认出来——每个平台重写第一句</span></div>
       </div>
       <div class="guide-list" id="guideList"></div>
       <p class="guide-note" id="guideNote"></p>
+    </section>
+
+    <!-- 推荐自己的作品：拿灯火换曝光量，只能推自己的（独立页面 /promote，从个人菜单 / 分享成绩页进来） -->
+    <section id="promoteView" style="display:none">
+      <div class="page-head wish-page-head">
+        <h2 class="page-title"><i class="ico" data-ico="promo"></i> 推荐自己的作品</h2>
+        <p>选作品 → 挑位置 → 买套餐；按「被看到 / 被点开」扣灯火，没投完的随时可退</p>
+      </div>
+      <div id="redeemBody" class="redeem-body promote-body"></div>
     </section>
 
     <!-- 作者主页 -->
@@ -186,11 +431,13 @@
         <div class="author-avatar" id="authorAvatar">A</div>
         <div class="author-info">
           <div class="author-name-row">
-            <h1 id="authorName"></h1>
-            <button type="button" class="author-nick-btn" id="authorNickBtn" style="display:none" title="修改我的昵称">✏️ 修改昵称</button>
+            <div id="authorName" class="author-title"></div>
+            <button type="button" class="author-nick-btn" id="authorNickBtn" style="display:none" title="修改我的昵称"><i class="ico" data-ico="edit"></i> 修改昵称</button>
           </div>
           <p class="author-bio" id="authorBio"></p>
           <p class="author-stats" id="authorStats"></p>
+          <!-- 自己的主页才显示：屏蔽管理入口。找「我屏蔽过什么」时，直觉是回自己的主页，不是翻头像下拉的二级菜单 -->
+          <p class="author-tools" id="authorTools" style="display:none"></p>
         </div>
       </div>
       <div class="gallery" id="authorGallery"></div>
@@ -198,22 +445,154 @@
         <button type="button" class="author-del-btn" id="authorDelBtn" title="注销后账号与数据不可恢复">注销账号…</button>
       </div>
     </section>
+
+    <!-- 投稿指南：从提交作品到被看见的完整流程 -->
+    <section id="howtoView" style="display:none">
+      <div class="page-head wish-page-head">
+        <h2 class="page-title"><i class="ico" data-ico="mail"></i> 投稿指南</h2>
+        <p>从提交作品到被更多人看见，全流程一次讲清</p>
+      </div>
+
+      <div class="howto-list">
+        <div class="howto-card">
+          <h3><span class="howto-no">1</span>先注册，再投稿（推荐）</h3>
+          <p><b>注册用户投稿免审核，提交后立即上线</b>；匿名也能投，但要等管理员人工审核，而且限流更紧（10 分钟最多 5 条）。注册后你的账号名就是作者名，作品会挂到你的个人主页，也才能用灯火、推荐这些功能。</p>
+        </div>
+
+        <div class="howto-card">
+          <h3><span class="howto-no">2</span>准备好材料</h3>
+          <p>点右上角「＋ 提交作品」打开表单，提前备好：<b>作品名称</b>、<b>封面图</b>（JPG / PNG / WebP，截图后可以直接 Ctrl+V 粘贴）、<b>作品地址</b>（Web 形态必填，小程序 / App 填下载或介绍页）、<b>一句话简介</b>（别人决定点不点进来，全靠这句）。</p>
+        </div>
+
+        <div class="howto-card">
+          <h3><span class="howto-no">3</span>填表：形态、分类、宣传图</h3>
+          <p><b>作品形态</b>可以多选（既是网站又有小程序就都勾上）；<b>应用分类</b>最多选 3 个，先点的是主分类（选中的胶囊会标「主」和序号）；<b>官网</b>选填；<b>宣传图</b>最多 9 张，会展示在详情页，放功能截图或动图最抓人。</p>
+        </div>
+
+        <div class="howto-card">
+          <h3><span class="howto-no">4</span>个人站 / 博客可以投，但要过两道门槛</h3>
+          <p>这里收的是<b>「站」本身</b>，不是「文章」。所以评判标准不是文笔和阅读量，而是这个站有没有你自己的构建痕迹。</p>
+          <p><b>收</b>：自己搭、自己改的个人主页 / 作品集 / 周报站 / 读书笔记站；有自己写的交互、组件或版式；人还在更新（至少 5 篇原创，不是空壳）。<br />
+             <i class="ico x-ico" data-ico="x-circle"></i> <b>不收</b>：主题换皮直接部署的模板站、纯采集或聚合站、只有一个 Hello World 的占位页、长期停更的站。</p>
+          <p>投的时候做三件事：<b>封面用首页首屏截图</b>（不要用头像或 Logo）、<b>介绍里写清「为解决什么问题而做」</b>（例：把零散笔记公开成第二大脑，随手记、全文可搜）、<b>分类选「个人站」</b>，形态仍然是 Web。</p>
+        </div>
+
+        <div class="howto-card">
+          <h3><span class="howto-no">5</span>两个加分标注</h3>
+          <p>① <b>是否开源</b>：标注开源并填源码地址，系统自动送 <b>50 盏灯火</b>（一件作品一次）；仓库在 GitHub 的，<b>每涨 1 个 star 自动 +1 盏</b>（每 6 小时同步，掉星不扣）；开始同步前就有的 star 不自动补，到「我的数据 → 分享成绩」点一下<b>申请 star 奖励</b>——<b>100 star 以内当场到账</b>，超过 100 由站长核定；Gitee、GitLab 等其他托管站读不到 star，申请后由站长人工核对。② <b>是否收费</b>：免费可以不标注，需要付费的会标出来，避免用户预期错位。</p>
+        </div>
+
+        <div class="howto-card">
+          <h3><span class="howto-no">6</span>提交之后会发生什么</h3>
+          <p>注册用户：提交即上线，立刻出现在首页「最新」里。匿名投稿：进入待审核，管理员看后台会尽快处理。作品被下架的话会收到站内消息说明原因，<b>修改内容后重新提交</b>，审核通过即可恢复展示。</p>
+        </div>
+
+        <div class="howto-card">
+          <h3><span class="howto-no">7</span>上线后，这样让更多人看见</h3>
+          <p>· <b>分享卡片</b>：详情页一键生成带二维码的分享图，发朋友圈 / 小红书都行<br />
+             · <b>外宣包</b>：按 Product Hunt、V2EX、少数派等 8 个平台生成现成投稿文案，复制就能投（见<a href="/guide">外宣指南</a>）<br />
+             · <b>推荐</b>：用灯火给自己的作品买曝光位，可投到「作品详情页」「榜单页顶部」「首页第一格」；榜单页顶部在榜单列表之外、<b>不占名次编号</b>，带「推荐」角标。曝光包每 10 次曝光 2 灯火、点击每次 3 灯火，点击去向可选「作品详情页」或「作品官网 / 下载链接」——跳站外按 <b>6 灯火/次</b>收（首页第一格是独占位，单价以投放面板为准）；多人投同一位置时每次随机展示一条、各家机会均等；兑换成功后你自己的浏览器会临时优先显示你那条，方便确认投放生效（其他访客仍随机）；同一访客每天最多消耗你 1 次曝光（超出不扣灯火）；随时可撤下，到期没投完也按剩余额度退回<br />
+             · <b>赚灯火</b>：上传作品首件 +200、之后每件 +20（上线 48 小时无投诉到账）、每日签到 2→3→5→7→9→15→15 越签越多（断签从头算）、好友通过你的分享链接访问 +1、好友注册 +100、标注开源 +50、开源作品的 GitHub star 每涨 1 个 +1（存量 star 在「我的数据」申请，100 以内当场到账）<br />
+             · <b>榜单</b>：每周按访客、点赞、收藏评出热榜，数据好的作品会被「本周精选」收录<br />
+             · <b>榜单怎么算</b>：综合分 = 获赞×5 + 收藏×8 + 评论×1 + 灯火人数×10 + 访问分（灯火按「送过灯火的人数」计，1 人 10 分，同一人送多笔只算 1 人；匿名、未认领作品收到的灯火同样计分）。访问分取访问次数，但最多只算「访客数 × 4 再加 20」——例如 120 个访客，访问分封顶 120×4+20=500 分，超出的重复打开不计分，真实访客增长会同步抬高上限。点赞同一身份对同一作品只计 1 次（登录按账号、匿名按网络），作者给自己点赞不计；评论只有登录用户发的计入综合分，作者自评不计。作者本人打开不计访问，无浏览器标识的脚本直接丢弃，同一网络对同一作品每小时最多计 30 次、每天 100 次；新注册的账号也计入访问人数，但每个作品每天最多收 10 个新号、同一网络每天最多 3 个账号</p>
+        </div>
+      </div>
+
+      <h3 class="howto-faq-head">常见问题</h3>
+      <div class="howto-faq">
+        <details>
+          <summary>封面图有什么要求？</summary>
+          <p>JPG / PNG / WebP 都行，横图效果最好（详情页和分享卡都用它）。没有现成图的话，截一张产品首页，或者直接 Ctrl+V 把剪贴板里的截图粘进上传框。</p>
+        </details>
+        <details>
+          <summary>个人博客算作品吗？会不会太水？</summary>
+          <p>算，前提是这个站是你自己做出来的。判断方法：把内容都换成占位文本，别人还能不能看出这是「你的站」——自己设计的版式、自己写的交互、自己的内容组织方式。能做到就投，分类选「个人站」、形态选 Web；主题换皮和采集站会被退回。完整标准见上面第 4 条。</p>
+        </details>
+        <details>
+          <summary>审核要多久？</summary>
+          <p>注册用户不需要审核。匿名投稿由管理员人工审核，一般当天处理；急的话直接注册，提交即上线。</p>
+        </details>
+        <details>
+          <summary>别人的作品可以帮我提交吗？</summary>
+          <p>可以。作品上线后，原作者可以点详情页的「认领作品」，提交创作证据，管理员审核通过后作品就归到你名下。</p>
+        </details>
+        <details>
+          <summary>灯火不够上推荐怎么办？</summary>
+          <p>每天点顶部「签到」按钮攒灯火、把作品分享给朋友（好友访问 +1、注册 +100）也能赚；标注开源一次送 50 盏，开源作品的 GitHub star 还能按 1:1 换成灯火（在「我的数据 → 分享成绩」里点「申请 star 奖励」）；收到别人送的灯火也是灯火来源。攒够了在「推荐」里选曝光包或点击包投放，没投完可以退。</p>
+        </details>
+        <details>
+          <summary>怎么送灯火给喜欢的作品？会被刷吗？</summary>
+          <p>打开作品详情，点「送灯火」选 1 / 2 / 5 / 10 盏即可。作者绑定了账号，灯火直接转到作者账上，作者可以拿去上推荐；<b>匿名或还没人认领的作品也能送</b>，灯火记在这件作品上（计入作品灯火数和榜单综合分），不转给任何人——等作者来认领并通过审核，这些灯火会一次性归到 TA 名下。送灯火只是灯火转移、不凭空产生灯火，互刷没有收益；再加必须登录、每人每天最多转出 20 盏、同一设备每天最多 30 盏、同一设备对同一作者（匿名作品按作品算）每天 10 盏且终身 30 盏，小号灌分刷不动。</p>
+        </details>
+        <details>
+          <summary>作品还没做完 / 在等应用商店审核，可以提交吗？</summary>
+          <p>可以。提交时「作品当前状态」选<b>还在做</b>：不用填链接和二维码，写一句进度说明就行，作品会挂进首页「即将上线」，访客可以点「上线提醒我」，上线当天他们会收到站内消息（每人最多同时挂 2 张预告卡，30 天不更新进度会被暂时收起）。在等应用商店 / 小程序平台审核的，选<b>等平台上架审核</b>：先展示成灰卡、链接锁住不给点，通过后进「作品数据」点「我上线了」就能转到正式列表。</p>
+        </details>
+        <details>
+          <summary>作品信息填错了能改吗？</summary>
+          <p>能。在自己名下的作品页进编辑，改标题、简介、图片都可以；被下架的作品修改后也会重新走审核，通过后恢复展示。</p>
+        </details>
+      </div>
+
+      <div class="howto-cta">
+        <button type="button" class="btn-primary" id="howtoCta">＋ 现在就去提交作品</button>
+        <a class="btn-ghost" href="/guide">先看看外宣指南 →</a>
+      </div>
+    </section>
+
+    <!-- 发现（移动端 Tab）：精选 + 平台专栏（Android/iOS 按手机机型排前后），SPA 自己渲染 -->
+    <section id="discoverView" style="display:none">
+      <div class="page-head disc-page-head">
+        <h2 class="page-title"><i class="ico" data-ico="globe"></i> 发现</h2>
+      </div>
+      <div class="disc-chips" id="discChips" role="tablist"></div>
+      <div id="discPanel"></div>
+    </section>
+
+    <!-- 我的（移动端 Tab）：登录/签到/收藏/作品/设置的聚合入口，SPA 自己渲染 -->
+    <section id="meView" style="display:none">
+      <div class="page-head">
+        <h2 class="page-title"><i class="ico" data-ico="user"></i> 我的</h2>
+      </div>
+      <div id="meUserCard"></div>
+      <div class="me-menu" id="meMenu"></div>
+    </section>
   </main>
 
   <div class="container">
     <div class="ad-slot ad-slot-footer" data-ad-slot="footer"></div>
   </div>
 
+  <!-- 移动端底部 Tab（≤640px 显示，PC 隐藏）：橱窗/榜单/发现/我的，图标直接用小程序 tabbar 的 PNG（gray/purple 两态） -->
+  <nav class="tab-bar" id="tabBar" aria-label="底部导航">
+    <a class="tab-item" href="/" data-tab="home" data-nav><img class="tab-ico t-off" src="/tabbar/chuchuang-gray.png" alt="" /><img class="tab-ico t-on" src="/tabbar/chuchuang-purple.png" alt="" /><span>橱窗</span></a>
+    <a class="tab-item" href="/rank" data-tab="rank" data-nav><img class="tab-ico t-off" src="/tabbar/bangdan-gray.png" alt="" /><img class="tab-ico t-on" src="/tabbar/bangdan-purple.png" alt="" /><span>榜单</span></a>
+    <a class="tab-item" href="/discover" data-tab="discover" data-nav><img class="tab-ico t-off" src="/tabbar/faxian-gray.png" alt="" /><img class="tab-ico t-on" src="/tabbar/faxian-purple.png" alt="" /><span>发现</span></a>
+    <a class="tab-item" href="/me" data-tab="me" data-nav><img class="tab-ico t-off" src="/tabbar/wode-gray.png" alt="" /><img class="tab-ico t-on" src="/tabbar/wode-purple.png" alt="" /><span>我的</span></a>
+  </nav>
+
   <footer class="site-footer">
     <div class="container footer-inner">
       <div class="footer-meta">
-        <span>造梦橱窗 · 收录大家的网站、小程序、桌面客户端、机器人等作品</span>
+        <span>造梦橱窗 · 收录独立开发者、创作者自制的网站、小程序、智能体、软件、游戏</span>
         <span class="footer-stats" id="footerStats" style="display:none"></span>
         <a class="footer-icp" href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
+      </div>
+      <!-- 服务商鸣谢：链接含阿里云推荐码，按用户要求不显示额外标识；rel 仍带 nofollow sponsored 不传权重 -->
+      <div class="footer-host">
+        <span>服务器部署在</span>
+        <a href="https://www.aliyun.com/minisite/goods?userCode=tw6ffyfu" target="_blank" rel="nofollow sponsored noopener noreferrer">阿里云 <span aria-hidden="true">↗</span></a>
+      </div>
+      <div class="footer-oss">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        <span>本站已开源，欢迎</span>
+        <a href="https://github.com/fxxqq/dream-case" target="_blank" rel="noopener noreferrer">Star / Fork / PR <span aria-hidden="true">↗</span></a>
       </div>
       <span class="footer-links">
         <span class="fgroup">
           <span class="fg-label">参与</span>
+          <a href="/invite" class="footer-link">邀请收录</a>
+          <a href="/howto" class="footer-link">投稿指南</a>
           <a href="/guide" class="footer-link">外宣指南</a>
           <a href="/?feedback=1" class="footer-link">意见建议</a>
           <button type="button" class="footer-link" data-fb="合作洽谈" data-fb-hint="想谈合作、推广、转载？留下你的想法和联系方式，看到就会回复。">合作洽谈</button>
@@ -242,26 +621,95 @@
         <button class="close-btn" id="closeUpload">✕</button>
       </div>
       <p class="form-hint" id="formHint"></p>
+      <p class="form-hint howto-hint">第一次投稿？<a href="/howto" target="_blank">看投稿指南 →</a>，2 分钟搞懂每一栏怎么填</p>
       <form id="uploadForm" novalidate>
+        <!-- 粘贴介绍自动填表：只回填候选值，不自动提交；下面这些控件都不带 name，不会混进 FormData -->
+        <div class="ai-fill" id="aiFillBox">
+          <button type="button" class="ai-fill-toggle" id="aiFillToggle" aria-expanded="false" aria-controls="aiFillBody">
+            <span class="ai-fill-ico" aria-hidden="true">✦</span>
+            <span>1 分钟极速填写</span>
+            <span class="ai-fill-tag">可选</span>
+            <span class="ai-fill-caret" aria-hidden="true"></span>
+          </button>
+          <div class="ai-fill-body" id="aiFillBody" hidden>
+            <div class="ai-fill-tabs" role="tablist">
+              <button type="button" class="ai-fill-tab active" data-aimode="text" role="tab" aria-selected="true">粘贴介绍</button>
+              <button type="button" class="ai-fill-tab" data-aimode="url" role="tab" aria-selected="false">从网址读取</button>
+            </div>
+            <div class="ai-fill-pane" id="aiFillPaneText">
+              <p class="ai-fill-tip">把写好的产品介绍整段粘进来，自动提取名称、简介、分类和形态。<b>只回填，不会替你提交</b>，填完自己检查一遍。</p>
+              <textarea id="aiFillText" rows="4" maxlength="3000" placeholder="例：「拾光清单」是一个帮人整理待办的小程序，支持语音快速记录、按精力分配任务，也有 Web 版可以同步……"></textarea>
+            </div>
+            <div class="ai-fill-pane" id="aiFillPaneUrl" hidden>
+              <p class="ai-fill-tip">填作品网址，自动读页面标题、描述和正文，识别名称 / 简介 / 分类 / 形态，并填好网站地址。<b>只读取公开页面</b>，读不到会提示你手动补。</p>
+              <input type="url" id="aiFillUrl" maxlength="500" placeholder="https://你的作品地址" autocomplete="off" />
+              <div class="ai-fill-cover" id="aiFillCover" hidden>
+                <button type="button" class="ai-fill-cover-btn" id="aiFillCoverBtn">用网站图片做封面</button>
+                <span>网站图片未必是首页首屏，建议换成自己的截图</span>
+              </div>
+            </div>
+            <div class="ai-fill-actions">
+              <button type="button" class="btn-primary" id="aiFillGo">识别并回填</button>
+              <label class="ai-fill-overwrite"><input type="checkbox" id="aiFillOverwrite" /> 覆盖已填内容</label>
+              <span class="ai-fill-status" id="aiFillStatus" role="status"></span>
+            </div>
+          </div>
+        </div>
+
         <div id="authorField" style="display:none">
           <label>署名（选填）</label>
           <input type="text" name="author" maxlength="20" placeholder="审核通过后显示的作者名，不填就是「匿名」" />
         </div>
         <label>作品形态 *（可多选，比如既是网站又有小程序）</label>
         <div class="type-picker" id="typePicker"></div>
+        <input type="text" name="newType" id="newTypeInput" maxlength="10"
+               placeholder="列表里没有？输入新形态名，回车创建（如：浏览器主题）" style="display:none; margin-top:8px" />
 
         <label>作品标题 *</label>
         <input type="text" name="title" required maxlength="100" placeholder="给你的作品起个名字" />
 
+        <!-- 作品当前状态：决定它进主列表、进「即将上线」，还是锁住链接当灰卡 -->
+        <label>作品当前状态 *</label>
+        <div class="stage-picker" id="stagePicker">
+          <label class="stage-opt">
+            <input type="radio" name="stage" value="live" checked />
+            <span><b>已经上线</b></span>
+          </label>
+          <label class="stage-opt">
+            <input type="radio" name="stage" value="reviewing" />
+            <span><b>等平台上架审核</b></span>
+          </label>
+          <label class="stage-opt">
+            <input type="radio" name="stage" value="wip" />
+            <span><b>还在做</b></span>
+          </label>
+        </div>
+        <p class="form-hint" id="stageHint" style="display:none"></p>
+        <div id="wipFields" style="display:none">
+          <label>完成度 <b id="progressVal" class="progress-val">40%</b></label>
+          <input type="range" id="progressRange" name="progress" min="0" max="100" step="5" value="40" />
+          <label>预计上线时间（选填）</label>
+          <input type="date" name="eta" id="etaInput" />
+          <p class="form-hint">还在做的作品不用填链接和二维码，但要写清已经做到哪一步（至少 8 个字）。每人最多同时挂 2 张预告卡。</p>
+        </div>
+
         <label>应用分类 *（可多选，最多 3 个）</label>
         <div class="type-picker cat-picker" id="catPicker"></div>
-        <p class="cat-hint" id="catHint">最多选择 3 个，第一个是主分类</p>
+        <p class="cat-hint" id="catHint">最多选择 3 个，先点的是主分类（选中胶囊标「主」）</p>
         <input type="text" name="newCategory" id="newCategoryInput" maxlength="20"
                placeholder="输入新分类名称，回车确认" style="display:none; margin-top:8px" />
 
         <label>作品介绍 / 使用说明</label>
-        <textarea name="prompt" rows="3" maxlength="1000"
-                  placeholder="介绍一下：做什么用的、怎么体验、有什么亮点"></textarea>
+        <div class="md-editor" id="mdEditor">
+          <div class="md-tabs">
+            <button type="button" class="md-tab active" data-md-tab="edit">写</button>
+            <button type="button" class="md-tab" data-md-tab="preview">预览</button>
+            <span class="md-tabs-hint">支持 Markdown：**加粗**、*斜体*、`代码`、- 列表、&gt; 引用、[文字](链接)、# 小标题</span>
+          </div>
+          <textarea name="prompt" rows="4" maxlength="3000"
+                    placeholder="介绍一下：做什么用的、怎么体验、有什么亮点（支持 Markdown，切到「预览」看效果）"></textarea>
+          <div class="md-preview" id="mdPreview" hidden></div>
+        </div>
 
         <div id="siteField">
           <label>官网（选填，作品的主页 / 官方网站）</label>
@@ -292,7 +740,7 @@
         <div class="upload-row">
           <label class="upload-dropzone" id="coverDrop" data-paste="image">
             <input type="file" name="image" accept="image/*" required />
-            <span class="dropzone-icon">🖼️</span>
+            <span class="dropzone-icon"><i class="ico" data-ico="image"></i></span>
             <span class="dropzone-text" id="coverText">点击上传封面图<br /><small>支持 JPG / PNG / WebP，也可直接 Ctrl+V 粘贴截图</small></span>
           </label>
         </div>
@@ -316,16 +764,18 @@
           <label class="os-opt"><input type="radio" name="openSource" value="0" checked /><span>闭源</span></label>
           <label class="os-opt"><input type="radio" name="openSource" value="1" /><span>开源（代码公开，需填源码地址）</span></label>
         </div>
-        <p class="form-hint" id="osBonusHint" style="display:none">🎁 标注开源的原创作品，系统自动送 <b>50 盏灯火</b>（一件作品一次），可用于站内宣传。GitHub 收获 <b>1000+ star</b> 的项目，联系站长可按 star 数 1:1 领取等额积分。</p>
         <div id="repoField" style="display:none">
           <label>源码仓库地址 *</label>
           <input type="text" name="repo" maxlength="500" placeholder="https://github.com/用户名/仓库" />
+          <p class="form-hint" id="repoHint">只收国内外开源代码托管站的仓库页面：GitHub、Gitee、GitLab、Bitbucket、GitCode、AtomGit、Codeberg、SourceForge、CODING、阿里云效等。</p>
+          <!-- 灯火提示紧贴仓库地址：作者填完仓库就该知道这里能换灯火（改文案时三处口径要一致：这里 / 我的数据-开源奖励卡 / server.js 站内信） -->
+          <p class="form-hint os-bonus-tip" id="osBonusHint" style="display:none">开源作品可自动兑换灯火：仓库在 GitHub 的，<b>每涨 1 个 star 自动到账 1 盏</b>（6 小时同步一次，不用申请）；上线前已有的 star 不自动补，审核通过后在「我的数据」点一下<b>申请 star 奖励</b>——<b>100 star 以内当场到账</b>，超过 100 由站长核定。Gitee、GitLab 等其他站读不到 star，一律站长人工核对；每件作品首次标注开源另送 <b>50 盏</b>。</p>
         </div>
 
         <label>是否收费（选填）</label>
         <div class="os-picker" id="paidPicker">
           <label class="os-opt"><input type="radio" name="paid" value="" checked /><span>免费（不标注）</span></label>
-          <label class="os-opt"><input type="radio" name="paid" value="1" /><span>💰 需要付费</span></label>
+          <label class="os-opt"><input type="radio" name="paid" value="1" /><span><i class="ico" data-ico="coin"></i> 需要付费</span></label>
         </div>
         <div class="os-picker" id="paidModelPicker" style="display:none; margin-top:8px">
           <label class="os-opt"><input type="radio" name="paidModel" value="" checked /><span>形式不定</span></label>
@@ -334,7 +784,15 @@
           <label class="os-opt"><input type="radio" name="paidModel" value="onetime" /><span>单篇购买</span></label>
           <label class="os-opt"><input type="radio" name="paidModel" value="subscription" /><span>订阅制</span></label>
           <label class="os-opt"><input type="radio" name="paidModel" value="trial" /><span>试用后付费</span></label>
-          <label class="os-opt"><input type="radio" name="paidModel" value="donation" /><span>打赏/赞助</span></label>
+          <label class="os-opt"><input type="radio" name="paidModel" value="donation" /><span>送灯火</span></label>
+        </div>
+
+        <!-- 投稿承诺：规范挂在门口（/rules），提交时留一次明确的勾选记录 -->
+        <div class="agree-box">
+          <div class="agree-line">
+            <input type="checkbox" id="agreeRules" name="agreeRules" value="1" />
+            <label for="agreeRules">我已阅读并同意 <a href="/rules" target="_blank" rel="noopener">《作品规范》</a>，不放置个人微信、公众号、收款码、外链下载码等违规入口；确认这是本人创作或已获作者授权代发，截图与文字不侵犯他人著作权</label>
+          </div>
         </div>
 
         <button type="submit" class="btn-primary btn-block" id="submitBtn">提交</button>
@@ -342,36 +800,79 @@
     </div>
   </div>
 
-  <!-- 数据与推广：我的作品浏览/点赞/收藏/评论 + 近 14 天趋势 + 站内宣传入口 -->
+  <!-- 关于本站：页脚内容（运营统计/站点描述/链接组/友链/备案）在移动端的聚合入口，
+       打开时整块克隆 .footer-inner 的活节点（见 openSiteInfo），入口在「我的」页 -->
+  <div class="modal-mask" id="siteInfoModal" style="display:none">
+    <div class="modal modal-site-info">
+      <div class="modal-head">
+        <h2>关于本站</h2>
+        <button class="close-btn" id="closeSiteInfo" title="关闭">✕</button>
+      </div>
+      <div id="siteInfoBody" class="site-info-body"></div>
+    </div>
+  </div>
+
+  <!-- 数据与推荐：我的作品浏览/点赞/收藏/评论 + 近 14 天趋势 + 推荐入口 -->
   <div class="modal-mask" id="statsModal" style="display:none">
     <div class="modal modal-stats">
       <div class="modal-head">
-        <h2 id="statsTitle">我的数据</h2>
+        <h2 id="statsTitle">作品数据</h2>
         <button class="close-btn" id="closeStats" title="关闭">✕</button>
       </div>
       <div id="statsBody" class="stats-body"></div>
     </div>
   </div>
 
-  <!-- 站内宣传：拿灯火换曝光量，只能推自己的作品 -->
-  <div class="modal-mask" id="redeemModal" style="display:none">
-    <div class="modal modal-redeem">
+  <!-- 活动兑换码：输入码换灯火（推荐面板 / 个人菜单进来） -->
+  <div class="modal-mask" id="giftModal" style="display:none">
+    <div class="modal modal-gift">
       <div class="modal-head">
-        <h2>站内宣传</h2>
-        <button class="close-btn" id="closeRedeem" title="关闭">✕</button>
+        <h2>兑换码领灯火</h2>
+        <button class="close-btn" id="closeGift" title="关闭">✕</button>
       </div>
-      <div id="redeemBody" class="redeem-body"></div>
+      <p class="gift-tip">输入活动兑换码，灯火直接到账，可用于「推荐」买曝光。大小写和中间的短横线都不用管。</p>
+      <input id="giftCodeInput" class="gift-input" type="text" maxlength="40" autocomplete="off"
+             placeholder="例如 DM-ABCD-EFGH" />
+      <button type="button" class="btn-primary btn-block" id="giftCodeBtn">立即兑换</button>
+      <p class="gift-msg" id="giftMsg" style="display:none"></p>
     </div>
   </div>
 
-  <!-- 分享选作品：从推广弹窗的「去分享作品」进来，选中后打开分享卡片 -->
+  <!-- 刚发布就投首页第一格：这件作品本来就排在第一屏，买之前先劝一次（不硬拦，灯火是作者自己的） -->
+  <div class="modal-mask" id="freshModal" style="display:none">
+    <div class="modal modal-fresh">
+      <div class="modal-head">
+        <h2>这件作品现在就在第一屏</h2>
+        <button class="close-btn" id="closeFresh" title="关闭">✕</button>
+      </div>
+      <div class="fresh-body" id="freshWarnText"></div>
+      <div class="fresh-btns">
+        <button type="button" class="btn-ghost" id="freshGoOther">先投详情页</button>
+        <button type="button" class="btn-primary" id="freshGoAnyway">仍然要投</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 草稿箱：有多份草稿时选一份继续填（1 份不弹，直接续填） -->
+  <div class="modal-mask" id="draftPickModal" style="display:none">
+    <div class="modal modal-draft-pick">
+      <div class="modal-head">
+        <h2>继续哪份草稿？</h2>
+        <button class="close-btn" id="closeDraftPick" title="关闭">✕</button>
+      </div>
+      <p class="spp-tip">草稿最多存 3 份，文字和图片都在。选一份接着填，也可以删掉不要的。</p>
+      <div id="draftPickBody" class="draft-pick-body"></div>
+    </div>
+  </div>
+
+  <!-- 分享选作品：从推荐弹窗的「去分享作品」进来，选中后打开分享卡片 -->
   <div class="modal-mask" id="sharePickModal" style="display:none">
     <div class="modal modal-share-pick">
       <div class="modal-head">
         <h2>分享哪个作品？</h2>
         <button class="close-btn" id="closeSharePick" title="关闭">✕</button>
       </div>
-      <p class="spp-tip">分享图会带上你的邀请标记，好友通过它访问 +1 分、注册 +20 分</p>
+      <p class="spp-tip">分享图会带上你的邀请标记，好友通过它访问 +1 盏灯火、注册 +100 盏灯火</p>
       <div id="sharePickBody" class="share-pick-body"></div>
     </div>
   </div>
@@ -387,6 +888,22 @@
       <div class="notice-foot">
         <span class="notice-hint">灯火有变动时会在这里通知你</span>
         <button type="button" class="btn-ghost" id="noticeReadAll">全部标记已读</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 回复管理员：精选 / 消息通知的双向会话 -->
+  <div class="modal-mask" id="replyModal" style="display:none">
+    <div class="modal modal-reply">
+      <div class="modal-head">
+        <h2>回复管理员</h2>
+        <button class="close-btn" id="closeReply" title="关闭">✕</button>
+      </div>
+      <div class="reply-sub" id="replySub"></div>
+      <div class="reply-thread" id="replyThread"></div>
+      <div class="reply-input">
+        <textarea id="replyText" rows="3" maxlength="300" placeholder="输入回复内容（Ctrl/⌘ + Enter 发送）…"></textarea>
+        <button type="button" class="btn-primary" id="replySend">发送</button>
       </div>
     </div>
   </div>
@@ -414,27 +931,53 @@
     </div>
   </div>
 
-  <!-- 修改密码 -->
+  <!-- 账号设置：登录名（别名）+ 密码 -->
   <div class="modal-mask" id="passModal" style="display:none">
     <div class="modal modal-nick">
       <div class="modal-head">
-        <h2>修改密码</h2>
+        <h2>账号与密码</h2>
         <button class="close-btn" id="closePass" title="关闭">✕</button>
       </div>
       <div class="nick-body">
-        <label class="nick-label" for="passCurrent">当前密码</label>
+        <label class="nick-label" for="aliasInput">登录名（建议填写，好记的名字）</label>
+        <input id="aliasInput" class="nick-input" maxlength="20" autocomplete="off" placeholder="例如：xiaoming、写代码的猫" />
+        <p class="nick-tip" id="aliasTip">登录时「登录名 + 密码」和「系统账号名 + 密码」都能进。设一次就行，之后 30 天才能改。</p>
+        <label class="nick-label" for="passCurrent" id="passCurrentLabel">当前密码</label>
         <input id="passCurrent" type="password" class="nick-input" autocomplete="new-password" placeholder="输入现在的密码" />
-        <label class="nick-label" for="passNew">新密码（至少 6 位）</label>
+        <p class="nick-tip" id="passWxReset" style="display:none"><a href="javascript:void(0)" id="passWxResetBtn">忘记当前密码？用微信验证重设 →</a></p>
+        <label class="nick-label" for="passNew">新密码（不想改密码就留空）</label>
         <input id="passNew" type="password" class="nick-input" autocomplete="new-password" placeholder="新密码，至少 6 位" />
         <label class="nick-label" for="passNew2">确认新密码</label>
         <input id="passNew2" type="password" class="nick-input" autocomplete="new-password" placeholder="再输一遍新密码" />
-        <p class="nick-tip">改完密码后，其他设备会自动退出登录，当前这台设备不受影响。</p>
+        <p class="nick-tip" id="passTip">改完密码后，其他设备会自动退出登录，当前这台设备不受影响。</p>
         <p class="nick-msg" id="passMsg"></p>
         <div class="nick-actions">
           <button type="button" class="btn-ghost" id="passCancel">取消</button>
           <button type="button" class="btn-primary" id="passSave">确认修改</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- GitHub 绑定：已登录账号把 GitHub 挂上来（之后可以一键登录） -->
+  <div class="modal-mask" id="ghModal" style="display:none">
+    <div class="modal modal-nick">
+      <div class="modal-head">
+        <h2>GitHub 绑定</h2>
+        <button class="close-btn" id="closeGh" title="关闭">✕</button>
+      </div>
+      <div class="nick-body" id="ghBody"></div>
+    </div>
+  </div>
+
+  <!-- Google 绑定：已登录账号把 Gmail 挂上来（之后可以一键登录） -->
+  <div class="modal-mask" id="gModal" style="display:none">
+    <div class="modal modal-nick">
+      <div class="modal-head">
+        <h2>Google 绑定</h2>
+        <button class="close-btn" id="closeG" title="关闭">✕</button>
+      </div>
+      <div class="nick-body" id="gBody"></div>
     </div>
   </div>
 
@@ -450,8 +993,8 @@
           <b>注销后不可恢复</b>，请确认下面这些内容你都清楚：
           <ul>
             <li>账号 <b id="delAccName"></b>、昵称、灯火（<span id="delAccPts">0</span> 盏）、收藏、签到记录全部清除，同名账号会释放给其他人注册</li>
-            <li>评论和造梦酒肆的内容会保留，但显示为「已注销用户」</li>
-            <li>正在进行中的推广投放会停止，已消耗的灯火不退回</li>
+            <li>评论和造梦酒馆的内容会保留，但显示为「已注销用户」</li>
+            <li>正在进行中的推荐投放会停止，已消耗的灯火不退回</li>
             <li>其他设备上的登录状态会立即失效</li>
           </ul>
         </div>
@@ -469,7 +1012,7 @@
 
         <label class="nick-label" for="delAccNameInput">输入账号名 <b id="delAccNameHint"></b> 确认</label>
         <input id="delAccNameInput" class="nick-input" maxlength="20" autocomplete="off" placeholder="完整输入你的账号名" />
-        <label class="nick-label" for="delAccPass">登录密码</label>
+        <label class="nick-label" for="delAccPass" id="delAccPassLabel">登录密码</label>
         <input id="delAccPass" type="password" class="nick-input" autocomplete="new-password" placeholder="输入当前密码" />
         <p class="nick-msg" id="delAccMsg"></p>
         <div class="nick-actions">
@@ -480,7 +1023,7 @@
     </div>
   </div>
 
-  <!-- 造梦酒肆：认领者把做好的作品挂上来 -->
+  <!-- 造梦酒馆：认领者把做好的作品挂上来 -->
   <div class="modal-mask" id="ideaDoneModal" style="display:none">
     <div class="modal modal-idea">
       <div class="modal-head">
@@ -496,6 +1039,34 @@
           <button type="button" class="btn-primary" id="ideaDoneSave">确定</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- 发布想法时撞到相似想法：先请用户「去顶一下」，别把想要票数分散到两张卡 -->
+  <div class="modal-mask" id="wishSimilarModal" style="display:none">
+    <div class="modal modal-idea">
+      <div class="modal-head">
+        <h2>已经有人提过类似的了</h2>
+        <button class="close-btn" id="closeWishSimilar" title="关闭">✕</button>
+      </div>
+      <div class="idea-done-body">
+        <p class="idea-done-tip" id="wishSimilarTip"></p>
+        <div class="idea-done-actions">
+          <button type="button" class="btn-ghost" id="wishSimilarGo">去顶一下</button>
+          <button type="button" class="btn-primary" id="wishSimilarKeep">仍然发布</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 造梦酒馆：点想法卡片展开的详情。里面是结构化讨论，不是自由评论区 -->
+  <div class="modal-mask" id="ideaDetailModal" style="display:none">
+    <div class="modal modal-idea-detail" role="dialog" aria-modal="true" aria-labelledby="ideaDetailTitle">
+      <div class="modal-head">
+        <h2 id="ideaDetailTitle">想法详情</h2>
+        <button class="close-btn" id="closeIdeaDetail" title="关闭">✕</button>
+      </div>
+      <div class="idea-detail-body" id="ideaDetailBody"></div>
     </div>
   </div>
 
@@ -534,14 +1105,24 @@
       <div class="detail-info">
         <h2 id="detailTitle"></h2>
         <div class="detail-cat" id="detailCategory"></div>
-        <div class="detail-prompt" id="detailPrompt"></div>
+        <div class="detail-stage" id="detailStage" style="display:none"></div>
         <button class="detail-author" id="detailAuthor"></button>
         <button class="claim-entry" id="claimEntry" style="display:none"></button>
         <div class="detail-stats" id="detailStats"></div>
 
+        <!-- 作者管理条：自己的作品才显示，编辑入口放在数据区正下方，不用再翻到页底找 -->
+        <div class="owner-bar" id="ownerBar" style="display:none">
+          <span class="owner-bar-label">这是你的作品</span>
+          <button class="owner-btn is-edit" id="editWork"><i class="ico b-ico" data-ico="edit"></i> 编辑作品</button>
+          <button class="owner-btn" id="toggleHide" title="下架后别人看不到，只有你自己能看；数据保留，随时可重新上架"><i class="ico b-ico" data-ico="eye"></i> 下架</button>
+          <button class="owner-btn is-danger" id="delWork"><i class="ico b-ico" data-ico="trash"></i> 删除</button>
+        </div>
+
         <div class="detail-actions">
           <button class="btn-like" id="detailLike"><i class="ico b-ico" data-ico="heart"></i> 点赞 <span id="detailLikes">0</span></button>
+          <button class="btn-like btn-watch" id="detailWatch" style="display:none"></button>
           <button class="btn-like btn-fav" id="detailFav" title="收藏后可在顶部「我的收藏」里找到"><i class="ico" data-ico="fav"></i> 收藏</button>
+          <button class="btn-tip" id="detailTip" title="用灯火支持作者或这件作品"><i class="ico b-ico" data-ico="lamp"></i> 送灯火</button>
           <button class="btn-share" id="shareCardBtn" title="生成一张带二维码的分享图，发朋友圈/小红书都行"><i class="ico b-ico" data-ico="sharecard"></i> 分享卡片</button>
           <button class="btn-share btn-pack" id="promoKitBtn" title="按平台生成投稿文案，复制就能去外站投"><i class="ico b-ico" data-ico="megaphone"></i> 外宣包</button>
           <span id="detailLinks" class="detail-links"></span>
@@ -549,10 +1130,35 @@
           <button class="btn-ghost btn-code-manage" id="detailCodes" style="display:none"><i class="ico b-ico" data-ico="ticket"></i> 管理兑换码</button>
         </div>
 
+        <!-- 送灯火改成居中弹窗：内嵌展开容易被忽略，像点了没反应 -->
+        <div class="modal-mask tip-mask" id="tipPanel" style="display:none">
+          <div class="modal tip-modal">
+            <div class="tip-panel-head">
+              <span id="tipPanelTitle">为作者点亮一盏灯火</span>
+              <button type="button" class="tip-close" id="tipClose" title="关闭">×</button>
+            </div>
+            <div class="tip-amounts" id="tipAmounts"></div>
+            <div class="tip-foot">
+              <span class="tip-balance" id="tipBalance"></span>
+              <button class="btn-primary tip-send" id="tipSend" disabled>送灯火</button>
+            </div>
+            <div class="tip-recent" id="tipRecent"></div>
+            <p class="tip-note" id="tipNote">灯火全额记到作者账上；每人每天转出有上限。</p>
+          </div>
+        </div>
+
         <div class="detail-qr" id="detailQrBox" style="display:none">
           <img id="detailQr" alt="二维码" />
-          <p>扫码打开作品</p>
+          <p id="detailQrTip">扫码打开作品</p>
+          <div class="qr-tabs" id="qrTabs"></div>
+          <div class="qr-acts">
+            <button type="button" class="qr-act" id="qrZoom"><i class="ico" data-ico="search"></i> 放大</button>
+            <button type="button" class="qr-act" id="qrSave"><i class="ico" data-ico="image"></i> 保存二维码</button>
+          </div>
         </div>
+
+        <!-- 简介挪到按钮区下面：作者写得再长也不会把操作按钮顶出首屏 -->
+        <div class="detail-prompt" id="detailPrompt"></div>
 
         <div class="ad-slot ad-slot-detail" data-ad-slot="detail"></div>
 
@@ -585,11 +1191,11 @@
         </div>
 
         <div class="detail-foot">
-          <button class="btn-report" id="editWork" style="display:none"><i class="ico b-ico" data-ico="edit"></i> 编辑</button>
-          <button class="btn-report" id="delWork" style="display:none"><i class="ico b-ico" data-ico="trash"></i> 删除作品</button>
           <button class="btn-report" id="blockWork" style="display:none" title="不再在列表里看到这个作品"><i class="ico b-ico" data-ico="block"></i> 屏蔽</button>
           <button class="btn-report" id="blockAuthor" style="display:none" title="这个作者的每件作品都不再展示给我（含以后新发的）"><i class="ico b-ico" data-ico="block"></i> 拉黑作者</button>
           <button class="btn-report" id="openReport"><i class="ico b-ico" data-ico="warn"></i> 投诉</button>
+          <a class="btn-report" href="/rules" target="_blank" rel="noopener"
+             title="能传什么、二维码怎么放、原作者怎么申请移除"><i class="ico b-ico" data-ico="rules"></i> 作品规范</a>
           <button class="btn-report" id="copyLinkBtn"><i class="ico b-ico" data-ico="link"></i> 复制链接</button>
           <a class="btn-report" id="fullPageBtn" target="_blank" rel="noopener"
              title="在新标签打开完整页面：可分享给朋友，也能被搜索引擎收录"><i class="ico b-ico" data-ico="arrowout"></i> 查看完整主页</a>
@@ -615,6 +1221,31 @@
     </div>
   </div>
 
+  <!-- 榜单规则：把图例里放不下的完整口径收进弹窗 -->
+  <div class="modal-mask" id="rankRulesModal" style="display:none">
+    <div class="modal rank-rules-modal">
+      <div class="modal-head">
+        <h2><i class="ico" data-ico="rules"></i> 榜单规则</h2>
+        <button class="close-btn" id="closeRankRules" title="关闭">✕</button>
+      </div>
+      <div class="rank-rules-body">
+        <h3>各维度怎么算</h3>
+        <p><b><i class="ico" data-ico="heart"></i> 获赞</b>：作品收到的点赞数。</p>
+        <p><b><i class="ico" data-ico="star"></i> 被收藏</b>：作品被访客收藏的次数。</p>
+        <p><b><i class="ico" data-ico="lamp"></i> 打赏人数</b>：累计有多少个不同用户给作品送过灯火，同一人多笔只算 1 人；人数打平再比灯火总额。</p>
+        <p><b><i class="ico" data-ico="bars"></i> 访问次数</b>：详情页被打开的次数，同一人反复打开也累加。</p>
+        <p><b><i class="ico" data-ico="person"></i> 访问人数</b>：有多少人打开过详情页，同一人只算 1 个，作者本人不计。</p>
+        <h3>综合分</h3>
+        <p><b>综合分 = 获赞×5 + 收藏×8 + 评论×1 + 灯火人数×10 + 访问分</b>（灯火按「送过灯火的人数」计，1 人 10 分，同一人送多笔只算 1 人；匿名、未认领作品收到的灯火同样计分）。访问分取访问次数，但最多只算「访客数 × 4 再加 20」——举例：120 个访客的封顶是 120×4+20=500 分，访问次数涨到 1000 也只按 500 计；真实访客增长会同步抬高上限，正常作品不受影响。点赞同一身份（登录按账号、匿名按网络）对同一作品只计 1 次，作者给自己点赞不计；评论分只数登录用户发的评论，匿名评论和作者自评不计——刷这些指标换不来排名。</p>
+        <h3>防刷量口径</h3>
+        <p>无浏览器标识的脚本请求直接丢弃；同一网络对同一作品每小时最多计 30 次访问、每天 100 次；新注册的账号也计入访问人数（一个号只算 1 个），但每个作品每天最多收 10 个新号，同一网络每天最多 3 个账号，超出的只计访问次数。</p>
+        <h3>排序与展示</h3>
+        <p>列表按所选维度降序排列，当前维度的数字会加粗显示。周期决定哪些作品能上榜：周榜＝近 7 天上架、月榜＝近 30 天上架、总榜＝全部作品；综合分、点赞、收藏、灯火、打赏人数用的是上架以来的累计数，访问次数与访问人数按所选周期统计。想看全站所有作品的长期热度，选「总榜」。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 认领作品：提交创作证据 → 管理员审核 -->
   <!-- 认领作品：提交创作证据 → 管理员审核 -->
   <div class="modal-mask" id="claimModal" style="display:none">
     <div class="modal claim-modal">
@@ -647,13 +1278,14 @@
         <select name="reason" required>
           <option>违法违规</option>
           <option>涉嫌侵权/盗用他人作品</option>
+          <option>我是原作者，希望移除</option>
           <option>内容不当</option>
           <option>虚假信息</option>
           <option>已不能使用</option>
           <option>其他</option>
         </select>
         <label>补充说明</label>
-        <textarea name="description" rows="3" maxlength="500" placeholder="描述具体情况（选填）"></textarea>
+        <textarea name="description" rows="3" maxlength="500" placeholder="描述具体情况。原作者申请移除请写明作品后台、发布记录等可核实的信息（选填）"></textarea>
         <label>联系方式（选填）</label>
         <input type="text" name="contact" maxlength="100" placeholder="邮箱 / 微信 / 手机号" />
         <button type="submit" class="btn-primary btn-block" id="reportBtn">提交投诉</button>
@@ -663,6 +1295,23 @@
 
   <div class="toast" id="toast"></div>
 
+  <!-- 「不再看这个作品」确认弹窗：卡片上的入口点一下就到这里，取消/确认都由用户决定。
+       只说清两件事：只对你自己生效、不动排名、随时可恢复 -->
+  <div class="modal-mask" id="blockWorkModal" style="display:none">
+    <div class="modal blockwork-modal">
+      <div class="modal-head">
+        <h2>不再看这个作品？</h2>
+        <button class="close-btn" id="closeBlockWork" type="button" title="关闭">✕</button>
+      </div>
+      <div class="blockwork-work" id="blockWorkTitle"></div>
+      <p class="blockwork-hint">之后它不会再出现在你的首页、榜单、精选和搜索结果里。只对你自己生效，<b>不影响其他人和作品的排名</b>，随时可以在「屏蔽管理」里恢复。</p>
+      <div class="blockwork-actions">
+        <button class="btn-ghost" id="blockWorkCancel" type="button">取消</button>
+        <button class="btn-primary" id="blockWorkConfirm" type="button">不再看</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 登录 / 注册弹窗 -->
   <div class="modal-mask" id="authModal" style="display:none">
     <div class="modal auth-modal">
@@ -670,18 +1319,19 @@
         <h2 id="authTitle">登录</h2>
         <button class="close-btn" id="closeAuth">✕</button>
       </div>
-      <p class="form-hint">登录后才能投稿，你的用户名就是作品作者名</p>
+      <p class="form-hint" id="authHint">登录后才能投稿 · 作品上显示的是你的昵称，随时能改</p>
 
       <form id="loginForm">
-        <label>用户名</label>
-        <input type="text" name="username" required maxlength="20" autocomplete="username" />
+        <label>账号 / 登录名</label>
+        <input type="text" name="username" required maxlength="20" autocomplete="username" placeholder="注册的用户名，或自己起的登录名" />
         <label>密码</label>
-        <input type="password" name="password" required autocomplete="current-password" />
-        <label class="remember-row" title="勾选后 30 天内免登录；不勾选则关闭浏览器就退出">
-          <input type="checkbox" name="remember" value="1" />
-          <span>记住我（30 天内免登录）</span>
-        </label>
+        <div class="pw-wrap">
+          <input type="password" name="password" id="loginPass" required autocomplete="current-password" />
+          <button type="button" class="pw-eye" id="loginPassEye" tabindex="-1" title="显示 / 隐藏密码"><span class="ico" data-ico="eye"></span></button>
+        </div>
+        <!-- 永久免登录：不再需要「记住我」，登录态长期保持（见 server.js SESSION_TTL） -->
         <button type="submit" class="btn-primary btn-block" id="loginBtn2">登录</button>
+        <p class="form-err" id="loginErr" hidden></p>
         <div class="auth-upgrade" id="loginUpgrade" style="display:none">
           <p id="loginUpgradeText"></p>
           <button type="button" class="btn-primary btn-block" id="upgradeRegBtn">一键注册并登录</button>
@@ -691,48 +1341,224 @@
       </form>
 
       <form id="registerForm" style="display:none">
-        <label>用户名（2-20 字，将展示为你的作者名）</label>
+        <label>用户名（2-20 位，只用于登录）</label>
         <input type="text" name="username" required maxlength="20" autocomplete="username" />
+        <p class="form-hint">可用中文、字母、数字、下划线，不分大小写。不能用 admin、官方、客服、管理员这类容易被当成站方的名字，也别留微信/QQ/网址。</p>
+        <label for="regNick">昵称（作品上显示这个名字）</label>
+        <div class="nick-pick">
+          <input type="text" name="nickname" id="regNick" maxlength="16" autocomplete="off" placeholder="不改就先用用户名" />
+          <button type="button" class="nick-dice" id="regNickDice" title="随机换一个昵称"><span class="ico" data-ico="sparkle"></span>换一个</button>
+        </div>
         <label>密码（至少 6 位）</label>
-        <input type="password" name="password" required minlength="6" autocomplete="new-password" />
-        <label class="remember-row" title="勾选后 30 天内免登录；不勾选则关闭浏览器就退出">
-          <input type="checkbox" name="remember" value="1" />
-          <span>记住我（30 天内免登录）</span>
-        </label>
+        <div class="pw-wrap">
+          <input type="password" name="password" id="regPass" required minlength="6" autocomplete="new-password" />
+          <button type="button" class="pw-eye" id="regPassEye" tabindex="-1" title="显示 / 隐藏密码"><span class="ico" data-ico="eye"></span></button>
+        </div>
         <button type="submit" class="btn-primary btn-block" id="registerBtn">注册并登录</button>
         <p class="auth-switch">已有账号？<a href="#" id="toLogin">去登录 →</a></p>
       </form>
+
+      <!-- 第三方登录：放表单下方，站点没配置对应 OAuth 应用时按钮单独隐藏（见 app.js loadMe） -->
+      <!-- 微信排最前：站点用户以国内创作者为主，微信是主流路径，别让 GitHub 抢了第一屏 -->
+      <div class="auth-oauth" id="authOauth" style="display:none">
+        <div class="auth-or"><span>或</span></div>
+        <button type="button" class="btn-wechat" id="wxScanBtn"><span class="ico" data-ico="wechat"></span> 微信扫码登录</button>
+        <button type="button" class="btn-github" id="ghLoginBtn"><span class="ico" data-ico="github"></span> 使用 GitHub 登录</button>
+        <button type="button" class="btn-google" id="gLoginBtn"><span class="ico" data-ico="google"></span> 使用 Google 登录</button>
+      </div>
+
+      <!-- 微信扫码登录：显示小程序码，扫码后在手机上确认，电脑轮询自动登录 -->
+      <div id="wxScanPanel" style="display:none">
+        <div class="wxscan-stage">
+          <img id="wxScanImg" alt="微信扫码登录二维码" style="display:none" />
+          <div class="wxscan-loading" id="wxScanLoading" style="display:none"><span class="spin"></span><span id="wxScanLoadingText">二维码加载中…</span></div>
+          <div class="wxscan-tip">微信扫一扫 · 手机上确认后电脑自动登录</div>
+        </div>
+        <!-- 手机端专用：把小程序码存进相册，微信扫一扫从相册识别 -->
+        <button type="button" class="wxscan-save" id="wxScanSave" style="display:none"><span class="ico" data-ico="image"></span> 保存二维码到相册</button>
+        <p class="wxscan-status" id="wxScanStatus"></p>
+        <p class="wxscan-expired" id="wxScanRefresh" style="display:none">二维码已过期，<a href="#" id="wxScanRefreshBtn">刷新重试</a></p>
+        <button type="button" class="auth-upgrade-cancel" id="wxScanBack">返回账号密码登录</button>
+      </div>
     </div>
   </div>
 
-  <!-- 意见反馈：浮动入口 + 弹窗 -->
-  <button class="feedback-fab" id="feedbackBtn" title="意见反馈，帮助我们把网站做得更好">✉︎ 反馈</button>
+  <!-- 右下角小助手：Trae 同款小机器人 + 点击弹出的聊天窗口。
+       原右下角三颗浮标（装到桌面 / 小程序 / 反馈）收进窗口里，按钮 id/类名不变，
+       app.js 的 PWA 安装 / 小程序弹窗 / 反馈红点逻辑仍挂在原按钮上；
+       滚动整组收起沿用 #fabStack 容器逻辑（2026-11-07）。 -->
+  <div class="fab-stack bot-wrap" id="fabStack">
+    <div class="bot-panel" id="botPanel" aria-hidden="true">
+      <div class="bot-panel-head">
+        <svg class="bot-panel-avatar" viewBox="0 0 60 60" aria-hidden="true">
+          <rect x="6" y="6" width="48" height="42" rx="12" fill="url(#botShell)" stroke="#c7cad4"/>
+          <rect x="12" y="12" width="36" height="30" rx="8" fill="url(#botScreen)"/>
+          <rect x="21" y="23" width="8" height="8" rx="1.8" fill="#fff" transform="rotate(45 25 27)"/>
+          <rect x="33" y="23" width="8" height="8" rx="1.8" fill="#fff" transform="rotate(45 37 27)"/>
+        </svg>
+        <div class="bot-panel-id"><b>造梦小助手</b><i><span class="dot"></span>在线</i></div>
+        <button type="button" class="bot-panel-close" id="botPanelClose" aria-label="收起小助手">✕</button>
+      </div>
+      <p class="bot-panel-msg">嗨，我是造梦小助手，这几件事都能帮你：</p>
+      <button class="install-fab" id="installFab" title="把本站装到桌面，点图标秒开"><i class="ico" data-ico="mobile"></i><span>装到桌面</span></button>
+      <button class="mini-fab" id="miniFab" title="微信扫一扫 / 搜一搜「造梦橱窗」"><i class="ico" data-ico="mini"></i><span>小程序</span></button>
+      <button class="feedback-fab" id="feedbackBtn" title="意见反馈，帮助我们把网站做得更好"><i class="ico" data-ico="mail"></i><span>反馈</span></button>
+    </div>
+    <div class="site-bot" id="siteBot" role="button" tabindex="0" aria-label="打开小助手" aria-expanded="false">
+      <div class="bot-bubble">嗨～需要帮忙吗？</div>
+      <svg class="bot-svg" viewBox="0 0 120 126" aria-hidden="true">
+        <defs>
+          <linearGradient id="botShell" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dcdfe7"/>
+          </linearGradient>
+          <linearGradient id="botScreen" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#2c2e36"/><stop offset="1" stop-color="#141519"/>
+          </linearGradient>
+        </defs>
+        <ellipse class="bot-shadow" cx="60" cy="119" rx="24" ry="5" fill="rgba(40,40,90,.14)"/>
+        <g class="bot-float">
+          <!-- 身体 + 手里的小板子 -->
+          <rect x="43" y="78" width="34" height="28" rx="12" fill="url(#botShell)" stroke="#c7cad4" stroke-width="1"/>
+          <rect x="70" y="85" width="12" height="8" rx="4" fill="#e9eaf0" stroke="#c7cad4" stroke-width="1" transform="rotate(-18 76 89)"/>
+          <g transform="rotate(8 85 92)">
+            <rect x="76" y="85" width="18" height="14" rx="3.5" fill="#26272d"/>
+            <circle cx="82" cy="90" r="1.6" fill="#8f939e"/>
+            <circle cx="87" cy="93" r="1.6" fill="#5c606b"/>
+          </g>
+          <!-- 脑袋（整体带一点歪头底角度，动画在外层 g 上做） -->
+          <g class="bot-head">
+            <g transform="rotate(-4 60 44)">
+              <rect x="16" y="7" width="88" height="74" rx="20" fill="url(#botShell)" stroke="#c7cad4" stroke-width="1"/>
+              <rect x="25" y="16" width="70" height="56" rx="12" fill="url(#botScreen)"/>
+              <!-- 眼睛包一组：眨眼在单只眼睛上，看鼠标在整组上平移，互不打架 -->
+              <g class="bot-eyes">
+                <rect class="bot-eye" x="43" y="38" width="13" height="13" rx="2.5" fill="#fff" transform="rotate(45 49.5 44.5)"/>
+                <rect class="bot-eye" x="64" y="38" width="13" height="13" rx="2.5" fill="#fff" transform="rotate(45 70.5 44.5)"/>
+              </g>
+            </g>
+          </g>
+          <!-- 左胳膊：画在最上层（脑袋几乎占满宽度，藏在后面会被完全盖住）。
+               肩膀在顶部 36.5,80，挥手绕它正角度旋转，把末端圆手甩到身侧；平时垂在身前。 -->
+          <g class="bot-arm">
+            <rect x="31" y="80" width="11" height="24" rx="5.5" fill="url(#botShell)" stroke="#c7cad4" stroke-width="1"/>
+            <circle cx="36.5" cy="102.5" r="5.5" fill="#f7f8fb" stroke="#c7cad4" stroke-width="1"/>
+          </g>
+        </g>
+      </svg>
+    </div>
+  </div>
+  <script>
+  (function(){
+    var bot = document.getElementById('siteBot'), panel = document.getElementById('botPanel');
+    if (!bot || !panel) return;
+    var waveTimer = null;
+    function wave(ms){
+      clearTimeout(waveTimer);
+      bot.classList.remove('bot-wave'); void bot.offsetWidth;
+      bot.classList.add('bot-wave');
+      waveTimer = setTimeout(function(){ bot.classList.remove('bot-wave'); }, ms || 1800);
+    }
+    function setPanel(open){
+      panel.classList.toggle('open', open);
+      panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+      bot.setAttribute('aria-expanded', open ? 'true' : 'false');
+      bot.closest('.bot-wrap').classList.toggle('panel-open', open);
+      if (open){ bot.classList.remove('bot-hi'); void bot.offsetWidth; bot.classList.add('bot-hi'); wave(1600); }
+      bot.classList.remove('bot-talk');
+    }
+    function toggle(){
+      setPanel(!panel.classList.contains('open'));
+    }
+    bot.addEventListener('click', function(e){ e.stopPropagation(); toggle(); });
+    bot.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(); }
+    });
+    document.getElementById('botPanelClose').addEventListener('click', function(){ setPanel(false); });
+    /* 点窗口里的功能项（装桌面/小程序/反馈都会开自己的界面），稍等片刻收起窗口 */
+    panel.addEventListener('click', function(e){
+      if (e.target.closest('button.install-fab, button.mini-fab, button.feedback-fab')){
+        setTimeout(function(){ setPanel(false); }, 200);
+      }
+    });
+    document.addEventListener('click', function(e){
+      if (panel.classList.contains('open') && !e.target.closest('.bot-wrap')) setPanel(false);
+    });
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape') setPanel(false); });
+
+    /* 进页面 2.2s 挥一次手打招呼（reduced-motion 下不挥） */
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reduce) setTimeout(function(){ wave(2000); }, 2200);
+
+    /* 眼睛跟着鼠标看：按「机器人→光标的单位方向」小幅平移眼睛，
+       光标越近偏得越多，最远封顶 3 个单位（≈1.6px 渲染尺寸），只在小屏以上做 */
+    var eyes = bot.querySelector('.bot-eyes');
+    if (eyes && !reduce && window.matchMedia('(min-width: 641px)').matches){
+      var raf = null, mx = 0, my = 0;
+      document.addEventListener('mousemove', function(e){
+        mx = e.clientX; my = e.clientY;
+        if (raf) return;
+        raf = requestAnimationFrame(function(){
+          raf = null;
+          var r = bot.getBoundingClientRect();
+          var dx = mx - (r.left + r.width / 2);
+          var dy = my - (r.top + r.height * .42);
+          var d = Math.sqrt(dx * dx + dy * dy) || 1;
+          var k = Math.min(1, d / 220);
+          eyes.style.transform = 'translate(' + (dx / d * 3 * k).toFixed(2) + 'px,' + (dy / d * 2.4 * k).toFixed(2) + 'px)';
+        });
+      }, { passive: true });
+    }
+  })();
+  </script>
 
   <div class="modal-mask" id="feedbackModal" style="display:none">
     <div class="modal">
-      <div class="modal-head">
-        <h2>意见反馈</h2>
-        <button class="close-btn" id="closeFeedback">✕</button>
+      <!-- 标题和切换条一起吸顶：只吸标题的话，滚动时 tab 会被标题栏削掉上半截 -->
+      <div class="fb-sticky">
+        <div class="modal-head">
+          <h2>意见反馈</h2>
+          <button class="close-btn" id="closeFeedback">✕</button>
+        </div>
+        <!-- 写反馈 / 我的反馈：提交后能收到回复，也能在这里接着聊 -->
+        <div class="fb-switch" id="fbSwitch">
+          <button type="button" class="fb-tab is-on" data-fbtab="form">写反馈</button>
+          <button type="button" class="fb-tab" data-fbtab="mine">我的反馈<i class="fb-dot" id="fbMineDot" hidden></i></button>
+        </div>
       </div>
-      <p class="form-hint" id="feedbackHint">用着不顺手、想要什么功能、发现 bug，都可以说一句。匿名也能提。</p>
-      <form id="feedbackForm">
-        <label>反馈类型</label>
-        <select name="type">
-          <option value="功能建议">功能建议</option>
-          <option value="遇到问题">遇到问题</option>
-          <option value="内容建议">内容建议</option>
-          <option value="合作/其他">合作 / 其他</option>
-        </select>
+      <div id="fbViewForm">
+        <p class="form-hint" id="feedbackHint">用着不顺手、想要什么功能、发现 bug，都可以说一句。匿名也能提。</p>
+        <form id="feedbackForm">
+          <label>反馈类型</label>
+          <select name="type">
+            <option value="功能建议">功能建议</option>
+            <option value="遇到问题">遇到问题</option>
+            <option value="内容建议">内容建议</option>
+            <option value="合作/其他">合作 / 其他</option>
+          </select>
 
-        <label>具体内容 *</label>
-        <textarea name="content" rows="5" maxlength="1000" required
-                  placeholder="比如：手机上详情页的评论框被挡住了；希望能按点赞数排序……"></textarea>
+          <label>具体内容 *</label>
+          <textarea name="content" rows="5" maxlength="1000" required
+                    placeholder="比如：手机上详情页的评论框被挡住了；希望能按点赞数排序……"></textarea>
 
-        <label>联系方式（选填）</label>
-        <input type="text" name="contact" maxlength="100" placeholder="邮箱 / 微信 / 其他，方便我回你" />
+          <label>联系方式（选填）</label>
+          <input type="text" name="contact" maxlength="100" placeholder="邮箱 / 微信 / 其他，方便我回你" />
 
-        <button type="submit" class="btn-primary btn-block" id="feedbackSubmit">提交反馈</button>
-      </form>
+          <button type="submit" class="btn-primary btn-block" id="feedbackSubmit">提交反馈</button>
+        </form>
+      </div>
+      <!-- 我的反馈：列表 → 点开某一条看往来、继续回复 -->
+      <div id="fbViewMine" hidden>
+        <div class="fb-list" id="fbList"></div>
+        <div class="fb-detail" id="fbDetail" hidden>
+          <button type="button" class="fb-back" id="fbBack">‹ 返回我的反馈</button>
+          <div class="fb-detail-head" id="fbDetailHead"></div>
+          <div class="reply-thread" id="fbThread"></div>
+          <div class="reply-input">
+            <textarea id="fbReplyText" rows="2" maxlength="500" placeholder="继续说…（Ctrl/⌘ + Enter 发送）"></textarea>
+            <button type="button" class="btn-primary" id="fbReplySend">发送</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -740,12 +1566,12 @@
   <div class="modal-mask" id="codeModal" style="display:none">
     <div class="modal modal-code">
       <div class="modal-head">
-        <h2>🎁 你的兑换码</h2>
+        <h2>你的兑换码</h2>
         <button class="close-btn" id="closeCode">✕</button>
       </div>
       <p class="form-hint">每个 IP 只能领一个，先到先得。截图或复制保存好，关掉弹窗后可随时回来重新查看。</p>
       <div class="code-display" id="codeDisplay">----</div>
-      <button type="button" class="btn-primary btn-block" id="copyCodeBtn">📋 复制兑换码</button>
+      <button type="button" class="btn-primary btn-block" id="copyCodeBtn"><i class="ico" data-ico="copy"></i> 复制兑换码</button>
     </div>
   </div>
 
@@ -753,7 +1579,7 @@
   <div class="modal-mask" id="codeManageModal" style="display:none">
     <div class="modal">
       <div class="modal-head">
-        <h2>🎟 管理兑换码</h2>
+        <h2><i class="ico" data-ico="ticket"></i> 管理兑换码</h2>
         <button class="close-btn" id="closeCodeManage">✕</button>
       </div>
       <p class="form-hint">把你发布的兑换码粘进来（支持换行 / 逗号分隔，批量添加）。访客领取时每个 IP 只能领一个，领取后立即从池子里扣掉。</p>
@@ -767,24 +1593,56 @@
   <div class="modal-mask" id="installModal" style="display:none">
     <div class="modal modal-install">
       <div class="modal-head">
-        <h2>📱 安装造梦橱窗到桌面</h2>
+        <h2><i class="ico" data-ico="mobile"></i> 安装造梦橱窗到桌面</h2>
         <button class="close-btn" id="closeInstall" title="关闭">✕</button>
       </div>
       <div class="install-body">
         <div class="install-qr">
           <div class="install-qr-box" id="installQrBox"></div>
-          <span class="install-qr-tip">📱 手机扫码打开本站</span>
+          <span class="install-qr-tip"><i class="ico" data-ico="mobile"></i> 手机扫码打开本站</span>
         </div>
         <div class="install-steps">
-          <div class="install-note">💡 添加到主屏幕后，像 App 一样直达，无需下载、不占应用商店</div>
+          <div class="install-note">装到桌面 = 点图标秒开：无需下载、不占应用商店；用桌面上的图标登录打开可领 <b>200 盏灯火</b>（一次性奖励）</div>
           <ol class="install-list">
-            <li>用手机浏览器打开本站（微信里可点右上角「…」选「在浏览器打开」）</li>
-            <li>iOS：点分享按钮 →「添加到主屏幕」；安卓：菜单 →「添加到主屏幕 / 安装应用」</li>
+            <li>先用手机浏览器打开本站：微信里点右上角「…」选「在浏览器打开」，或扫左边二维码 / 点下面「复制链接」</li>
+            <li>iPhone：推荐 Safari，点分享按钮 →「添加到主屏幕」（iOS 16.4 起 Chrome / Edge 也可以）</li>
+            <li>安卓：推荐 Chrome / 系统浏览器，菜单 →「添加到主屏幕」；添加后没看到图标？去浏览器设置里开启「桌面快捷方式」权限</li>
           </ol>
-          <button type="button" class="btn-primary install-native" id="installNative" style="display:none">⚡ 一键安装（本设备支持）</button>
+          <div class="install-btns">
+            <button type="button" class="btn-primary install-native" id="installNative" style="display:none"><i class="ico" data-ico="bolt"></i> 一键安装（本设备支持）</button>
+            <button type="button" class="install-copy" id="installCopyLink"><i class="ico" data-ico="copy"></i> 复制链接，去手机浏览器打开</button>
+          </div>
         </div>
       </div>
+      <button type="button" class="install-mini" id="openMiniModal">
+        <img src="/promo-icons/wx-search-banner.jpg" alt="微信搜一搜「造梦橱窗」" loading="lazy" />
+        <span>常用微信？小程序里能直接扫进作者的小程序<b>点开看看 ›</b></span>
+      </button>
       <button type="button" class="btn-primary btn-block install-know" id="installKnow">知道了</button>
+    </div>
+  </div>
+
+  <!-- 小程序版：从安装弹窗底部入口点开，和 PWA 指引分开讲，免得一锅炖看不清 -->
+  <div class="modal-mask" id="miniModal" style="display:none">
+    <div class="modal modal-mini">
+      <div class="modal-head">
+        <h2><i class="ico" data-ico="sparkle"></i> 造梦橱窗 · 小程序版</h2>
+        <button class="close-btn" id="closeMini" title="关闭">✕</button>
+      </div>
+      <p class="wxmini-lead">进小程序能做两件事：<b>一键复制 App Store / 安卓下载链接，也可以直接扫码走进作者的小程序</b>。<b>利好小程序、App 开发者</b>——推荐位买的就是这一步的距离。</p>
+      <div class="wxmini-hero">
+        <div class="wxmini-qr">
+          <img src="/promo-icons/mini-qr.png" alt="造梦橱窗小程序码" />
+          <span class="wxmini-qr-tip">电脑上用微信扫一扫；手机上长按图片识别（部分浏览器支持）</span>
+        </div>
+        <ol class="install-list wxmini-steps">
+          <li>用微信「扫一扫」识别这张码，直达小程序</li>
+          <li>或在微信「发现 → 搜一搜」搜「造梦橱窗」；进去后点右上角「···」→「添加到我的小程序」，下次秒开</li>
+          <li>长按（或截图保存）这张码，也能发给朋友让他们直接进</li>
+        </ol>
+      </div>
+      <button type="button" class="mini-link" id="miniToInstall">想在手机桌面装网页版橱窗（PWA）？看安装指引 ›</button>
+      <button type="button" class="btn-primary btn-block" id="miniKnow">知道了</button>
     </div>
   </div>
 
@@ -801,13 +1659,20 @@
         <button type="button" class="tpl-btn" data-tpl="dark">深色</button>
         <button type="button" class="tpl-btn" data-tpl="grad">渐变</button>
       </div>
+      <div class="share-tpls share-qr-mode" id="shareQrMode" style="display:none">
+        <span class="share-tpls-label">二维码</span>
+        <button type="button" class="tpl-btn" data-qrmode="detail">本站详情页</button>
+        <button type="button" class="tpl-btn" data-qrmode="link">我的作品链接</button>
+      </div>
+      <p class="share-qr-hint" id="shareQrHint" style="display:none"></p>
       <div class="share-preview">
         <canvas id="shareCanvas" width="1080" height="1350"></canvas>
       </div>
       <p class="share-tip">会自动带上作品截图、简介和二维码，扫码就能打开这个作品</p>
+      <p class="share-lamp-tip" id="shareLampTip"></p>
       <div class="share-actions">
-        <button class="btn-primary" id="shareDownload">⬇ 保存图片</button>
-        <button class="btn-report" id="shareCopyText">📋 复制文案</button>
+        <button class="btn-primary" id="shareDownload"><svg class="btn-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 21h16"/></svg>保存图片</button>
+        <button class="btn-report" id="shareCopyText"><svg class="btn-ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>复制文案</button>
       </div>
     </div>
   </div>
@@ -815,21 +1680,27 @@
   <div class="modal-mask" id="promoKitModal" style="display:none">
     <div class="modal pk-modal">
       <div class="modal-head">
-        <h2>📣 外宣包</h2>
+        <h2><i class="ico" data-ico="megaphone"></i> 外宣包</h2>
         <button class="close-btn" id="closePromoKit">✕</button>
       </div>
       <p class="pk-tip">选一个平台，文案已按它的口味排好版，复制过去就能投。</p>
+      <p class="pk-tip">文案里的本站链接会自动带上你的身份：从这些平台来的注册，你额外拿 <b>50 盏灯火</b>；累计 100 位访客还有一次性里程碑奖励。</p>
+      <div class="pk-advice" id="pkAdvice" style="display:none"></div>
       <div class="pk-tabs" id="pkTabs" role="group" aria-label="选择平台"></div>
       <div class="pk-meta" id="pkMeta"></div>
       <pre class="pk-copy" id="pkCopy"></pre>
       <div class="pk-actions">
-        <button class="btn-primary" id="pkCopyBtn">📋 复制文案</button>
+        <button class="btn-primary" id="pkCopyBtn"><i class="ico" data-ico="copy"></i> 复制文案</button>
         <a class="btn-ghost pk-go" id="pkGo" target="_blank" rel="noopener">去投稿 <i class="ico b-ico" data-ico="arrowout"></i></a>
       </div>
     </div>
   </div>
 
+  <!-- 全页图标兜底水合：赶在 qrcode/app.js 这些同步脚本开始下载之前执行，
+       此时整棵 DOM 已解析完，首绘前把所有 data-ico 占位符填掉（幂等，重复调无害） -->
+  <script>if (window.Icons) Icons.hydrate();</script>
   <script src="/vendor/qrcode.js"></script>
+  <script src="/md.js"></script>
   <script src="/sharecard.js"></script>
   <script src="/app.js"></script>
 </body>

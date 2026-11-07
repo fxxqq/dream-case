@@ -9,8 +9,12 @@ uploads/
 *.log
 *.tar.gz
 
-# 本地调试截图
+# 本地调试截图（docs/ 下的 README 用图除外）
 *.png
+!docs/*.png
+# 站点运行时引用的推广素材（首页底部微信搜一搜横幅、小程序码），必须入库
+!frontend/promo-icons/mini-qr.png
+!frontend/promo-icons/wx-search-banner.jpg
 
 # 数据备份
 *.bak-*.json
@@ -18,8 +22,18 @@ uploads/
 # 含真实服务器地址与后台口令的部署脚本，用 deploy.example.sh 作模板
 deploy.sh
 
-# 一次性本地测试脚本（含本机路径与测试账号）
+# 一次性本地测试脚本（含本机路径、测试账号与真实后台口令，绝不入库）
 test-*.js
+# 本地临时/截图脚本：_t.js、_mock-github.js、_shot-*.js、_detail-h5-shot.js 等
+_*.js
+shot-*.js
+# 诊断与截图工具目录：集中放着硬编码后台口令与 Chrome 绝对路径
+tools/
+# 本地调试用的临时站点（含 cookie.txt 会话令牌）
+_tmp-*/
+cookie.txt
+# 发布脚本：依赖不入库的 deploy.sh，且含本机 Git Bash 绝对路径
+*.cmd
 
 # 环境与系统文件
 .env
