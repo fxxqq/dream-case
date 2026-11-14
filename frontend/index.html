@@ -85,7 +85,7 @@
              data-tip 由 style.css 画成气泡，比原生 title 出得快、样式统一；aria-label 给读屏，也在没有 CSS 时兜底。
              触屏没有 hover，顶部导航在 ≤640px 本来就隐藏，靠 /howto 开头的「先认认路」那一节兜底。 -->
         <a class="nav-btn" href="/rank" data-nav data-tip="作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届" aria-label="星梦榜：作品的热度排行，访客、收藏、评论、灯火加权计分，每周换一届"><i class="ico" data-ico="rank"></i> 星梦榜</a>
-        <a class="nav-btn" href="/bar" data-nav data-tip="说出你想要的作品，等创作者认领实现；也能在散座随便聊" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现，也能在散座随便聊"><i class="ico" data-ico="wish"></i> 造梦酒馆</a>
+        <a class="nav-btn" href="/bar" data-nav data-tip="说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现，也能闲聊、安利、分享"><i class="ico" data-ico="wish"></i> 造梦酒馆</a>
         <!-- PC「发现」入口暂缓上线（站长还要构思），加回时把 /discover 按钮放这行注释后面：
              <a class="nav-btn" href="/discover" data-nav title="发现：按平台和分类逛作品专栏——iOS、安卓、小程序、游戏、效率工具都在这儿"><i class="ico" data-ico="globe"></i> 发现</a>
              同时 app.js updateNavActive 里的 onDiscover 高亮已写好，按钮一回来就自动生效 -->
@@ -103,7 +103,7 @@
            页脚「投放合作」和 /ads 里，不在菜单上明着招租。 -->
       <div class="pub-wrap" id="pubWrap">
         <button type="button" class="pub-btn" id="pubBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="pubMenu"
-                aria-label="发布" title="发布：提交作品 / 提想法 / 随便聊 / 推荐自己的作品 / 企业产品入驻">
+                aria-label="发布" title="发布：提交作品 / 找工具 / 发一条 / 推荐自己的作品 / 企业产品入驻">
           <i class="plus-ico" aria-hidden="true"></i>
           <i class="draft-dot" data-draft-dot hidden></i>
         </button>
@@ -114,11 +114,11 @@
           </button>
           <button type="button" class="pub-item" data-pub="want" role="menuitem">
             <span class="pub-ico pi-want"><i class="ico" data-ico="bulb"></i></span>
-            <span class="pub-txt"><b>提想法</b><em>想要什么，让创作者认领</em></span>
+            <span class="pub-txt"><b>找工具</b><em>想要什么，让创作者认领</em></span>
           </button>
           <button type="button" class="pub-item" data-pub="chat" role="menuitem">
             <span class="pub-ico pi-chat"><i class="ico" data-ico="chat"></i></span>
-            <span class="pub-txt"><b>随便聊</b><em>去酒馆散座说两句</em></span>
+            <span class="pub-txt"><b>发一条</b><em>闲聊、安利、分享都行</em></span>
           </button>
           <button type="button" class="pub-item" data-pub="promo" role="menuitem">
             <span class="pub-ico pi-promo"><i class="ico" data-ico="promo"></i></span>
@@ -196,10 +196,22 @@
         <!-- 原来的「已收录 X 件作品」统计行已删：与列表头「共 X 件」重复 -->
         <button type="button" class="hero-search" id="heroSearchBtn" aria-label="搜索"><i class="ico" data-ico="search"></i><span>搜作品、作者、关键词</span></button>
         <!-- 不知道叫什么名字的人，搜索框是帮不上的（它只认字面）。这颗是给他们的：
-             说一句「想把录音转成文字」，由「找找」去站里翻。 -->
-        <button type="button" class="hero-find" id="heroFindBtn" title="说不清叫什么？用一句话描述你想找的东西">
-          <span class="hf-star" aria-hidden="true">✦</span>说不清叫什么？<b>问找找</b>
+             说一句「想把录音转成文字」，由「找找」去站里翻。
+             2026-11-14 文案改口：「问找找」念着像「问问找找」、也说不清这人是谁，
+             换成「让找找帮你翻」——把「谁」和「干什么」都放在一句里，跟下面「大家在找」
+             那行也不再连成一片「找」字。 -->
+        <button type="button" class="hero-find" id="heroFindBtn" title="说不清叫什么？用一句话描述你想找的东西，找找去站里翻给你">
+          <span class="hf-star" aria-hidden="true">✦</span>说不清叫什么？<b>让找找帮你翻</b>
         </button>
+        <!-- 大家在找：2026-11-14 从酒馆热搜榜搬来——「搜」归搜索区，酒馆只留想法。
+             只放站内搜得到的词（点了落空结果是坑人的），12 条全出：种子词贴「热」、
+             近期真被搜过的贴「新」，桌面折两行、手机只露前 4 个。点一下就是一次站内搜索。
+             不用 hidden：词条异步回来才撑开会把下面内容顶一下（抖动），
+             改成常驻占两行、is-waiting 时只隐身不消失。 -->
+        <div class="hero-hot is-waiting" id="heroHot">
+          <span class="hero-hot-label"><i class="ico" data-ico="search"></i>大家在找</span>
+          <div class="hero-hot-list" id="heroHotList"></div>
+        </div>
       </div>
 
       <!-- 预置等高骨架：精选数据回来前先占位，避免区块突然出现把下方内容推下去（抖动） -->
@@ -424,7 +436,7 @@
     <section id="wishView" style="display:none">
       <!-- 顶部导航已有高亮的「造梦酒馆」，这里不再重复一个大标题；只留一点顶部呼吸空间 -->
       <div class="bar-head">
-        <p class="bar-sub">想要什么、想说的话，都用下面这一个框——<b>提想法</b>等创作者认领，<b>随便聊</b>进散座</p>
+        <p class="bar-sub">都用下面这一个框，先选个主题——<b>闲聊</b>说两句、<b>安利</b>晒好东西、<b>找工具</b>等创作者来接、<b>分享</b>留点经验</p>
       </div>
 
       <!-- 页头数字（N 个想法 / 已实现 / 正在做 / 征集中 / 本周新增）2026-11-12 先去掉：
@@ -437,23 +449,32 @@
       <div class="bar-grid">
         <div class="bar-main">
 
-        <!-- 统一发布器：一个输入窗口，两种心情。切换只换表单，不换位置（2026-11-14 站长定：输入框放最上面） -->
+        <!-- 发布器（2026-11-14 改）：不再分「提想法 / 随便聊」两个模式，改成先选主题——
+             闲聊 / 安利 / 找工具 / 分享，也能自建（≤4 字）。
+             选「找工具」仍进想法池（能被创作者认领、点「我来实现」），其余进散座；
+             主题落 p.topic，卡片角标直接读它，不再靠「有没有 #找工具」猜。 -->
         <div class="cmp-wrap">
-          <div class="cmp-tabs" id="cmpTabs" role="tablist" aria-label="发布类型">
-            <button class="cmp-tab" type="button" data-mode="chat" role="tab" aria-selected="false">
-              <i class="ico" data-ico="chat"></i> 随便聊
-            </button>
-            <button class="cmp-tab is-on" type="button" data-mode="want" role="tab" aria-selected="true">
-              <i class="ico" data-ico="bar"></i> 提想法
-            </button>
-            <span class="cmp-note">提想法能被创作者认领；随便聊就进下面的散座</span>
+          <div class="cmp-topics" id="cmpTopics" role="group" aria-label="选个主题">
+            <span class="cmp-topic-label">主题</span>
+            <button class="cmp-topic is-on" type="button" data-topic="闲聊" aria-pressed="true">闲聊</button>
+            <button class="cmp-topic" type="button" data-topic="安利" aria-pressed="false">安利</button>
+            <button class="cmp-topic" type="button" data-topic="找工具" aria-pressed="false">找工具</button>
+            <button class="cmp-topic" type="button" data-topic="分享" aria-pressed="false">分享</button>
+            <!-- 自建主题落在这里：点「＋ 自建」输 4 个字，确认后就变成这一枚 chip -->
+            <button class="cmp-topic" type="button" id="cmpTopicCustom" data-topic="" hidden></button>
+            <button class="cmp-topic cmp-topic-add" type="button" id="cmpTopicAdd"
+              title="自己起一个主题，最多 4 个字" aria-expanded="false">＋ 自建</button>
+            <input class="cmp-topic-input" id="cmpTopicInput" maxlength="4" autocomplete="off" hidden
+              placeholder="4 字内" aria-label="自定义主题，最多 4 个字" />
+            <span class="cmp-note" id="cmpNote">找工具会被创作者看到，可以点「我来实现」</span>
           </div>
-          <div class="cmp-want">
+          <!-- 找工具：这一档仍走想法池（能认领、有「N 人想要」），所以只有它是「标题 + 补充说明」两段 -->
+          <div class="cmp-want" hidden>
             <div class="wish-compose-wrap">
               <div class="wish-compose">
                 <input id="wishInput" maxlength="80" autocomplete="off"
                        placeholder="我想要一个……（比如：能自动整理下载文件夹的小工具）" />
-                <button class="btn-primary" id="wishSubmit">发布想法</button>
+                <button class="btn-primary" id="wishSubmit">发布</button>
               </div>
               <div class="wish-compose-extra">
                 <button type="button" class="wish-extra-toggle" id="wishExtraToggle" aria-expanded="false">＋ 补充使用场景（选填，让创作者更懂你）</button>
@@ -465,7 +486,7 @@
           <div class="cmp-chat" hidden>
             <div class="chat-compose">
               <textarea id="chatInput" maxlength="200" rows="2"
-                placeholder="随便说点什么……今天发现的好东西、踩到的坑、想问的问题（写 #话题 能归到一起；求工具写 #找工具）"></textarea>
+                placeholder="随便说点什么……今天发现的好东西、踩到的坑、想问的问题（写 #话题 能归到一起）"></textarea>
               <!-- 关联作品（选填）：平时收起不占一行，点「关联作品」展开输入；
                    选中/粘链接后显示成「🔗《作品名》✕」chip，不再挂一条裸 /w/ 链接 -->
               <input class="chat-work-ref" id="chatWorkRef" maxlength="80" autocomplete="off" hidden
@@ -485,28 +506,15 @@
                   title="把这条闲聊归到一个话题下（也可以直接写 #话题）">＋ 话题</button>
                 <span class="chat-tip">畅所欲言，别贴广告就行</span>
                 <span class="chat-count" id="chatCount">0/200</span>
-                <button class="btn-primary" id="chatSend" type="button">说一句</button>
+                <button class="btn-primary" id="chatSend" type="button">发布</button>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 大家最近在搜：只认真实搜索（按人去重后的人数），点一下直接去搜 -->
-        <div class="hot-board" id="hotBoard">
-          <div class="hot-board-head">
-            <span class="hot-board-title"><i class="ico" data-ico="search"></i> 大家最近在搜</span>
-            <span class="hot-board-note">点了就去搜 · 数字是最近搜过它的人 · 没搜到？提个想法呗</span>
-            <button type="button" class="hot-shuffle" id="hotShuffle" title="换个顺序看看"><i>↻</i> 换一换</button>
-          </div>
-          <div class="hot-board-list" id="hotList">
-            <span class="hot-board-loading">正在看看大家都在找什么…</span>
-          </div>
-          <!-- 收起 / 展开：默认只露一行，剩下的藏在下面（12 条全摊开时手机端要占 6 行）。
-               一行几条跟着列数走，由脚本按实际列数算 -->
-          <button type="button" class="hot-more" id="hotToggle" aria-expanded="false" aria-controls="hotList" hidden>
-            <span>展开全部</span><i class="hot-more-caret"></i>
-          </button>
-        </div>
+        <!-- 大家最近在搜 2026-11-14 搬去首页 hero（.hero-hot）：搜索词摆在想法的发布框和
+             时间线上方，既跟酒馆「不推流」的口径打架，也把「想法·闲聊」整条流顶下去。
+             想改回来：把 .hot-board 那段 HTML 从 git 历史里捞回来，样式与脚本一起恢复 -->
 
         <!-- 话题栏：点一个标签就看这个话题下的闲聊（原地过滤、不跳页）；
              话题不单独建表，正文里写 #这样# 就归到一起，所以老帖子里的话题也自动在列 -->
@@ -515,7 +523,7 @@
         <!-- 想法与闲聊合流：数据仍分表（想法池的「N 人想要」不被闲聊稀释），
              展示上归并成一条论坛式时间线——一行一条，点想法行开详情抽屉、点闲聊行原地展开回应 -->
         <div class="bar-feed-head">
-          <b class="bar-col-title"><i class="ico" data-ico="bar"></i> 想法 · 闲聊</b>
+          <b class="bar-col-title"><i class="ico" data-ico="bar"></i> 大家说的</b>
           <span class="bar-feed-note">按时间排 · 点一行看详情</span>
           <span class="bar-feed-count" id="feedCount"></span>
         </div>
@@ -525,8 +533,8 @@
              （想法标题是真实需求词，那是站点主力 SEO 入口），说大了就是给自己埋雷。 -->
         <p class="bar-privacy">不推流 · 闲聊不进站内搜索 · 自己的帖子随时能删</p>
         <div class="wish-list bar-feed" id="wishList"></div>
-        <!-- 冷启动补位：想法还少时，把「搜过但站内没有」的词摆出来，点一下就能变成想法 -->
-        <div class="wish-suggest" id="wishSuggest" hidden></div>
+        <!-- 冷启动补位（「有人找过但站内还没有」的缺词 → 一键变想法）随热搜榜一起退役：
+             2026-11-14 站长定「缺词闭环不要了」，缺词只在首页当检索词用，不再往想法池里引 -->
         <button class="wish-more" id="wishMore" style="display:none">加载更早的 →</button>
 
         <!-- 愿望成真：已经落地成作品的想法，每个都挂着作品链接 -->
@@ -643,8 +651,15 @@
       <!-- 2026-11-14 改版（站长给了参考排版）：头像/名字/一句话 → 四格统计 + 右侧「编辑主页」→
            一行四个功能入口（我的推荐 / 我的灯火 / 我的小程序 / 全部功能）→ tab（作品/收藏/喜欢）。
            功能行和 tab 都只在自己主页出现：别人的收藏、灯火、推荐记录是私事，不给访客看 -->
+      <!-- 双栏：左栏 = 档案卡 + 作品流，右栏 =「作品数据」入口卡 + 勋章墙（2026-11-14 提上去：
+           档案卡收窄成左栏宽，右栏卡和档案卡顶对齐，不再压在作品流上面）。 -->
+      <div class="author-body" id="authorBody">
+        <div class="author-left">
       <div class="author-hero">
-        <div class="author-hero-band" aria-hidden="true"></div>
+        <!-- 星空带（2026-11-14）：band-skin + hs-* 决定动效，默认流星；作者本人右上角能换一种。
+             <i class="bs-m"> 是两颗流星的道具节点，只有 hs-meteor 里显示 -->
+        <div class="author-hero-band band-skin hs-meteor" id="authorBand" aria-hidden="true"><i class="bs-m bs-m1"></i><i class="bs-m bs-m2"></i></div>
+        <button type="button" class="author-band-skin" id="authorBandSkinBtn" style="display:none" title="给主页换一条背景"><i class="ico" data-ico="sparkle"></i> 换背景</button>
         <div class="author-hero-main">
           <div class="author-avatar" id="authorAvatar">A</div>
           <div class="author-info">
@@ -691,11 +706,17 @@
           <button type="button" class="au-tab" data-autab="likes">喜欢</button>
         </div>
       </div>
-      <!-- 双栏：左边作品流，右边「作品数据」入口卡 + 勋章墙。
-           作品数据卡仅本人可见；勋章墙人人可见（点亮过的才显示） -->
-      <div class="author-body">
-        <div class="gallery" id="authorGallery"></div>
+          <!-- 主页已隐藏提示条：仅本人可见，告诉作者「现在访客只看得到档案」，并留一个当场恢复的按钮 -->
+          <div class="author-find-strip author-hide-strip" id="authorHideStrip" style="display:none"></div>
+          <!-- 「找找」补全提示条（2026-11-14）：仅本人可见。找找靠介绍/一句话定位对问题，
+               缺了就只剩标题能撞——这里把「差什么」摆出来，一条「补全」直达编辑器对应输入框 -->
+          <div class="author-find-strip" id="authorFindStrip" style="display:none"></div>
+          <div class="gallery" id="authorGallery"></div>
+        </div>
         <aside class="author-side" id="authorSide" style="display:none">
+          <!-- 加载占位（2026-11-14）：勋章墙要等 /api/authors 回来才知道有没有、几枚，
+               不先把右栏这一列撑住，档案卡会按整页宽画一遍、数据回来再收窄——整页横向抖一下。 -->
+          <div class="author-side-skel" id="authorSideSkel" style="display:none" aria-hidden="true"></div>
           <div class="creator-card" id="creatorCard">
             <div class="cc-head">
               <span class="cc-ico" aria-hidden="true"><i class="ico" data-ico="chart"></i></span>
@@ -748,7 +769,7 @@
           <ul class="gloss-list">
             <li><b>橱窗</b>首页，全部作品按最新 / 最热 / 随便逛逛排，往下翻就是站里所有东西</li>
             <li><b>星梦榜</b>作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届</li>
-            <li><b>造梦酒馆</b>说出你想要的作品，等创作者认领实现；也能在散座随便聊</li>
+            <li><b>造梦酒馆</b>说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享</li>
             <li><b>发现</b>按平台和分类逛：iOS、安卓、小程序、游戏、效率工具…</li>
             <li><b>我的</b>你的作品、收藏、点赞、灯火余额和设置都在这</li>
             <li><b>灯火</b>站内积分，签到 / 投稿 / 被送都能得，可以打赏别人，也可以换推荐位</li>
@@ -788,7 +809,7 @@
 
         <div class="howto-card">
           <h3><span class="howto-no">6</span>提交之后会发生什么</h3>
-          <p>注册用户：提交即上线，立刻出现在首页「最新」里。匿名投稿：进入待审核，管理员看后台会尽快处理。作品被下架的话会收到站内消息说明原因，<b>修改内容后重新提交</b>，审核通过即可恢复展示。</p>
+          <p>注册用户：提交即上线，立刻出现在首页「最新」里。匿名投稿：进入待审核，管理员会尽快处理。作品被下架的话会收到站内消息说明原因，<b>修改内容后重新提交</b>，审核通过即可恢复展示。</p>
         </div>
 
         <div class="howto-card">
@@ -1069,11 +1090,13 @@
                 <circle cx="10" cy="14.2" r="1.05" fill="currentColor"/>
               </svg>
             </button>
-            <span class="feat-info-pop" role="tooltip"><b class="rt">标题这样写更被点开</b>先说清「它是什么、能替谁做什么」，别把「免费」「永久免费」「限时 0 元」「神器」这类词堆在最前面当钩子——真免费，一句话介绍里说一句就够。自查：这句话换到别人的作品上还成立，那它就是空话。酒香不怕巷子深，东西打磨好了，比什么形容词都管用。</span>
+            <span class="feat-info-pop" role="tooltip"><b class="rt">标题这样写更被点开</b>先说清「它是什么、帮谁做什么」。别拿「免费」「神器」「限时 0 元」当钩子——真免费，一句话介绍里提一句就行。自查：把你的标题放到别人作品上也成立？那就是空话。东西够好，比任何形容词都管用。</span>
           </span></label>
         <input type="text" name="wname" placeholder="好记的名字，最长 20（汉字算 2），如：星空邮局" />
         <label>一句话介绍 *（20 字以内）</label>
         <input type="text" name="wtag" maxlength="20" placeholder="它帮谁做什么，20 字内，如：把心事寄给陌生人" />
+        <!-- 搜索和「找找」打分时这句话在标题档（权重最高的一档），但作者不知道——用一句提示点破 -->
+        <p class="form-hint">别人记不住名字时，全靠这句话找到你：写清「帮谁做什么」（动词 + 对象），别写口号。</p>
 
         <!-- 作品当前状态：决定它进主列表、进「即将上线」，还是锁住链接当灰卡 -->
         <label>作品当前状态 *</label>
@@ -1453,8 +1476,8 @@
         <label class="nick-label" for="nickInput">昵称（2–16 个字）</label>
         <input id="nickInput" class="nick-input" maxlength="16" autocomplete="off" placeholder="例如：做小程序的老张" />
         <p class="nick-tip">
-          登录账号 <b id="nickAccount"></b> 不会变——作品、收藏、作者主页都还是你的，
-          只是页面上显示成这个昵称。<br />昵称 7 天可以改一次。
+          昵称是别人看到的名字（作品署名、评论都用它）；登录账号 <b id="nickAccount"></b> 不会变——
+          作品、收藏、作者主页都还是你的。不设昵称就显示账号名。<br />昵称 7 天可以改一次。
         </p>
         <p class="nick-msg" id="nickMsg"></p>
         <div class="nick-actions">
@@ -1532,7 +1555,7 @@
         <label class="nick-label" for="passCurrent" id="passCurrentLabel">当前密码</label>
         <input id="passCurrent" type="password" class="nick-input" autocomplete="new-password" placeholder="输入现在的密码" />
         <p class="nick-tip" id="passWxReset" style="display:none"><a href="javascript:void(0)" id="passWxResetBtn">忘记当前密码？用微信验证重设 →</a></p>
-        <label class="nick-label" for="passNew">新密码（不想改密码就留空）</label>
+        <label class="nick-label" for="passNew" id="passNewLabel">新密码（不想改密码就留空）</label>
         <input id="passNew" type="password" class="nick-input" autocomplete="new-password" placeholder="新密码，至少 6 位" />
         <label class="nick-label" for="passNew2">确认新密码</label>
         <input id="passNew2" type="password" class="nick-input" autocomplete="new-password" placeholder="再输一遍新密码" />
@@ -1781,7 +1804,8 @@
             </div>
             <!-- 小程序看广告代送（对应小程序详情页「看广告替作品点灯」AD_UNIT_TIP）：
                  看广告的人不花自己的灯火，平台替观众给这件作品送 50 盏（每天 3 次、同一作品每人每天 1 次）。
-             点这行关掉本面板、开小程序码弹窗，扫码进小程序打开这件作品即可。金额写死 50 与服务端 TIP_AD_AMOUNT 同步 -->
+             点这行出一张直达该作品详情页的小程序码（/api/mini/tip-qr，scene=w:<id>），扫码落地就能看广告点灯；
+             码取不到时退回通用小程序弹窗。作者直送模式（不挂作品）会整条藏掉。金额写死 50 与服务端 TIP_AD_AMOUNT 同步 -->
             <button type="button" class="tip-mini-ad" id="tipMiniAd">
               <span class="tma-txt"><b>小程序看广告，替 TA 送 50 盏</b><em>不花自己的灯火：进小程序打开这件作品，看完一支视频广告，平台就代你送 50 盏（每天 3 次）</em></span>
               <span class="tma-go">去小程序 ›</span>
@@ -2123,6 +2147,9 @@
         <i class="ico" data-ico="sparkle" id="botActIco"></i>
         <span id="botActLabel">点亮今日</span>
       </button>
+      <!-- 找找的第二扇门（2026-11-14）：通向第一屏那颗「说不清叫什么」的胶囊，同一个弹层、同一套 /api/find。
+           只加门不加能力——找找是一次性检索、宁空勿糊弄，接不住闲聊，所以不并成对话式助手。 -->
+      <button class="bot-find" id="botFind" title="说不出作品名也没事，用一句话描述，我去站里翻给你"><i class="ico" data-ico="search"></i><span>帮我找作品</span></button>
       <button class="install-fab" id="installFab" title="把本站装到桌面，点图标秒开"><i class="ico" data-ico="mobile"></i><span>装到桌面</span></button>
       <button class="mini-fab" id="miniFab" title="微信扫一扫 / 搜一搜「造梦橱窗」"><i class="ico" data-ico="mini"></i><span>小程序</span></button>
       <button class="feedback-fab" id="feedbackBtn" title="意见反馈，帮助我们把网站做得更好"><i class="ico" data-ico="mail"></i><span>反馈</span></button>
@@ -2559,10 +2586,24 @@
       try { ACTS[id] && ACTS[id](); }
       catch (err){ actToast('这一步没走通，换条路试试'); }
     });
+    /* 带我找作品（2026-11-14）：面板里的第二扇门，通向第一屏那颗「说不清叫什么」的找找弹层。
+       只借门，不重写逻辑：openFindBot 在 app.js 里，同页同步加载，点下去时一定就位；
+       万一没就位（脚本还没到），退回去点第一屏那颗胶囊，行为一样。
+       为什么不干脆让它变成对话：找找是一次性检索、宁空勿糊弄，当聊天窗用只会先崩口碑。 */
+    var findBtn = document.getElementById('botFind');
+    if (findBtn) findBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      setPanel(false);
+      setTimeout(function(){
+        if (typeof window.openFindBot === 'function') { window.openFindBot(''); return; }
+        var hero = document.getElementById('heroFindBtn');
+        if (hero) hero.click();
+      }, 180);
+    });
     /* 点窗口里的功能项（装桌面/小程序/反馈都会开自己的界面），稍等片刻收起窗口；
        换形象那排不算，点完窗口要留着让人接着试 */
     panel.addEventListener('click', function(e){
-      if (e.target.closest('button.install-fab, button.mini-fab, button.feedback-fab')){
+      if (e.target.closest('button.install-fab, button.mini-fab, button.feedback-fab, button.bot-find')){
         setTimeout(function(){ setPanel(false); }, 200);
       }
     });
@@ -2887,6 +2928,13 @@
             生成分享图
           </button>
         </div>
+      </div>
+      <!-- 发布后的最后一环：让作者亲眼确认「别人一句话能翻到它」。
+           问题预填一句话介绍（它就在标题档里，最能代表搜索命中），翻不到就回去补关键词。 -->
+      <div class="pubok-sec pubok-find">
+        <h3 class="pubok-sec-head">别人能找到它吗？</h3>
+        <p class="pubok-hint">用「找找」按你的一句话介绍翻一翻——翻得到就稳了，翻不到回去补几个搜索关键词。</p>
+        <button type="button" class="pubok-find-btn" id="pubokFind"><span class="hf-star" aria-hidden="true">✦</span>让找找翻翻看</button>
       </div>
     </div>
   </div>

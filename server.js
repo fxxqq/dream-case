@@ -9,6 +9,7 @@ const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { spawn } = require('child_process');
 const seo = require('./seo');
 const { PLATFORMS, EXTRA } = require('./promo-guide');
 const Icons = require('./frontend/icons'); // 站点 SVG 图标统一管理（SSR 直出时用 ICONS.xxx）
@@ -1131,8 +1132,8 @@ ads.forEach(a => { if (a && a.slot === 'mini-feat-line') a.slot = 'mini-rank-lin
 //                 不占名次编号——榜单是按数据排的客观名次，付费推广不能混进排名里
 //   list-first —— 首页第一格：一张卡，库存只有 1，必须「独占 + 排队」，否则两条宣传卡会一起糊在信息流顶部
 // 非独占位的 maxActive 是「同一用户全局在投上限」，不是单个位置的库存，几个位置保持一致。
-// 2 → 3 的目的：让一个作者能同时推 3 件作品（手里灯火有去处，也愿意多攒），
-// 位置上不设容量上限，谁来都能投，不会因为别人占了就排队。
+// 2 → 3 → 5（2026-11-14 站长定 5）：让一个作者能同时推 5 件作品、五个位置都能占上
+// （手里灯火有去处，也愿意多攒），位置上不设容量上限，谁来都能投，不会因为别人占了就排队。
 //
 // 【定价口径（2026-11-11 全站调价）：单价必须是整数盏/次，showViews 恒为 1】
 //   按次扣额度、撤下退剩余次数 × 单价，单价整数 → 退款天然是整数盏，不会出现 12.5 这种数。
@@ -1162,7 +1163,7 @@ const REDEEM_SLOTS = [
     key: 'detail', name: '作品详情页', where: '详情弹窗内、评论区上方',
     showViews: 1, showPoints: 1, clickPoints: 30, extClickPoints: 60,
     showPacks: [50, 100, 200], clickPacks: [10, 20, 50], showMax: 1000, clickMax: 100,
-    exclusive: false, maxActive: 3, maxQueued: 0,
+    exclusive: false, maxActive: 5, maxQueued: 0,
     note: '多条同时投放，每次随机展示一条，各家机会均等 · 兑换后 10 分钟内你这边会优先展示自己那条，方便确认效果（自己看不扣灯火）'
   },
   // 榜单页 + 造梦酒馆页头下方共用同一个槽位（两页定位一致——「推荐站内作品」，
@@ -1174,10 +1175,10 @@ const REDEEM_SLOTS = [
     key: 'rank', name: '榜单页 + 造梦酒馆顶部', where: '星梦榜页右栏 + 酒馆页头下方（两处轮展）',
     showViews: 1, showPoints: 2, clickPoints: 60, extClickPoints: 120,
     showPacks: [50, 100, 200], clickPacks: [10, 20, 50], showMax: 1000, clickMax: 100,
-    exclusive: false, maxActive: 3, maxQueued: 0,
+    exclusive: false, maxActive: 5, maxQueued: 0,
     note: '一次购买、星梦榜页和造梦酒馆两处都展示：PC 上星梦榜右栏一次竖排最多 5 条同屏曝光（酒馆右栏 2 条，手机一条），各家机会均等 · 不占榜单名次/想法排序 · 兑换后 10 分钟内你这边会优先展示自己那条，方便确认效果（自己看不扣灯火）'
   },
-  // 首页第一格：同时最多 3 条在投，但一次只显示一条（2026-11-11 站长拍板：不做自动轮播切换）。
+  // 首页第一格：同时最多 5 条在投，但一次只显示一条（2026-11-11 站长拍板：不做自动轮播切换）。
   // 每次进页面随机挑一条（各家机会均等，与详情/榜单位同口径）；访客关掉当前条后从剩下的里再随机补一条。
   // 一单最多能挂多久直接决定后面排队的人等多久：
   // 兜底 14 天太长，一个作者没投完就能把 3 个轮换位占满两周，队列形同虚设。所以这个位单独放权给作者自己选，
@@ -1190,11 +1191,11 @@ const REDEEM_SLOTS = [
     key: 'list-first', name: '首页第一格', where: '首页作品列表第一张卡（置顶作品之后）',
     showViews: 1, showPoints: 3, clickPoints: 90, extClickPoints: 180,
     showPacks: [50, 100, 200], clickPacks: [10, 20, 50], showMax: 1000, clickMax: 100,
-    exclusive: false, maxActive: 3, maxQueued: 3,
+    exclusive: false, maxActive: 5, maxQueued: 5,
     daysPick: true, maxDays: 7,       // 作者自选投放期限，最长 7 天
     onePerView: true,                 // 一次只显 1 条、浏览期间不切换（每次进页面随机挑一条）
     freshHours: PROMO_FRESH_HOURS,   // 刚发布的作品本来就顶在这儿，买之前先劝一句
-    note: '同时最多 3 条在投，每次进页面随机展示一条、浏览期间不切换；投放期限可选 1-7 天，到期没投完按原价退回'
+    note: '同时最多 5 条在投，每次进页面随机展示一条、浏览期间不切换；投放期限可选 1-7 天，到期没投完按原价退回'
   },
   // ---- 小程序端（手机）四个兑换位 ----
   // 手机端是真机访问、打开即目标用户，曝光含金量比网页高，再按位置分层：
@@ -1211,12 +1212,12 @@ const REDEEM_SLOTS = [
     key: 'mini-home-first', name: '小程序·首页第一格', where: '小程序首页作品流第一张卡',
     showViews: 1, showPoints: 4, clickPoints: 120, extClickPoints: 120,
     showPacks: [20, 50, 100], clickPacks: [10, 20, 50], showMax: 500, clickMax: 100,
-    exclusive: false, maxActive: 3, maxQueued: 3,
+    exclusive: false, maxActive: 5, maxQueued: 5,
     daysPick: true, maxDays: 7,       // 和网页首页第一格同口径：作者自选 1-7 天
     onePerView: true,                 // 同上：一次只显 1 条，不自动切换
     internalOnly: true,
     freshHours: PROMO_FRESH_HOURS,   // 同上：小程序首页作品流也是新的在最前
-    note: '同时最多 3 条在投，每次进页面随机展示一条、浏览期间不切换；投放期限可选 1-7 天，到期没投完按原价退回'
+    note: '同时最多 5 条在投，每次进页面随机展示一条、浏览期间不切换；投放期限可选 1-7 天，到期没投完按原价退回'
   },
   // 详情页那一行：页面上最"深"的位置（点进作品的人才看得到），曝光少但都是真在挑作品的人，
   // 所以曝光单价不往上调——它的价值在精准，不在量。
@@ -1224,7 +1225,7 @@ const REDEEM_SLOTS = [
     key: 'mini-detail', name: '小程序·作品详情页', where: '小程序详情页、评论区上方一行',
     showViews: 1, showPoints: 1, clickPoints: 30, extClickPoints: 30,
     showPacks: [20, 50, 100], clickPacks: [10, 20, 50], showMax: 500, clickMax: 100,
-    exclusive: false, maxActive: 3, maxQueued: 0,
+    exclusive: false, maxActive: 5, maxQueued: 0,
     internalOnly: true,
     note: '一行文字，多位投放时每次随机展示一条'
   },
@@ -1236,7 +1237,7 @@ const REDEEM_SLOTS = [
     key: 'mini-rank-line', name: '小程序·一行文字（榜单页 + 发现页）', where: '星梦榜分段栏下方 + 发现页顶部（两处轮展）',
     showViews: 1, showPoints: 3, clickPoints: 90, extClickPoints: 90,
     showPacks: [20, 50, 100], clickPacks: [10, 20, 50], showMax: 500, clickMax: 100,
-    exclusive: false, maxActive: 3, maxQueued: 0,
+    exclusive: false, maxActive: 5, maxQueued: 0,
     internalOnly: true,
     note: '一次购买、星梦榜和发现页两处都展示一行文字：多位投放时每次随机一条，各家机会均等 · 兑换后 10 分钟内你这边会优先展示自己那条，方便确认效果（自己看不扣灯火）'
   },
@@ -1247,7 +1248,7 @@ const REDEEM_SLOTS = [
     key: 'mini-bar', name: '小程序·造梦酒馆', where: '小程序酒馆页头下方、热搜板上方（每次展示一条）',
     showViews: 1, showPoints: 1, clickPoints: 30, extClickPoints: 30,
     showPacks: [20, 50, 100], clickPacks: [10, 20, 50], showMax: 500, clickMax: 100,
-    exclusive: false, maxActive: 3, maxQueued: 0,
+    exclusive: false, maxActive: 5, maxQueued: 0,
     internalOnly: true,
     note: '一条作品推荐卡，多位投放时每次随机展示一条'
   }
@@ -3567,7 +3568,11 @@ function searchStatsForAdmin(limit = 30) {
     Object.entries(r.days || {}).forEach(([d, n]) => { if (d >= weekAgo) n7 += n; });
     todayN += (r.days && r.days[today]) || 0;
     weekN += n7;
-    return { q: r.w || k, n: r.n, zero: r.zero || 0, last: r.last || '', n7 };
+    // u = 按人去重的人数（花名册留 35 天，所以是「近 35 天搜过这个词的人数」）；
+    // 花名册 11-14 起才记录，更早的词不带 u，前端显示「—」而不是误导性的 0
+    const base = { q: r.w || k, n: r.n, zero: r.zero || 0, last: r.last || '', n7 };
+    if (r.us) base.u = Object.keys(r.us).length;
+    return base;
   });
   rows.sort((a, b) => b.n - a.n || String(b.last).localeCompare(String(a.last)));
   // 给后台标一下哪些词已被拉黑（统计数字不受影响，只影响搜索词 tab 上的按钮状态）
@@ -3583,6 +3588,108 @@ function searchStatsForAdmin(limit = 30) {
     todayN, weekN, words: rows.length,
     top: liveRows.slice(0, limit),
     blockedTop: blockedRows.slice(0, limit)
+  };
+}
+
+// ---------- 找找（/api/find）的提问记录 ----------
+// 跟 search-log 故意分两份：找找吃的是整句描述（「能把录音转成文字的工贝」），
+// 混进搜索词排行会把 600 个短词的位置挤掉，前台「大家最近在搜」也会被整句冲垮；
+// 而且「屏蔽」按钮对整句没意义（它不进热榜）。单独一份，后台「搜索词」tab 单开一块。
+// 只记话不记人：不存 IP、不存账号，跟搜索词统计同一口径。
+const FIND_LOG_RETENTION_DAYS = 180;
+const FIND_LOG_MAX = 500;                 // 最多留 500 个不同提问，超出按「问得少 + 很久没出现」淘汰
+const FIND_DEDUPE_HOUR = 5;               // 同一 IP 同一句话每小时最多记 5 次（重试算同一需求）
+
+let findLog = (() => {
+  const raw = readJSON('find-log.json', {});
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const from = dateKey(new Date(Date.now() - FIND_LOG_RETENTION_DAYS * 86400000));
+  const out = {};
+  for (const [k, rec] of Object.entries(raw)) {
+    if (!rec || typeof rec !== 'object') continue;
+    const n = Number(rec.n) || 0;
+    if (!n) continue;
+    const days = {};
+    for (const [d, v] of Object.entries(rec.days || {})) if (d >= from) days[d] = Number(v) || 0;
+    out[k] = {
+      w: String(rec.w || k).slice(0, 100), n,
+      zero: Number(rec.zero) || 0,
+      blunt: Number(rec.blunt) || 0,      // 沾边（只简介里提到，没正面对上）
+      last: rec.last || '', days
+    };
+  }
+  return out;
+})();
+
+let findLogTimer = null;
+function scheduleFindLogSave() {
+  if (findLogTimer) return;
+  findLogTimer = setTimeout(() => {
+    findLogTimer = null;
+    try { writeJSON('find-log.json', findLog); } catch (e) { /* 统计失败不影响找找本身 */ }
+  }, 3000);
+}
+
+function trimFindLog() {
+  const keys = Object.keys(findLog);
+  if (keys.length <= FIND_LOG_MAX) return;
+  keys.sort((a, b) => (findLog[a].n || 0) - (findLog[b].n || 0)
+    || String(findLog[a].last || '').localeCompare(String(findLog[b].last || '')));
+  keys.slice(0, keys.length - FIND_LOG_MAX).forEach(k => { delete findLog[k]; });
+}
+
+// hits = 命中件数；solid = 有没有「正面对上」。0 结果是站里缺内容的信号，单独计数。
+function logFind(req, q, hits, solid) {
+  const word = String(q || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+  if (word.length < 2) return;
+  const ua = String(req.headers['user-agent'] || '');
+  if (!/Mozilla|Chrome|Safari|Firefox|Edg|MicroMessenger/i.test(ua)) return;   // 脚本 / 爬虫不算「人」
+  const ip = ipKeyOf(req);
+  const key = word.toLowerCase();
+  if (!rateLimit('fk:' + ip + ':' + key, FIND_DEDUPE_HOUR, 3600000)) return;
+
+  const rec = findLog[key] || (findLog[key] = { w: word, n: 0, zero: 0, blunt: 0, last: '', days: {} });
+  if (!rec.days) rec.days = {};
+  rec.w = word;                       // 用最近一次的说法（大小写 / 空格会被规整）
+  rec.n = (rec.n || 0) + 1;
+  const dk = dateKey();
+  rec.days[dk] = (rec.days[dk] || 0) + 1;
+  if (!hits) rec.zero = (rec.zero || 0) + 1;
+  else if (!solid) rec.blunt = (rec.blunt || 0) + 1;
+  rec.last = new Date().toISOString();
+  const ks = Object.keys(rec.days).sort();
+  while (ks.length > FIND_LOG_RETENTION_DAYS) delete rec.days[ks.shift()];
+  trimFindLog();
+  scheduleFindLogSave();
+}
+
+// 后台「找找在问什么」：Top 提问 + 问了没找到的（缺口清单）+ 今日 / 近 7 天总量
+function findStatsForAdmin(limit = 30) {
+  const today = dateKey();
+  const weekAgo = dateKey(new Date(Date.now() - 6 * 86400000));
+  let todayN = 0, weekN = 0, zeroAll = 0;
+  const rows = Object.entries(findLog).map(([k, r]) => {
+    let n7 = 0, z7 = 0;
+    Object.entries(r.days || {}).forEach(([d, n]) => {
+      if (d < weekAgo) return;
+      n7 += n;
+      if (d === today) todayN += n;
+      weekN += n;
+    });
+    // 0 结果按总次数给（days 里分不出「这天问的是不是有结果」），只用来排序看趋势
+    zeroAll += r.zero || 0;
+    return {
+      q: r.w || k, n: r.n, zero: r.zero || 0, blunt: r.blunt || 0,
+      last: r.last || '', n7, z7
+    };
+  });
+  const byN = (a, b) => (b.n || 0) - (a.n || 0) || String(b.last).localeCompare(String(a.last));
+  const gaps = rows.filter(r => r.zero > 0).sort((a, b) => b.zero - a.zero || byN(a, b));
+  return {
+    total: rows.reduce((s, r) => s + r.n, 0),
+    todayN, weekN, words: rows.length, zeroAll,
+    top: rows.slice().sort(byN).slice(0, limit),
+    gaps: gaps.slice(0, limit)
   };
 }
 
@@ -3760,16 +3867,18 @@ function hotSearches(limit = 12) {
       }).sort((a, b) => b.n - a.n || a.w.localeCompare(b.w)).forEach(take);
 
       // ② 新冒头：近 7 天搜索次数 ≥ newMin7 的真实词，随机抽 newPick 条贴「新」；
-      //    人数照实（老记录认不出人就是 1 人——新词人少反而合理）
-      const newPool = shuffleArray(reals.filter(x => x.c7 >= cfg.newMin7 && x.n30 <= cfg.peopleMax && !used.has(x.w.toLowerCase())));
+      //    人数照实（老记录认不出人就是 1 人——新词人少反而合理）。
+      //    0 结果词不进新词池：路由层 /api/search/hot 会丢 zero 词，混进来榜单就凑不满 12 条
+      const newPool = shuffleArray(reals.filter(x => !x.zero && x.c7 >= cfg.newMin7 && x.n30 <= cfg.peopleMax && !used.has(x.w.toLowerCase())));
       newPool.slice(0, cfg.newPick).forEach(x => take(Object.assign({}, x, { win7: true })));
 
       // ③ 兜底：名额没填满（种子词不够 / 符合条件的新词不够）就用剩下的真实词按人数补，
-      //    首页不会只剩半排；补位时优先要「小词」（人数没超种子区间的），
-      //    不然缺词大人数又会从兜底滚回榜上
+      //    首页不会只剩半排。补位顺序：先「有结果的」（0 结果词路由层会丢，补了白补），
+      //    再「小词」（人数没超种子区间的），不然缺词大人数又会从兜底滚回榜上
       if (board.length < TOTAL) {
         reals.filter(x => !used.has(x.w.toLowerCase()))
-          .sort((a, b) => ((b.n30 <= cfg.peopleMax) - (a.n30 <= cfg.peopleMax))
+          .sort((a, b) => (a.zero > 0) - (b.zero > 0)
+            || ((b.n30 <= cfg.peopleMax) - (a.n30 <= cfg.peopleMax))
             || b.n30 - a.n30 || a.w.localeCompare(b.w))
           .forEach(x => { if (board.length < TOTAL) take(Object.assign({}, x)); });
       }
@@ -4463,6 +4572,9 @@ function publicIdea(i, req, user) {
   return {
     id: i.id,
     title: i.title,
+    // 想法池的分档就是「找工具」（2026-11-14 主题化）：入口不再叫「提想法」，
+    // 但卡片角标、话题筛选跟散座同一套口径，别让时间线上两种皮肤
+    topic: '找工具',
     detail: i.detail || '',
     category: i.category || '',
     author: displayNameOf(i.author),
@@ -4829,6 +4941,130 @@ function adminWho(req) {
   if (safeEqualStr(req.headers['x-admin-key'], ADMIN_KEY) || safeEqualStr(req.query.key, ADMIN_KEY)) return '站长(口令)';
   return adminTicketName(req) || '';
 }
+// 把一笔后台写操作翻成人话：按接口 + 关键参数拼一句「干了啥」。
+// 注意：留痕发生在 handler 校验之前，参数可能不完整/操作可能没成功，所以宁可少说不可说错；
+// 没匹配到的接口退回「METHOD 路径」。
+function auditDescribe(req) {
+  const p = String(req.path || '').split('?')[0];
+  const b = (req.body && typeof req.body === 'object') ? req.body : {};
+  const s = v => String(v == null ? '' : v).trim().slice(0, 40);
+  const at = s(b.action);
+  const userRef = b.username ? '@' + s(b.username)
+    : (b.id || b.userId ? '用户 ' + s(b.id || b.userId) : '');
+  const arr = v => Array.isArray(v) ? v.map(x => s(x)).filter(Boolean).slice(0, 6).join('、') : '';
+  let m;
+  // 作品主线
+  if (p === '/api/admin/works') return '管理员代投新作品';
+  m = p.match(/^\/api\/admin\/works\/([^/]+)(?:\/([a-z-]+))?$/);
+  if (m) {
+    const W = {
+      approve: '审核通过作品', reject: '下架/驳回作品', relist: '恢复上架作品',
+      feature: '切换作品精选', pin: '切换作品置顶', 'block-reset': '清除作品屏蔽降权',
+      'claim-open': '切换作品开放认领', 'claim-auth': '设置作品归属授权',
+      'claim-code': '设置作品认领暗号', anonymous: '作品转为匿名（开放认领）',
+      assign: '指定作品归属账号', 'recall-os-bonus': '收回作品开源奖励',
+      merge: '合并作品（数据并入保留件）'
+    };
+    const op = m[2] || (req.method === 'PUT' ? 'edit' : req.method === 'DELETE' ? 'del' : 'create');
+    const label = op === 'edit' ? '编辑作品' : op === 'del' ? '删除作品' : (W[op] || '作品操作:' + op);
+    return label + ' ' + m[1] + (op === 'del' ? '（连图一起删）' : '');
+  }
+  m = p.match(/^\/api\/admin\/jury\/([^/]+)\/([a-z-]+)$/);
+  if (m) {
+    const J = { flag: '贴「疑似推广」标交众人投票', clear: '众判结案（清票，必要时恢复上架）', remove: '以众判名义直接下架' };
+    return '众判 作品' + m[1] + '：' + (J[m[2]] || m[2]);
+  }
+  m = p.match(/^\/api\/admin\/claims\/([^/]+)\/([a-z-]+)$/);
+  if (m) return (m[2] === 'approve' ? '通过认领申请 ' : '驳回认领申请 ') + m[1];
+  m = p.match(/^\/api\/admin\/reports\/([^/]+)\/([a-z-]+)$/);
+  if (m) return (m[2] === 'takedown' ? '按投诉下架作品（投诉 ' : '标记投诉已处理（投诉 ') + m[1] + '）';
+  m = p.match(/^\/api\/admin\/bar-posts\/([^/]+)(?:\/replies\/([^/]+))?$/);
+  if (m) {
+    if (req.method === 'DELETE') return '删除酒馆帖子 ' + m[1];
+    return (m[2] ? '隐藏/恢复酒馆回复 ' + m[1] + '#' + m[2] : '隐藏/恢复酒馆帖子 ' + m[1]);
+  }
+  m = p.match(/^\/api\/admin\/ideas\/([^/]+)$/);
+  if (m) return '隐藏/恢复吧台想法 ' + m[1];
+  m = p.match(/^\/api\/admin\/idea-discussions\/([^/]+)$/);
+  if (m) return '隐藏/恢复想法讨论 ' + m[1];
+  m = p.match(/^\/api\/admin\/feedback\/([^/]+)(?:\/([a-z-]+))?$/);
+  if (m) return req.method === 'DELETE' ? '删除用户反馈 ' + m[1]
+    : (m[2] === 'reply' ? '回复用户反馈 ' + m[1] : '改反馈处理状态 ' + m[1]);
+  m = p.match(/^\/api\/admin\/kf\/([^/]+)/);
+  if (m) return req.method === 'DELETE' ? '删除客服会话 ' + m[1] : '客服消息回复 ' + m[1];
+  // 广告位
+  if (p === '/api/admin/ads') return '新建广告位';
+  if (p === '/api/admin/ads/import') return '粘贴复用广告素材';
+  m = p.match(/^\/api\/admin\/ads\/([^/]+)(?:\/([a-z-]+))?$/);
+  if (m) {
+    if (m[2] === 'toggle') return '上线/下线广告 ' + m[1];
+    if (m[2] === 'move') return '调整广告排序 ' + m[1];
+    return req.method === 'DELETE' ? '删除广告 ' + m[1] : '编辑广告 ' + m[1];
+  }
+  m = p.match(/^\/api\/admin\/redemptions\/([^/]+)\/cancel$/);
+  if (m) return '撤下推广订单 ' + m[1] + '（退款）';
+  if (p === '/api/admin/redemptions/comp') return '代投推荐位：作品 ' + s(b.workId) + ' → ' + s(b.slot) + ' ' + s(b.days) + ' 天';
+  m = p.match(/^\/api\/admin\/gift\/([^/]+)\/([a-z-]+)$/);
+  if (m) return (m[2] === 'toggle' ? '停用/恢复灯火活动 ' : '改灯火活动渠道 ') + m[1];
+  m = p.match(/^\/api\/admin\/gift\/([^/]+)$/);
+  if (m) return '删除灯火活动（连同码） ' + m[1];
+  if (p === '/api/admin/gift') return '建灯火活动（' + (s(b.mode) || 'batch') + ' × ' + (s(b.count) || '?') + '）';
+  // 用户 / 灯火 / 标签
+  if (p === '/api/admin/points') {
+    const d = parseInt(b.delta, 10);
+    return '调灯火：' + (userRef || '?') + ' ' + (d > 0 ? '+' : '') + (Number.isFinite(d) ? d : '?') + ' 盏';
+  }
+  if (p === '/api/admin/users/reset-password') return '重置密码 ' + (userRef || '?');
+  if (p === '/api/admin/users/tags') return '改用户标签 ' + (userRef || '?') + '：' + (arr(b.tags) || '清空');
+  if (p === '/api/admin/taglib') return '新增标签「' + s(b.name) + '」';
+  if (p === '/api/admin/taglib/rename') return '标签改名（同步所有人）：「' + s(b.name) + '」';
+  if (p === '/api/admin/taglib/delete') return '删除标签（所有人身上摘掉）：「' + s(b.name) + '」';
+  if (p === '/api/admin/badges') return '授予/撤销用户勋章 ' + (userRef || '?');
+  // 名单 / 申请
+  if (p === '/api/admin/admins') {
+    const A = { add: '加入管理员名单', remove: '移出管理员名单', approve: '通过管理员申请', reject: '拒绝管理员申请' };
+    return (A[at] || '管理员名单操作') + (b.username ? ' @' + s(b.username) : '');
+  }
+  if (p === '/api/admin/owners') return '更新主理人名单：' + (b.on === false ? '移出 ' : '加入 ') + (userRef || '?');
+  // 分类 / 类型 / 友链
+  if (p === '/api/admin/categories/reorder') return '调整分类排序';
+  m = p.match(/^\/api\/admin\/categories\/([^/]+)\/rename$/);
+  if (m) return '分类「' + decodeURIComponent(m[1]) + '」改名';
+  m = p.match(/^\/api\/admin\/categories\/([^/]+)$/);
+  if (m) return '删除分类「' + decodeURIComponent(m[1]) + '」';
+  if (p === '/api/admin/types') return '新增作品类型「' + s(b.name) + '」';
+  if (p === '/api/admin/types/reorder') return '调整类型排序';
+  m = p.match(/^\/api\/admin\/types\/([^/]+)$/);
+  if (m) return '删除类型「' + decodeURIComponent(m[1]) + '」';
+  if (p === '/api/admin/friends') return '新增友链「' + s(b.name) + '」';
+  if (p === '/api/admin/friends/reorder') return '调整友链排序';
+  if (p === '/api/admin/friends/delete') return '删除友链「' + s(b.name) + '」';
+  if (p === '/api/admin/friends/update') return '编辑友链「' + s(b.name) + '」';
+  const FR = { approve: '通过友链申请', recheck: '复查友链申请', 'approve-verified': '通过已验证友链申请', reject: '拒绝友链申请' };
+  m = p.match(/^\/api\/admin\/friend-requests\/([a-z-]+)$/);
+  if (m) return FR[m[1]] || '友链申请处理';
+  if (p === '/api/admin/tools') return '新增推荐链接「' + s(b.name) + '」';
+  m = p.match(/^\/api\/admin\/tools\/([^/]+)$/);
+  if (m) return '删除推荐链接 ' + m[1];
+  // 内容运营开关
+  if (p === '/api/admin/search-block') return (b.action === 'unblock' ? '解除热搜屏蔽词「' : '拉黑热搜词「') + s(b.q) + '」';
+  if (p === '/api/admin/behavior/clear') return '清空用户行为流水（' + s(b.p) + '）';
+  if (p === '/api/admin/discover') {
+    if (at === 'cfg') return '改「随便逛逛」设置（on=' + (b.on === undefined ? '?' : b.on) + ', k=' + (b.k === undefined ? '?' : b.k) + '）';
+    if (at === 'manual') return '「随便逛逛」手动调权：' + s(b.q) + ' → lv ' + s(b.lv);
+    return '随便逛逛设置操作';
+  }
+  if (p === '/api/admin/promo-priority') return '改推荐位投放优先级规则';
+  if (p === '/api/admin/starsync') return '手动触发 GitHub star 结算';
+  if (p === '/api/admin/notify-old-comments') return b.apply === true ? '补发历史评论通知（正式写入）' : '试算历史评论通知（试算，未写入）';
+  if (p === '/api/admin/baidu-push') return '手动推送链接给百度收录';
+  if (p === '/api/admin/broadcast') return '发全站站内信「' + s(b.title) + '」';
+  if (p === '/api/admin/guest-notice') return '更新游客公告「' + s(b.title) + '」';
+  m = p.match(/^\/api\/admin\/guest-notice\/([^/]+)$/);
+  if (m) return '删除游客公告 ' + m[1];
+  // 兜底：没匹配到的接口，至少写清方法和路径
+  return req.method + ' ' + p;
+}
 // 后台操作审计：写操作（非 GET）记一笔「谁在什么时候动了哪个接口」，出事能倒查
 function auditAdmin(req) {
   if (req.method === 'GET') return;
@@ -4842,6 +5078,7 @@ function auditAdmin(req) {
       name: adminWho(req),
       method: req.method,
       url: String(req.originalUrl || req.url || '').slice(0, 120),
+      what: auditDescribe(req),
       ip: clientIp(req)
     });
     if (list.length > 2000) list = list.slice(-2000);
@@ -5574,7 +5811,8 @@ function isVisible(w) { return !w.hidden && (w.status || 'approved') === 'approv
 // 见 keywords.js 头注释：自动生成走本地规则，不调 AI。
 function keyWordsOf(w) {
   if (Array.isArray(w.keywords)) return w.keywords;
-  return autoKeywords({ title: w.title, prompt: w.prompt, categories: catsOf(w), types: typesOf(w) });
+  // 没存过关键词的老作品现算一份：「一句话定位」和介绍一样是作者写的真内容，一起进词源
+  return autoKeywords({ title: w.title, prompt: [w.prompt, w.positioning].filter(Boolean).join(' '), categories: catsOf(w), types: typesOf(w) });
 }
 // 已下架：管理员下架（rejected）或作者自主下架（hidden）。后台「已下架」视图按这个口径收
 function isOffline(w) { return (w.status || 'approved') === 'rejected' || !!w.hidden; }
@@ -5769,6 +6007,9 @@ app.post('/api/login', (req, res) => {
     passSet: user.passSet !== false,
     alias: user.alias || '',
     aliasNextAt: aliasNextAt(user),
+    // 自动建的临时号：前端据此决定「账号与密码」弹窗里给不给登录名栏
+    // （网页版正常注册的账号账号名已定，不再给设置入口，与小程序同一口径）
+    tempAcct: user.passSet === false || !!user.tempAcct,
     wechat: !!user.wechat
   });
 });
@@ -5882,10 +6123,15 @@ app.post('/api/me/github/unbind', (req, res) => {
 //   new          ：未绑则自动建号（随机密码 + passSet=false，可在账号设置里补密码后网页端登录）
 //   bind         ：未绑则校验用户名密码，把 openid 挂到该账号（绑完即免密，密码只输这一次）
 // 已绑定的 openid 无论传什么 mode 都幂等地直接登录。
-async function wechatResolveOpenid(code) {
+// 2026-11-14 起虚拟支付的用户态签名也要 session_key（HMAC-SHA256），所以把 code2session 的
+// 两个返回值都拿出来：登录链路只用 openid（wechatResolveOpenid 保持原签名不变），下单链路两个都要。
+// session_key 每次下单现取现用、不落盘：它过期会报 -15007，前端每次支付前都重新 wx.login 拿新 code。
+async function wechatResolveSession(code) {
   const c = String(code || '').trim();
   if (!c) throw new Error('缺少微信授权码');
-  if (WECHAT_CONF.mock) return 'mock_' + c.replace(/[^-~\w]/g, '').slice(0, 32);   // 本地测试：code 即 openid
+  if (WECHAT_CONF.mock) {
+    return { openid: 'mock_' + c.replace(/[^-~\w]/g, '').slice(0, 32), sessionKey: 'mock_sk_' + c };   // 本地测试：code 即 openid
+  }
   const url = 'https://api.weixin.qq.com/sns/jscode2session'
     + '?appid=' + encodeURIComponent(WECHAT_CONF.appId)
     + '&secret=' + encodeURIComponent(WECHAT_CONF.appSecret)
@@ -5895,7 +6141,10 @@ async function wechatResolveOpenid(code) {
   const d = await r.json().catch(() => ({}));
   if (d.errcode) throw new Error('微信登录校验失败（' + d.errcode + (d.errmsg ? ' ' + d.errmsg : '') + '）');
   if (!d.openid) throw new Error('微信登录校验失败：未返回 openid');
-  return String(d.openid);
+  return { openid: String(d.openid), sessionKey: String(d.session_key || '') };
+}
+async function wechatResolveOpenid(code) {
+  return (await wechatResolveSession(code)).openid;
 }
 
 // ---------- 绑定微信一次性奖励 ----------
@@ -6391,7 +6640,9 @@ app.get('/api/auth/wxscan/poll/:ticket', (req, res) => {
   // 同 /api/login：前端拿这个响应直接建登录态，passSet / 别名必须带上（否则弹窗误判「当前密码」）
   // created：这次扫码顺手建的新号（网页端要提示一句，否则用户会纳闷"我啥时候建的号"）
   res.json({ status: 'ok', created: !!t.created, username: user.username, nickname: user.nickname || '', displayName: displayNameOf(user.username),
-    passSet: user.passSet !== false, alias: user.alias || '', aliasNextAt: aliasNextAt(user), wechat: !!user.wechat });
+    passSet: user.passSet !== false, alias: user.alias || '', aliasNextAt: aliasNextAt(user),
+    tempAcct: user.passSet === false || !!user.tempAcct,   // 同 /api/login：弹窗据此决定给不给登录名栏
+    wechat: !!user.wechat });
 });
 
 // ---- 小程序分享海报二维码 ----
@@ -6521,6 +6772,45 @@ app.get('/api/mini/self-qr', async (req, res) => {
   }
 });
 
+// 网页「送灯火」面板的「小程序看广告，替 TA 送 50 盏」：出一张直达该作品详情页的小程序码，
+// scene='w:<作品id>' 和海报码同一套解析——扫码落在小程序详情页，底部就是「看广告替作品点灯」。
+// 同作品 scene 确定，码永远长一样 → 进海报码同一个缓存池，不重复消耗微信生成配额。
+app.get('/api/mini/tip-qr', async (req, res) => {
+  const workId = String(req.query.workId || '').trim().slice(0, 40);
+  if (!works.find(x => x.id === workId && isVisible(x))) return res.status(404).json({ error: '作品不存在或未上线' });
+  if (!rateLimit('tipqr:' + clientIp(req), 60, 3600e3)) return res.status(429).json({ error: '请求太频繁' });
+  const cacheKey = 'tipqr:' + workId;
+  if (posterQrCache.has(cacheKey)) return res.json({ qr: posterQrCache.get(cacheKey), cached: true, scene: 'w:' + workId });
+  try {
+    if (WECHAT_CONF.mock) {
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="430" height="430"><rect width="430" height="430" fill="#fff"/><rect x="10" y="10" width="410" height="410" fill="none" stroke="#c8cbe0" stroke-width="6" stroke-dasharray="14 10"/><text x="215" y="205" text-anchor="middle" font-size="26" fill="#8a8fa3" font-family="sans-serif">MOCK 小程序码</text><text x="215" y="245" text-anchor="middle" font-size="18" fill="#b0b4c8" font-family="sans-serif">' + workId + '</text></svg>';
+      const url = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+      posterQrCache.set(cacheKey, url);
+      return res.json({ qr: url, mock: true, scene: 'w:' + workId });
+    }
+    if (!WECHAT_ENABLED) return res.status(400).json({ error: '小程序码暂不可用（微信未配置）' });
+    const token = await wechatAccessToken();
+    const r = await fetch('https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token=' + encodeURIComponent(token), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // check_path:false：详情页已上线，和海报码同口径留这条，不怕审核期误伤
+      body: JSON.stringify({ scene: 'w:' + workId, page: 'pages/detail/index', check_path: false, width: 430 }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (!(r.headers.get('content-type') || '').includes('image')) {
+      let d = {}; try { d = JSON.parse(buf.toString('utf-8')); } catch { /* 非 JSON 也当失败 */ }
+      throw new Error('生成小程序码失败（' + (d.errcode || '?') + ' ' + (d.errmsg || '') + '）');
+    }
+    const qr = 'data:image/png;base64,' + buf.toString('base64');
+    if (posterQrCache.size >= POSTER_QR_CACHE_MAX) posterQrCache.delete(posterQrCache.keys().next().value);
+    posterQrCache.set(cacheKey, qr);
+    res.json({ qr, scene: 'w:' + workId });
+  } catch (err) {
+    res.status(502).json({ error: err.message || '生成小程序码失败，请稍后再试' });
+  }
+});
+
 // ---- 「查看投放效果」：每个小程序推广位出一张直达对应页面的码 ----
 // 小程序里的页面在网页上看不到，投放的人想亲眼确认位子长什么样、广告落在哪——
 // 按位出码：扫开直达对应页面（首页 / 酒馆 / 详情 / 星梦榜 / 发现）。
@@ -6622,6 +6912,58 @@ app.get('/api/mini/peek-qr', async (req, res) => {
     res.status(502).json({ error: err.message || '生成小程序码失败，请稍后再试' });
   }
 });
+
+// ---- 「看广告」通用场景码：网页上任何「先看支广告才放行」的操作，出这张码让人扫码 ----
+// 一件事：用户扫这张码 → 小程序里看完一支广告 → 服务端记下「这个人在这个场景看完了」。
+// 与灯火无关：不发灯火、不占看广告领灯火那 3 次额度、不看余额。
+// scene 是业务自己起的名字（≤24 位小写字母数字 - _），扫开直达 pages/adview 并原样透传；
+// 一个场景一张码，内容固定，生成一次就进缓存（raw=1 直接当图片加载，吃浏览器缓存）。
+// 长度上限 24 是给微信 scene 32 字符留余量。
+const AD_SEEN_SCENE_RE = /^[a-z0-9][a-z0-9_-]{0,23}$/;
+app.get('/api/qr/ad', async (req, res) => {
+  // 跨站票据：?t=<票号> 出的码，里面塞 tk<票号>，扫开还是同一个 pages/adview
+  if (req.query.t) {
+    const id = String(req.query.t).trim().toLowerCase();
+    if (!AD_TICKET_ID_RE.test(id)) return res.status(400).json({ error: '票据号不合法' });
+    if (!adTicketsLoad()[id]) return res.status(404).json({ error: '这张票已经过期，回页面刷新出一张新的' });
+    if (!rateLimit('adqr:' + clientIp(req), 60, 3600e3)) return res.status(429).json({ error: '请求太频繁' });
+    return adSceneQr(req, res, AD_TICKET_SCENE_PREFIX + id, 'adt:' + id);
+  }
+  const scene = String(req.query.scene || '').trim().toLowerCase();
+  if (!AD_SEEN_SCENE_RE.test(scene)) return res.status(400).json({ error: '场景标识不合法（小写字母数字 - _，最多 24 位）' });
+  if (!rateLimit('adqr:' + clientIp(req), 60, 3600e3)) return res.status(429).json({ error: '请求太频繁' });
+  return adSceneQr(req, res, scene, 'ad:' + scene);
+});
+
+// 真出码：场景码与票据码共用同一段（只有 scene 和缓存 key 不同）
+async function adSceneQr(req, res, scene, cacheKey) {
+  const hit = peekQrCache.get(cacheKey);
+  if (hit) return sendPeekQr(req, res, hit, true);
+  try {
+    if (WECHAT_CONF.mock) {
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="430" height="430"><rect width="430" height="430" fill="#fff"/><rect x="10" y="10" width="410" height="410" fill="none" stroke="#c8cbe0" stroke-width="6" stroke-dasharray="14 10"/><text x="215" y="205" text-anchor="middle" font-size="26" fill="#8a8fa3" font-family="sans-serif">MOCK 小程序码</text><text x="215" y="245" text-anchor="middle" font-size="18" fill="#b0b4c8" font-family="sans-serif">ad: ' + scene + '</text></svg>';
+      return sendPeekQr(req, res, putPeekQr(cacheKey, 'image/svg+xml', Buffer.from(svg)), false);
+    }
+    if (!WECHAT_ENABLED) return res.status(400).json({ error: '小程序码暂不可用（微信未配置）' });
+    const token = await wechatAccessToken();
+    const r = await fetch('https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token=' + encodeURIComponent(token), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      // check_path:false：审核期页面还没上线也先能出码
+      body: JSON.stringify({ scene, page: 'pages/adview/index', check_path: false, width: 430 }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const buf = Buffer.from(await r.arrayBuffer());
+    const wxType = (r.headers.get('content-type') || '').split(';')[0].trim();
+    if (!wxType.startsWith('image/')) {
+      let d = {}; try { d = JSON.parse(buf.toString('utf-8')); } catch { /* 非 JSON 也当失败 */ }
+      throw new Error('生成小程序码失败（' + (d.errcode || '?') + ' ' + (d.errmsg || '') + '）');
+    }
+    return sendPeekQr(req, res, putPeekQr(cacheKey, wxType, buf), false);
+  } catch (err) {
+    res.status(502).json({ error: err.message || '生成小程序码失败，请稍后再试' });
+  }
+}
 
 // ---- Google 登录 / 绑定（与 GitHub 同构） ----
 // start?mode=login   → 未登录也能走，登录后回到 next（默认首页）
@@ -6741,6 +7083,8 @@ app.get('/api/me', (req, res) => {
         blockedUsers: Array.isArray(user.blockedUsers) ? user.blockedUsers : [],
         favs: Array.isArray(user.favs) ? user.favs : [],
         checkin: checkinView(user),
+        // 「看广告」行为记录（与灯火无关）：{ <scene>: { done, day, count, at } }，网页拿它判断放行
+        adSeen: adSeenView(user),
         arrive: { ...arriveView(user), given: arrived },   // given=true 只在「这一趟刚发」时为真，前端据此弹一次提示
         points: shareStatsOf(user.id).points,
         unreadNotices: notices.filter(n => n.userId === user.id && !n.read).length,
@@ -6754,6 +7098,8 @@ app.get('/api/me', (req, res) => {
         slugEligible: slugEligible(user),
         // 我的链接：作者主页档案行下面那一排小胶囊。绑过 GitHub 的自动算一条，不用作者手填
         links: profileLinksOf(user),
+        // 主页作品隐藏：true = 别人打开 /u/xxx 只看得到档案，看不到作品卡片（本人不受影响）
+        hideWorks: user.hideWorks === true,
         passSet: user.passSet !== false,            // false = OAuth 建号还没设密码
         isSiteOwner: isSiteOwner(user),             // 站长：编辑作品时不显示「内容由我负责」承诺框（前端显示依据）
         // 管理后台入口显示依据：站长或名单管理员才亮「管理后台」；真正的鉴权仍在后台接口，这里只管显隐
@@ -6997,39 +7343,121 @@ function nickParse(input, self) {
 // 规则（用户拍板）：
 //   · 已经有昵称的 → 不动
 //   · 账号名是汉字的 → 不动（汉字账号名本身就是不错的展示名）
-//   · 其余（昵称空 + 字母数字账号名）→ 随机补一个昵称（注册同款「做小程序的老张」词库），并发站内通知告知
+//   · 其余（昵称空 + 字母数字账号名）→ 随机补一个昵称（注册同款词库），并发站内通知告知
 // 只自动补一次（nickAutoAt 标记）：之后用户把昵称清空恢复默认，也不再自动塞名字。
-// 词库与 frontend/app.js 注册预填保持一致（新老用户风格统一）；act 以英文字母收尾时和「的」之间留空格
-// 组合数 = 45 个动作 × 65 个称呼 = 2925 种（原来只有 11×14=154，二三十人就会撞名）。
-// 前 11 个动作 / 前 14 个称呼是原始词库，别删别改顺序：已经发出去的名字都长这样，保证风格连贯。
+// 词库与 frontend/app.js 注册预填保持一致（新老用户风格统一），改一边必须同步另一边。
+//
+// 2026-11-14 扩充：原来只有「做小程序的老张」一个句式（45×65≈2900 种），人一多就全是
+// 「XX 的老X」，像同一批脚本注册的号。现在八套句式按权重摇：
+//   A 做小程序的清和 20% / B 凌晨三点的小林 12% / C 需求翻译官老周 12% / D 在改第九版的老王 10%
+//   E 夜里发光的猫 20% / F 第七个做插件的 8% / G 国服第一调参侠 12% / H 分号研究所所长 6%
+// 组合数约 1.9 万。前 11 个动作 / 前 14 个称呼必须留在原位、不改顺序——
+// 已经发出去的老名字都长这样，改了风格就断了。act 以英文字母收尾时和「的」之间留空格。
 const NICK_ACTS = [
   // —— 原始词库（保留）——
   '做小程序', '做网站', '做 AI 应用', '做插件', '做游戏', '写代码', '做工具', '折腾 AI', '独立开发', '做产品', '做设计',
-  // —— 扩充：端上 / 模型 / 数据 / 内容 / 增长 ——
+  // —— 端上 / 模型 / 数据 / 内容 / 增长 ——
   '做 App', '写前端', '写后端', '做自动化', '做机器人', '训练模型', '调模型', '玩提示词', '做副业', '做开源',
   '做笔记', '做效率工具', '做浏览器插件', '做小工具', '做数据看板', '做落地页', '做知识库', '做 Agent', '做工作流', '写脚本',
   '做爬虫', '做 SaaS', '做公众号', '做视频', '做内容', '做自媒体', '做增长', '做界面', '画原型', '做导航站',
-  '做书签', '做翻译工具', '做问答机器人', '做语音应用'
+  '做书签', '做翻译工具', '做问答机器人', '做语音应用',
+  // —— 小东西 / 生活向：这块是「造梦橱窗」的主场，别只写技术名词 ——
+  '做小游戏', '做记账本', '做倒数日', '做习惯打卡', '做电子书', '做播客', '做菜谱', '做像素画',
+  '做壁纸站', '做配色工具', '做表单', '做简历', '做闹钟', '做便签', '做旅行手账', '做课程表',
+  '做自习室', '做截图工具', '做词云', '做日程表', '做电子宠物', '做桌面挂件', '做图标', '做动效',
+  '剪视频', '做数据清洗', '做订阅提醒', '做小夜灯'
 ];
 const NICK_WHOS = [
   // —— 原始词库（保留）——
   '老张', '小李', '小王', '老陈', '阿May', '小周', '阿灿', '小满', '阿吉', '大鹏', '阿星', '小鹿', '老白', '阿飞',
-  // —— 扩充：老X / 小X / 阿X / 大X 四组，都控制在 4 字以内，拼出来不超过昵称 16 字上限 ——
+  // —— 老X / 小X / 阿X / 大X 四组，都控制在 4 字以内，拼出来不超过昵称 16 字上限 ——
   '老刘', '老李', '老王', '老赵', '老孙', '老徐', '老黄', '老吴', '老郑', '老马', '老范', '老许',
   '小陈', '小林', '小杨', '小黄', '小徐', '小郭', '小何', '小高', '小罗', '小郑', '小梁', '小宋', '小唐', '小冯', '小苏', '小丁',
   '阿杰', '阿伟', '阿涛', '阿锋', '阿亮', '阿龙', '阿明', '阿华', '阿坤', '阿诚', '阿哲', '阿宁', '阿原', '阿泽', '阿木', '阿海', '阿德', '阿俊', '阿峰',
-  '大熊', '大伟', '大康', '大川'
+  '大熊', '大伟', '大康', '大川',
+  // —— 再补一轮常见姓，摊薄「老张/小李」的密度 ——
+  '老杨', '老何', '老罗', '老唐', '老宋', '老冯', '老蒋', '老谢', '老韩', '老曹', '老彭', '老程',
+  '小魏', '小蒋', '小薛', '小潘', '小顾', '小钟', '小夏', '小常', '小温', '小严',
+  '阿元', '阿楠', '阿鑫', '阿骏', '阿朗', '阿墨', '阿岚', '阿树',
+  '大志', '大勇', '大磊', '大山',
+  // —— 正名式的两个字名字：不是「老/小/阿」，读起来更像一个人 ——
+  '清和', '子昂', '亦舟', '南风', '木木', '小野', '知夏', '半夏', '望舒', '拾一', '一鸣', '青禾',
+  // —— 昵称式的名字：站里很多作者本来就用这种 id ——
+  '橘子', '年糕', '薄荷', '青柠', '栗子', '柚子', '豆浆', '芝麻', '布丁', '芋圆', '麦芽', '馒头'
 ];
+// B：时间 / 场景（自带「的」）
+const NICK_SCENES = [
+  '凌晨三点的', '下班路上的', '周日下午的', '周一早上的', '通宵之后的', '等编译的', '跑测试的', '加完班的',
+  '深夜十二点的', '周末不休息的', '在改 bug 的', '被需求追着跑的', '看着进度条发呆的', '洗完澡才想到功能的',
+  '孩子睡了以后的', '通勤四十分钟的', '午休做副业的', '在地铁上画原型的', '一边带娃一边写代码的', '开着两个编辑器的'
+];
+// C：职业绰号（不带姓）
+const NICK_TITLES = [
+  '前端焊工', '接口接线员', '需求翻译官', '像素修补匠', '配色纠结者', '排版强迫症', '命名困难户', '按钮调色师',
+  '正则玩家', '日志侦探', '加载动画师', '空状态设计师', '报错观察员', '原型画手', '滚动条美学家', '弹窗守门人',
+  '表格魔法师', '动效手艺人', '像素搬运工', '需求拆解员', '小屏适配员', '暗色模式信徒', '字体纠结者', '间距校准员'
+];
+// D：一句近况（自带「的」）
+const NICK_STAGES = [
+  '需求又改了的', '在改第九版的', '刚把 bug 修好的', '上线前夜的', '刚跑通第一版的', '正在删代码的',
+  '准备重构的', '代码刚写完的', '刚被评审的', '第一版就上线的', '把 demo 存下来的', '又加了个功能的',
+  '正在补注释的', '刚回滚完的', '还在调间距的', '刚把需求翻译完的', '刚下掉一个功能的', '正在想名字的',
+  '在收尾的', '上线第二天又改的'
+];
+// E：造梦橱窗的意象（整名，不再拼称呼）
+const NICK_IMAGES = [
+  '夜里发光的猫', '会走路的台灯', '住在云端的鲸', '橱窗里的月亮', '修星星的人', '收集回声的人',
+  '折纸飞机的人', '会自己充电的猫', '怕黑的萤火虫', '睡在键盘上的猫', '抽屉里的星星', '替月亮值班的人',
+  '会写日记的闹钟', '住在玻璃罐里的海', '只在下雨出现的猫', '会飞的小台灯', '云上的守夜人', '深夜的缝补匠',
+  '给月亮打补丁的人', '把梦折起来的人', '会说话的纸飞机', '窗台上的小行星', '把星星放回去的人',
+  '夜市里的灯匠', '会走路的抽屉', '住在网页里的猫', '替人许愿的猫', '住在橱窗里的灯', '凌晨的摆渡人', '收灯的人'
+];
+// F：编号梗（「第七个做插件的」）
+const NICK_NUMS = ['二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十七', '二十三', '四十二', '八十八'];
+// G：自称头衔（「国服第一调参侠」「小区第一像素警察」）——段子味，但一读就知道在自嘲。
+// 段位从「国服」一档档掉到「家里」，越掉越好笑，别只留国服那一个。
+const NICK_RANKS = [
+  '国服第一', '省服第一', '市服第一', '区服第一', '小区第一', '楼道第一', '工位第一', '家里第一', '全家第一',
+  '楼下第一', '楼栋第一', '办公室第一'
+];
+const NICK_RANK_TITLES = [
+  '调参侠', '复制粘贴大师', '删代码选手', '改需求选手', '像素警察', '分号守护者', '报错收藏家',
+  '快捷键大师', '原型速写师', '空状态大师', '起名困难选手', '空格敏感者', '深夜提交选手',
+  '自动化狂人', '加载动画专家', '间距测量员', '手搓轮子大师', '脚手架收藏家', '注释补写员',
+  '样式调试员', '代码考古员', '视觉走查员', '配色辩论冠军', '两像素校准师', '发版选手', '回滚选手'
+];
+// H：江湖名号（「分号研究所所长」「报错收容所看门人」）——三截拼，比 G 更冷一点。
+// 注意别用「管理员」：那两个字被 nameImpersonation 当冒充站方拦掉（RESERVED_ROOTS_ZH）。
+const NICK_ORGS = ['研究所', '俱乐部', '收容所', '同好会', '互助会', '档案馆', '观察站'];
+const NICK_ORG_THINGS = ['分号', '报错', '空状态', '暗色模式', '加载动画', '像素', '快捷键', '需求变更', '重构', '起名', '间距', '进度条', '按钮', '字体', '图标', '文案'];
+const NICK_ORG_ROLES = ['所长', '会员', '会长', '常驻', '看门人', '荣誉会员', '名誉所长'];
+
+const nickPick = arr => arr[(Math.random() * arr.length) | 0];
+// 权重加起来 100：摇一个 0-100 的数，落到哪套用哪套
+const NICK_MAKERS = [
+  { w: 20, f: () => { const act = nickPick(NICK_ACTS); return act + (/[\w]$/.test(act) ? ' 的' : '的') + nickPick(NICK_WHOS); } },
+  { w: 12, f: () => nickPick(NICK_SCENES) + nickPick(NICK_WHOS) },
+  { w: 12, f: () => nickPick(NICK_TITLES) + nickPick(NICK_WHOS) },
+  { w: 10, f: () => nickPick(NICK_STAGES) + nickPick(NICK_WHOS) },
+  { w: 20, f: () => nickPick(NICK_IMAGES) },
+  { w: 8, f: () => { const act = nickPick(NICK_ACTS); return '第' + nickPick(NICK_NUMS) + '个' + act + (/[\w]$/.test(act) ? ' 的' : '的'); } },
+  { w: 12, f: () => nickPick(NICK_RANKS) + nickPick(NICK_RANK_TITLES) },
+  { w: 6, f: () => nickPick(NICK_ORG_THINGS) + nickPick(NICK_ORGS) + nickPick(NICK_ORG_ROLES) }
+];
+function nickByTemplate() {
+  let r = Math.random() * 100;
+  for (const m of NICK_MAKERS) { r -= m.w; if (r < 0) return m.f(); }
+  return NICK_MAKERS[0].f();
+}
 // 系统生成的随机名一律避开已被占用的（昵称允许用户手填重名，但系统自己造的名字不能撞：
 // 一堆「做产品的阿吉」挂在墙上，是系统造成的困扰，不是用户造成的）。
 // 两个调用方：老用户补名 ensureLegacyNick / 注册时预填名被占用的自动换名。
 function randomFreeNick() {
   const taken = new Set(users.map(u => (u.nickname || '').toLowerCase()));
   for (let i = 0; i < 200; i++) {
-    const act = NICK_ACTS[(Math.random() * NICK_ACTS.length) | 0];
-    const who = NICK_WHOS[(Math.random() * NICK_WHOS.length) | 0];
-    let cand = act + (/[\w]$/.test(act) ? ' 的' : '的') + who;      // 做小程序的老张 / 折腾 AI 的阿May
-    if (i > 60) cand = who + String(((Math.random() * 90) | 0) + 10); // 组合快撞完时换小号格式兜底
+    let cand = nickByTemplate();
+    if (cand.length > 16) continue;                                  // 超长（理论上不会）直接重摇
+    if (i > 60) cand = nickPick(NICK_WHOS) + String(((Math.random() * 90) | 0) + 10); // 组合快撞完时换小号格式兜底
     const { nick, error } = nickParse(cand, null);                   // 复用注册同一套校验（敏感词/保留字/撞账号名）
     if (nick && !error && !taken.has(nick.toLowerCase())) return nick;
   }
@@ -7098,6 +7526,21 @@ const PROFILE_LINK_SITES = [
 const PROFILE_LINKS_MAX = 3;
 const PROFILE_LINKS_HINT = PROFILE_LINK_SITES.map(s => s.label).join(' / ');
 
+// ---- 主页星空（作者页顶部渐变带上的动效皮肤，2026-11-14）----
+// 只存一个 key，具体长什么样全在 CSS（.hs-*）：换皮肤不动前端逻辑，加一种皮肤 = 加一条 CSS + 这里加一个 key。
+// 默认 meteor（流星）而不是空：第一次进来的作者主页就该是「天上在动」的，指定皮肤后才覆盖。
+const HERO_SKINS = [
+  'meteor', 'dots', 'galaxy', 'aurora', 'trail', 'deep',        // 星空
+  'dawn', 'rain', 'neon', 'ocean', 'paper', 'dune',              // 别样（非星空）
+  'mist', 'candy', 'film', 'snow', 'sakura', 'window', 'vinyl', 'grid'  // 质感
+];
+const HERO_SKIN_DEFAULT = 'meteor';
+// 库里的值可能是旧数据/脏值（手改过 json、删过皮肤），取不到就退回默认
+function heroSkinOf(user) {
+  const k = user && user.heroSkin;
+  return HERO_SKINS.includes(k) ? k : HERO_SKIN_DEFAULT;
+}
+
 // 解析一条链接：允许不带协议（github.com/xxx 直接粘也行），去掉 www./m. 前缀再比域名
 // ——手机上从知乎 App 分享出来的常是 m.zhihu.com，按字面比会白白拒掉。
 // 只留「域名 + 路径」，query/fragment 一律丢掉：那里面常带 utm 之类的分享尾巴。
@@ -7159,6 +7602,38 @@ app.post('/api/me/links', (req, res) => {
   user.links = out;
   saveUsers();
   res.json({ ok: true, links: profileLinksOf(user), saved: out.map(l => l.url) });
+});
+
+// 换主页星空：一个 key 就是一个 CSS 皮肤（白名单校验，别让前端塞任意字符串进 DOM 类名）
+app.post('/api/me/hero-skin', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('heroskin:' + user.id, 60, 600000)) {
+    return res.status(429).json({ error: '换得太频繁了，稍后再试' });
+  }
+  const skin = String((req.body && req.body.skin) || '');
+  if (!HERO_SKINS.includes(skin)) return res.status(400).json({ error: '没有这个背景效果' });
+  user.heroSkin = skin;
+  saveUsers();
+  res.json({ ok: true, skin: heroSkinOf(user) });
+});
+
+// 主页作品隐藏（2026-11-14）：只存一个布尔，管的是「别人打开 /u/xxx 时看到的作品区」。
+// 口径（站长拍板）：
+//   · 作品本身照旧在首页 / 榜单 / 搜索 / 找找里，隐藏的只是「主页那一栏卡片」，不是下架；
+//   · 统计数字照实显示（作品 8 / 获赞 42 …），不让老访客以为数据蒸发了；
+//   · 本人登录后打开自己的主页照旧能看到全部作品并管理——开关只对访客生效，所以不做权限判断，
+//     判定放在读取侧（/api/authors 与 /u/ 的 SSR）。
+app.post('/api/me/hide-works', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('hideworks:' + user.id, 30, 600000)) {
+    return res.status(429).json({ error: '改得太频繁了，稍后再试' });
+  }
+  if (req.body && req.body.on === true) user.hideWorks = true;
+  else delete user.hideWorks;   // 关掉就不留字段，users.json 别攒一堆 false
+  saveUsers();
+  res.json({ ok: true, hideWorks: user.hideWorks === true });
 });
 
 // ---- 个性地址（作者页 /u/<自定义>）----
@@ -8639,14 +9114,21 @@ app.get('/api/shareboard', (req, res) => {
 });
 
 // ---- 大家最近在搜（前台热搜榜）----
-// 只给词和热度，不带任何人的信息；榜单固定 12 条（9 条种子随机 + 3 条近期真被搜过的，见 hotSearches）。
+// 榜单固定 12 条（9 条种子随机 + 3 条近期真被搜过的，见 hotSearches）。
 // 11-13 二改：真火词不再插队占前排——种子词被点一次就是一条真实搜索，会给它特权等于循环自我放大。
-// roll=1：换一换按钮用，丢掉这一批重新抽（种子词和人数都会变），所以不能走浏览器缓存
+// 11-14 站长：首页「大家在找」不能固定露同一批词——每次请求现洗牌：
+// 真实词（最近热门 / 最新被搜的，不含 zero）排前，种子词洗牌补位，谁上前排每次进页面都重抽。
+// 所以这里必须 no-store：走缓存的话 60 秒内刷出来都是同一顺序，「随机」就假了。
+// roll=1：换一换按钮用，丢掉这一批重新抽（种子词和人数都会变）。
 app.get('/api/search/hot', (req, res) => {
   const roll = req.query.roll === '1';
   if (roll) hotSearchCache = { at: 0, items: null };
-  res.setHeader('Cache-Control', roll ? 'no-store' : 'public, max-age=60');
-  res.json(hotSearches(12));
+  res.setHeader('Cache-Control', 'no-store');
+  const d = hotSearches(12);
+  const reals = shuffleArray((d.items || []).filter(x => x && !x.seed && !x.zero));
+  const seeds = shuffleArray((d.items || []).filter(x => x && x.seed));
+  d.items = reals.concat(seeds);
+  res.json(d);
 });
 
 // 想法池的聚合口径（总数 / 已实现 / 正在做 / 征集中 / 本周新增 + 「愿望成真」Top6）。
@@ -8732,7 +9214,7 @@ app.get('/api/bar/feed', (req, res) => {
 
   const visIdeas = ideas.filter(i => !i.hidden);
   const visPosts = barPosts.filter(p => !p.hidden &&
-    (!tag || barTagsOf(p.text).some(t => t.toLowerCase() === tag)));
+    (!tag || barPostTagList(p).some(t => t.toLowerCase() === tag)));
 
   const rows = [];
   if (!tag) visIdeas.forEach(i => rows.push({ kind: 'idea', at: i.createdAt, id: i.id, raw: i }));
@@ -8810,7 +9292,8 @@ app.get('/api/bar/board', (req, res) => {
     meta: `${barPostLikes(p).length} 人碰杯 · ${barPostReplies(p).filter(r => !r.hidden).length} 条回应`,
     thumb: '',
     work: workOfPost(p),
-    // 角标文案前端按「带作品 > 找工具 > 闲聊」分流，这里把口径一并下发，别让热门卡跟散座对不上
+    // 角标文案前端按主题 > 带作品 > 找工具 > 闲聊 分流，这里把口径一并下发，别让热门卡跟散座对不上
+    topic: p.topic || '',
     seek: barPostSeek(p)
   });
   // 分开摆（2026-11-13 站长定的，替代原来的「想法/闲聊交错」）：想要的归想要的、闲聊的归闲聊。
@@ -8875,9 +9358,29 @@ function barTagsOf(text) {
 // 不做正文启发式（「有没有」这种句式误伤太多，宁可只认显式标签）。
 // 前端 BAR_SEEK_TAGS 必须跟这里同口径。
 const BAR_SEEK_TAGS = ['找工具', '求工具', '找资源'];
+// 主题（2026-11-14 主题化）：发帖时先选一个主题，落 p.topic。四档固定，也能自建（≤4 字、只收字和数字）。
+// 选「找工具」走想法池（能认领），安利 / 分享 / 闲聊 走散座；老帖子没有这个字段，读时按老口径兜底
+// （有没有关联作品、正文有没有 #找工具）。前端 BAR_TOPICS 必须跟这里同口径。
+const BAR_TOPICS = ['闲聊', '安利', '找工具', '分享'];
+const BAR_TOPIC_LEN_MAX = 4;
+// 宽容清洗：空格、#、标点一律剔掉再截 4 字（用户打「找 工具」和「找工具」是同一个主题）
+function normalizeBarTopic(v) {
+  return String(v == null ? '' : v)
+    .replace(/[#\s]/g, '').replace(/[^\p{L}\p{N}]/gu, '').slice(0, BAR_TOPIC_LEN_MAX);
+}
 function barPostSeek(p) {
+  // 有主题就以主题为准：选了「找工具」才算，选了「闲聊」正文里带 #找工具 也不算
+  if (p && p.topic) return p.topic === '找工具';
   const tags = barTagsOf(p && p.text).map(t => t.toLowerCase());
   return BAR_SEEK_TAGS.some(s => tags.includes(s));
+}
+// 主题也当话题用：话题栏点「找工具」「安利」就能筛出这一档，不再另建一套筛选。
+// 正文里的 #话题 照旧解析，两者合起来去重（主题在前）。
+function barPostTagList(p) {
+  const tags = barTagsOf(p && p.text);
+  const t = p && p.topic;
+  if (!t) return tags;
+  return tags.some(x => x.toLowerCase() === t.toLowerCase()) ? tags : [t].concat(tags);
 }
 // 「开个话题」的姿势：整条正文除了标签一个字都没有（截图里那种只发一个 #xxx）
 function barIsTopicStart(text) {
@@ -8911,8 +9414,10 @@ function publicBarPost(p, req, user) {
     id: p.id,
     author: displayNameOf(p.author || '匿名'),
     text: p.text || '',
-    // 话题由正文现解析（见 barTagsOf），前端拿到就能画标签，不用自己再猜一遍规则
-    tags: barTagsOf(p.text),
+    // 主题（发帖时选的四档之一或自建）：卡片角标直接读它，不再让前端去猜
+    topic: p.topic || '',
+    // 话题由正文现解析（见 barTagsOf），主题也并进来一起下发
+    tags: barPostTagList(p),
     topicStart: barIsTopicStart(p.text),
     // 角标分流的口径（安利/话题/找工具/闲聊）跟着帖子一起下发，前端不用再猜一遍
     seek: barPostSeek(p),
@@ -8966,7 +9471,7 @@ app.get('/api/bar/mini', (req, res) => {
     .map(p => ({
       id: p.id,
       text: p.text || '',
-      tags: barTagsOf(p.text),
+      tags: barPostTagList(p),
       at: p.createdAt
     }));
   res.json({ total: items.length, items });
@@ -9005,7 +9510,7 @@ app.get('/api/bar/tags', (req, res) => {
   const map = new Map();
   for (const p of barPosts) {
     if (p.hidden) continue;
-    for (const t of barTagsOf(p.text)) {
+    for (const t of barPostTagList(p)) {
       const k = t.toLowerCase();
       const cur = map.get(k);
       if (cur) {
@@ -9039,7 +9544,7 @@ app.get('/api/bar/posts', (req, res) => {
   // 不做模糊匹配——点进一个话题就应该只看到这个话题的内容。
   const tag = String(req.query.tag || '').trim().slice(0, BAR_TAG_LEN_MAX).toLowerCase();
   const visible = barPosts.filter(p => !p.hidden &&
-    (!tag || barTagsOf(p.text).some(t => t.toLowerCase() === tag)));
+    (!tag || barPostTagList(p).some(t => t.toLowerCase() === tag)));
   let list = sort === 'new' && before
     ? visible.filter(p => new Date(p.createdAt).getTime() < before)
     : visible;
@@ -9066,6 +9571,9 @@ app.post('/api/bar/posts', async (req, res) => {
     return res.status(400).json({ error: `最多 ${BAR_POST_TEXT_MAX} 字，说重点` });
   }
   if (hitSensitive(text)) return res.status(400).json({ error: '内容包含敏感词，改一下再发' });
+  // 主题（四档固定 / 自建 ≤4 字）：洗一遍再存。自建主题也要过敏感词，别让它变成第二个自由文本框
+  const topic = normalizeBarTopic((req.body || {}).topic);
+  if (topic && hitSensitive(topic)) return res.status(400).json({ error: '主题里有不合适的词，换一个' });
   const wxCheck = await wechatMsgCheck(text, user.wechat && user.wechat.openid);
   if (wxCheck.pass === false) return res.status(400).json({ error: '内容未通过平台内容安全检测，改一下再发' });
   const ai = await aiReviewGate('造梦酒馆闲聊：' + text);
@@ -9092,6 +9600,7 @@ app.post('/api/bar/posts', async (req, res) => {
     userId: user.id,
     author: user.username,
     text,
+    topic,
     workId,
     likes: [],
     replies: [],
@@ -9171,6 +9680,68 @@ app.delete('/api/bar/posts/:id', (req, res) => {
   const p = barPostById(req.params.id);
   if (!p) return res.status(404).json({ error: '这条已经不在了' });
   if (p.userId !== user.id && !isAdmin(req)) return res.status(403).json({ error: '只能删自己说的' });
+  barPosts = barPosts.filter(x => x.id !== p.id);
+  saveBarPosts();
+  res.json({ ok: true });
+});
+
+/* ===== 后台：散座审核（2026-11-14）=====
+   后台「造梦酒馆」这一页原来只有想法，散座里那些闲聊和楼层回应全在暗处，
+   只能靠用户举报才会浮上来——站长要的是「所有帖子连同评论一起摊开看」。
+   这里三个口子只给后台用：列全部（含已隐藏）、隐藏/恢复帖子、隐藏/恢复单层回应。
+   刻意不给「删除」做默认动作：隐藏可逆，删除不可逆，后台误点一次就找不回来。 */
+app.get('/api/admin/bar-posts', requireAdmin, (req, res) => {
+  // 上限 300 条：散座落地最多存 3000 条，全量连评论一起下发会把这页撑成几万行。
+  // 审核只关心「最近的」，更老的用 /bar 页面翻或直接搜；真需要时传 ?limit=。
+  const limit = Math.min(1000, Math.max(20, parseInt(req.query.limit, 10) || 300));
+  // barPosts 本身就是新的在前（发帖 unshift），不要再 reverse，否则最新那条跑到最后
+  res.json({
+    total: barPosts.length,
+    hiddenTotal: barPosts.filter(p => p.hidden).length,
+    items: barPosts.slice(0, limit).map(p => ({
+      id: p.id,
+      author: displayNameOf(p.author || '匿名'),
+      account: p.userId || '',
+      text: p.text || '',
+      topic: p.topic || '',
+      work: (() => {
+        const w = p.workId ? works.find(x => x.id === p.workId) : null;
+        return w ? { id: w.id, title: w.title || '' } : null;
+      })(),
+      likes: barPostLikes(p).length,
+      hidden: !!p.hidden,
+      createdAt: p.createdAt,
+      replies: barPostReplies(p).map(r => ({
+        id: r.id,
+        author: displayNameOf(r.author || '匿名'),
+        account: r.userId || '',
+        text: r.text || '',
+        at: r.at,
+        hidden: !!r.hidden
+      }))
+    }))
+  });
+});
+app.put('/api/admin/bar-posts/:id', requireAdmin, (req, res) => {
+  const p = barPostById(req.params.id);
+  if (!p) return res.status(404).json({ error: '这条闲聊不在了' });
+  if (req.body && req.body.hidden !== undefined) p.hidden = !!req.body.hidden;
+  saveBarPosts();
+  res.json({ ok: true, hidden: !!p.hidden });
+});
+app.put('/api/admin/bar-posts/:id/replies/:rid', requireAdmin, (req, res) => {
+  const p = barPostById(req.params.id);
+  if (!p) return res.status(404).json({ error: '这条闲聊不在了' });
+  const r = barPostReplies(p).find(x => x.id === req.params.rid);
+  if (!r) return res.status(404).json({ error: '这层回应不在了' });
+  if (req.body && req.body.hidden !== undefined) r.hidden = !!req.body.hidden;
+  saveBarPosts();
+  res.json({ ok: true, hidden: !!r.hidden });
+});
+// 删除走后台口子：DELETE /api/bar/posts 要站内登录会话，站长用口令进来时没有，会 401
+app.delete('/api/admin/bar-posts/:id', requireAdmin, (req, res) => {
+  const p = barPostById(req.params.id);
+  if (!p) return res.status(404).json({ error: '这条闲聊不在了' });
   barPosts = barPosts.filter(x => x.id !== p.id);
   saveBarPosts();
   res.json({ ok: true });
@@ -10775,9 +11346,9 @@ app.post('/api/me/ad-reward', (req, res) => {
   if (!user) return;
   if (!rateLimit('adreward:' + user.id, 12, 60000)) return res.status(429).json({ error: '操作太频繁，稍等一下' });
   const rec = shareRecOf(user.id);
-  const ar = rec.adReward || (rec.adReward = { day: '', count: 0, at: 0 });
+  const ar = rec.adReward || (rec.adReward = { day: '', count: 0, total: 0, at: 0 });
   const today = dateKey();
-  if (ar.day !== today) { ar.day = today; ar.count = 0; }
+  if (ar.day !== today) { ar.day = today; ar.count = 0; }   // total 只增不减，跨天不清（后台灯火明细用）
   if ((ar.count || 0) >= AD_REWARD_DAILY) {
     return res.status(400).json({ error: `今天的 ${AD_REWARD_DAILY} 次已经领完了，明天再来`, ...adRewardView(user) });
   }
@@ -10787,6 +11358,7 @@ app.post('/api/me/ad-reward', (req, res) => {
   }
   const amount = AD_REWARD_SCHEDULE[ar.count] || AD_REWARD_SCHEDULE[AD_REWARD_DAILY - 1];  // 先按「第几次」取金额，再自增
   ar.count = (ar.count || 0) + 1;
+  ar.total = (ar.total || 0) + 1;   // 累计次数，2026-11-14 起才记，之前的历史补不回来
   ar.at = Date.now();
   const points = addPoints(user.id, amount, 'adreward');
   saveShareSoon();
@@ -10828,6 +11400,263 @@ app.post('/api/me/promo-ad-reward', (req, res) => {
   res.json({ ok: true, reward: PROMO_AD_AMOUNT, points, promoAd: promoAdView(user) });
 });
 
+// ---------- 「看广告」行为记录（与灯火无关）----------
+// 场景：网页上某个操作要求「先看一支广告」，看完才算这一步做完。
+// 这里只记事实：不发灯火、不占「看广告领灯火」那每天 3 次额度、不看余额。
+// 口径：
+//   ① 按场景分开记，互不占用（发作品、推广、领东西……各是各的）；
+//   ② 同一场景当天算一次：重复打点幂等回 already=true，count 不累加；
+//   ③ 两次打点至少隔 15 秒（激励视频本身 15-30 秒，真人撞不上；只为挡伪造 onClose 的脚本）；
+//   ④ 客户端说的「看完了」本身可伪造（onClose 回调能 hook），所以这张记录只适合当「低价值门槛」：
+//      放行一次浏览/一次提交。要发实物或钱，金额天花板必须在业务侧另设，不能靠这张单子。
+const AD_SEEN_GAP_MS = 15000;
+const AD_SEEN_MAX_SCENES = 12;   // 单账号最多记 12 个场景，防乱传 scene 把 share.json 撑大
+
+function adSeenOf(user) {
+  const rec = shareRecOf(user.id);
+  return (rec.adSeen && typeof rec.adSeen === 'object') ? rec.adSeen : {};
+}
+
+// 给小程序 / 网页看的视图：只回答「这个场景今天完成了没有」+「累计看过几次」
+function adSeenView(user) {
+  const raw = adSeenOf(user);
+  const today = dateKey();
+  const out = {};
+  Object.keys(raw).forEach((k) => {
+    const it = raw[k] || {};
+    out[k] = {
+      done: it.day === today,
+      day: it.day || '',
+      count: Number(it.count) || 0,
+      at: Number(it.at) || 0
+    };
+  });
+  return out;
+}
+
+// 小程序看完广告回来打点：幂等、按场景、当天一次
+app.post('/api/ad/seen', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const scene = String((req.body && req.body.scene) || '').trim().toLowerCase();
+  if (!AD_SEEN_SCENE_RE.test(scene)) return res.status(400).json({ error: '场景标识不合法' });
+  if (!rateLimit('adseen:' + user.id, 12, 60000)) return res.status(429).json({ error: '操作太频繁，稍等一下' });
+  const rec = shareRecOf(user.id);
+  const all = (rec.adSeen && typeof rec.adSeen === 'object') ? rec.adSeen : (rec.adSeen = {});
+  if (!all[scene] && Object.keys(all).length >= AD_SEEN_MAX_SCENES) {
+    // 满了丢最久没动过的那条，别把今天刚看过的挤掉
+    let oldestKey = '', oldestAt = Infinity;
+    Object.keys(all).forEach((k) => {
+      const at = Number(all[k] && all[k].at) || 0;
+      if (at < oldestAt) { oldestAt = at; oldestKey = k; }
+    });
+    if (oldestKey) delete all[oldestKey];
+  }
+  const it = all[scene] || {};
+  const today = dateKey();
+  // 今天这个场景已经记过：幂等直接放过。放在冷却之前——重复点一下不该被回一句「刚看过」，
+  // 而且 already 不动 at、不累加 count，也就没有必要再挡
+  if (it.day === today) {
+    const v0 = adSeenView(user);
+    return res.json({ ok: true, scene, already: true, done: true, ...v0[scene], adSeen: v0 });
+  }
+  const now = Date.now();
+  // 冷却按账号走（不按场景）：不同场景连着刷也要隔 15 秒，挡的是「一口气把 12 个场景全打一遍」
+  if (rec.adSeenAt && now - rec.adSeenAt < AD_SEEN_GAP_MS) {
+    return res.status(429).json({ error: '刚看过一支，歇十几秒再试', adSeen: adSeenView(user) });
+  }
+  all[scene] = { day: today, count: (Number(it.count) || 0) + 1, at: now };
+  rec.adSeenAt = now;
+  saveShareSoon();
+  const v = adSeenView(user);
+  res.json({ ok: true, scene, already: false, done: true, ...v[scene], adSeen: v });
+});
+
+// 网页查「完成没」：未登录也照常回（一律 done:false），前端好直接走「请扫码」分支
+app.get('/api/ad/seen', (req, res) => {
+  const scene = String(req.query.scene || '').trim().toLowerCase();
+  if (scene && !AD_SEEN_SCENE_RE.test(scene)) return res.status(400).json({ error: '场景标识不合法' });
+  const user = currentUser(req);
+  if (!user) return res.json({ loggedIn: false, scene: scene, done: false, adSeen: {} });
+  const view = adSeenView(user);
+  if (!scene) return res.json({ loggedIn: true, adSeen: view });
+  const it = view[scene] || { done: false, day: '', count: 0, at: 0 };
+  res.json({ loggedIn: true, scene: scene, done: it.done, day: it.day, count: it.count, at: it.at, adSeen: view });
+});
+
+// ---------- 跨站「扫码看广告才放行」：票据（给别的域名用）----------
+// 站内（idea.v5pc.com）用 scene 就够了：记录绑在自己账号的 cookie 上。换到别的域名，
+// 浏览器不肯把 cookie 带过去，那个站也无从知道「这个人看完了没」，所以改成票据：
+//   ① 那个站的页面 POST /api/ad/ticket 领一张票（票号随机、30 分钟过期、一票一人）；
+//   ② 二维码里塞 tk<票号>，扫开还是同一个 pages/adview，看完广告由小程序把票标记完成；
+//   ③ 那个站轮询 GET /api/ad/ticket?id= 拿到 done:true 才放行。
+// 只认白名单里的来源域名（data/ad-gate-allow.json，改完下一次请求就生效，不用重启）。
+// 边界与 /api/ad/seen 一致：这是「看一次内容 / 提交一次」的门槛，不能拿它换钱换实物。
+const AD_GATE_ALLOW_FILE = 'ad-gate-allow.json';
+const AD_TICKET_FILE = 'ad-tickets.json';
+const AD_TICKET_TTL_MS = 30 * 60e3;   // 够一个人扫码、看完一支广告、走回来
+const AD_TICKET_MAX = 500;            // 同时有效的票上限，满了丢最早出的
+const AD_TICKET_ID_RE = /^[0-9a-f]{16}$/;
+const AD_TICKET_SCENE_PREFIX = 'tk';  // 码里的 scene = 'tk' + 票号，小程序靠这个前缀认票据
+const AD_GATE_HOST_RE = /^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+// 内置这条是本站：仓库里 data/ 不入库、deploy.sh 也不打包 data/，
+// 白名单要是只靠 data 文件，一上线就全站 403。以后加站只改 data 文件，不再动代码。
+const AD_GATE_BUILTIN = ['idea.v5pc.com'];
+
+function adGateAllowHosts() {
+  const raw = readJSON(AD_GATE_ALLOW_FILE, null);
+  const list = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.hosts) ? raw.hosts : []);
+  return AD_GATE_BUILTIN.concat(list)
+    .map(h => String(h || '').trim().toLowerCase())
+    .filter(h => AD_GATE_HOST_RE.test(h));
+}
+
+// 来源判定。没有 Origin 的请求（小程序、服务端脚本、curl）不做域名限制：
+// 浏览器跨站请求一定带 Origin，而带不了 Origin 的写法（img / 表单）又读不到响应体。
+function adGateOrigin(req) {
+  const origin = String(req.headers.origin || '').trim();
+  if (!origin) return { ok: true, host: '', origin: '' };
+  let host = '';
+  try { host = new URL(origin).hostname.toLowerCase(); } catch { return { ok: false, host: '', origin }; }
+  if (!host) return { ok: false, host: '', origin };
+  const self = String(req.headers.host || '').split(':')[0].toLowerCase();
+  if (host === self) return { ok: true, host, origin };          // 自己站内不用配白名单
+  const ok = adGateAllowHosts().some((h) => (h.slice(0, 2) === '*.'
+    ? host === h.slice(2) || host.endsWith(h.slice(1))
+    : host === h));
+  return { ok, host, origin };
+}
+
+function adGateCors(res, o) {
+  res.setHeader('Access-Control-Allow-Origin', o.origin || '*');
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Max-Age', '600');
+}
+
+function adTicketsLoad() {
+  const raw = readJSON(AD_TICKET_FILE, null) || {};
+  const all = (raw && typeof raw.tickets === 'object' && raw.tickets) || {};
+  const now = Date.now();
+  const out = {};
+  Object.keys(all).forEach((k) => {
+    const it = all[k];
+    if (it && AD_TICKET_ID_RE.test(k) && Number(it.expireAt) > now) out[k] = it;
+  });
+  return out;
+}
+
+function adTicketsSave(all) {
+  writeJSON(AD_TICKET_FILE, { tickets: all });
+}
+
+function adTicketNewId(all) {
+  for (let i = 0; i < 6; i++) {
+    const id = crypto.randomBytes(8).toString('hex');
+    if (!all[id]) return id;
+  }
+  return '';
+}
+
+// 预检：允许的来源才回 CORS 头，不允许的直接 403（浏览器会把请求拦下）
+app.options('/api/ad/ticket', (req, res) => {
+  const o = adGateOrigin(req);
+  if (!o.ok) return res.status(403).end();
+  adGateCors(res, o);
+  res.status(204).end();
+});
+
+// 领票：那个站的页面每次「要放行」时领一张（同一访客复用同一张，聊胜于无）
+app.post('/api/ad/ticket', (req, res) => {
+  const o = adGateOrigin(req);
+  if (!o.ok) return res.status(403).json({ error: '这个域名没有接入（来源不在白名单里）' });
+  adGateCors(res, o);
+  // 按 IP 限：一张票只是一次出码 + 一次查询，正常访客用不到这么多
+  if (!rateLimit('adtkt:' + clientIp(req), 200, 3600e3)) return res.status(429).json({ error: '请求太频繁，稍后再试' });
+  const body = req.body || {};
+  const scene = String(body.scene || '').trim().toLowerCase();
+  if (!AD_SEEN_SCENE_RE.test(scene)) return res.status(400).json({ error: '场景标识不合法（小写字母数字 - _，最多 24 位）' });
+  const site = String(body.site || '').replace(/[^A-Za-z0-9._-]/g, '').slice(0, 32);
+  const all = adTicketsLoad();
+  const id = adTicketNewId(all);
+  if (!id) return res.status(503).json({ error: '稍后再试' });
+  while (Object.keys(all).length >= AD_TICKET_MAX) {
+    let oldestKey = '', oldestAt = Infinity;
+    Object.keys(all).forEach((k) => {
+      const at = Number(all[k] && all[k].createdAt) || 0;
+      if (at < oldestAt) { oldestAt = at; oldestKey = k; }
+    });
+    if (!oldestKey) break;
+    delete all[oldestKey];
+  }
+  const now = Date.now();
+  all[id] = {
+    scene, site, host: o.host || '',
+    createdAt: now, expireAt: now + AD_TICKET_TTL_MS,
+    done: false, doneAt: 0, uid: ''
+  };
+  adTicketsSave(all);
+  res.json({
+    id, scene, site,
+    qr: '/api/qr/ad?t=' + id + '&raw=1',
+    expireAt: all[id].expireAt,
+    ttlSec: Math.round(AD_TICKET_TTL_MS / 1000)
+  });
+});
+
+// 查票：页面轮询 / 用户点「我已经看完了」都走这里；查不到（过期/被清）回 404 让页面重出票
+app.get('/api/ad/ticket', (req, res) => {
+  const o = adGateOrigin(req);
+  if (!o.ok) return res.status(403).json({ error: '来源不在白名单里' });
+  adGateCors(res, o);
+  res.setHeader('Cache-Control', 'no-store');
+  const id = String(req.query.id || '').trim().toLowerCase();
+  if (!AD_TICKET_ID_RE.test(id)) return res.status(400).json({ error: '票据号不合法' });
+  // 轮询口径放宽：一个页面 2-3 秒轮一次，NAT 后几百人共用一个出口也不能互相拖死
+  if (!rateLimit('adtktq:' + clientIp(req), 1200, 60000)) return res.status(429).json({ error: '查得太勤了' });
+  const it = adTicketsLoad()[id];
+  if (!it) return res.status(404).json({ error: '这张票过期了，重新出一张', expired: true });
+  const me = currentUser(req);
+  res.json({
+    id, scene: it.scene, site: it.site || '',
+    done: !!it.done, doneAt: Number(it.doneAt) || 0,
+    expireAt: it.expireAt,
+    mine: !!(me && it.done && it.uid === me.id)
+  });
+});
+
+// 核销：只有小程序来调（带自己的登录态）。一票一人，重复核销同一人幂等，别人核销 409
+app.post('/api/ad/ticket/claim', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const id = String((req.body && req.body.id) || '').trim().toLowerCase();
+  if (!AD_TICKET_ID_RE.test(id)) return res.status(400).json({ error: '票据号不合法' });
+  if (!rateLimit('adtktc:' + user.id, 20, 60000)) return res.status(429).json({ error: '操作太频繁，稍等一下' });
+  const all = adTicketsLoad();
+  const it = all[id];
+  if (!it) return res.status(404).json({ error: '这张码过期了，回网页刷新出一张新的', expired: true });
+  if (it.done) {
+    if (it.uid && it.uid !== user.id) {
+      return res.status(409).json({ error: '这张码已经被别人用过了，回网页刷新出一张新的', taken: true });
+    }
+    return res.json({ ok: true, already: true, scene: it.scene, expireAt: it.expireAt });
+  }
+  const rec = shareRecOf(user.id);
+  const now = Date.now();
+  // 与 /api/ad/seen 共用同一个冷却：同一账号刚核销过任何一张，都要等一支广告的时间
+  if (rec.adSeenAt && now - rec.adSeenAt < AD_SEEN_GAP_MS) {
+    return res.status(429).json({ error: '刚看过一支，歇十几秒再试' });
+  }
+  it.done = true;
+  it.doneAt = now;
+  it.uid = user.id;
+  rec.adSeenAt = now;
+  adTicketsSave(all);
+  saveShareSoon();
+  res.json({ ok: true, already: false, scene: it.scene, expireAt: it.expireAt });
+});
+
 // ---------- PWA 安装奖励 ----------
 // 已添加到主屏幕（standalone）的 H5 里打开且处于登录态，一次性送 200 盏灯火。
 // 防刷边界：standalone 是浏览器端信号，服务端无法二次核验，所以只认「每个账号一次」——
@@ -10866,10 +11695,14 @@ function noticeAdPhase(r, phase, extra) {
     r.views ? `${r.views} 次曝光` : '',
     r.clicks ? `${r.clicks} 次点击` : ''
   ].filter(Boolean).join(' + ');
+  // 现金直购单没有灯火往来：把「共 N 盏灯火」换成实付金额，避免站内信口径打架
+  const priceText = r.paid
+    ? `已用现金 ¥${((r.cashFen || 0) / 100).toFixed(2)} 直购`
+    : `共 ${r.price || 0} 盏灯火`;
   const map = {
     start: {
       title: `${name}已上线`,
-      text: `${work}已经在「${name}」展示了，最多挂 ${days} 天，本轮 ${packs || '按次计费'}，共 ${r.price || 0} 盏灯火。`
+      text: `${work}已经在「${name}」展示了，最多挂 ${days} 天，本轮 ${packs || '按次计费'}，${priceText}。`
         + '投放期间在「推荐」里能看到实时曝光 / 点击，随时可以撤下，没用完的按原价退回。'
     },
     queue: {
@@ -10921,7 +11754,9 @@ function finishRedemption(redemptionId, status) {
 // 主动撤下 / 后台下架：没用完的展示次数和点击额度都按原价折算退分，已用掉的不退
 function refundRedemption(r, status) {
   // 站长代投（comp）没扣过灯火：撤下 / 到期都没有可退的部分，也不发退款站内信
-  if (r.comp) {
+  // 现金直购单（paid）同理：钱付的是微信虚拟支付，不是灯火——撤下/到期一律不返灯火，
+  // 现金退款走 MP 后台「虚拟支付 → 退款管理」人工处理（个人主体没有自动退款回调链路）
+  if (r.comp || r.paid) {
     r.status = status;
     r.endedAt = Date.now();
     r.refunded = 0;
@@ -11087,6 +11922,8 @@ function myRedemptionList(user) {
         days: redemptionDaysOf(r),
         daysPicked: r.daysPicked === true,   // 只有作者自选过天数的单子才显示，老单不显示
         comp: r.comp === true,               // 站长代投单：作者端标「站长代投」，没有灯火往来
+        paid: r.paid === true,               // 现金直购单（虚拟支付）：撤下/到期不退灯火，现金退款走 MP 后台
+        cashFen: r.cashFen || 0,             // 现金单实付金额（分），前端显示「¥x.xx」用
         queuePos, pv: st.pv || 0, uv: st.uv || 0
       };
     });
@@ -11344,13 +12181,15 @@ app.get('/api/promo/board', (req, res) => {
 });
 
 // 兑换：按位置单价一次付清 → 生成一条广告（内容取自作品）→ 立即上线，或进独占位的队列
-// 并发说明：这个接口从头到尾是同步的（没有 await），Node 单线程下「查空位 → 占位」不会被另一个
+// 建单核心（2026-11-14 从本路由原样抽出）：灯火单与现金直购单（虚拟支付发货）共用
+// 「校验 → 查空位 → 建广告 → 上线/排队」这一段，差别只在扣不扣灯火：
+//   opts.paid = true → 现金单：不查余额、不扣灯火；r.paid / r.cashFen 落盘，退款口径见 refundRedemption。
+// 入参 body：{ slot, views, clicks, workId, days, ackFresh, link }；
+// 返回 { error, status, ...其他 }：error 存在时调用方按 status（缺省 400）原样回 JSON，否则照常建单成功。
+// 并发说明：本函数从头到尾是同步的（没有 await），Node 单线程下「查空位 → 占位」不会被另一个
 // 请求插进来，所以两个人同时点购买也不可能都拿到 1 号位，第二个必然进队列。
-app.post('/api/redeem', (req, res) => {
-  const user = requireUser(req, res);
-  if (!user) return;
-  if (!rateLimit('redeem:' + user.id, 6, 60000)) return res.status(429).json({ error: '操作太频繁，稍等一下' });
-  const body = req.body || {};
+function createRedeemCore(user, body, opts) {
+  const paid = !!(opts && opts.paid);
   const views = parseInt(body.views, 10) > 0 ? parseInt(body.views, 10) : 0;
   const clicks = parseInt(body.clicks, 10) > 0 ? parseInt(body.clicks, 10) : 0;
   const workId = String(body.workId || '');
@@ -11358,13 +12197,13 @@ app.post('/api/redeem', (req, res) => {
   const cfg = redeemCfg(slot);
   // 小程序位还在审核：面板能看、能预览，但不下单、不扣灯火（避免「花了灯火买到一个还没上线的位置」）
   if (cfg.onSale === false) {
-    return res.status(400).json({ error: cfg.pendingNote || '这个位置还没开放购买' });
+    return { error: cfg.pendingNote || '这个位置还没开放购买' };
   }
   // 点击去向：不填 = 默认开作品详情页；填了 = 点卡片跳这个链接（外链，单价 × 2）
   const link = String(body.link || '').trim().slice(0, 300);
   // 小程序位只跳站内详情页：小程序里外链只能复制到剪贴板，付了点击费却带不走流量
   if (cfg.internalOnly && link) {
-    return res.status(400).json({ error: '小程序推荐位只跳站内作品详情页，不支持外链去向' });
+    return { error: '小程序推荐位只跳站内作品详情页，不支持外链去向' };
   }
 
   // 二选一：要么买展示包，要么买点击包，不能同时买。
@@ -11372,18 +12211,18 @@ app.post('/api/redeem', (req, res) => {
   // 上限防的是手滑多打个 0——投放期最长 7 天，超出流量投不完会自动退，但没必要让人一次押那么多。
   const showMax = cfg.showMax || Math.max(0, ...cfg.showPacks);
   const clickMax = cfg.clickMax || Math.max(0, ...cfg.clickPacks);
-  if (views > 0 && clicks > 0) return res.status(400).json({ error: '展示包和点击包二选一，不能同时买' });
+  if (views > 0 && clicks > 0) return { error: '展示包和点击包二选一，不能同时买' };
   if (views > 0) {
-    if (views > showMax) return res.status(400).json({ error: `展示次数一次最多 ${showMax} 次：投完可以再加，到期没用完的部分会自动退回` });
+    if (views > showMax) return { error: `展示次数一次最多 ${showMax} 次：投完可以再加，到期没用完的部分会自动退回` };
   } else if (clicks > 0) {
-    if (clicks > clickMax) return res.status(400).json({ error: `点击次数一次最多 ${clickMax} 次：投完可以再加` });
+    if (clicks > clickMax) return { error: `点击次数一次最多 ${clickMax} 次：投完可以再加` };
   } else {
-    return res.status(400).json({ error: '请先选一个套餐：展示包或点击包' });
+    return { error: '请先选一个套餐：展示包或点击包' };
   }
   const work = works.find(w => w.id === workId);
-  if (!work || work.deleted) return res.status(400).json({ error: '作品不存在' });
-  if (work.userId !== user.id) return res.status(400).json({ error: '只能推广自己名下的作品' });
-  if (!isVisible(work)) return res.status(400).json({ error: '这件作品还没正式上线，上线后才能投放' });
+  if (!work || work.deleted) return { error: '作品不存在' };
+  if (work.userId !== user.id) return { error: '只能推广自己名下的作品' };
+  if (!isVisible(work)) return { error: '这件作品还没正式上线，上线后才能投放' };
 
   // 刚发布就买「首页第一格」：先劝一次，不硬拦。
   // 首页默认按最新排，这件作品本来就占着置顶之后的第一张卡，这时买第一格买到的是角标不是位置。
@@ -11393,10 +12232,10 @@ app.post('/api/redeem', (req, res) => {
   if (freshHours && body.ackFresh !== true) {
     const ageHours = (Date.now() - new Date(work.createdAt || 0).getTime()) / 3600e3;
     if (ageHours >= 0 && ageHours < freshHours) {
-      return res.status(409).json({
+      return {
         error: `这件作品刚发布 ${Math.max(1, Math.round(ageHours))} 小时，本来就在首页最新列表的第一屏，先确认一下再投`,
-        code: 'fresh', freshHours, ageHours: Math.round(ageHours * 10) / 10
-      });
+        code: 'fresh', freshHours, ageHours: Math.round(ageHours * 10) / 10, status: 409
+      };
     }
   }
 
@@ -11404,15 +12243,15 @@ app.post('/api/redeem', (req, res) => {
   let extLink = '';
   if (link) {
     if (!/^https?:\/\/[^\s]+$/i.test(link)) {
-      return res.status(400).json({ error: '链接要以 http:// 或 https:// 开头，且中间不能有空格' });
+      return { error: '链接要以 http:// 或 https:// 开头，且中间不能有空格' };
     }
     extLink = workSiteMatch(work, link);
     if (!extLink) {
-      return res.status(400).json({ error: '外链点击只能跳这件作品自己填的官网 / 下载链接（可在编辑作品里补一个），不能填别的地址' });
+      return { error: '外链点击只能跳这件作品自己填的官网 / 下载链接（可在编辑作品里补一个），不能填别的地址' };
     }
     // 外链必须按点击买：曝光包没有点击额度，点击不计价，等于白送外链跳转（见 REDEEM_SLOTS 上面的计价说明）
     if (views > 0) {
-      return res.status(400).json({ error: '跳官网 / 下载链接只能买点击包：曝光包不按点击计费，不能用来带外链流量。想跳外链请选一个点击包' });
+      return { error: '跳官网 / 下载链接只能买点击包：曝光包不按点击计费，不能用来带外链流量。想跳外链请选一个点击包' };
     }
   }
 
@@ -11424,14 +12263,14 @@ app.post('/api/redeem', (req, res) => {
   const myQueuedHere = mine.filter(r => r.status === 'queued' && r.slot === slot);
   const myActiveHere = myActive.filter(r => r.slot === slot);
   if (cfg.exclusive && (myActiveHere.length >= cfg.maxActive || myQueuedHere.length >= cfg.maxQueued)) {
-    return res.status(400).json({ error: '这个位置你已经在投或排队了，等这一单投完再来' });
+    return { error: '这个位置你已经在投或排队了，等这一单投完再来' };
   }
-  // 非独占位沿用老规则：全局最多 maxActive 条在投（2026-11-06 起 2 → 3）
+  // 非独占位沿用老规则：全局最多 maxActive 条在投（2026-11-06 起 2 → 3，2026-11-14 起 5）
   if (!cfg.exclusive && myActive.length >= cfg.maxActive) {
-    return res.status(400).json({ error: `同时最多 ${cfg.maxActive} 条投放，先等其中一条投完或手动撤下` });
+    return { error: `同时最多 ${cfg.maxActive} 条投放，先等其中一条投完或手动撤下` };
   }
   if (mine.some(r => (r.status === 'active' || r.status === 'queued') && r.workId === workId && r.slot === slot)) {
-    return res.status(400).json({ error: '这件作品已经在这个位置投放或排队了' });
+    return { error: '这件作品已经在这个位置投放或排队了' };
   }
 
   // 外链订单：点击单价用外链价（下单时锁定，之后调价不影响这单的退款口径）
@@ -11439,22 +12278,24 @@ app.post('/api/redeem', (req, res) => {
   const showPrice = redeemShowPriceOf(views, slot);
   const clickPrice = clicks * clickUnit;
   const price = showPrice + clickPrice;
-  const points = shareStatsOf(user.id).points;
-  if (points < price) {
-    // 差钱的这一刻解锁今天的推广补灯档：前端弹「去小程序看广告补 50 盏」引导，
-    // 小程序里只认这个解锁标记（没真差过钱的人 curl 也领不到）
-    const rec = shareRecOf(user.id);
-    const pa = rec.promoAd || (rec.promoAd = {});
-    const today = dateKey();
-    if (pa.day !== today) { pa.day = today; pa.unlocked = false; pa.count = 0; pa.claimed = false; pa.at = 0; }
-    pa.unlocked = true;
-    saveShareSoon();
-    // promoAdLeft 一起带出去：当天 3 次已经用完时前端别再出小程序码让人白扫一趟
-    return res.status(400).json({
-      error: `灯火不够：需要 ${price} 盏，你还剩 ${points} 盏`,
-      need: price, balance: points,
-      promoAdUnlocked: true, promoAdLeft: promoAdView(user).left
-    });
+  if (!paid) {
+    const points = shareStatsOf(user.id).points;
+    if (points < price) {
+      // 差钱的这一刻解锁今天的推广补灯档：前端弹「去小程序看广告补 50 盏」引导，
+      // 小程序里只认这个解锁标记（没真差过钱的人 curl 也领不到）
+      const rec = shareRecOf(user.id);
+      const pa = rec.promoAd || (rec.promoAd = {});
+      const today = dateKey();
+      if (pa.day !== today) { pa.day = today; pa.unlocked = false; pa.count = 0; pa.claimed = false; pa.at = 0; }
+      pa.unlocked = true;
+      saveShareSoon();
+      // promoAdLeft 一起带出去：当天 3 次已经用完时前端别再出小程序码让人白扫一趟
+      return {
+        error: `灯火不够：需要 ${price} 盏，你还剩 ${points} 盏`,
+        need: price, balance: points,
+        promoAdUnlocked: true, promoAdLeft: promoAdView(user).left
+      };
+    }
   }
 
   const now = Date.now();
@@ -11492,7 +12333,7 @@ app.post('/api/redeem', (req, res) => {
   };
   ads.push(ad);
   saveAds();
-  redemptions.push({
+  const redemption = {
     id: redemptionId, adId, userId: user.id, workId: work.id, slot,
     views, clicks, showPrice, clickPrice, price,
     showViews: cfg.showViews, showPoints: cfg.showPoints, clickPoints: clickUnit,  // 锁住下单时的单价（外链单锁的是外链价），以后调价不影响老订单退款
@@ -11503,14 +12344,29 @@ app.post('/api/redeem', (req, res) => {
     endsAt: occupied ? 0 : ad.endsAt,
     days,   // 下单时锁住的投放期限（天）：排队中被扶正也按这个天数算，不跟着后来的调价/规则走
     daysPicked: !!cfg.daysPick
-  });
+  };
+  // 现金直购单：灯火价只做参照（价格口径不变），真正的收款在虚拟支付订单里，r.cashFen 记实付分
+  if (paid) {
+    redemption.paid = true;
+    redemption.cashFen = (opts && opts.cashFen) || 0;
+  }
+  redemptions.push(redemption);
   saveRedemptions();
-  addPoints(user.id, -price, 'redeem', work.id);
+  if (!paid) addPoints(user.id, -price, 'redeem', work.id);
 
   const queuedPos = occupied ? slotQueue(slot).findIndex(r => r.id === redemptionId) + 1 : 0;
   // 广告分区：下单成功当场给一条凭据（上线 / 排队），省得作者回「推荐」里反复确认有没有生效
-  noticeAdPhase(redemptions.find(x => x.id === redemptionId), occupied ? 'queue' : 'start', { pos: queuedPos });
-  res.json({ ok: true, ad: publicAd(ad), queued: occupied, queuePos: queuedPos, ...redeemPayload(user) });
+  noticeAdPhase(redemption, occupied ? 'queue' : 'start', { pos: queuedPos });
+  return { ok: true, redemptionId, ad: publicAd(ad), queued: occupied, queuePos: queuedPos };
+}
+
+app.post('/api/redeem', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('redeem:' + user.id, 6, 60000)) return res.status(429).json({ error: '操作太频繁，稍等一下' });
+  const out = createRedeemCore(user, req.body || {}, {});
+  if (out.error) return res.status(out.status || 400).json(out);
+  res.json({ ...out, ...redeemPayload(user) });
 });
 
 // 撤下：按剩余展示退分（点击已消耗的不退）；排队中的单子一次没曝光过，全额退回
@@ -11527,6 +12383,278 @@ app.post('/api/me/ads/:id/cancel', (req, res) => {
   res.json({ ok: true, refunded: back, ...redeemPayload(user) });
 });
 
+// ================= 小程序虚拟支付（个人主体 · 道具直购：现金买推荐位套餐） =================
+// 2026-11-14 留口子：个人主体虚拟支付申请审核中（类目含「工具」才开得了，造梦橱窗已含）。
+// 开通后 3 步点亮，代码一行不用改：
+//   ① MP 后台「虚拟支付 → 基本配置」抄 OfferID / 现网 AppKey / 沙箱 AppKey；
+//   ② 写进 data/oauth.json 的 wechatXpay 段 { "offerId": "...", "appKey": "...", "sandboxAppKey": "..." }
+//      （或环境变量 XPAY_OFFER_ID / XPAY_APPKEY / XPAY_SANDBOX_APPKEY），重启服务；
+//   ③ 「道具管理」按 XPAY_GOODS 的 id / 价格(分) 一一建道具并发布（约 10 分钟生效）。
+// 没配齐时 XPAY_ENABLED=false：/api/xpay/goods 返回 enabled:false，前端整个现金区不渲染，线上无感。
+// 口径（商品文案必须守住）：卖的是「橱窗展示位投放服务」——给某件已上线作品在指定位置多展示 N 次；
+// 不是买流量、不是买灯火、更不是任何可充值/可流通的虚拟币（个人主体虚拟支付明确排除
+// 「信息发布平台」类服务，文案往「展示位」上靠，别写「涨粉」「引流」）。
+// 费率现状：安卓 1%（限时激励） / iOS 12%（苹果佣金）；个人主体全终端月支付限额 10 万元。
+const XPAY_CONF = (() => {
+  const fromFile = (() => {
+    try { return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'oauth.json'), 'utf-8')).wechatXpay || {}; }
+    catch { return {}; }
+  })();
+  return {
+    offerId: String(process.env.XPAY_OFFER_ID || fromFile.offerId || '').trim(),
+    appKey: String(process.env.XPAY_APPKEY || fromFile.appKey || '').trim(),
+    sandboxAppKey: String(process.env.XPAY_SANDBOX_APPKEY || fromFile.sandboxAppKey || '').trim(),
+    mock: process.env.XPAY_MOCK === '1'        // 本地走通全链路用：不碰微信，确认后直接标记已支付
+  };
+})();
+const XPAY_ENABLED = !!(XPAY_CONF.offerId && XPAY_CONF.appKey) || XPAY_CONF.mock;
+
+// 套餐表（价格是 2026-11-14 的建议值，锚：1 盏灯火 ≈ 5 分，现金直购不打折不溢价——
+// 上线前站长拍板改价格后，MP 后台道具价格必须改成同一个数，单位分，不一致下单报 -15013）。
+// 只做曝光包、只做小程序位（internalOnly 无外链），id 同时是 MP 后台的道具 productId。
+const XPAY_GOODS = [
+  { id: 'zc_home_50',     slot: 'mini-home-first', views: 50,  days: 7, priceFen: 1200, name: '首页第一格 · 50 次曝光',  desc: '小程序首页作品流第一张卡，展示 50 次，投放期最长 7 天（灯火价 200 盏）' },
+  { id: 'zc_home_100',    slot: 'mini-home-first', views: 100, days: 7, priceFen: 2500, name: '首页第一格 · 100 次曝光', desc: '小程序首页作品流第一张卡，展示 100 次，投放期最长 7 天（灯火价 400 盏）' },
+  { id: 'zc_rankline_50', slot: 'mini-rank-line',  views: 50,  days: 7, priceFen: 800,  name: '榜单+发现一行字 · 50 次曝光', desc: '星梦榜分段栏下方 + 发现页顶部两处轮展，展示 50 次（灯火价 150 盏）' },
+  { id: 'zc_detail_100',  slot: 'mini-detail',     views: 100, days: 7, priceFen: 600,  name: '作品详情页 · 100 次曝光', desc: '小程序详情页评论区上方一行，展示 100 次（灯火价 100 盏）' }
+];
+function xpayGoodOf(id) { return XPAY_GOODS.find(g => g.id === String(id || '')) || null; }
+
+let xpayOrders = readJSON('xpay-orders.json', []);
+if (!Array.isArray(xpayOrders)) xpayOrders = [];
+// 订单量小、且发货涉及钱：全部同步落盘，不走合并写
+function saveXpayOrders() {
+  try { writeJSON('xpay-orders.json', xpayOrders); } catch (e) { console.error('[saveXpayOrders]', e.message); }
+}
+
+// ---- 签名（AppKey 只在服务端出现，前端代码里严禁出现任何一把） ----
+// paySig    = HMAC-SHA256(AppKey,  uri + '&' + body)   前端下单 uri 固定 'requestVirtualPayment'，B 端接口填实际路径
+// signature = HMAC-SHA256(session_key, body)           body 必须与真正发出的字符串逐字节一致
+function xpayPaySig(uri, postBody, appKey) {
+  return crypto.createHmac('sha256', appKey).update(uri + '&' + postBody, 'utf8').digest('hex');
+}
+function xpayUserSig(postBody, sessionKey) {
+  return crypto.createHmac('sha256', sessionKey).update(postBody, 'utf8').digest('hex');
+}
+
+// B 端接口要 access_token（stable_token），缓存到过期前 5 分钟
+let xpayToken = { v: '', exp: 0 };
+async function xpayAccessToken() {
+  if (xpayToken.v && Date.now() < xpayToken.exp) return xpayToken.v;
+  const r = await fetch('https://api.weixin.qq.com/cgi-bin/stable_token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ grant_type: 'client_credential', appid: WECHAT_CONF.appId, secret: WECHAT_CONF.appSecret }),
+    signal: AbortSignal.timeout(12000)
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!d.access_token) throw new Error('拿 access_token 失败（' + (d.errcode || '?') + ' ' + (d.errmsg || '') + '）');
+  xpayToken = { v: d.access_token, exp: Date.now() + Math.max(60, (d.expires_in || 7200) - 300) * 1000 };
+  return xpayToken.v;
+}
+
+// 查单（发货前的核实动作：推送和前端回调都不直接信，钱的事必须自己向微信问一遍）。
+// TODO(开通后核对)：/xpay/query_order 的返回结构、签名 header 名以官方《虚拟支付服务端 API》为准，
+// 下面 paidFlag 的三个候选字段是按社区实践写的宽容解析，联调时打印一次完整响应定稿。
+async function xpayQueryOrder(outTradeNo, env) {
+  const appKey = env ? (XPAY_CONF.sandboxAppKey || XPAY_CONF.appKey) : XPAY_CONF.appKey;
+  const body = JSON.stringify({ offer_id: XPAY_CONF.offerId, out_trade_no: outTradeNo, env: env || 0 });
+  const token = await xpayAccessToken();
+  const r = await fetch('https://api.weixin.qq.com/xpay/query_order?access_token=' + encodeURIComponent(token), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-WX-PAY-SIG': xpayPaySig('/xpay/query_order', body, appKey) },
+    body,
+    signal: AbortSignal.timeout(12000)
+  });
+  return await r.json().catch(() => ({}));
+}
+
+// 发货：把一笔已支付订单落成真实投放。幂等：delivered 直接返回；配额冲突时留在 paid 态等重试，
+// lastError 记在单子上（后台排查用），推送 / 前端 confirm 都会再触发。
+function xpayDeliverOrder(order) {
+  if (order.status === 'delivered') return { ok: true, already: true, status: 'delivered' };
+  if (order.status !== 'paid') return { ok: false, error: '订单未支付', status: order.status };
+  const user = users.find(u => u.id === order.uid);
+  if (!user) { order.lastError = '账号不存在（' + order.uid + '）'; saveXpayOrders(); return { ok: false, error: order.lastError }; }
+  // ackFresh:true —— 下单时已经劝过一次「刚发布」，发货这一步不再重复拦
+  const out = createRedeemCore(user, { slot: order.slot, views: order.views, clicks: 0, workId: order.workId, days: order.days, ackFresh: true }, { paid: true, cashFen: order.priceFen });
+  if (out.error) {
+    order.lastError = out.error + (out.status === 409 ? '（fresh）' : '');
+    saveXpayOrders();
+    return { ok: false, error: out.error, status: order.status };
+  }
+  order.status = 'delivered';
+  order.deliveredAt = Date.now();
+  order.redemptionId = out.redemptionId;
+  delete order.lastError;
+  saveXpayOrders();
+  addNotice(order.uid, {
+    kind: 'points',
+    title: '现金订单已生效',
+    text: `你在小程序用 ¥${(order.priceFen / 100).toFixed(2)} 直购的推荐位已经上线（${order.views} 次曝光、最长 ${order.days} 天）。微信支付订单号 ${order.outTradeNo}，可在「推荐」里看实时曝光。`,
+    workId: order.workId
+  });
+  return { ok: true, redemptionId: out.redemptionId, queued: out.queued, status: 'delivered' };
+}
+
+// 未支付订单超过 24 小时就作废（防止用户一直挂着一笔永远不来钱的单子）
+function xpayExpirePending() {
+  const cut = Date.now() - 86400e3;
+  let changed = false;
+  xpayOrders.forEach(o => {
+    if (o.status === 'pending' && (o.createdAt || 0) < cut) { o.status = 'expired'; changed = true; }
+  });
+  if (changed) saveXpayOrders();
+}
+
+// 套餐 + 开关：前端据此决定渲不渲染现金直购区（enabled:false 时整个入口隐藏）
+app.get('/api/xpay/goods', (req, res) => {
+  res.set('Cache-Control', 'no-cache');
+  xpayExpirePending();
+  res.json({
+    enabled: XPAY_ENABLED,
+    mock: XPAY_CONF.mock,
+    goods: XPAY_ENABLED ? XPAY_GOODS.map(g => ({
+      id: g.id, name: g.name, desc: g.desc, priceFen: g.priceFen, slot: g.slot, views: g.views, days: g.days
+    })) : []
+  });
+});
+
+// 下单：服务端拼 signData 并出双签名，前端拿到后原样传给 wx.requestVirtualPayment。
+// 前端必须先 wx.login() 拿新 code 再调这里（signature 要用新鲜 session_key，旧 key 报 -15007）。
+app.post('/api/xpay/order', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!XPAY_ENABLED) return res.status(400).json({ error: '虚拟支付还没开通，先用灯火兑换' });
+  if (!rateLimit('xpay:' + user.id, 6, 60000)) return res.status(429).json({ error: '操作太频繁，稍等一下' });
+  const body = req.body || {};
+  const g = xpayGoodOf(body.productId);
+  if (!g) return res.status(400).json({ error: '没有这个套餐' });
+  const work = works.find(w => w.id === String(body.workId || ''));
+  if (!work || work.deleted) return res.status(400).json({ error: '作品不存在' });
+  if (work.userId !== user.id) return res.status(400).json({ error: '只能推广自己名下的作品' });
+  if (!isVisible(work)) return res.status(400).json({ error: '这件作品还没正式上线，上线后才能投放' });
+
+  // 付款前的配额预检：createRedeemCore 在发货时还会拦一遍，这里先拦掉「付了钱却投不出去」的情况
+  // （否则钱进了商户号、投放单建不出来，还得人工退款）
+  expireRedemptions();
+  const mine = redemptions.filter(r => r.userId === user.id);
+  const cfg = redeemCfg(g.slot);
+  if (mine.filter(r => r.status === 'active').length >= cfg.maxActive) {
+    return res.status(400).json({ error: `同时最多 ${cfg.maxActive} 条投放，先等其中一条投完或撤下再来` });
+  }
+  if (mine.some(r => (r.status === 'active' || r.status === 'queued') && r.workId === work.id && r.slot === g.slot)) {
+    return res.status(400).json({ error: '这件作品已经在这个位置投放或排队了' });
+  }
+  // 刚发布劝一句：跟灯火单同一规则，前端弹确认后带 ackFresh 重来
+  const freshHours = cfg.freshHours || 0;
+  if (freshHours && body.ackFresh !== true) {
+    const ageHours = (Date.now() - new Date(work.createdAt || 0).getTime()) / 3600e3;
+    if (ageHours >= 0 && ageHours < freshHours) {
+      return res.status(409).json({
+        error: `这件作品刚发布 ${Math.max(1, Math.round(ageHours))} 小时，本来就在首页最新列表的第一屏，先确认一下再投`,
+        code: 'fresh', freshHours, ageHours: Math.round(ageHours * 10) / 10
+      });
+    }
+  }
+
+  xpayExpirePending();
+  const outTradeNo = 'x' + Date.now().toString(36) + crypto.randomBytes(5).toString('hex');   // 8-32 位、每单唯一、不复用
+  const order = {
+    outTradeNo, uid: user.id, productId: g.id, slot: g.slot, views: g.views, days: g.days,
+    workId: work.id, priceFen: g.priceFen, status: 'pending', createdAt: Date.now()
+  };
+  xpayOrders.push(order);
+  saveXpayOrders();
+
+  // 沙箱只给联调用（env=1 + 沙箱 AppKey）；苹果 IAP 不支持沙箱，iOS 只能现网小额测
+  const env = body.sandbox === true && XPAY_CONF.sandboxAppKey ? 1 : 0;
+
+  // 本地/未配置联调：mock 单不碰微信，前端用确认弹窗模拟支付，confirm 时直接标记已支付
+  if (XPAY_CONF.mock) {
+    return res.json({
+      mock: true, outTradeNo, mode: 'short_series_goods',
+      signData: JSON.stringify({ offerId: 'mock', buyQuantity: 1, env: 0, currencyType: 'CNY', productId: g.id, goodsPrice: g.priceFen, outTradeNo, attach: user.id }),
+      paySig: 'mock', signature: 'mock',
+      goods: { id: g.id, name: g.name, priceFen: g.priceFen }
+    });
+  }
+
+  let session;
+  try { session = await wechatResolveSession(String(body.code || '')); }
+  catch (e) { return res.status(400).json({ error: (e && e.message) || '微信登录校验失败' }); }
+  if (!session.sessionKey) return res.status(400).json({ error: '登录态已过期，请退出小程序重新进入再试' });
+
+  const signData = JSON.stringify({
+    offerId: XPAY_CONF.offerId,
+    buyQuantity: 1,
+    env,
+    currencyType: 'CNY',
+    productId: g.id,
+    goodsPrice: g.priceFen,
+    outTradeNo,
+    attach: user.id
+  });
+  const appKey = env ? XPAY_CONF.sandboxAppKey : XPAY_CONF.appKey;
+  res.json({
+    outTradeNo, signData, mode: 'short_series_goods',
+    paySig: xpayPaySig('requestVirtualPayment', signData, appKey),
+    signature: xpayUserSig(signData, session.sessionKey)
+  });
+});
+
+// 前端支付成功后调：不信任前端回调，服务端向微信查单核实后才标记已支付并发货；mock 直接标记。
+// success 回调会丢（用户支付后微信异常退出），这里可以反复调，幂等。
+app.post('/api/xpay/confirm', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const order = xpayOrders.find(o => o.outTradeNo === String((req.body || {}).outTradeNo || '') && o.uid === user.id);
+  if (!order) return res.status(404).json({ error: '找不到这笔订单' });
+  if (order.status === 'pending' && XPAY_CONF.mock) {
+    order.status = 'paid';
+    order.paidAt = Date.now();
+    saveXpayOrders();
+  }
+  if (order.status === 'pending') {
+    let q;
+    try { q = await xpayQueryOrder(order.outTradeNo, 0); }
+    catch (e) { return res.json({ ok: false, status: order.status, reason: '查单失败，稍后再试', detail: String(e && e.message || e) }); }
+    const od = q && (q.order || q);
+    const paidFlag = q && q.errcode === 0 && od && (
+      od.status === 'SUCCESS' || od.pay_status === 'PAY_SUCCESS' || od.trade_state === 'SUCCESS'
+    );
+    if (!paidFlag) {
+      return res.json({ ok: false, status: order.status, reason: '微信侧还没查到已支付，支付完成后会自动到账', detail: q });
+    }
+    order.status = 'paid';
+    order.paidAt = Date.now();
+    order.wxOrderId = od.wx_order_id || od.wx_orderid || '';
+    saveXpayOrders();
+  }
+  const d = xpayDeliverOrder(order);
+  res.json({ ok: d.ok !== false, status: order.status, error: d.error || '', redemptionId: order.redemptionId || '' });
+});
+
+// 微信「发货推送」入口（MP 后台消息推送 URL 填这里）：收到推送也不直接信，走同一条查单核实链路。
+// 报文可能是加密 JSON/XML，这里只做宽容解析提单号；认不出就照常回 ErrCode 0 防止平台无限重试，
+// 漏掉的由前端 confirm 与查单兜底补发。
+app.post('/api/xpay/deliver', (req, res) => {
+  const b = req.body || {};
+  const no = String(b.OutTradeNo || b.out_trade_no || (b.WeChatPayInfo && (b.WeChatPayInfo.OutTradeNo || b.WeChatPayInfo.out_trade_no)) || '').trim();
+  if (no) {
+    const order = xpayOrders.find(o => o.outTradeNo === no);
+    if (order && order.status === 'pending') {
+      // 推送意味着钱大概率到了：标记 paid，真正的核实交给 confirm / 查单链路
+      order.status = 'paid';
+      order.paidAt = Date.now();
+      saveXpayOrders();
+    }
+    if (order) xpayDeliverOrder(order);
+  } else {
+    console.log('[xpay] 收到无法解析的发货推送，字段：' + Object.keys(b).join(','));
+  }
+  res.json({ ErrCode: 0, ErrMsg: 'ok' });
+});
 
 // 站内搜索命中哪些字段、各值多少分。
 // 之前只匹配「标题 / 作者账号 / 简介 / 分类」，直接导致三类搜不到：
@@ -11930,13 +13058,20 @@ app.get('/api/featured', (req, res) => {
   ];
   const adminSet = new Set(rows.filter(r => isFeaturedActive(r.w)).map(r => r.w.id));
   const reasonOf = r => {
+    // 站长手选的作品固定「编辑精选」，不参与下面的自动理由（否则新上架的手选件会被标成「最近新上」）
+    if (adminSet.has(r.w.id)) return 'edit';
     let best = '', bestVal = 0;
     for (const [field, weight, key] of REASON_PARTS) {
       const v = (r.parts[field] || 0) * weight;
       if (v > bestVal) { bestVal = v; best = key; }
     }
+    // 近 7 天刚上架的作品：如果还没人认真表态（只被人点开看过），它就标「最近新上」——
+    // 新作品的看点是「新」，写「人多在看」等于什么都没说；
+    // 已经收到灯火/收藏/点赞/评论的照旧显示那一项，那是真实的认可，不该被「新」盖掉。
+    const born = Date.parse(r.w.createdAt) || 0;
+    if (born >= agg.since && (!best || best === 'uv')) return 'fresh';
     if (best) return best;
-    return adminSet.has(r.w.id) ? 'edit' : 'new';
+    return 'new';
   };
   const adminPicks = ranked.filter(r => adminSet.has(r.w.id));
   const normal = ranked.filter(r => !adminSet.has(r.w.id));
@@ -12195,14 +13330,20 @@ function peakWindowOf(w, by) {
 }
 // 「首次进榜」登记：每天第一次有人查高光榜时刷新一次（写 data/peak-board.json）。
 // firstSeen = 首次进入前 PEAK_TOP_N 的日期；掉出榜再回来会重新记新晋，可接受（高光榜几乎只进不出）
+// 名册建立之前就已经在榜上的老面孔：记这个哨兵日期，永不标「新晋」
+const PEAK_BOARD_LEGACY = '2026-10-01';
 let peakBoard = readJSON('peak-board.json', null);
 function peakBoardRefresh(topIds) {
   const today = dateKey();
   if (!peakBoard || typeof peakBoard !== 'object' || Array.isArray(peakBoard)) peakBoard = { day: '', entries: {} };
   if (peakBoard.day === today) return;
   const old = peakBoard.entries || {};
+  // 名册第一次成形（文件不存在/被清空后重建）：此刻榜上的作品在名册诞生前就已经在榜，
+  // 真实进榜日无法回溯 —— 记哨兵，不记今天。否则整榜前 20 会被一起标成「新晋」
+  // （2026-11-08 上线时踩过：首批 20 件全记成 11-08/11-09，接下来 7 天整榜都挂「新晋」）
+  const virgin = !Object.keys(old).length;
   const entries = {};
-  topIds.forEach(id => { entries[id] = old[id] || today; });
+  topIds.forEach(id => { entries[id] = old[id] || (virgin ? PEAK_BOARD_LEGACY : today); });
   peakBoard = { day: today, entries };
   writeJSON('peak-board.json', peakBoard);
 }
@@ -12315,8 +13456,10 @@ const BADGE_DEFS = [
   { key: 'comment20', t: 'L2', icon: 'chat', name: '同梦之人', cond: '在他人作品下留言 20 条',
     note: '一句「我用了，好用」比点赞有用。自己作品下的留言不算。' },
 
-  { key: 'veteran', t: 'L3', icon: 'key', name: '造梦元老', cond: '开站首批入驻作者',
-    note: '橱窗里还只有几件作品的时候就在的人。名单封闭，不再新增。', by: '站长' },
+  // 造梦元老：判据只有一条——按注册时间排序取前 50 个账号（见 veteranIds）。名字还是手授类的，
+  // 但不用站长一枚枚点：谁够格自己算得出来，条件文案也照着这条线写，别写成没法核的说法。
+  { key: 'veteran', t: 'L3', icon: 'key', name: '造梦元老', cond: '前 50 个注册用户',
+    note: '按注册时间算，最早注册的五十个账号一人一枚。满五十就封口，往后的再早也进不来了。', by: '站长', limit: 50 },
   { key: 'first_window', t: 'L3', icon: 'flag', name: '开窗之人', cond: '站内最早 10 件作品的作者',
     note: '最早把东西摆上来的十个人。这扇橱窗是他们开的，一共十枚，不再新增。', by: '站长' },
   { key: 'idea_maker', t: 'L3', icon: 'hand', name: '圆梦之人', cond: '提的建议改动了产品本身',
@@ -12329,6 +13472,16 @@ const BADGE_DEFS = [
   { key: 'forge_maker', t: 'L3', icon: 'hammer', name: '铸梦之人', cond: '参与本站开发，改动已并入站点',
     note: '写代码、修 Bug、补底层——这些活在页面上看不见，但橱窗能立住，是因为后面有人在打铁。', by: '站长', canApply: true }
 ];
+
+// 造梦元老的名单：按 createdAt 排序取前 VETERAN_LIMIT 个账号。每次现算不缓存——
+// 站里就几十上百个账号，一次排序的开销可以忽略，缓存反而要额外处理「有人新注册」的失效。
+// 只认注册时间，不认「有没有投过稿」：签到就走的看客也是前五十个进来的人。
+const VETERAN_LIMIT = 50;
+function veteranIds() {
+  return new Set(users.filter(u => u && u.id && u.createdAt)
+    .sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0))
+    .slice(0, VETERAN_LIMIT).map(u => u.id));
+}
 
 // 把「某个人现在够不够格」需要的数据一次算完：20 枚勋章里十几枚都要扫作品/评论/访问，
 // 分开写就是十几次全量遍历。数据量不大（几十件作品），但没必要每条都重扫一遍。
@@ -12378,6 +13531,7 @@ function badgeFacts(user) {
   const invitedOk = users.some(u => u.invitedBy === user.username
     && works.some(w => w.userId === u.id && !w.deleted));
   return {
+    veteran: veteranIds().has(uid),
     ckDays, bestStreak, nightAt, comeback,
     wechat: !!(user.wechat && user.wechat.openid),
     github: !!(user.github && user.github.id),
@@ -12412,6 +13566,7 @@ function badgeProgress(key, f) {
     case 'invite':        return { ok: f.invite };
     case 'browse100':     return { ok: f.browsed >= 100, now: f.browsed, goal: 100 };
     case 'comment20':     return { ok: f.comments >= 20, now: f.comments, goal: 20 };
+    case 'veteran':       return { ok: f.veteran };
     default:              return { ok: false };   // L3 只能手授
   }
 }
@@ -12474,11 +13629,26 @@ function awardFirstWindowBadges() {
 }
 awardFirstWindowBadges();
 
-// 组装给前端的完整列表：state(on/doing/off) + 点亮时间 + 进度 + 申请状态
+// 造梦元老：启动时把已经在名单里的人一次点亮（silent，不推通知）。
+// 之后新注册的人只要还落在前五十，打开勋章页时 computeBadges 会顺手补录，不必等下次重启。
+function awardVeteranBadges() {
+  let n = 0;
+  for (const id of veteranIds()) if (awardBadge(id, 'veteran', true)) n++;
+  if (n) console.log('[badges] 造梦元老 自动授予 ' + n + ' 人');
+}
+awardVeteranBadges();
+
+// 组装给前端的完整列表：state(on/doing/off) + 点亮时间 + 进度 + 申请状态 + 全站授予人数
 function computeBadges(user) {
   const f = user ? badgeFacts(user) : null;
+  // 授予人数按 badges.json 里真的记了时间的人头数：手授类勋章要拿它说明稀缺（「已授 12 / 50 人」），
+  // 别拿「够格的人数」代替——够格但没点亮的，卡片上还写着「待授予」，两个数对不上会让人怀疑。
+  const counts = {};
+  for (const rec of Object.values(badgeData.users)) {
+    for (const k in rec) if (rec[k]) counts[k] = (counts[k] || 0) + 1;
+  }
   return BADGE_DEFS.map(def => {
-    const out = { ...def };
+    const out = { ...def, count: counts[def.key] || 0 };
     if (!user) return { ...out, state: 'off' };
     const at = (badgeData.users[user.id] || {})[def.key];
     const p = badgeProgress(def.key, f);
@@ -12812,6 +13982,10 @@ app.get('/api/authors/:name', (req, res) => {
   // 勋章挂在账号 userId 上：取该作者任一有主作品的 userId（同一作者作品必然同一账号）
   const acct = refUser || users.find(x => x.username === name);
   const uid = (acct && acct.id) || (all.find(w => w.userId) || {}).userId || '';
+  // 主页作品隐藏（2026-11-14）：作者把主页上的作品区收起来了。
+  // 本人的主页必须照旧拿到全部作品——那里是下架作品唯一能「重新上架」的入口，开关不能把自己关在外面。
+  const isOwnerView = !!(user && uid && user.id === uid);
+  const hideWorks = !isOwnerView && !!(acct && acct.hideWorks === true);
   const badgeRec = uid ? (badgeData.users[uid] || {}) : {};
   const badges = BADGE_DEFS.filter(d => badgeRec[d.key])
     .map(d => ({ key: d.key, name: d.name, icon: d.icon, t: d.t }));
@@ -12834,6 +14008,8 @@ app.get('/api/authors/:name', (req, res) => {
     since,
     // 作者留下的外部主页（GitHub / 知乎 / …）：公开信息，访客与本人看到的一致
     links: profileLinksOf(acct),
+    // 主页星空皮肤：作者自己挑的动效，访客看到的是同一个（没挑过 = 默认流星）
+    skin: heroSkinOf(acct),
     total: list.length,
     totalLikes: list.reduce((s, w) => s + w.likes, 0),
     totalFavs: list.reduce((s, w) => s + (w.favs || 0), 0),
@@ -12843,7 +14019,9 @@ app.get('/api/authors/:name', (req, res) => {
     openCount: all.filter(w => w.openSource === true).length,
     badges,
     cats,
-    works: list
+    // true = 这位作者把主页作品收起来了（本人视角恒为 false），前端据此换成一句说明而不是空作品区
+    hideWorks,
+    works: hideWorks ? [] : list
   });
 });
 
@@ -13289,7 +14467,8 @@ async function extractFromText(text, ruleSrc) {
 app.post('/api/work/keywords', (req, res) => {
   const b = req.body || {};
   const title = String(b.title || '').slice(0, 100);
-  const prompt = String(b.prompt || '').slice(0, 3000);
+  // 「一句话定位」也参与配词：它和介绍一样是作者写的真实内容，词表只从里面挑、不编词
+  const prompt = (String(b.prompt || '') + ' ' + String(b.positioning || '').slice(0, 60)).trim().slice(0, 3000);
   const cats = parseCats(b.categories);
   const types = b.types ? normalizeTypes(b.types) : [];
   if (!title && !prompt && !cats.length) return res.json({ keywords: [] });
@@ -13546,6 +14725,9 @@ app.post('/api/find', async (req, res) => {
   const strongCount = hits.filter(h => h.titleHit).length;
   const solid = hits.length > 0 && strongCount >= Math.ceil(hits.length / 2);
   if (!solid && hits.length > 2) hits = hits.slice(0, 2);
+  // 记一笔「大家拿这句话来找过」（只记话不记人，见 logFind）。放在 reply 之前：
+  // 回复怎么写都不影响统计，统计别跟文案逻辑绑在一起。
+  logFind(req, q, hits.length, solid);
   // 模型那句回话只在「真对上了」时采用：沾边的时候它爱说「帮你找到几款相关工具」，
   // 那就成了替站里吹牛，这时候宁可自己写一句老实话。
   const reply = (solid ? findReplyOf(cond.reply, hits, list) : '') || (hits.length
@@ -16019,6 +17201,15 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
     openSubmits: openSource.pendingSubmitCount(),
     // 微信客服未读（小程序消息推送过来的会话，后台「微信客服」页处理）
     kf: Object.keys(kfThreads).reduce((s, k) => s + (kfThreads[k].unread || 0), 0),
+    // 待办角标补充（2026-11-14）：管理员申请 / 勋章申请 / 众判中未结案 / 作者未读回信。
+    // 这些原本只有点进对应 tab 才看得到，站长在外面不知道有人来申请了。
+    adminApps: loadAdmins().applications.length,
+    badgeApplies: Object.values(badgeData.applies || {}).reduce((s, box) => s + Object.keys(box || {}).length, 0),
+    juryOpen: Object.values(juryData.cases || {}).filter(c => c && (c.status || 'open') === 'open').length,
+    repliesUnread: notices.reduce((s, n) => {
+      if (n.feedbackId || !Array.isArray(n.thread)) return s;
+      return s + n.thread.filter(m => m && m.from === 'user' && !m.read).length;
+    }, 0),
     views: works.reduce((s, w) => s + (w.views || 0), 0),
     likes: works.reduce((s, w) => s + (w.likes || 0), 0),
     users: users.length,
@@ -16027,6 +17218,7 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
     usersMini: users.filter(u => u.regFrom === 'mini').length,
     promo: promoStatsForAdmin(),
     search: searchStatsForAdmin(),
+    find: findStatsForAdmin(),
     traffic: trafficStats(),
     ...visitStats()
   });
@@ -16080,6 +17272,251 @@ app.post('/api/admin/behavior/clear', requireAdmin, (req, res) => {
   const key = String((req.body && req.body.p) || '');
   if (!BEHAVIOR_PERSON_RE.test(key)) return res.status(400).json({ error: '人键格式不对' });
   res.json({ ok: true, ...behaviorClear(key) });
+});
+
+// ---------- 外链巡检（tools/link-guard.js 的后台入口） ----------
+// 只出报告，不碰任何作品数据：所有写操作只有「白名单」这一处（data/link-skip.json）。
+// 巡检本身是重活（118 条外链各自 curl 一遍，整轮约 45 秒），绝不能塞进请求里同步等，
+// 所以 POST /run 起一个子进程，进度记内存，页面轮询 /job 拿百分比与增量日志。
+const LINK_DIR = path.join(__dirname, 'tools', 'link-health');
+const LINK_SKIP_FILE = 'link-skip.json';
+// 与 tools/link-guard.js 的 BUILTIN_SKIP_HOSTS 保持一致：页面只展示、不许在页面删
+const LINK_SKIP_BUILTIN = [
+  'github.com', 'github.io', 'githubusercontent.com', 'githubassets.com', 'ghcr.io',
+  'apps.apple.com', 'chromewebstore.google.com'
+];
+const LINK_HOST_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+const LINK_REPORT_RE = /^report-\d{8}-\d{4}$/;
+
+function readLinkSkipHosts() {
+  const raw = readJSON(LINK_SKIP_FILE, null);
+  const list = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.hosts) ? raw.hosts : []);
+  return list.map(s => String(s || '').trim().toLowerCase()).filter(h => LINK_HOST_RE.test(h));
+}
+
+let linkJob = null;   // { id, startedAt, endedAt, total, done, phase, log[], error, report }
+
+function linkJobPublic() {
+  if (!linkJob) return null;
+  return {
+    id: linkJob.id, startedAt: linkJob.startedAt, endedAt: linkJob.endedAt,
+    total: linkJob.total, done: linkJob.done, phase: linkJob.phase,
+    error: linkJob.error, report: linkJob.report,
+    log: linkJob.log.slice(-12)
+  };
+}
+
+function linkReports(limit) {
+  let files = [];
+  try { files = fs.readdirSync(LINK_DIR).filter(f => /^report-\d{8}-\d{4}\.json$/.test(f)); } catch { return []; }
+  return files.sort().reverse().slice(0, limit || 30).map(f => {
+    const name = f.replace(/\.json$/, '');
+    let at = 0, count = {}, total = 0;
+    try {
+      const d = JSON.parse(fs.readFileSync(path.join(LINK_DIR, f), 'utf-8'));
+      at = Date.parse(d.at) || 0; count = d.count || {}; total = d.total || 0;
+    } catch { /* 坏文件只给个名字 */ }
+    return { name, at, total, count };
+  });
+}
+
+function linkReadReport(name) {
+  const d = JSON.parse(fs.readFileSync(path.join(LINK_DIR, name + '.json'), 'utf-8'));
+  // 只把页面要用的字段传出去：body / chain 这类探活中间态留在盘上
+  const results = (Array.isArray(d.results) ? d.results : []).map(r => ({
+    url: r.url, host: r.host, level: r.level, why: r.why || '', detail: r.detail || '',
+    title: r.title || '', status: r.status || 0,
+    from: (Array.isArray(r.from) ? r.from : []).map(f => ({ kind: f.kind, id: f.id, title: f.title }))
+  }));
+  return { name, at: d.at, total: d.total || results.length, hosts: d.hosts || 0, skipped: d.skipped || 0, count: d.count || {}, results };
+}
+
+app.get('/api/admin/link-health', requireAdmin, (req, res) => {
+  res.json({
+    builtin: LINK_SKIP_BUILTIN,
+    custom: readLinkSkipHosts(),
+    job: linkJobPublic(),
+    sched: readLinkSched(),
+    reports: linkReports(30)
+  });
+});
+
+app.get('/api/admin/link-health/job', requireAdmin, (req, res) => {
+  res.json({ job: linkJobPublic() });
+});
+
+app.get('/api/admin/link-health/report', requireAdmin, (req, res) => {
+  const name = String(req.query.name || '');
+  if (!LINK_REPORT_RE.test(name)) return res.status(400).json({ error: '报告名不对' });
+  try { res.json(linkReadReport(name)); }
+  catch { res.status(404).json({ error: '报告不存在（可能已被清掉）' }); }
+});
+
+// 白名单增删：只落 data/link-skip.json，脚本每次跑现读现合并，改完即生效
+app.post('/api/admin/link-health/skip', requireAdmin, (req, res) => {
+  const body = req.body || {};
+  const action = body.action === 'remove' ? 'remove' : 'add';
+  const host = String(body.host || '').trim().toLowerCase()
+    .replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+  if (!LINK_HOST_RE.test(host)) return res.status(400).json({ error: '域名格式不对（只填域名，别带路径）' });
+  if (action === 'add' && LINK_SKIP_BUILTIN.some(s => host === s || host.endsWith('.' + s))) {
+    return res.status(400).json({ error: '该域名已在内置白名单里' });
+  }
+  let list = readLinkSkipHosts();
+  if (action === 'add') {
+    if (list.includes(host)) return res.status(400).json({ error: '已经在名单里了' });
+    list.push(host);
+  } else {
+    list = list.filter(h => h !== host);
+  }
+  try { writeJSON(LINK_SKIP_FILE, { hosts: list, at: new Date().toISOString() }); }
+  catch (e) { return res.status(500).json({ error: '保存失败：' + e.message }); }
+  res.json({ ok: true, action, custom: list });
+});
+
+// 起一轮巡检。页面上的按钮和站内定时器都走这一个入口，同一时刻只允许跑一轮。
+function startLinkJob() {
+  if (linkJob && !linkJob.endedAt) {
+    const e = new Error('上一轮还在跑，等它结束再开'); e.status = 409; throw e;
+  }
+  const js = path.join(__dirname, 'tools', 'link-guard.js');
+  if (!fs.existsSync(js)) {
+    const e = new Error('服务器上没有 tools/link-guard.js'); e.status = 500; throw e;
+  }
+
+  const job = {
+    id: Date.now().toString(36), startedAt: Date.now(), endedAt: 0,
+    total: 0, done: 0, phase: '启动中', log: [], error: '', report: ''
+  };
+  linkJob = job;
+
+  let child;
+  try {
+    child = spawn(process.execPath, [js], {
+      cwd: __dirname,
+      env: Object.assign({}, process.env, { LINK_GUARD_PROGRESS: '1' })
+    });
+  } catch (e) {
+    job.endedAt = Date.now();
+    job.error = '起不来：' + e.message;
+    const err = new Error(job.error); err.status = 500; throw err;
+  }
+
+  const eat = chunk => {
+    String(chunk).split(/[\r\n]+/).forEach(line => {
+      const s = line.trim();
+      if (!s) return;
+      const p = s.match(/^\[p\]\s+(\d+)\/(\d+)$/);
+      if (p) { job.done = Number(p[1]); job.total = Number(p[2]); job.phase = '探活中'; return; }
+      const t = s.match(/^待检\s+(\d+)\s+条/);
+      if (t) { job.total = Number(t[1]); job.phase = '探活中'; }
+      if (/^扫完/.test(s)) job.phase = '整理结果';
+      if (/^报告：/.test(s)) job.report = s.replace(/^报告：/, '').trim();
+      if (/^结果：/.test(s)) job.log.push(s);
+      else if (job.log.length < 200 && !/^\d+\/\d+$/.test(s)) job.log.push(s.slice(0, 200));
+    });
+  };
+  child.stdout.on('data', eat);
+  child.stderr.on('data', eat);
+
+  // 兜底：机房出口烂掉时 curl 可能一直不返回，10 分钟强行收尾，别把任务挂在内存里
+  const killer = setTimeout(() => { try { child.kill('SIGKILL'); } catch { /* 已退出 */ } }, 10 * 60 * 1000);
+
+  child.on('error', e => {
+    clearTimeout(killer);
+    job.endedAt = Date.now();
+    job.phase = '失败';
+    job.error = '子进程出错：' + e.message;
+  });
+  child.on('close', code => {
+    clearTimeout(killer);
+    job.endedAt = Date.now();
+    job.done = job.total || job.done;
+    // 脚本自己写报告，这里按落盘时间挑最新一份，比解析 stdout 稳
+    try {
+      const newest = fs.readdirSync(LINK_DIR).filter(f => /^report-\d{8}-\d{4}\.json$/.test(f))
+        .map(f => ({ f, m: fs.statSync(path.join(LINK_DIR, f)).mtimeMs }))
+        .sort((a, b) => b.m - a.m)[0];
+      if (newest && newest.m >= job.startedAt - 5000) {
+        job.report = newest.f.replace(/\.json$/, '');
+        const d = JSON.parse(fs.readFileSync(path.join(LINK_DIR, newest.f), 'utf-8'));
+        job.count = d.count || {};
+      }
+    } catch { /* 没落到盘上就算了，页面会提示 */ }
+    job.phase = code === 0 && job.report ? '完成' : '失败';
+    if (code !== 0 && !job.error) job.error = '脚本退出码 ' + code + '（看日志最后几行）';
+  });
+
+  return job;
+}
+
+app.post('/api/admin/link-health/run', requireAdmin, (req, res) => {
+  try {
+    startLinkJob();
+    res.json({ ok: true, job: linkJobPublic() });
+  } catch (e) {
+    res.status(e.status || 409).json({ error: e.message });
+  }
+});
+
+// ---------- 站内定时巡检（不依赖任何外部调度） ----------
+// 站长会换机器、换托管账号、换 WorkBuddy 账号，外部的定时任务说断就断；
+// 这套跟着站点进程走：每天到点自己跑一轮，报告落盘，后台打开就能看。
+// 配置落 data/link-health-conf.json（auto / hour / lastDay），改完不用重启。
+const LINK_SCHED_FILE = 'link-health-conf.json';
+
+function readLinkSched() {
+  const raw = readJSON(LINK_SCHED_FILE, null) || {};
+  const h = Number(raw.hour);
+  return {
+    auto: raw.auto !== false,                                   // 默认开
+    hour: Number.isInteger(h) && h >= 0 && h <= 23 ? h : 9,      // 默认每天 9 点
+    lastDay: String(raw.lastDay || ''),
+    lastRun: String(raw.lastRun || '')
+  };
+}
+
+// 一分钟一跳：命中「设定的小时」且今天还没跑过才动手。
+// 记 lastDay 而不是「距上次 24 小时」，是为了机器重启/进程重启后不会多跑一轮。
+function linkSchedTick() {
+  try {
+    const conf = readLinkSched();
+    if (!conf.auto) return;
+    const now = new Date();
+    if (now.getHours() !== conf.hour) return;
+    const day = dateKey(now);
+    if (conf.lastDay === day) return;
+    if (linkJob && !linkJob.endedAt) return;
+    startLinkJob();
+    writeJSON(LINK_SCHED_FILE, Object.assign({}, conf, { lastDay: day, lastRun: now.toISOString() }));
+    console.log('[link-health] 定时巡检触发：' + day + ' ' + conf.hour + ':00');
+  } catch (e) {
+    console.error('[link-health] 定时巡检没起来：' + e.message);
+  }
+}
+setInterval(linkSchedTick, 60 * 1000);
+// 启动后 20 秒先探一次：pm2 刚好在设定小时里重启，不至于漏掉当天那一轮
+setTimeout(linkSchedTick, 20 * 1000);
+
+app.get('/api/admin/link-health/schedule', requireAdmin, (req, res) => {
+  res.json({ sched: readLinkSched() });
+});
+
+app.post('/api/admin/link-health/schedule', requireAdmin, (req, res) => {
+  const body = req.body || {};
+  const cur = readLinkSched();
+  const next = { auto: cur.auto, hour: cur.hour, lastDay: cur.lastDay, lastRun: cur.lastRun };
+  if (typeof body.auto === 'boolean') next.auto = body.auto;
+  if (body.hour !== undefined) {
+    const h = Number(body.hour);
+    if (!Number.isInteger(h) || h < 0 || h > 23) return res.status(400).json({ error: '小时要是 0-23 的整数' });
+    next.hour = h;
+  }
+  // 关掉再打开、或改了小时，允许当天再跑一次：把 lastDay 清掉
+  if (body.resetDay) next.lastDay = '';
+  try { writeJSON(LINK_SCHED_FILE, next); }
+  catch (e) { return res.status(500).json({ error: '保存失败：' + e.message }); }
+  res.json({ ok: true, sched: next });
 });
 
 // ---------- 注册统计看板 ----------
@@ -16436,6 +17873,8 @@ app.get('/api/admin/works', requireAdmin, (req, res) => {
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const mapOne = w => ({
     ...publicWork(w), status: w.status || 'approved', reports: w.reports || 0, anon: !!w.anon,
+    // 关键词编辑回填用原始存档：publicWork 里的 keywords 是现算的展示版，两者含义不同
+    keywordsRaw: Array.isArray(w.keywords) ? w.keywords : null,
     pubTimeCustom: !!w.pubTimeCustom,   // 发布时间是后台手动设置的（列表里挂「手动时间」小标）
     aiReview: w.aiReview || null,   // AI 初审意见（pass/reason/note），待审列表展示给管理员参考
     featuredUntil: w.featuredUntil || null,
@@ -16604,7 +18043,9 @@ app.post('/api/admin/works/:id/relist', requireAdmin, (req, res) => {
 // ---------- 后台：众人小法官复核 ----------
 // 一屏看完所有被贴过标的作品：认定 / 反对票数、当前状态（众判中 / 已下架 / 已结案）。
 // 三个动作：贴标（由站长发起众判）、结案并恢复、直接下架。
-// 投票永久保密：明细只给「哪一票、什么时间」，不给投票人账号（历史存量里的 name 字段也不外发）。
+// 投票对站内用户保密：前台接口（juryPublic / 详情页）永远只回票数，不回投票人。
+// 但后台是管理员复核用的，必须给出「谁投的」（2026-11-14 改）：账号名 + uid，注销了给 uid 短码；
+// 这里只在本接口（requireAdmin）回传，别把 name 抄进 juryPublic 或任何前台响应。
 app.get('/api/admin/jury', requireAdmin, (req, res) => {
   const rows = Object.keys(juryData.cases).map(id => {
     const w = works.find(x => x.id === id);
@@ -16612,9 +18053,17 @@ app.get('/api/admin/jury', requireAdmin, (req, res) => {
     const c = juryData.cases[id] || {};
     const t = juryTally(id);
     const box = juryVotesOf(id);
-    const votes = Object.keys(box).map(uid => ({
-      v: box[uid] && box[uid].v, at: box[uid] && box[uid].at
-    })).sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+    const votes = Object.keys(box).map(uid => {
+      // 票箱只存 {v, at, ip}，账号名现查 users：改名后这里跟着变，注销了给 gone 标记
+      const u = users.find(x => x.id === uid);
+      return {
+        v: box[uid] && box[uid].v,
+        at: box[uid] && box[uid].at,
+        uid,
+        name: u ? String(u.username || '') : '',
+        gone: !u
+      };
+    }).sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
     return {
       id,
       title: w.title,
@@ -17145,6 +18594,9 @@ app.put('/api/admin/works/:id', requireAdmin, (req, res) => {
     if (title) w.title = String(title).slice(0, 100);
     applyTitleParts(w, req.body);   // 后台编辑：名字 / 一句话介绍分开存（清空介绍框则删掉旧介绍）
     applyContentFields(w, req.body);   // 后台也支持改「一眼看懂」；表单不带这些键时原样保留
+    // 搜索关键词：编辑器表单会带上这个键（回填原值 / 改过 / 清空）。
+    // 不传这个键（老客户端、列表快捷操作）一律不动，避免把自动配词的老作品冻结成「作者刻意清空」。
+    if (req.body.keywords !== undefined) w.keywords = sanitizeKeywords(req.body.keywords);
     if (prompt !== undefined) w.prompt = String(prompt).slice(0, 3000);
     if (req.body.categories !== undefined) {
       const cats = parseCats(req.body.categories);
@@ -18577,6 +20029,7 @@ app.get('/api/admin/users/balance', requireAdmin, (req, res) => {
 //   送出   tips.json 里 fromUserId = 我 且 via ≠ 'ad'（广告代送不扣观众口袋，不算 TA 花的）
 //   站长送 rec.adminPoints（后台「送灯火 / 扣灯火」的净额：送 +、扣回 −，是净账不是单边）
 //   投放   ad-redemptions.json 的 price − refunded（下单实付扣掉已退；在投还没烧完的也算了，钱已经扣了）
+//   看广告 rec.adReward（今天 count 0~3 / 累计 total；total 是 2026-11-14 中途加的，之前的次数没有记录）
 // 不含：作品被解锁的收入（lamp_in）、兑换码（gift）、签到以外的系统奖励（upload/star/os…），
 // 这些在用户自己的「灯光明细」里能逐笔看到；这一页只回答站长最常问的那五个数。
 app.get('/api/admin/points-ledger', requireAdmin, (req, res) => {
@@ -18584,6 +20037,7 @@ app.get('/api/admin/points-ledger', requireAdmin, (req, res) => {
   const rows = users.map(u => {
     const rec = shareData.users[u.id] || {};
     const ck = rec.checkin || {};
+    const ar = rec.adReward || {};
     return {
       id: u.id,
       username: u.username,
@@ -18592,9 +20046,19 @@ app.get('/api/admin/points-ledger', requireAdmin, (req, res) => {
       points: rec.points || 0,
       works: works.filter(w => w.userId === u.id).length,
       checkin: Number(ck.total || 0),
-      checkinDays: Number(ck.days || 0),
+      checkinDays: checkinDaysOf(u.id, ck),   // 走兜底：days 字段中途才加的，老账号要靠 maxStreak 补（站长 13 连签别再显示 6 天）
       checkinStreak: Number(ck.streak || 0),
       lastCheckin: ck.last || '',
+      // 三个一次性来源（2026-11-14）：绑微信 +300 / 桌面 PWA 打开 +200 有灯火，绑 GitHub 只记状态不发灯火
+      wxbind: rec.wxBindBonusAt ? WX_BIND_BONUS_POINTS : 0,
+      wxBindAt: rec.wxBindBonusAt || '',
+      ghBind: (u.github && u.github.id) ? 1 : 0,
+      ghLogin: (u.github && u.github.login) || '',
+      pwa: rec.pwaBonusAt ? PWA_BONUS_POINTS : 0,
+      pwaAt: rec.pwaBonusAt || '',
+      // 看激励视频领灯火（/api/me/ad-reward）：今天看了几次（0~3）+ 累计次数（2026-11-14 起记，ar.total 中途才加的，老号没有就是 0）
+      adToday: (ar.day === dateKey() && ar.day) ? Number(ar.count || 0) : 0,
+      adTotal: Number(ar.total || 0),
       tipIn: 0, tipInAd: 0, tipInCount: 0,
       tipOut: 0, tipOutCount: 0,
       adminNet: Number(rec.adminPoints || 0),
@@ -18628,10 +20092,15 @@ app.get('/api/admin/points-ledger', requireAdmin, (req, res) => {
       people: rows.length,
       points: sum('points'),
       checkin: sum('checkin'),
+      wxbind: sum('wxbind'),
+      pwa: sum('pwa'),
+      ghBound: rows.reduce((n, r) => n + (r.ghBind ? 1 : 0), 0),
       tipIn: sum('tipIn'),
       tipOut: sum('tipOut'),
       adminNet: sum('adminNet'),
-      promoSpent: sum('promoSpent')
+      promoSpent: sum('promoSpent'),
+      adToday: sum('adToday'),
+      adTotal: sum('adTotal')
     },
     generatedAt: new Date().toISOString()
   });
@@ -19324,8 +20793,12 @@ function authorEntries() {
   // 账号名 → id / 个性地址 一次建好索引：sitemap 里的作者页链接优先用 /u/<个性地址>（别在循环里 users.find）
   const uidByName = new Map(users.map(u => [u.username, u.id]));
   const slugByName = new Map(users.filter(u => slugOf(u)).map(u => [u.username, slugOf(u)]));
+  // 主页作品隐藏的作者不进 sitemap：那一页只剩头像和数字，收录它没有意义（页面本身也已 noindex）
+  const hiddenUids = new Set(users.filter(u => u.hideWorks === true).map(u => u.id));
   visibleWorks().forEach(w => {
     if (w.anonymous === true) return;   // 匿名作品不进作者页 / sitemap
+    const wuid = uidByName.get(w.author);
+    if (wuid && hiddenUids.has(wuid)) return;
     const cur = map.get(w.author);
     if (!cur || new Date(w.createdAt) > new Date(cur.lastmod)) {
       map.set(w.author, { name: w.author, uid: uidByName.get(w.author) || '', slug: slugByName.get(w.author) || '', lastmod: w.createdAt });
@@ -19968,8 +21441,12 @@ app.get('/u/:name', (req, res) => {
   const shown = displayNameOf(name);   // 页面显示昵称，URL / 作者匹配仍用账号名
   // 档案行下面的外链（无主作品没有账号，自然也没有链接）
   const profileLinks = refUser ? profileLinksOf(refUser) : [];
+  // 主页作品隐藏（2026-11-14）：作者把主页上的作品区收起来了，作品本身照旧在首页 / 榜单 / 搜索里。
+  // SSR 这一份是给爬虫和首屏用的——到这里的都不是本人，所以直接按「只公开档案」渲染；
+  // 这样的一页几乎没有正文，整页 noindex，别让搜索结果里出现一页只有头像和数字的档案。
+  const profileHidden = !!(refUser && refUser.hideWorks === true);
 
-  if (!list.length) {
+  if (!list.length && !profileHidden) {
     const headHtml = seo.head({
       title: `作者不存在 - ${seo.SITE_NAME}`,
       description: '该创作者还没有提交作品。',
@@ -19979,7 +21456,22 @@ app.get('/u/:name', (req, res) => {
     return sendHtml(res, shell(headHtml, notFoundBlock(base)), 404);
   }
 
-  const headHtml = seo.head({
+  const headHtml = profileHidden ? seo.head({
+    title: `${shown} 的主页 - ${seo.SITE_NAME}`,
+    description: truncateText(`${shown}的主页：作品暂时收起来了，这一页只公开档案。`, 150),
+    keywords: [shown, '创作者主页'].join(','),
+    canonical: pageUrl,
+    type: 'profile',
+    noindex: true,
+    jsonLd: [{
+      '@context': 'https://schema.org',
+      '@type': 'ProfilePage',
+      url: pageUrl,
+      name: `${shown} 的主页`,
+      isPartOf: { '@type': 'WebSite', name: seo.SITE_NAME, url: base + '/' },
+      mainEntity: { '@type': 'Person', name: shown, url: pageUrl }
+    }, seo.breadcrumbLd(base, [{ name: '首页', href: '/' }, { name: shown }])]
+  }) : seo.head({
     title: `${shown} 的作品（${list.length} 件） - ${seo.SITE_NAME}`,
     description: truncateText(
       `${shown}在造梦橱窗提交了 ${list.length} 件作品，` +
@@ -20012,7 +21504,7 @@ app.get('/u/:name', (req, res) => {
   const block = `<div id="seoContent" class="seo-wrap">
   ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name: shown }])}
   <div class="author-hero">
-    <div class="author-hero-band" aria-hidden="true"></div>
+    <div class="author-hero-band band-skin hs-${heroSkinOf(refUser)}" aria-hidden="true"><i class="bs-m bs-m1"></i><i class="bs-m bs-m2"></i></div>
     <div class="author-hero-main">
       <div class="author-avatar">${seo.esc(shown.slice(0, 1).toUpperCase())}</div>
       <div class="author-info">
@@ -20038,7 +21530,9 @@ app.get('/u/:name', (req, res) => {
       <div class="as-cell"><span class="as-ico">${Icons.icon('chat', 15)}</span><b class="as-val">${totalComments}</b><span class="as-label">评论</span></div>
     </div>
   </div>
-  <div class="gallery">${withAuthorNames(list).map(w => seo.cardHtml(w)).join('') || '<div class="empty"><p>该作者还没有公开作品</p></div>'}</div>
+  <div class="gallery">${profileHidden
+    ? `<div class="empty"><p>这位作者暂时把作品收起来了，这一页只公开档案——想找 TA 的作品，可以在首页、榜单里搜作者名。</p></div>`
+    : (withAuthorNames(list).map(w => seo.cardHtml(w)).join('') || '<div class="empty"><p>该作者还没有公开作品</p></div>')}</div>
   <div class="author-join">
     <div class="aj-copy">
       <b>也想拥有一页这样的创作者主页？</b>
@@ -20232,7 +21726,7 @@ app.get('/bar', (req, res) => {
         </div>
       </div>
       ${i.workId ? `<a class="rank-score" href="/w/${seo.esc(i.workId)}">看作品 →</a>` : ''}
-    </li>`).join('') || '<li class="empty"><p>还没有人提想法，来做第一个吧</p></li>'}
+    </li>`).join('') || '<li class="empty"><p>还没有人开口，来做第一个吧</p></li>'}
   </ol>
   <p class="seo-more"><a class="btn-ghost" href="/">← 返回首页</a></p>
 </div>`;
@@ -20509,6 +22003,12 @@ const CHRON_MANUAL_EVENTS = [
     // 放上公开时间线等于二次通报，别再往这里加「第一件被众判下架的作品」。
     at: '2026-11-13T21:00:00+08:00', ico: 'rules',
     text: '「众人小法官」开审——作品像不像站外推广，不再由站长一个人判断：登录的造梦者都能投一票，卡片上出现「众判中」就是喊你进去评理；「像推广」的票比「不像推广」多出 5 票，作品自动下架待整改，作者按规范改好可以重新提交。判错了随时说话，规则见<a href="/rules">作品规范</a>第十节'
+  },
+  {
+    // 「找找」上线日（站长可在此改日期/文案）。
+    // 只写「能干什么」和「不编」这条底线，不写模型名、不写额度——那些是运维口径，访客不关心。
+    at: '2026-11-14T18:00:00+08:00', ico: 'search',
+    text: '「找找」上线——搜索框只认字面，说不出名字的东西就搜不到。现在在搜索框边上说一句话就行：「想把录音转成文字」「能帮我对账的小工具」，找找把这句话翻成检索条件，去站里的作品里真翻一遍；翻到几件说几件，只有沾边的会明说沾边，一件都没有就直说没有，不编。它只负责「听懂」，作品一律从站里现成的捞'
   }
 ];
 
@@ -21473,7 +22973,7 @@ app.get('/rules', (req, res) => {
         <li><b>自己看自己不收。</b>你打开自己的作品页不消耗灯火；正在看的这件作品，也不会在详情页里给自己推自己。</li>
         <li><b>只在推荐卡上算。</b>只有带「推荐」角标的那张卡被看到、被点开才扣灯火。作品在「最新」「最热」「随便逛逛」里被正常浏览、点开、点赞收藏，都不扣灯火；投放也不会改变这几处的排序——不会让作品插队，也不会给它加分，那几处只按作品自己收到的赞、收藏、评论和真实访问排。</li>
         <li><b>按位置各算各的。</b>一件作品可以同时投几个位置，每个位置单独计：同一个人先在首页第一格看到、点进详情又看到，就是两笔，各扣各自那一单——两块位置确实都露了面。反过来，同一笔投放哪怕在几个展示面（榜单页和酒馆、随便逛逛）都露了面，同一个人一天仍只扣 1 次。</li>
-        <li><b>同时最多 3 条在投。</b>网页和小程序共用这个名额；同一件作品在同一个位置只能挂一条，位置本身不设库存，多人同投时每次随机展示一条、各家机会均等。有单子投完、到期或撤下，名额立刻空出来。</li>
+        <li><b>同时最多 5 条在投。</b>网页和小程序共用这个名额；同一件作品在同一个位置只能挂一条，位置本身不设库存，多人同投时每次随机展示一条、各家机会均等。有单子投完、到期或撤下，名额立刻空出来。</li>
         <li><b>花了多少，自己能查。</b>「我的投放」里每一单都写着已消耗多少盏、撤下还能退多少盏；投出去点「看效果」，能亲眼看到自己的作品卡挂在哪个位置，不用猜。</li>
         <li><b>没用完能退。</b>额度用完自动下线；没投完随时可以撤下，剩下的按原价退回灯火，一分不差。</li>
       </ul>

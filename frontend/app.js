@@ -22,6 +22,10 @@ const ic = (name, size) => (window.Icons ? Icons.icon(name, size) : '');
 
 // 图片地址：本站上传的图走 /t/<宽>/<文件名>（服务端按需转 webp 并缓存），
 // 站外图片（广告位、外链封面）原样返回。卡片只给 400 档，详情页才给 1200。
+// 注意（2026-11-14 记录，未改）：存量数据的 thumb 存的是本站绝对地址
+// （https://本站域名/uploads/x.jpg），indexOf('/uploads/') !== 0 会直接原样返回 ——
+// 也就是全站其实一直没走缩图、都在直出原图。要切回缩图得先确认两件事再动：
+// ① 线上 /t/ 对 jpg/png/webp 各档都稳；② 数据里把绝对地址归一成 /uploads/…（或这里先剥域名）。
 function imgUrl(u, width) {
   u = String(u || '');
   if (u.indexOf('/uploads/') !== 0) return u;
@@ -202,6 +206,50 @@ function hideModal(el) {
   el.style.display = 'none';
   unlockScroll();
 }
+// ===== 手机键盘遮挡弹窗输入框的兜底 =====
+// iOS 键盘弹出时不压缩布局视口，fixed 遮罩里的弹窗照旧垂直居中，输入框正好被键盘盖住。
+// 用 visualViewport 估算键盘高度（innerHeight - 可视高 - 视口顶部偏移），键盘弹出时把
+// 可见弹窗临时改为顶对齐、max-height 压进可视区，并把焦点输入框滚到可视范围中央；
+// 键盘收起还原。桌面 / 无 visualViewport 的老浏览器自然走不到这条路径。
+(function keyboardModalGuard() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  let raf = 0;
+  function apply() {
+    raf = 0;
+    const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    const open = kb > 120; // 阈值过滤地址栏伸缩这类小幅变化
+    document.querySelectorAll('.modal-mask').forEach((mask) => {
+      if (mask.style.display === 'none') return;
+      const modal = mask.querySelector('.modal');
+      if (!modal) return;
+      if (open) {
+        mask.style.alignItems = 'flex-start';
+        modal.style.maxHeight = (vv.height - 16) + 'px';
+      } else if (mask.dataset.kbGuard) {
+        // 只清理自己改过的样式，别覆盖业务代码可能设置的值
+        mask.style.alignItems = '';
+        modal.style.maxHeight = '';
+      }
+      mask.dataset.kbGuard = open ? '1' : '';
+    });
+    const ae = document.activeElement;
+    if (open && ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && ae.closest('.modal-mask')) {
+      setTimeout(() => {
+        try { ae.scrollIntoView({ block: 'center' }); } catch (_) { ae.scrollIntoView(); }
+      }, 60); // 等浏览器按新视口完成布局再滚
+    }
+  }
+  function schedule() { if (!raf) raf = requestAnimationFrame(apply); }
+  vv.addEventListener('resize', schedule);
+  vv.addEventListener('scroll', schedule);
+  // 键盘弹出动画有时不触发 resize（焦点切换但键盘高度不变），聚焦输入框后也补一次
+  document.addEventListener('focusin', (e) => {
+    if (!e.target || !/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+    if (!e.target.closest('.modal-mask')) return;
+    setTimeout(schedule, 280); // 等键盘开始弹出、视口稳定后再评估
+  });
+})();
 // 点遮罩关闭弹窗：必须「按下的位置在遮罩上 + 点击落在遮罩上 + 全程位移不超过 12px」才算数。
 // 原来直接挂在 click 上，手机在遮罩上滑动、滚动、拖一下再松手，浏览器都会合成一次 click，窗口就没了
 // ——这是站里误触的主要来源。改成记录按下点、在 click 时比对全程位移后，只有真正在原地轻点才关。
@@ -604,37 +652,127 @@ function renderDetailFav(id) {
 
 // ---------- 登录 / 注册 ----------
 // 注册昵称预填：空着最差——不填的人会顶着随手拼的账号名上墙（账号名还可能像手机号）。
-// 直接给一个带站点调性的名字（做小程序的老张 / 写代码的小李），不满意自己改或点「换一个」。
-// 词库与 server.js 的老用户补名保持一致（同一套名字，新老用户风格统一）
-// 组合数 = 45 个动作 × 65 个称呼 = 2925 种（原来 11×14=154 太少，几十人必撞名）。
-// 前 11 个动作 / 前 14 个称呼是原始词库，别删别改顺序。
+// 直接给一个带站点调性的名字，不满意自己改或点「换一个」。
+// 词库与 server.js 的老用户补名保持一致（同一套名字，新老用户风格统一）。
+//
+// 2026-11-14 扩充：原来只有「做小程序的老张」这一个句式（45×65≈2900 种）。人一多，墙上
+// 一眼望去全是「XX 的老X」/「XX 的阿X」，像同一批脚本注册的号，跟「造梦」两个字也不搭。
+// 现在改成八套句式按权重摇，各有各的长相：
+//   A 做小程序的清和     20%  主味，最像人自己写的简介（老词库原样留在这一套里）
+//   B 凌晨三点的小林     12%  时间 / 场景，名字自带画面
+//   C 需求翻译官老周     12%  职业绰号，同行黑话，最好记
+//   D 在改第九版的老王   10%  一句近况，自带故事
+//   E 夜里发光的猫       20%  造梦橱窗的意象，让墙上不只有「人 + 职业」
+//   F 第七个做插件的      8%  编号梗，凑组合也不重样
+//   G 国服第一调参侠     12%  自称头衔，段子味（省服/小区/工位/家里，一档档往下掉）
+//   H 分号研究所所长      6%  江湖名号，三截拼，比 G 更冷一点
+// 组合数约 1.9 万（原来 2900）。前 11 个动作 / 前 14 个称呼必须留在原位、不改顺序——
+// 已经发出去的老名字都长这样，改了风格就断了。
+// 名字长度上限 16 字（server 的 NICK_RE），每套模板拼出来都在 6-13 字，留了余量。
 const NICK_ACTS = [
   // —— 原始词库（保留）——
   '做小程序', '做网站', '做 AI 应用', '做插件', '做游戏', '写代码', '做工具', '折腾 AI', '独立开发', '做产品', '做设计',
-  // —— 扩充：端上 / 模型 / 数据 / 内容 / 增长 ——
+  // —— 端上 / 模型 / 数据 / 内容 / 增长 ——
   '做 App', '写前端', '写后端', '做自动化', '做机器人', '训练模型', '调模型', '玩提示词', '做副业', '做开源',
   '做笔记', '做效率工具', '做浏览器插件', '做小工具', '做数据看板', '做落地页', '做知识库', '做 Agent', '做工作流', '写脚本',
   '做爬虫', '做 SaaS', '做公众号', '做视频', '做内容', '做自媒体', '做增长', '做界面', '画原型', '做导航站',
-  '做书签', '做翻译工具', '做问答机器人', '做语音应用'
+  '做书签', '做翻译工具', '做问答机器人', '做语音应用',
+  // —— 小东西 / 生活向：这块是「造梦橱窗」的主场，别只写技术名词 ——
+  '做小游戏', '做记账本', '做倒数日', '做习惯打卡', '做电子书', '做播客', '做菜谱', '做像素画',
+  '做壁纸站', '做配色工具', '做表单', '做简历', '做闹钟', '做便签', '做旅行手账', '做课程表',
+  '做自习室', '做截图工具', '做词云', '做日程表', '做电子宠物', '做桌面挂件', '做图标', '做动效',
+  '剪视频', '做数据清洗', '做订阅提醒', '做小夜灯'
 ];
 const NICK_WHO = [
   // —— 原始词库（保留）——
   '老张', '小李', '小王', '老陈', '阿May', '小周', '阿灿', '小满', '阿吉', '大鹏', '阿星', '小鹿', '老白', '阿飞',
-  // —— 扩充：老X / 小X / 阿X / 大X 四组 ——
+  // —— 老X / 小X / 阿X / 大X 四组 ——
   '老刘', '老李', '老王', '老赵', '老孙', '老徐', '老黄', '老吴', '老郑', '老马', '老范', '老许',
   '小陈', '小林', '小杨', '小黄', '小徐', '小郭', '小何', '小高', '小罗', '小郑', '小梁', '小宋', '小唐', '小冯', '小苏', '小丁',
   '阿杰', '阿伟', '阿涛', '阿锋', '阿亮', '阿龙', '阿明', '阿华', '阿坤', '阿诚', '阿哲', '阿宁', '阿原', '阿泽', '阿木', '阿海', '阿德', '阿俊', '阿峰',
-  '大熊', '大伟', '大康', '大川'
+  '大熊', '大伟', '大康', '大川',
+  // —— 再补一轮常见姓，摊薄「老张/小李」的密度 ——
+  '老杨', '老何', '老罗', '老唐', '老宋', '老冯', '老蒋', '老谢', '老韩', '老曹', '老彭', '老程',
+  '小魏', '小蒋', '小薛', '小潘', '小顾', '小钟', '小夏', '小常', '小温', '小严',
+  '阿元', '阿楠', '阿鑫', '阿骏', '阿朗', '阿墨', '阿岚', '阿树',
+  '大志', '大勇', '大磊', '大山',
+  // —— 正名式的两个字名字：不是「老/小/阿」，读起来更像一个人 ——
+  '清和', '子昂', '亦舟', '南风', '木木', '小野', '知夏', '半夏', '望舒', '拾一', '一鸣', '青禾',
+  // —— 昵称式的名字：站里很多作者本来就用这种 id ——
+  '橘子', '年糕', '薄荷', '青柠', '栗子', '柚子', '豆浆', '芝麻', '布丁', '芋圆', '麦芽', '馒头'
 ];
+// B：时间 / 场景（自带「的」，后面直接接称呼）
+const NICK_SCENES = [
+  '凌晨三点的', '下班路上的', '周日下午的', '周一早上的', '通宵之后的', '等编译的', '跑测试的', '加完班的',
+  '深夜十二点的', '周末不休息的', '在改 bug 的', '被需求追着跑的', '看着进度条发呆的', '洗完澡才想到功能的',
+  '孩子睡了以后的', '通勤四十分钟的', '午休做副业的', '在地铁上画原型的', '一边带娃一边写代码的', '开着两个编辑器的'
+];
+// C：职业绰号（不带姓，后面直接接称呼）
+const NICK_TITLES = [
+  '前端焊工', '接口接线员', '需求翻译官', '像素修补匠', '配色纠结者', '排版强迫症', '命名困难户', '按钮调色师',
+  '正则玩家', '日志侦探', '加载动画师', '空状态设计师', '报错观察员', '原型画手', '滚动条美学家', '弹窗守门人',
+  '表格魔法师', '动效手艺人', '像素搬运工', '需求拆解员', '小屏适配员', '暗色模式信徒', '字体纠结者', '间距校准员'
+];
+// D：一句近况（自带「的」）
+const NICK_STAGES = [
+  '需求又改了的', '在改第九版的', '刚把 bug 修好的', '上线前夜的', '刚跑通第一版的', '正在删代码的',
+  '准备重构的', '代码刚写完的', '刚被评审的', '第一版就上线的', '把 demo 存下来的', '又加了个功能的',
+  '正在补注释的', '刚回滚完的', '还在调间距的', '刚把需求翻译完的', '刚下掉一个功能的', '正在想名字的',
+  '在收尾的', '上线第二天又改的'
+];
+// E：造梦橱窗的意象（整名，不再拼称呼）
+const NICK_IMAGES = [
+  '夜里发光的猫', '会走路的台灯', '住在云端的鲸', '橱窗里的月亮', '修星星的人', '收集回声的人',
+  '折纸飞机的人', '会自己充电的猫', '怕黑的萤火虫', '睡在键盘上的猫', '抽屉里的星星', '替月亮值班的人',
+  '会写日记的闹钟', '住在玻璃罐里的海', '只在下雨出现的猫', '会飞的小台灯', '云上的守夜人', '深夜的缝补匠',
+  '给月亮打补丁的人', '把梦折起来的人', '会说话的纸飞机', '窗台上的小行星', '把星星放回去的人',
+  '夜市里的灯匠', '会走路的抽屉', '住在网页里的猫', '替人许愿的猫', '住在橱窗里的灯', '凌晨的摆渡人', '收灯的人'
+];
+// F：编号梗（「第七个做插件的」）
+const NICK_NUMS = ['二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十七', '二十三', '四十二', '八十八'];
+// G：自称头衔（「国服第一调参侠」「小区第一像素警察」）——段子味，但一读就知道在自嘲。
+// 段位从「国服」一档档掉到「家里」，越掉越好笑，别只留国服那一个。
+const NICK_RANKS = [
+  '国服第一', '省服第一', '市服第一', '区服第一', '小区第一', '楼道第一', '工位第一', '家里第一', '全家第一',
+  '楼下第一', '楼栋第一', '办公室第一'
+];
+const NICK_RANK_TITLES = [
+  '调参侠', '复制粘贴大师', '删代码选手', '改需求选手', '像素警察', '分号守护者', '报错收藏家',
+  '快捷键大师', '原型速写师', '空状态大师', '起名困难选手', '空格敏感者', '深夜提交选手',
+  '自动化狂人', '加载动画专家', '间距测量员', '手搓轮子大师', '脚手架收藏家', '注释补写员',
+  '样式调试员', '代码考古员', '视觉走查员', '配色辩论冠军', '两像素校准师', '发版选手', '回滚选手'
+];
+// H：江湖名号（「分号研究所所长」「报错收容所看门人」）——三截拼，比 G 更冷一点。
+// 注意别用「管理员」：那两个字被 nameImpersonation 当冒充站方拦掉（RESERVED_ROOTS_ZH）。
+const NICK_ORGS = ['研究所', '俱乐部', '收容所', '同好会', '互助会', '档案馆', '观察站'];
+const NICK_ORG_THINGS = ['分号', '报错', '空状态', '暗色模式', '加载动画', '像素', '快捷键', '需求变更', '重构', '起名', '间距', '进度条', '按钮', '字体', '图标', '文案'];
+const NICK_ORG_ROLES = ['所长', '会员', '会长', '常驻', '看门人', '荣誉会员', '名誉所长'];
+
+const nickPick = arr => arr[(Math.random() * arr.length) | 0];
+// 权重加起来 100：摇一个 0-100 的数，落到哪套用哪套
+const NICK_MAKERS = [
+  { w: 20, f: () => { const act = nickPick(NICK_ACTS); return act + (/[\w]$/.test(act) ? ' 的' : '的') + nickPick(NICK_WHO); } },
+  { w: 12, f: () => nickPick(NICK_SCENES) + nickPick(NICK_WHO) },
+  { w: 12, f: () => nickPick(NICK_TITLES) + nickPick(NICK_WHO) },
+  { w: 10, f: () => nickPick(NICK_STAGES) + nickPick(NICK_WHO) },
+  { w: 20, f: () => nickPick(NICK_IMAGES) },
+  { w: 8, f: () => { const act = nickPick(NICK_ACTS); return '第' + nickPick(NICK_NUMS) + '个' + act + (/[\w]$/.test(act) ? ' 的' : '的'); } },
+  { w: 12, f: () => nickPick(NICK_RANKS) + nickPick(NICK_RANK_TITLES) },
+  { w: 6, f: () => nickPick(NICK_ORG_THINGS) + nickPick(NICK_ORGS) + nickPick(NICK_ORG_ROLES) }
+];
+function nickByTemplate() {
+  let r = Math.random() * 100;
+  for (const m of NICK_MAKERS) { r -= m.w; if (r < 0) return m.f(); }
+  return NICK_MAKERS[0].f();
+}
 let lastNick = '';
 function randomNick() {
   // 起手把 n 设成上一次的值：保证至少进一次循环（否则第二次调用会原地返回空串）
   let n = lastNick;
-  for (let i = 0; i < 20 && n === lastNick; i++) {
-    const act = NICK_ACTS[(Math.random() * NICK_ACTS.length) | 0];
-    const who = NICK_WHO[(Math.random() * NICK_WHO.length) | 0];
-    // 「折腾 AI」这种英文字母收尾的，和「的」之间留个空格，不然挤成「AI的」
-    n = act + (/[\w]$/.test(act) ? ' 的' : '的') + who;
+  for (let i = 0; i < 24; i++) {
+    const cand = nickByTemplate();
+    // 太长（理论上不会）就重摇，别塞一个注册时会被 NICK_RE 打回来的名字
+    if (cand !== lastNick && cand.length <= 16) { n = cand; break; }
   }
   lastNick = n;
   return n;
@@ -759,8 +897,6 @@ function renderAuthBox() {
         <button class="user-chip" id="userMenuBtn" title="个人菜单">${ic('user')} <span class="uc-name">${escapeHtml(state.user.nickname || state.user.username)}</span><span class="um-caret">▾</span></button>
         <div class="user-dropdown" id="userDropdown">
           <a class="ud-item" href="/u/${encodeURIComponent(state.user.slug || state.user.id || state.user.username)}" data-nav>${ic('home', 15)} 我的主页</a>
-          <button class="ud-item" id="favDrop">${ic('fav', 15)} 我的收藏</button>
-          <button class="ud-item" id="likeDrop">${ic('heart', 15)} 我的点赞</button>
           <div class="ud-sep"></div>
           <button class="ud-item" id="statsBtn">${ic('bars', 15)} 作品数据</button>
           <button class="ud-item" id="pointsBtn">${ic('lamp', 15)} 灯光明细<span class="ud-pts">${pts}</span></button>
@@ -788,18 +924,8 @@ function renderAuthBox() {
       });
     }
     $('logoutBtn').onclick = doLogout;
-    // 我的收藏：从顶部导航收进头像下拉（独立页 /favs，高亮跟当前路由走）
-    const favDrop = $('favDrop');
-    if (favDrop) {
-      favDrop.classList.toggle('active', location.pathname === '/favs');
-      favDrop.onclick = () => { menu.classList.remove('open'); toggleFavorites(); };
-    }
-    // 我的点赞：与「我的收藏」同一套交互（独立页 /likes）
-    const likeDrop = $('likeDrop');
-    if (likeDrop) {
-      likeDrop.classList.toggle('active', location.pathname === '/likes');
-      likeDrop.onclick = () => { menu.classList.remove('open'); toggleLiked(); };
-    }
+    // 收藏 / 点赞入口（2026-11-14）：头像下拉里那两颗已撤——作者主页现在有「收藏 / 喜欢」
+    // 两个 tab（/favs、/likes 独立页保留，「我的」tiles 入口也在），下拉不再重复挂一份
     $('statsBtn').onclick = () => openStats('data');
     // 灯光明细：PC 端原来只能从「我的」页（手机端）或分享成绩里的余额卡绕进去，
     // 顶栏的灯火数字反而点不出底账，这里给一个直达入口
@@ -911,7 +1037,7 @@ function checkinCardHtml(ck) {
       </div>
       <div class="ck-days">${dots}</div>
       ${arriveLine}
-      <div class="ck-tip">一轮 ${cycle} 天共 ${schedule.reduce((a, b) => a + b, 0)} 盏，断签从头记。攒的灯火可以换<span style="white-space:nowrap">「推荐」</span>的曝光位，也可以送给喜欢的作品，给作者点一盏灯。</div>
+      <div class="ck-tip">本轮第 ${day}/${cycle} 天 · 一轮共 ${schedule.reduce((a, b) => a + b, 0)} 盏，断签从头记。攒的灯火可以换<span style="white-space:nowrap">「推荐」</span>的曝光位，也可以送给喜欢的作品，给作者点一盏灯。</div>
       ${ckAdHtml(ck)}
       <div class="ck-promise">${ic('heart', 13)}<span>灯火只送不卖：签到、看广告、分享邀请都能免费拿，也没有付费买灯火的入口。</span></div>
     </div>`;
@@ -929,21 +1055,31 @@ function ckAdHtml(ck) {
   const ar = (ck && ck.adReward) || {};
   const once = ckAdOnce(ck);
   const limit = Number(ar.limit || (Array.isArray(ar.schedule) ? ar.schedule.length : 0)) || 3;
+  const used = Math.max(0, Number(ar.used) || 0);
   const left = ar.left == null ? limit : Math.max(0, Number(ar.left) || 0);
   const total = Number(ar.total) || once * limit;
-  const sched = Array.isArray(ar.schedule) ? ar.schedule : [];
-  const stepTxt = sched.some(v => v !== sched[0]) ? `，按 ${sched.join('/')} 递增` : '';
+  const sched = Array.isArray(ar.schedule) && ar.schedule.length ? ar.schedule : Array.from({ length: limit }, () => once);
   const done = left <= 0;
+  // 价目三格：已领的涂黑、下一个描橙边、最后一档上暖黄——和签到 7 天进度条一个思路，进度条本身就是价目表
+  const step = (amt, i) => {
+    if (!amt) return '';
+    const label = i < used ? '已领' : (i === used && !done ? '下一个' : (i === sched.length - 1 ? '最后一档' : '待领'));
+    const cls = i < used ? ' is-done' : (i === used && !done ? ' is-next' : (i === sched.length - 1 ? ' is-last' : ''));
+    return `<span class="ck-ad-step${cls}"><b>+${amt}</b><i>${label}</i></span>`;
+  };
   return `
     <div class="ck-ad${done ? ' is-done' : ''}">
-      <span class="ck-ad-ico">${ic('mini', 14)}</span>
-      <span class="ck-ad-main">
-        <b>${done ? '今天的看广告奖励已领完' : `看广告 +${once} 盏`}</b>
-        <span>${done
-          ? `每天 ${limit} 次都领完了，明天 0 点刷新`
-          : `每天 ${limit} 次 · 今天还剩 ${left} 次${stepTxt}，单日最多 ${total} 盏 · 在小程序里看，看完自动到账`}</span>
-      </span>
-      <button type="button" class="ck-ad-go" id="ckAdBtn"${done ? ' disabled' : ''}>${done ? '今日已领完' : '去小程序看 ›'}</button>
+      <div class="ck-ad-head">
+        <span class="ck-ad-ico">${ic('fire', 15)}</span>
+        <b>看视频领灯火</b>
+        <span class="ck-ad-badge">${done ? '已领完' : `还剩 ${left} 次`}</span>
+      </div>
+      <div class="ck-ad-sub">${done
+        ? `每天 ${limit} 次都领完了，明天 0 点刷新`
+        : `每天 ${limit} 次，单日最高 ${total} 盏，0 点刷新`}</div>
+      <div class="ck-ad-steps">${sched.map(step).join('')}</div>
+      <button type="button" class="ck-ad-go" id="ckAdBtn"${done ? ' disabled' : ''}>${done ? '今日已领完' : `看视频 +${once} 盏`}</button>
+      <div class="ck-ad-note">看完一整支视频才到账，中途放弃不算 · 扫码进小程序看，回来自动认账</div>
     </div>`;
 }
 
@@ -1093,6 +1229,8 @@ async function afterAuth(data) {
     passSet: data.passSet !== false,
     alias: data.alias || '',
     aliasNextAt: Number(data.aliasNextAt || 0),
+    // 自动建的临时号才允许设/改登录名；网页版正常注册的账号（有账号名 + 密码）不给这个入口
+    tempAcct: data.tempAcct === true,
     wechat: data.wechat || null
   };
   state.favs = Array.isArray(data.favs) ? data.favs : [];
@@ -1175,6 +1313,7 @@ async function loadMe() {
       ? { id: data.id || '', username: data.username, nickname: data.nickname || '',
           avatar: data.avatar || '', avatarSrc: data.avatarSrc || '', avatarSrcLabel: data.avatarSrcLabel || '',
           checkin: data.checkin || {}, points: data.points || 0,
+          adSeen: data.adSeen || {},   // 「看广告」行为记录 { scene: { done, count, at } }：网页据此放行/引导，与灯火无关
           arrive: data.arrive || {},   // 今日到访那 2 盏（given=true 表示这一趟刚发）
           unreadNotices: Number(data.unreadNotices || 0),   // 顶部铃铛未读数
           worksCount: Number(data.worksCount || 0),   // 带上签到状态、积分和作品数，顶部按钮 / 注销弹窗要用
@@ -1183,6 +1322,8 @@ async function loadMe() {
           isAdmin: data.isAdmin === true,             // 管理员标记（站长或名单管理员）：头像下拉据此显隐「管理后台」入口
           alias: data.alias || '',                    // 登录别名（自己起的好记登录名）
           aliasNextAt: Number(data.aliasNextAt || 0),
+          // 微信/OAuth 自动建的临时号：「账号与密码」弹窗里才给登录名栏（正式账号只改密码）
+          tempAcct: data.tempAcct === true,
           // 个性地址（作者页 /u/<自定义>）：slug 空 = 还在用 /u/账号id；
           // slugEligible 由服务端按「有已上线作品」现算，前端只拿它切提示文案，不当授权用
           slug: data.slug || '',
@@ -1190,6 +1331,7 @@ async function loadMe() {
           slugNextAt: Number(data.slugNextAt || 0),
           slugEligible: data.slugEligible === true,
           links: Array.isArray(data.links) ? data.links : [],   // 我的链接（GitHub/知乎/…），作者主页档案行下面那排
+          hideWorks: data.hideWorks === true,   // 主页作品隐藏：别人打开 /u/xxx 只看得到档案
           noticePrefs: data.noticePrefs || { announce: true },   // 系统消息提示开关（屏蔽后仍收消息、不弹窗）
           wechat: data.wechat || null,
           github: data.github || null,
@@ -2279,17 +2421,28 @@ function juryChipHtml(w, inline) {
     : `<button type="button" class="jury-chip" data-jury-jump="${escapeHtml(w.id)}" title="${escapeHtml(tip)}">众判中 ${n} ›</button>`;
 }
 
-// 我的主页卡片下的作者操作行（2026-11-14）：编辑 / 上架·下架 / 推荐 / 小程序详情页。
+// 我的主页卡片下的作者操作行（2026-11-14）：编辑 / 上架·下架 / 推荐 / 小程序详情页效果。
 // 只在作者主页的作品 tab 渲染（ownerTools 且 w.owned 双保险），首页/榜单的同款卡片不受影响。
 // 上架·下架是一颗按钮：下架走的是详情弹窗同一条 visibility 接口，数据全保留。
 function cardOwnerToolsHtml(w) {
   const hid = !!w.hidden;
+  // 手机端作品（小程序 / iOS / 安卓）才有「小程序详情页效果」可看：点了直接打开 /mini/:id 体验页；
+  // 纯网页 / 桌面形态在浏览器里看不到这个效果，保留出小程序码的老行为
+  const fit = workFormFit(w);
+  const canPeekMini = !!(fit && fit.family !== 'web');
   return `<div class="card-own-tools">
     <button type="button" class="cot-btn is-edit" data-ow-edit title="修改作品信息、图片和链接">${ic('edit', 13)} 编辑</button>
     <button type="button" class="cot-btn${hid ? ' is-relist' : ' is-quiet'}" data-ow-toggle="${w.id}" data-ow-hidden="${hid ? 1 : 0}" title="${hid ? '重新上架：作品恢复公开，重新进首页/榜单/搜索' : '下架后别人看不到，只有你自己能看；数据保留，随时可重新上架'}">${ic('eye', 13)} ${hid ? '上架' : '下架'}</button>
     <button type="button" class="cot-btn is-promo" data-ow-promo title="用灯火把这件作品换到首页、榜单等推荐位">${ic('promo', 13)} 推荐</button>
-    <button type="button" class="cot-btn" data-ow-mini="${w.id}" data-ow-title="${escapeHtml(w.title)}" title="出一张小程序码，扫码直达小程序里这件作品的详情页">${ic('mini', 13)} 小程序详情页</button>
+    <button type="button" class="cot-btn" data-ow-mini="${w.id}" data-ow-title="${escapeHtml(w.title)}"${canPeekMini ? ' data-ow-peek="1"' : ''} title="${canPeekMini ? '打开手机端体验页：亲眼看看小程序里这件作品的详情页长什么样，首屏就有小程序码，扫码直达' : '出一张小程序码，扫码直达小程序里这件作品的详情页'}">${ic('mini', 13)} ${canPeekMini ? '查看小程序详情页效果' : '小程序详情页'}</button>
   </div>`;
+}
+
+// 点赞态（与详情弹窗同一口径）：登录用户以服务端下发的 w.liked 为准，
+// 匿名访客没有账号，已赞态记在本机 localStorage
+function isLikedNow(w) {
+  if (state.user) return w.liked === true;
+  try { return localStorage.getItem('liked:' + w.id) === '1'; } catch { return false; }
 }
 
 function cardHtml(w, opts = {}) {
@@ -2310,7 +2463,9 @@ function cardHtml(w, opts = {}) {
         ${w.pinned ? '<span class="pin-badge">置顶</span>' : ''}
         ${stageBadgeHtml(w, 'card-stage')}
         ${paidBadgeHtml(w, 'img-paid')}
-        ${isComing(w) ? '' : `<button class="fav-star ${isFav(w.id) ? 'active' : ''}" data-fav="${w.id}" title="收藏">${ic('fav')}</button>`}
+        ${isComing(w) ? '' : (opts.likeBtn
+          ? `<button class="fav-star card-like${isLikedNow(w) ? ' active' : ''}" data-likework="${w.id}" title="${isLikedNow(w) ? '再点一次取消点赞' : '给这件作品点个赞'}">${ic('heart')}</button>`
+          : `<button class="fav-star ${isFav(w.id) ? 'active' : ''}" data-fav="${w.id}" title="收藏">${ic('fav')}</button>`)}
         ${isComing(w) ? '' : `<button class="fav-star card-share" data-share-work="${w.id}" title="分享：生成带二维码的分享图，发朋友圈/小红书都行">${ic('sharecard')}</button>`}
         ${w.owned ? '' : `<button class="fav-star card-block" data-blockwork="${w.id}" data-bw-title="${escapeHtml(w.title)}" title="不再看这个作品（只对你生效）" aria-label="不再看这个作品">${ic('block')}</button>`}
       </div>
@@ -2344,7 +2499,7 @@ function listHtml(w) {
       <a class="card-link" href="/w/${w.id}" aria-label="查看《${escapeHtml(w.title)}》完整页面"></a>
       <img class="row-thumb" src="${imgUrl(w.thumb, 400)}" alt="${escapeHtml(w.title)}" loading="lazy" />
       <div class="row-main">
-        <div class="row-title">${w.pinned ? '<span class="pin-badge row-pin">置顶</span>' : ''}${escapeHtml(ctName)}</div>
+        <div class="row-title">${w.pinned ? '<span class="pin-badge row-pin">置顶</span>' : ''}<span class="row-name">${escapeHtml(ctName)}</span></div>
         ${ctIntro ? `<div class="row-intro">${escapeHtml(ctIntro)}</div>` : ''}
         <div class="row-meta">${juryChip ? `${juryChip} · ` : ''}${escapeHtml(typeText(w))} · ${ghMedalHtml(w.authorTags)}${escapeHtml(aname(w))} · ${escapeHtml(w.category)}${w.openSource === true ? ` · <span class="ico">${ic('lock-open')}</span> 开源` : ''}${w.paidModel === 'lamp' && w.lampPrice ? ` · <span class="ico">${ic('lock')}</span> ${w.lampPrice} 盏解锁` : ''}${w.paid ? ` · <span class="ico">${ic('coin')}</span> ${escapeHtml(PAID_MODELS[w.paidModel] || '付费')}` : ''}</div>
       </div>
@@ -2406,7 +2561,7 @@ function bindCardNode(el) {
   if (!el) return;
   if (el.classList.contains('promo-card') || el.classList.contains('promo-row')) return;   // 推荐卡自己管点击
   el.addEventListener('click', e => {
-    if (e.target.dataset.fav || e.target.dataset.shareWork) return;
+    if (e.target.dataset.fav || e.target.dataset.shareWork || e.target.closest('[data-likework]')) return;
     // 卡片里有一层真实链接（卡片底部 <a class="card-link">）：
     // Ctrl/⌘/Shift 点击交给浏览器在新标签打开完整页面，普通点击仍用弹窗
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -2421,6 +2576,50 @@ function bindCardNode(el) {
       if (added === null) return; // 未登录（已弹登录框）或失败（已提示）
       paintFavButtons(id);
       showToast(added ? '已加入收藏' : '已取消收藏', undefined, 'ok');
+    });
+  });
+  el.querySelectorAll('[data-likework]').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation();
+      e.preventDefault();
+      const id = btn.dataset.likework;
+      if (!id || btn.disabled) return;
+      const on = !btn.classList.contains('active');
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/works/${encodeURIComponent(id)}/like`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showToast(data.error || '操作失败', undefined, 'err'); return; }
+        if (data.self) { showToast('不能给自己的作品点赞', undefined, 'err'); return; }
+        const now = data.liked === true;
+        btn.classList.toggle('active', now);
+        btn.title = now ? '再点一次取消点赞' : '给这件作品点个赞';
+        // 匿名访客把已赞态记在本机；登录用户由服务端按账号记（与详情弹窗同一口径）
+        try {
+          if (now) localStorage.setItem('liked:' + id, '1');
+          else localStorage.removeItem('liked:' + id);
+        } catch { /* 隐私模式写不进就算了 */ }
+        showToast(now ? '已点赞' : '已取消点赞', undefined, 'ok');
+        // 作者主页「喜欢」tab：取消点赞后就地移出列表（喜欢 tab 里的心形按钮是唯一的赞入口）
+        if (!now && authorTabState.tab === 'likes') {
+          const gallery = $('authorGallery');
+          const cardEl = btn.closest('.card');
+          if (gallery && cardEl && gallery.contains(cardEl)) {
+            cardEl.remove();
+            const li = authorTabState.likes ? authorTabState.likes.findIndex(x => String(x.id) === String(id)) : -1;
+            if (li >= 0) authorTabState.likes.splice(li, 1);
+            if (!gallery.querySelector('.card')) paintAuthorList([], 'likes');   // 清空后回落到空态文案
+          }
+        }
+      } catch {
+        showToast('网络异常，请稍后再试', undefined, 'err');
+      } finally {
+        btn.disabled = false;
+      }
     });
   });
   el.querySelectorAll('[data-share-work]').forEach(btn => {
@@ -2499,26 +2698,35 @@ function bindCardNode(el) {
       openRedeem();
     });
   });
-  // 小程序详情页：出一张直达本站小程序详情页（pages/detail/index，scene=w:<id>）的小程序码。
-  // 浏览器打不开小程序，码是唯一通道——和分享海报用的是同一个接口，能直接吃缓存。
+  // 小程序详情页按钮（2026-11-14 改版）：
+  // 手机端作品 → 打开 /mini/:id 手机端体验页（和推荐页「预览小程序效果」同一个出口），
+  //   页面还原了小程序详情页的样子，首屏就带着同一个小程序码——看效果和拿码一个页面全办了；
+  // 纯网页 / 桌面作品 → 没有效果可看，退回出一张直达小程序详情页（scene=w:<id>）的小程序码，
+  //   和分享海报用的是同一个接口，能直接吃缓存。
   el.querySelectorAll('[data-ow-mini]').forEach(btn => {
-    btn.addEventListener('click', async e => {
+    btn.addEventListener('click', e => {
       e.stopPropagation();
       e.preventDefault();
-      const id = btn.dataset.owMini;
-      const title = btn.dataset.owTitle || '这件作品';
-      if (btn.disabled) return;
-      btn.disabled = true;
-      try {
-        const r = await fetch('/api/mini/poster', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ workId: id })
-        });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok || !d.qr) throw new Error(d.error || '码暂时取不到，稍后再试');
-        openQrZoom(d.qr, `微信扫一扫，直达小程序里「${title}」的详情页`);
-      } catch (err) { showToast(err.message || '网络异常，请稍后再试', undefined, 'err'); }
-      finally { btn.disabled = false; }
+      if (btn.dataset.owPeek === '1') {
+        window.open('/mini/' + encodeURIComponent(btn.dataset.owMini), '_blank', 'noopener');
+        return;
+      }
+      (async () => {
+        const id = btn.dataset.owMini;
+        const title = btn.dataset.owTitle || '这件作品';
+        if (btn.disabled) return;
+        btn.disabled = true;
+        try {
+          const r = await fetch('/api/mini/poster', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workId: id })
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok || !d.qr) throw new Error(d.error || '码暂时取不到，稍后再试');
+          openQrZoom(d.qr, `微信扫一扫，直达小程序里「${title}」的详情页`);
+        } catch (err) { showToast(err.message || '网络异常，请稍后再试', undefined, 'err'); }
+        finally { btn.disabled = false; }
+      })();
     });
   });
 }
@@ -3295,12 +3503,13 @@ function isPlainListView() {
     state.scene === '全部';
 }
 
-// 首页第一格同时最多 3 条在投，但一次只显示一条（2026-11-11 站长拍板：不做自动轮播切换）：
+// 首页第一格同时最多 5 条在投，但一次只显示一条（2026-11-11 站长拍板：不做自动轮播切换）：
 // 每次挂载随机挑一条（各家机会均等，与详情/榜单位同口径），浏览期间静止不动；
 // 访客叉掉当前条后 closeAd 重跑 mountListPromo，从剩下的里再随机挑一条补上。
 // 返回过滤后、最多 LIST_FIRST_MAX 条在投推荐（作者自荐 redeem / 后台 admin）：
 // 过滤掉访客叉过的、7 天内看过≥3 次的、被永久屏蔽作品的。随便逛逛也走这里（它是普通列表视图）。
-const LIST_FIRST_MAX = 3;
+// 上限跟服务端 REDEEM_SLOTS.list-first.maxActive 对齐（2026-11-14 起 3 → 5），改一侧要同时改另一侧。
+const LIST_FIRST_MAX = 5;
 function listPromoAds() {
   if (!isPlainListView()) return [];
   const closed = adClosedMap();
@@ -3346,7 +3555,7 @@ function promoCardHtml(a) {
       ${internal ? `<a class="card-link" href="/w/${escapeHtml(id)}" aria-label="查看《${escapeHtml(a.title)}》"></a>` : ''}
       ${a.image ? `<img class="row-thumb" src="${escapeHtml(imgUrl(a.image, 400))}" alt="${escapeHtml(a.title)}" loading="lazy" />` : `<span class="row-thumb row-thumb-empty"><span class="ico">${ic('megaphone')}</span></span>`}
       <div class="row-main">
-        <div class="row-title"><span class="promo-row-flag">推荐</span>${escapeHtml(a.title)}</div>
+        <div class="row-title"><span class="promo-row-flag">推荐</span><span class="row-name">${escapeHtml(a.title)}</span></div>
         ${a.desc ? `<div class="row-intro">${escapeHtml(a.desc)}</div>` : ''}
         <div class="row-meta">${a.source === 'redeem' ? `<span class="promo-join" data-join-promote title="用灯火给自己的作品换个推荐位">我也想推荐自己的作品</span> · ` : '广告 · '}${a.extUrl ? '打开链接 ↗' : '看看 →'}</div>
       </div>
@@ -3739,6 +3948,7 @@ const FEAT_REASONS = {
   cmt: { text: '话题热议', cls: 'is-cmt', tip: '近 7 天被评论最多的作品之一' },
   tip: { text: '灯火最亮', cls: 'is-tip', tip: '近 7 天收到灯火支持最多的作品之一' },
   uv: { text: '本周热看', cls: 'is-uv', tip: '近 7 天打开人数最多的作品之一' },
+  fresh: { text: '最近新上', cls: 'is-new', tip: '近 7 天刚上架的新作品，还没什么人看过' },
   new: { text: '新晋上榜', cls: 'is-new', tip: '综合热度不错，本周新进入精选' }
 };
 function featReasonHtml(w) {
@@ -4998,10 +5208,6 @@ function updateNavActive() {
   // PC 排序按钮的选中态跟着 state.sort（H5 上这个按钮不显示，同步了也看不到）
   document.querySelectorAll('#sortToggle .st-btn').forEach(b =>
     b.classList.toggle('active', !onRank && !onWish && !onGuide && b.dataset.sort === state.sort));
-  const favDrop = $('favDrop');
-  if (favDrop) favDrop.classList.toggle('active', location.pathname === '/favs');
-  const likeDrop = $('likeDrop');
-  if (likeDrop) likeDrop.classList.toggle('active', location.pathname === '/likes');
 }
 
 // ---------- 发现页（移动端 Tab）：精选 + 平台专栏 ----------
@@ -5210,6 +5416,8 @@ function renderSettingsPage() {
   const ghOn = !!(state.providers && state.providers.github);
   const gOn = !!(state.providers && state.providers.google);
   const nBlocked = (state.blocked || []).length + (state.blockedUsers || []).length;
+  // 登录名只对「自动建的临时号」和早就设过的号开放；网页版正常注册的账号只改密码
+  const canSetAlias = u.passSet === false || u.tempAcct === true || !!u.alias;
   body.innerHTML = `
     <button type="button" class="st-row" id="stAva">
       <span class="st-ico">${ic('user', 18)}</span>
@@ -5219,7 +5427,7 @@ function renderSettingsPage() {
     </button>
     <button type="button" class="st-row" id="stNick">
       <span class="st-ico">${ic('edit', 18)}</span>
-      <span class="st-main"><b>${u.nickname ? '改昵称' : '设个昵称'}</b><i>别人看到的名字，不设就显示账号名</i></span>
+      <span class="st-main"><b>${u.nickname ? '改昵称' : '设昵称'}</b><i>昵称是别人看到的名字（作品署名、评论）；账号 @${escapeHtml(u.username || '')} 只用于登录</i></span>
       <span class="st-val${u.nickname ? '' : ' st-dim'}">${u.nickname ? escapeHtml(u.nickname) : '未设置'}</span>
       <span class="st-more">›</span>
     </button>
@@ -5231,7 +5439,7 @@ function renderSettingsPage() {
     </button>
     <button type="button" class="st-row" id="stPass">
       <span class="st-ico">${ic('key', 18)}</span>
-      <span class="st-main"><b>账号与密码</b><i>登录名（别名）和密码都在这里改</i></span>
+      <span class="st-main"><b>${canSetAlias ? '账号与密码' : '登录密码'}</b><i>${canSetAlias ? '登录名（别名）和密码都在这里改' : '账号名 @' + escapeHtml(u.username || '') + ' 注册时就定了，这里只改密码'}</i></span>
       <span class="st-more">›</span>
     </button>
     <button type="button" class="st-row" id="stMute" role="switch" aria-checked="${!noticeMuted()}" aria-label="系统消息提示开关">
@@ -5317,6 +5525,9 @@ function renderMePage() {
   const works = Number(state.user.worksCount || 0);
   const favs = (state.favs || []).length;
   const name = state.user.nickname || state.user.username;
+  // 「账号名」小标签只给微信/OAuth 自动建的临时号：上面那串是系统给的，需要一句话解释。
+  // PC 正常注册的账号（账号名注册时就定了）名字就是自己起的，再标「账号名」是重复信息
+  const showNameTag = !state.user.nickname && (state.user.passSet === false || state.user.tempAcct === true);
   // 手机端不放「我的想法」「我的收藏」两个区块（用户要求去掉；PC 保留），
   // 收藏预览的请求也一并跳过，省一次全量拉取
   const onMobileMe = window.innerWidth <= 640;
@@ -5325,8 +5536,11 @@ function renderMePage() {
       <div class="me-hero-user">
         ${avaHtml(name, state.user.avatar, 'me-ava2 me-ava2-user', false, state.user.username || name)}
         <div class="me-hero-main">
-          <b>${escapeHtml(name)}</b>
-          <span>@${escapeHtml(state.user.username || '')}</span>
+          <div class="me-hero-name">
+            <b>${escapeHtml(name)}</b>
+            ${showNameTag ? '<i class="me-name-tag">账号名</i>' : ''}
+          </div>
+          <span>账号 @${escapeHtml(state.user.username || '')}</span>
         </div>
       </div>
       <div class="me-stats">
@@ -6194,6 +6408,8 @@ function route() {
   }
   $('homeView').style.display = 'block';
   setTitle(state.q ? `搜索「${state.q}」` : '');
+  // 「大家在找」只在首页露面（只拉一次，之后 heroHotLoaded 短路）
+  loadHeroHot();
   if (!keepList || !document.querySelector('#gallery .card, #gallery .work-row')) {
     // 详情开着时页面若被重载过，#gallery 里只剩骨架屏——这时不能沿用 keepList，得重拉
     loadFeatured();
@@ -6255,6 +6471,40 @@ function authorStatSkeletonHtml() {
     </div>`
   ).join('');
 }
+
+// 作者页骨架屏（2026-11-14）：作品区不再放「点灯」小块，铺与真卡同构的灰卡——
+// 4:3 封面块 + 标题/简介两行灰条，尺寸就是真卡片的尺寸（结构固定，不是猜的），
+// 数据回来整块替换，高度基本不跳。灰卡数量照首屏 SSR 里的真卡抄：数一数有多少张，
+// 骨架高度就≈真内容高度；数不出（SSR 区块已被清掉的直链中间态）退回 6 张。
+function authorGallerySkeletonHtml(count) {
+  let n = Number(count) || 0;
+  if (!n) n = 6;
+  n = Math.max(2, Math.min(12, n));
+  // 灰条宽度按卡错开一点，别整版一个模子（纯观感，不影响高度）
+  const W = [[68, 90], [58, 82], [74, 86], [62, 78], [70, 92], [56, 84]];
+  return Array.from({ length: n }, (_, i) => {
+    const [t, d] = W[i % W.length];
+    return `<div class="card card-sk" aria-hidden="true">
+      <div class="card-img-wrap"><div class="sk-img sk-cover"></div></div>
+      <div class="card-body">
+        <div class="sk-line" style="width:${t}%"></div>
+        <div class="sk-line" style="width:${d}%"></div>
+        <div class="sk-foot"><span class="sk-line" style="width:34%"></span><span class="sk-line" style="width:24%"></span></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// 首屏 SSR 里渲染好的作者信息：@显示名 + 作品卡张数。骨架期直接借来用——
+// /u/<账号id> 直链打开时，昵称不用等接口，账号 id 不会再先闪一下。
+// SSR 区块随 homeView 一起藏，这里只是趁它还在 DOM 里时读一次，不影响任何显示。
+function ssrAuthorHero() {
+  const info = document.querySelector('#homeView #seoContent .author-info');
+  if (!info) return null;
+  const h1 = info.querySelector('h1');
+  const name = h1 ? (h1.textContent || '').replace(/^@/, '').trim() : '';
+  return { name, cards: document.querySelectorAll('#homeView #seoContent .gallery > .card').length };
+}
 // 入驻时间与常写分类的 meta 行：一句话交代「这位是谁」
 function authorMetaHtml(d) {
   const bits = [];
@@ -6279,10 +6529,69 @@ function authorLinksHtml(links) {
   ).join('');
 }
 
+// 主页作品被作者收起来时，访客看到的作品区：这不是「一件作品都没有」，是「作者选择不在这页列」——
+// 文案要说清这一点，别让人以为这位作者空手（看板上的数字照实还在，两处对不上更奇怪）。
+function authorHiddenNoteHtml(shown) {
+  return `<div class="empty au-hidden-note" style="grid-column:1/-1">
+    <p><b>@${escapeHtml(shown)}</b> 暂时把作品收起来了，这一页只公开档案。</p>
+    <p class="au-hidden-sub">想找 TA 的作品，可以在首页、榜单或搜索里搜作者名。</p>
+  </div>`;
+}
+
+// 本人主页的「已隐藏」提示条：开关收在「编辑主页」的弹层里，怕点完就忘——这里常驻一条，附一个当场恢复的按钮
+function paintAuthorHideStrip() {
+  const box = $('authorHideStrip');
+  if (!box) return;
+  if (authorTabState.tab !== 'works' || !state.user || state.user.hideWorks !== true) {
+    box.style.display = 'none';
+    return;
+  }
+  box.innerHTML = `
+    <div class="afs-head">
+      <span class="afs-ico" aria-hidden="true">${ic('eye', 16)}</span>
+      <div class="afs-txt">
+        <b>作品已对访客隐藏</b>
+        <span>别人打开你的主页只看得到上面的档案和数字，看不到作品卡片。作品本身还在首页、榜单、搜索里；你自己登录着看这一页照旧是全的。</span>
+      </div>
+      <button type="button" class="afs-btn" id="ahsShow">恢复公开</button>
+    </div>`;
+  box.style.display = '';
+  const btn = $('ahsShow');
+  if (btn) btn.onclick = () => setHideWorks(false, btn);
+}
+
+// 开关本体：先按结果重画（点了就有反应），请求失败再退回原状态，别让眼前的开关和账号里存的说不一致
+async function setHideWorks(on, btn) {
+  if (!state.user) { openAuth('login'); return; }
+  const prev = state.user.hideWorks === true;
+  if (prev === on) return;
+  if (btn) btn.disabled = true;
+  state.user.hideWorks = on;
+  paintAuthorHideStrip();
+  try {
+    const r = await fetch('/api/me/hide-works', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ on })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '保存失败');
+    state.user.hideWorks = d.hideWorks === true;
+    paintAuthorHideStrip();
+    showToast(on ? '已隐藏：别人打开你的主页只看得到档案' : '已恢复：访客又能看到你的作品了', 2600, 'ok');
+  } catch (e) {
+    state.user.hideWorks = prev;
+    paintAuthorHideStrip();
+    showToast(e.message || '没能保存，稍后再试', 2400, 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ---------- 作者主页（本人视角）：tab + 功能入口（2026-11-14） ----------
 // 参考了站长给的排版：统计 + 「编辑主页」→ 一行四个功能图标 → 作品/收藏/喜欢三个 tab。
 // 只有本人主页有这三样：收藏、点赞、灯火、推荐记录都是私事，访客不该看到入口（更不该看到内容）。
-const authorTabState = { tab: 'works', works: [], favs: null, likes: null, req: 0 };
+const authorTabState = { tab: 'works', works: [], favs: null, likes: null, req: 0, loading: false };
 const AU_TAB_LOAD = { favs: '正在点亮收藏…', likes: '正在点亮喜欢…' };
 
 // 本人主页的三组入口统一在这里显隐 + 绑事件（访客全部收起来）
@@ -6309,10 +6618,65 @@ function bindAuthorOwnerTools(isMe) {
 }
 
 function setAuthorTab(tab) {
+  // 骨架期锁住：作品流还没回来，切到收藏/喜欢只会看到空列表，等数据到位再放行
+  if (authorTabState.loading) return;
   authorTabState.tab = tab;
   const bar = $('authorTabs');
   if (bar) bar.querySelectorAll('[data-autab]').forEach(b => b.classList.toggle('is-on', b.dataset.autab === tab));
   renderAuthorTab(tab);
+}
+
+// ---------- 「找找」补全提示条（本人主页作品 tab 顶部，2026-11-14） ----------
+// 找找（/api/find）拿访客的一句话去撞作品：标题 / 关键词 / 一句话定位 / 作品介绍。
+// 介绍和定位发布时全是选填，缺了就只剩标题能撞——这里不拦发布、不打分，
+// 只把「哪件差什么」摆出来，点「补全」直达编辑器并聚焦缺的那一栏，保存后就地重算。
+function findGapsOf(w) {
+  const gaps = [];
+  if (!String(w.intro || '').trim()) gaps.push({ key: 'intro', label: '作品介绍' });
+  if (!String(w.positioning || '').trim()) gaps.push({ key: 'positioning', label: '一句话定位' });
+  return gaps;
+}
+function paintAuthorFindStrip() {
+  const box = $('authorFindStrip');
+  if (!box) return;
+  if (authorTabState.tab !== 'works' || !state.user) { box.style.display = 'none'; return; }
+  const rows = authorTabState.works.map(w => ({ w, gaps: findGapsOf(w) })).filter(x => x.gaps.length);
+  if (!rows.length) { box.style.display = 'none'; return; }
+  const open = box.dataset.open === '1';
+  box.innerHTML = `
+    <div class="afs-head">
+      <span class="afs-ico" aria-hidden="true">${ic('search', 16)}</span>
+      <div class="afs-txt">
+        <b>让「找找」一句话就能翻出你的作品</b>
+        <span>${rows.length} 件作品还差介绍信息——找找靠作品介绍和一句话定位对问题，补全后访客随口一问就能找到它</span>
+      </div>
+      <button type="button" class="afs-btn" id="afsToggle">${open ? '收起' : '去补全'}</button>
+    </div>
+    ${open ? `<div class="afs-rows">${rows.map(({ w, gaps }) => `
+      <div class="afs-row">
+        <span class="afs-work" title="${escapeHtml(w.title)}">${escapeHtml(w.title)}</span>
+        <span class="afs-chips">${gaps.map(g => `<i class="afs-chip">缺${g.label}</i>`).join('')}</span>
+        <button type="button" class="afs-btn is-mini" data-afs-go="${w.id}" data-afs-focus="${gaps[0].key}">补全</button>
+      </div>`).join('')}</div>` : ''}`;
+  box.style.display = '';
+  const tg = $('afsToggle');
+  if (tg) tg.onclick = () => { box.dataset.open = open ? '0' : '1'; paintAuthorFindStrip(); };
+  box.querySelectorAll('[data-afs-go]').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.afsGo;
+      if (!id || btn.disabled) return;
+      btn.disabled = true;
+      try {
+        // 和卡片「编辑」同一条链路：拉完整数据再进编辑器，focus 告诉它光标落在哪一栏
+        const r = await fetch(`/api/works/${encodeURIComponent(id)}`, { cache: 'no-store' });
+        const full = await r.json().catch(() => ({}));
+        if (!r.ok || full.error) { showToast(full.error || '作品加载失败，请重试', undefined, 'err'); return; }
+        if (editWorkFn) editWorkFn(full, { focus: btn.dataset.afsFocus || 'intro' });
+        else showToast('编辑器还没准备好，刷新页面再试', undefined, 'err');
+      } catch { showToast('网络异常，请稍后再试', undefined, 'err'); }
+      finally { btn.disabled = false; }
+    };
+  });
 }
 
 // 三个 tab 共用 #authorGallery：切 tab 只换内容，不换页面、不改地址（分享链接永远指向作品 tab）
@@ -6321,6 +6685,8 @@ async function renderAuthorTab(tab) {
   if (!box) return;
   const token = ++authorTabState.req;   // 连点：只认最后一次的结果
   box.classList.remove('list-mode');
+  paintAuthorFindStrip();   // 补全条只在作品 tab 出现，切到收藏 / 喜欢自动收起
+  paintAuthorHideStrip();   // 「作品已隐藏」条同理：只在作品 tab 挂着
   if (tab === 'works') {
     // ownerTools：作者本人主页的作品 tab 才挂操作行（编辑/上下架/推荐/小程序详情页）；
     // 卡片里的 w.owned 再兜一层，别人主页的卡片就算走到这里也不会出按钮
@@ -6368,7 +6734,8 @@ function paintAuthorList(items, tab) {
     if (go) go.onclick = () => navigate('/');
     return;
   }
-  box.innerHTML = items.map(w => cardHtml(w)).join('');
+  // 喜欢 tab：角上的收藏星换成点赞心形按钮（这里是唯一的赞入口，取消点赞后就地移出列表）
+  box.innerHTML = items.map(w => cardHtml(w, tab === 'likes' ? { likeBtn: true } : {})).join('');
   bindCards(box);
 }
 
@@ -6413,8 +6780,112 @@ function openAuthorEditSheet() {
     { icon: 'edit', label: '修改昵称', sub: u.nickname ? `现在叫「${u.nickname}」` : '还没设过昵称', on: openNickModal },
     { icon: 'link', label: '个性地址', sub: u.slug ? `/u/${u.slug}` : '把 /u/ 后面的编号换成好记的词', on: openSlugModal },
     { icon: 'globe', label: '我的链接', sub: ls.length ? ls.map(l => l.label).join(' / ') : 'GitHub、知乎、掘金… 填了才显示', on: openLinksModal },
+    { icon: 'eye', label: '主页作品', sub: u.hideWorks ? '已对访客隐藏：别人只看得到档案' : '公开：访客能看到你的全部作品', on: () => setHideWorks(u.hideWorks !== true) },
     { icon: 'gear', label: '账号设置', sub: '密码、绑定、消息提醒', on: () => navigate('/settings') }
   ]);
+}
+
+// ---- 主页背景皮肤（2026-11-14）----
+// 二十种纯 CSS 皮肤，分「星空」「别样」「质感」三组：key 是服务端白名单里的那个，name 只给人看，
+// group 决定弹层里的分组小标题。存在账号上（user.heroSkin），访客进作者主页看到的是同一种；没挑过 = 默认流星。
+const HERO_SKINS = [
+  { key: 'meteor', name: '流星', group: '星空' },
+  { key: 'dots', name: '星点', group: '星空' },
+  { key: 'galaxy', name: '银河', group: '星空' },
+  { key: 'aurora', name: '极光', group: '星空' },
+  { key: 'trail', name: '星轨', group: '星空' },
+  { key: 'deep', name: '深空', group: '星空' },
+  { key: 'dawn', name: '晨光', group: '别样' },
+  { key: 'rain', name: '雨幕', group: '别样' },
+  { key: 'neon', name: '霓虹', group: '别样' },
+  { key: 'ocean', name: '海面', group: '别样' },
+  { key: 'paper', name: '纸韵', group: '别样' },
+  { key: 'dune', name: '沙丘', group: '别样' },
+  { key: 'mist', name: '雾山', group: '质感' },
+  { key: 'candy', name: '糖纸', group: '质感' },
+  { key: 'film', name: '胶片', group: '质感' },
+  { key: 'snow', name: '雪原', group: '质感' },
+  { key: 'sakura', name: '樱花', group: '质感' },
+  { key: 'window', name: '雨窗', group: '质感' },
+  { key: 'vinyl', name: '唱片', group: '质感' },
+  { key: 'grid', name: '稿纸', group: '质感' }
+];
+const HERO_SKIN_DEFAULT = 'meteor';
+let authorSkin = HERO_SKIN_DEFAULT;
+
+// 换皮肤只动一个类名：.band-skin 提供定位/裁切，.hs-* 提供背景和动效（见 style.css）
+function paintBandSkin(key) {
+  const k = HERO_SKINS.some(s => s.key === key) ? key : HERO_SKIN_DEFAULT;
+  authorSkin = k;
+  const band = $('authorBand');
+  if (band) band.className = 'author-hero-band band-skin hs-' + k;
+}
+
+let skinModalEl = null;
+function skinNameOf(key) {
+  const s = HERO_SKINS.find(x => x.key === key);
+  return s ? s.name : HERO_SKIN_DEFAULT;
+}
+// 弹层不关：换完还想再比一眼是常态，关掉再点进来就烦了
+function syncSkinPick() {
+  if (!skinModalEl) return;
+  skinModalEl.querySelectorAll('[data-skin]').forEach(b => {
+    const on = b.dataset.skin === authorSkin;
+    b.classList.toggle('is-on', on);
+    const nm = b.querySelector('.skin-name');
+    if (nm) nm.textContent = (on ? '✓ ' : '') + skinNameOf(b.dataset.skin);
+  });
+}
+
+function openSkinModal() {
+  if (!state.user) { openAuth('login'); return; }
+  if (!skinModalEl) {
+    skinModalEl = document.createElement('div');
+    skinModalEl.className = 'modal-mask';
+    document.body.appendChild(skinModalEl);
+    bindMaskClose(skinModalEl, () => hideModal(skinModalEl));
+  }
+  skinModalEl.innerHTML = `
+    <div class="modal skin-modal">
+      <button type="button" class="close-btn" aria-label="关闭">×</button>
+      <h3 class="links-title">换背景</h3>
+      <p class="skin-modal-hint">你挑的这一条会跟着主页走——访客看到的也是它。随时能换回来。</p>
+      ${[...new Set(HERO_SKINS.map(s => s.group))].map(g => `
+        <div class="skin-group">
+          <div class="skin-group-t">${g}</div>
+          <div class="skin-grid">${HERO_SKINS.filter(s => s.group === g).map(s => `
+            <button type="button" class="skin-item" data-skin="${s.key}">
+              <span class="skin-thumb hs-${s.key}"><i class="bs-m bs-m1"></i><i class="bs-m bs-m2"></i></span>
+              <span class="skin-name">${s.name}</span>
+            </button>`).join('')}</div>
+        </div>`).join('')}
+    </div>`;
+  skinModalEl.querySelector('.close-btn').onclick = () => hideModal(skinModalEl);
+  skinModalEl.querySelectorAll('[data-skin]').forEach(btn => {
+    btn.onclick = () => saveBandSkin(btn.dataset.skin);
+  });
+  syncSkinPick();
+  showModal(skinModalEl);
+}
+
+async function saveBandSkin(key) {
+  const prev = authorSkin;
+  paintBandSkin(key);
+  syncSkinPick();
+  try {
+    const r = await fetch('/api/me/hero-skin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skin: key })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '保存失败');
+    showToast('换好了，访客现在看到的就是这一条', 1800, 'ok');
+  } catch (e) {
+    paintBandSkin(prev);   // 没存上就退回去，别让眼前的和账号里的对不上
+    syncSkinPick();
+    showToast(e.message || '没能保存，稍后再试', 2400, 'err');
+  }
 }
 
 // 「我的链接」：三个输入框，贴链接就行，展示文案由服务端按域名算（GitHub / 知乎 / 掘金 / V2EX / 微博）。
@@ -6494,7 +6965,7 @@ function openAuthorMoreSheet() {
     { icon: 'gift', label: '兑换码领灯火', sub: '有兑换码就填在这里', on: openGiftCode },
     { icon: 'medal', label: '我的勋章', sub: '看看攒了几枚、还差什么', on: () => { location.href = '/medals.html'; } },
     { icon: 'share', label: '邀请收录', sub: '拉朋友来投稿，双方都有灯火', on: () => { location.href = '/invite'; } },
-    { icon: 'chat', label: '造梦酒馆', sub: '散座闲聊、吧台提想法', on: () => navigate('/bar') },
+    { icon: 'chat', label: '造梦酒馆', sub: '闲聊、安利、找工具', on: () => navigate('/bar') },
     { icon: 'block', label: '屏蔽管理', sub: (nb || ub) ? `已隐藏 ${nb} 件作品${ub ? ` · 拉黑 ${ub} 位作者` : ''}` : '还没有屏蔽任何作品', on: () => openBlockedList(nb ? 'works' : (ub ? 'users' : 'works')) },
     { icon: 'gear', label: '账号设置', sub: '密码、绑定、消息提醒', on: () => navigate('/settings') },
     { icon: 'logout', label: '退出登录', sub: '本机登录状态会清掉', on: doLogout }
@@ -6512,32 +6983,39 @@ function goMyPromotions() {
 async function loadAuthor(name) {
   // URL 现在传的是账号 id 或作者自设的个性地址（老链接是账号名）：三种都认，认出「这是不是我自己的主页」
   const isMine = !!(state.user && (state.user.id === name || state.user.username === name || state.user.slug === name));
-  // 先渲染再拉数据：自己的页面直接显示昵称，别先闪一下账号名
-  const first = (isMine && state.user.nickname) || name;
+  // 先渲染再拉数据：自己的页面直接显示昵称；别人的页面借首屏 SSR 里渲染好的 @昵称，
+  // /u/<账号id> 直链打开时账号 id 不会再先闪一下才换成昵称
+  const ssr = ssrAuthorHero();
+  const first = (isMine && state.user.nickname) || (ssr && ssr.name) || name;
   $('authorName').textContent = '@' + first;
   $('authorAvatar').textContent = first.slice(0, 1).toUpperCase();
   $('authorAvatar').style.background = avaColor('u:' + name);
   $('authorAvatar').style.color = '#fff';
   setTitle(`@${name} 的作品`);
-  // 加载态（2026-11-12）：/u/ 是整页换数据——名字和头像先出来，作品、看板要等接口。
-  // 两件事必须同时做：① 先把上一位作者留下的内容清干净（不清会闪一下别人作品、别人的工具行）；
-  // ② 作品区放同款「点灯」，看板铺同结构的「–」占位撑住高度（不等高的话数据回来整块会往上跳）。
+  // 骨架屏（2026-11-14）：/u/ 是整页换数据——名字和头像先出来，作品、看板要等接口。
+  // ① 先把上一位作者留下的内容清干净（不清会闪一下别人作品、别人的工具行）；
+  // ② 作品区铺与真卡同构的骨架卡（数量照 SSR 抄，高度不跳）；看板铺同结构「–」占位撑住高度；
+  // ③ meta 行放一根灰条占位，别让入驻时间/常写分类回来时档案卡再长高 10px。
   const agEl = $('authorGallery');
   agEl.classList.remove('list-mode');
-  agEl.innerHTML = dmLoadHtml('正在点亮作品…');
+  agEl.innerHTML = authorGallerySkeletonHtml(ssr && ssr.cards);
+  authorTabState.loading = true;   // 骨架期锁住 tab 切换：作品流还没就位，切过去只能看到空列表
   $('authorStatGrid').innerHTML = authorStatSkeletonHtml();
-  $('authorMeta').innerHTML = '';
+  $('authorMeta').innerHTML = '<span class="sk-line sk-au-meta" aria-hidden="true"></span>';
   $('authorBadges').innerHTML = '';
   $('authorStats').hidden = true;
   $('authorJoin').style.display = 'none';
   $('authorTools').style.display = 'none';
   $('authorTools').innerHTML = '';
   $('authorNickBtn').style.display = 'none';
+  // 星空带也先复位：换到别人的主页，上一位作者挑的皮肤不能留在上面
+  paintBandSkin(HERO_SKIN_DEFAULT);
+  if ($('authorBandSkinBtn')) $('authorBandSkinBtn').style.display = 'none';
   $('authorDangerRow').style.display = 'none';
-  // 「编辑主页」/ 功能图标行 / 三个 tab 都是本人专属：换到别人的主页先全部收起来（文案也别留着上一位的）
-  $('authorEditBtn').style.display = 'none';
-  $('authorActs').style.display = 'none';
-  $('authorTabs').style.display = 'none';
+  // 「编辑主页」/ 功能图标行 / 三个 tab 都是本人专属，但内容全是静态的，不用等接口——
+  // 骨架期就亮出来（isMine 在路由时已知，登录态 init 里已 loadMe 完），数据回来不再多一次长高；
+  // 换到别人的主页先全部收起来（文案也别留着上一位的）。tab 在骨架期点了不换（setAuthorTab 有锁）
+  bindAuthorOwnerTools(isMine);
   const tabBar = $('authorTabs');
   if (tabBar) tabBar.querySelectorAll('[data-autab]').forEach(b => b.classList.toggle('is-on', b.dataset.autab === 'works'));
   authorTabState.tab = 'works';
@@ -6545,8 +7023,26 @@ async function loadAuthor(name) {
   authorTabState.favs = null;
   authorTabState.likes = null;
   authorTabState.req++;
-  // 作品数据入口侧栏只在本人主页出现：换到别人的页面先收起来
-  $('authorSide').style.display = 'none';
+  // 右栏（作品数据卡 / 勋章墙）要等接口回来才知道有没有。
+  // 2026-11-14 修：加载态不能先把右栏摘掉——那样档案卡会按整页宽画一遍，数据回来再收窄成左栏，
+  // 整页横向抖一下（站长在 /u/ 主页上看到「勋章没渲染、左边占满」正是这 300 多毫秒）。
+  // 现在加载态就把右栏那一列占住：灰条占位在，has-side 在，回填时只换内容不动列宽。
+  const authorBodyEl = $('authorBody');
+  $('creatorCard').style.display = 'none';
+  $('authorMedalsCard').style.display = 'none';
+  if ($('authorSideSkel')) $('authorSideSkel').style.display = '';
+  $('authorSide').style.display = '';
+  if (authorBodyEl) authorBodyEl.classList.add('has-side');
+  // 「找找」补全条也一样：只在自己主页的作品 tab 出现，换人 / 换页先收干净
+  {
+    const fs = $('authorFindStrip');
+    if (fs) { fs.style.display = 'none'; fs.dataset.open = '0'; }
+  }
+  // 「作品已隐藏」提示条同理：换到别人的主页，上一位作者的隐藏状态不能留在这一页
+  {
+    const hs = $('authorHideStrip');
+    if (hs) hs.style.display = 'none';
+  }
   try {
     const data = await (await fetch('/api/authors/' + encodeURIComponent(name))).json();
     // 地址栏矫正（2026-11-13）：站内 data-nav 跳进来的还是 /u/<账号id> 或老地址，服务端 301 够不着
@@ -6565,6 +7061,13 @@ async function loadAuthor(name) {
     // 自己的主页：名字旁显示「修改昵称」入口，页面底部放「注销账号」（低调、防误触）
     // 服务端回了 uid（id / 名字两种链接都认），双保险按它判
     const isMe = isMine || !!(state.user && data.uid && state.user.id === data.uid);
+    // 背景：作者挑的那一条（没挑过时服务端也给默认值），本人多一个「换背景」的入口
+    paintBandSkin(data.skin);
+    const skinBtn = $('authorBandSkinBtn');
+    if (skinBtn) {
+      skinBtn.style.display = isMe ? 'inline-flex' : 'none';
+      if (isMe) skinBtn.onclick = openSkinModal;
+    }
     // 2026-11-14：本人主页的「修改昵称 / 个性地址」两个胶囊撤掉——都收进右上角「编辑主页」那个弹层了。
     // 留着会和「编辑主页」重复，手机端三个入口还会挤成两行（名字行 flex-wrap）
     const nickBtn = $('authorNickBtn');
@@ -6604,9 +7107,12 @@ async function loadAuthor(name) {
     // 作品数据卡仅本人可见；勋章墙人人可见（点亮过才显示）。
     // 两张卡一张都没有时整个右栏收起来，别留一列空白
     const hasBadges = Array.isArray(data.badges) && data.badges.length > 0;
+    if ($('authorSideSkel')) $('authorSideSkel').style.display = 'none';   // 真卡上来了，占位条收掉
     $('creatorCard').style.display = isMe ? '' : 'none';
     $('authorMedalsCard').style.display = hasBadges ? '' : 'none';
     $('authorSide').style.display = (isMe || hasBadges) ? '' : 'none';
+    // 右栏有卡才分两栏（档案卡收窄 + 右栏卡提到顶上）；没有就整页宽，别留一列空白
+    $('authorBody').classList.toggle('has-side', isMe || hasBadges);
     // 别人的主页 + 作者绑定了账号：给「送灯火」直送入口（2026-11-13）。
     // 匿名作者（没绑账号）收不了直送，不显示——想支持就去作品详情页点「送灯火」，灯火记在作品上。
     const tipBtn = $('authorTipBtn');
@@ -6631,10 +7137,17 @@ async function loadAuthor(name) {
     authorTabState.works = Array.isArray(data.works) ? data.works : [];
     authorTabState.favs = null;
     authorTabState.likes = null;
-    if (isMe) setAuthorTab('works');
-    else {
-      $('authorGallery').innerHTML = authorTabState.works.map(w => cardHtml(w)).join('') ||
-        '<div class="empty" style="grid-column:1/-1"><p>这位作者还没有作品</p></div>';
+    authorTabState.loading = false;   // 数据到位，解开 tab 锁，骨架卡由下面的 setAuthorTab / 直绘替换
+    if (isMe) {
+      // 自己把主页作品收起来了：作品 tab 顶上挂一条「已隐藏」，一键恢复（开关本身在「编辑主页」里）
+      paintAuthorHideStrip();
+      setAuthorTab('works');
+    } else {
+      // 访客：作者选择了只公开档案 —— 服务端已经把 works 收成空数组，这里换成一句说明而不是「还没作品」
+      $('authorGallery').innerHTML = data.hideWorks
+        ? authorHiddenNoteHtml(shown)
+        : (authorTabState.works.map(w => cardHtml(w)).join('') ||
+           '<div class="empty" style="grid-column:1/-1"><p>这位作者还没有作品</p></div>');
       bindCards($('authorGallery'));
     }
     // 入驻引导：只给「还没入驻的访客」看（本人和已登录作者都不需要被推销）
@@ -6648,8 +7161,13 @@ async function loadAuthor(name) {
     }
   } catch {
     // 失败也要把加载态收干净：占位的「–」留着会让人以为这位作者数据全是空的
+    authorTabState.loading = false;
     $('authorStatGrid').innerHTML = '';
     $('authorGallery').innerHTML = '<div class="empty" style="grid-column:1/-1"><p>作者不存在</p></div>';
+    // 右栏占位条同理：作者都查不到，别留一块灰条在那儿呼吸
+    if ($('authorSideSkel')) $('authorSideSkel').style.display = 'none';
+    $('authorSide').style.display = 'none';
+    $('authorBody').classList.remove('has-side');
   }
 }
 
@@ -6797,6 +7315,8 @@ function rankRowHtml(w, i) {
     ? `<img class="rk-cover" src="${imgUrl(w.thumb, 400)}" srcset="${imgSet(w.thumb)}" sizes="(max-width: 640px) 30vw, 96px" alt="${escapeHtml(w.title)}" loading="lazy" />`
     : `<div class="rk-cover rk-cover-empty">${escapeHtml((w.title || '?').slice(0, 1))}</div>`;
   const isNew = w.isNew ? '<span class="rk-new">NEW</span>' : '';
+  // 上架天数缀在名字后面：小字浅色弱化，今天刚上架的交给 NEW 角标
+  const age = workAgeText(w) ? `<span class="rank-age">${workAgeText(w)}</span>` : '';
   // 高光榜：首次进榜 7 天内的作品标「新晋」，右侧副行换成高光区间（哪几天、用了几天）
   const entry = w.isNewEntry && rankH5.period === 'peak' ? '<span class="rk-new">新晋</span>' : '';
   const feat = w.featured ? '<span class="rk-tag">精选</span>' : '';
@@ -6809,7 +7329,7 @@ function rankRowHtml(w, i) {
       <span class="rk-num${top}">${i + 1}</span>
       ${cover}
       <div class="rk-main">
-        <div class="rk-title-line"><span class="rk-title">${escapeHtml(rkName)}</span>${isNew}${entry}</div>
+        <div class="rk-title-line"><span class="rk-title">${escapeHtml(rkName)}</span>${age}${isNew}${entry}</div>
         ${rkIntro ? `<div class="rk-intro">${escapeHtml(rkIntro)}</div>` : ''}
         <div class="rk-meta-line"><span class="rk-sub">${escapeHtml(w.authorName || '匿名')} · ${escapeHtml(w.type || '')}</span><span class="rk-tags"><span class="rk-tag">${escapeHtml(w.category)}</span>${feat}</span></div>
       </div>
@@ -6966,6 +7486,16 @@ function renderRankCatPanel() {
   if (btn) btn.classList.toggle('has-value', rankState.cat !== '全部');
 }
 
+// 上架天数：从 createdAt 起算，满 24h 记 1 天；当天上架的记 1。
+// 今天刚上架的不显示——行里已有「今日上新 / NEW」角标，再缀一句「上架 1 天」纯噪音
+function workAgeText(w) {
+  if (w.isNew) return '';
+  const t = new Date(w.createdAt).getTime();
+  if (!t || isNaN(t)) return '';
+  const days = Math.max(1, Math.floor((Date.now() - t) / 86400000));
+  return `上架 ${days} 天`;
+}
+
 // 排行榜行里的分类文案：一件作品可属 1-3 个分类，全写出来。
 // 只写主分类会有个坑——按「效率工具」筛选后，主分类是「开发工具」的作品也上榜，
 // 行里却看不到「效率工具」，看着像筛错了
@@ -7013,14 +7543,15 @@ async function loadRank(period, by, limit, type, cat) {
       : cur === 'pv' ? (w.pv || 0) : (w.uv || 0);
     const scoreLabel = cur === 'hot' && rankState.period === 'peak' ? '高光' : (BY_SCORE_LABEL[cur] || '热度');
     $('rankList').innerHTML = list.length ? list.map(w => {
-      // 与 H5 榜单行同口径：第一行名字，第二行一句话简介（小一号浅灰），第三行 meta 不动
+      // 与 H5 榜单行同口径：第一行名字（后缀上架天数，小字浅色），第二行一句话简介（小一号浅灰），第三行 meta 不动
       const [rkName, rkIntro] = cardTitleLines(w);
+      const ageTxt = workAgeText(w);
       return `
       <div class="rank-item" data-id="${w.id}">
         <div class="rank-no rank-no-${w.rank <= 3 ? w.rank : 'n'}">${w.rank}</div>
         <img src="${imgUrl(w.thumb, 400)}" alt="" loading="lazy" />
         <div class="rank-main">
-          <div class="rank-title">${escapeHtml(rkName)}${w.isNew ? '<span class="rank-fresh" title="今天刚上架的作品">今日上新</span>' : ''}${w.isNewEntry && rankState.period === 'peak' ? '<span class="rank-fresh" title="首次进入高光榜前 20，7 天内显示">新晋</span>' : ''}</div>
+          <div class="rank-title">${escapeHtml(rkName)}${ageTxt ? `<span class="rank-age">${ageTxt}</span>` : ''}${w.isNew ? '<span class="rank-fresh" title="今天刚上架的作品">今日上新</span>' : ''}${w.isNewEntry && rankState.period === 'peak' ? '<span class="rank-fresh" title="首次进入高光榜前 20，7 天内显示">新晋</span>' : ''}</div>
           ${rkIntro ? `<div class="rank-intro">${escapeHtml(rkIntro)}</div>` : ''}
           <div class="rank-meta">${escapeHtml(typeText(w))} · ${escapeHtml(aname(w))} · ${escapeHtml(rankCatsText(w))}${rankState.period === 'peak' && w.peakFrom ? ` · <span title="这件作品最亮的 7 天">高光 ${peakRangeTxt(w.peakFrom, w.peakTo)} · ${w.peakDays} 天</span>` : ''}</div>
         </div>
@@ -8255,7 +8786,7 @@ function setupUploadForm() {
     try {
       const r = await fetch('/api/work/keywords', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, prompt, categories: cats, types: selectedTypes() })
+        body: JSON.stringify({ title, prompt: prompt, positioning: ((form.positioning && form.positioning.value) || '').trim(), categories: cats, types: selectedTypes() })
       });
       if (!r.ok) return;
       const d = await r.json();
@@ -9415,22 +9946,27 @@ function setupUploadForm() {
   }
 
   editWorkFn = startEdit;
-  function startEdit(w) {
+  function startEdit(w, opts = {}) {
     editId = w.id;
     // 站长代改别人的作品：弹窗里把身份说清楚，免得改完以为是自己的
     const adminEdit = w.adminEdit === true && !w.owned;
+    // 「找找」补全条带进来的：focus 指向缺的那一栏（intro=作品介绍 / positioning=一句话定位），
+    // 展开一眼看懂 + 光标直接落进去，别让作者在长表单里自己找
+    const gapFocus = opts.focus === 'positioning' || opts.focus === 'intro' ? opts.focus : '';
     setAgreeMode('edit');   // 编辑默认勾上：首次投稿已留过 agreeAt 凭据，这里只做轻量重申
     hideModal(detailModal);
     $('modalTitle').textContent = adminEdit ? '站长编辑作品' : '编辑作品';
-    $('formHint').textContent = adminEdit
+    $('formHint').textContent = (adminEdit
       ? `站长编辑 · 作者：${dname(w)} · 保存后立即生效`
-      : `作者：${dname(w)} · 修改后立即生效`;
+      : `作者：${dname(w)} · 修改后立即生效`) +
+      (gapFocus ? ' · 正在补全「找找」要用的介绍信息' : '');
     $('formHint').style.display = 'block';
     setSelectedTypes(typesOf(w));
     fillWorkTitle(w);
     form.prompt.value = w.intro || '';
     form.site.value = w.site || ''; // 官网回填
     setQuickLookValues(w);   // 「一眼看懂」回填（老作品多半是空的，空着就保持收起）
+    if (gapFocus) { qlUI.setOpen(true); qlUI.paint(); }   // 补全进来直接展开：缺的那栏就藏在这一块里
     // 编辑回填：按形态的 links 优先，旧数据的单 link 落到第一个非小程序形态的输入框
     {
       const nonMini = typesOf(w).filter(t => t !== '小程序');
@@ -9486,6 +10022,13 @@ function setupUploadForm() {
       $('qrPreviewBox').style.display = 'none';
     }
     showModal(uploadModal);
+    // 补全入口：弹窗展开后再把光标送到缺的那一栏（等一拍布局稳定，smooth 滚到中间）
+    if (gapFocus) {
+      const el = gapFocus === 'positioning' ? form.positioning : form.prompt;
+      if (el) setTimeout(() => {
+        try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.focus({ preventScroll: true }); } catch {}
+      }, 160);
+    }
   }
 
   async function tryCloseUpload() {
@@ -10266,6 +10809,15 @@ function setupUploadForm() {
         // 改成预告 / 等平台上架后，作品就不该留在首页信息流里了：就地摘掉，别留一张过期的卡
         if (data.hidden || (data.stage || 'live') !== 'live') removeWorkFromList(editedId);
         else patchWorkInList(data);
+        // 本人主页作品 tab 还开着：就地更新缓存，并把「找找」补全条重算（补完的那件不再催）
+        {
+          const ai = authorTabState.works.findIndex(x => String(x.id) === String(editedId));
+          if (ai >= 0) {
+            if (data.hidden || (data.stage || 'live') !== 'live') authorTabState.works.splice(ai, 1);
+            else authorTabState.works[ai] = data;
+            paintAuthorFindStrip();
+          }
+        }
         // 详情弹窗还开着（URL 仍是 /w/xxx）就把内容刷成刚存下的样子；?full=1 整页模式不弹窗，
         // 和以前 route() 在整页视图直接 return 的口径一致
         if (location.pathname === '/w/' + encodeURIComponent(editedId) && !isFullView()) openWork(editedId, false);
@@ -10368,6 +10920,19 @@ function setupPublishOk() {
     if (!pubokWork) return;
     shareWorkDirect(pubokWork.id);   // 分享图弹窗在 DOM 里排在本弹窗后面，直接叠上去
   };
+  // 「让找找翻翻看」：关掉本弹窗，打开找找并用一句话介绍当问题直接开翻——
+  // 让作者当场看到「别人说不清名字时能不能翻到这件」，翻不到就知道该回去补关键词
+  const pf = $('pubokFind');
+  if (pf) pf.addEventListener('click', () => {
+    const w = pubokWork;
+    const m = $('publishOkModal');
+    if (m) hideModal(m);
+    pubokWork = null;
+    if (!w) return;
+    const q = String(w.titleTag || w.titleName || w.title || '').trim().slice(0, 60);
+    openFindBot(q);
+    if (q) fbAsk(q);
+  });
 }
 
 // 用 canvas 缩放图片，返回 Blob（失败时返回 null，让原图上传）
@@ -10632,6 +11197,8 @@ function setupDetailActions() {
   function openAuthorTipPanel(uid, shown) {
     tipAuthorTarget = uid;
     tipSelAmount = 0;
+    // 直送模式没有作品可落，看广告代送那条黄条不出现（它是「进小程序打开这件作品」的引导）
+    $('tipMiniAd').style.display = 'none';
     $('tipPanelTitle').textContent = `给 @${shown} 送灯火`;
     $('tipNote').textContent = '灯火全额转到作者账上；每人每天给同一位作者最多送 50 盏（同一网络下也一样，最多分 5 笔）。';
     $('tipAuthorHome').style.display = 'none';
@@ -10646,6 +11213,8 @@ function setupDetailActions() {
     const p = $('tipPanel');
     // 居中弹窗：点「送灯火」立刻有反馈，不会再被当成点了没反应
     showModal(p);
+    // 看广告代送黄条只在作品打赏模式出现（作者直送模式没有作品可落，openAuthorTipPanel 会藏掉它）
+    $('tipMiniAd').style.display = '';
     updateTipBalance();
     // 最近打赏名单（打开时拉一次），顺手校准总额（别人可能刚打赏过）
     try {
@@ -10671,12 +11240,34 @@ function setupDetailActions() {
     openTipPanel(w);
   };
   $('tipClose').onclick = () => { hideModal($('tipPanel')); };
-  // 「小程序看广告替送 50 盏」入口：关掉本面板，开小程序码弹窗；
-  // 用户扫码进小程序 → 打开这件作品 → 详情页底部「看广告替作品点灯」，平台代送不扣自己的余额
-  $('tipMiniAd').onclick = () => {
-    hideModal($('tipPanel'));
-    const m = $('miniModal');
-    if (m) showModal(m);
+  // 「小程序看广告替送 50 盏」入口：出一张直达这件作品详情页的小程序码（scene=w:<作品id>），
+  // 用户扫码落在小程序详情页 → 底部「看广告替作品点灯」，平台代送不扣自己的余额。
+  // 码取不到（微信未配置 / 接口抽风）就退回旧的通用小程序弹窗兜底。
+  let tipMiniAdBusy = false;
+  $('tipMiniAd').onclick = async () => {
+    if (tipMiniAdBusy) return;
+    const w = state.currentWork;
+    const go = $('tipMiniAd').querySelector('.tma-go');
+    if (go) go.textContent = '出码中…';
+    tipMiniAdBusy = true;
+    const fallback = () => {
+      hideModal($('tipPanel'));
+      const m = $('miniModal');
+      if (m) showModal(m);
+    };
+    if (!w) { fallback(); return; }
+    try {
+      const r = await fetch('/api/mini/tip-qr?workId=' + encodeURIComponent(w.id));
+      const d = await r.json();
+      if (!r.ok || !d.qr) throw new Error(d.error || 'no qr');
+      hideModal($('tipPanel'));
+      openQrZoom(d.qr, '微信扫一扫，进小程序打开这件作品，看完一支广告就替 TA 送 50 盏');
+    } catch {
+      fallback();
+    } finally {
+      tipMiniAdBusy = false;
+      if (go) go.textContent = '去小程序 ›';
+    }
   };
   // 点遮罩空白处也能关
   bindMaskClose($('tipPanel'), () => $('tipClose').click());
@@ -11197,7 +11788,6 @@ let ideaDetailId = '';
 let ideaDetailData = null;
 let ideaDiscussKind = 'scene';
 let similarIdea = null;
-let hotItemsCache = [];
 const IDEA_DISCUSS_KIND_TEXT = { scene: '补充场景', solution: '推荐方案', progress: '进展更新' };
 const IDEA_DISCUSS_PLACEHOLDER = {
   scene: '说说你会在什么情况下用它、现在是怎么凑合解决的…',
@@ -11232,139 +11822,48 @@ function wishStatusHtml(i) {
 // 大卡片版的想法卡（wishCardHtml）已随合流改版退役：列表走 feedRowHtml 的一行式，
 // 想法的完整动作（我也想要 / 我来实现 / 讨论区）都在详情抽屉里。
 
-// 大家最近在搜：服务端已把「真实搜索 + 冷启动种子」合并好，这里只负责画
-// 只拉一次（榜单变化很慢）；拉失败就把整块收起来，别在页面上留一个空框
-let hotSearchLoaded = false;
-function renderHotItems() {
-  const box = $('hotList');
-  if (!box) return;
-  box.innerHTML = hotItemsCache.map((it, i) => {
-    const rank = i + 1;
-    // 前 8 条按近 30 天搜过的人数、后 4 条按近 7 天人数（win7）排；数字跟着各自窗口走
-    // 口径是人数：同一人反复搜同一个词只算 1，防刷
-    // 人数：服务端组榜时已经定好（种子词 5-12 随机、真实词按去重人数），照它显示；
-    // 只有服务端给 0（老记录认不出人）才用词名散列兜一个稳定的小数字——
-    // 主榜 5-12、新位 1-3，跟种子区间对齐，别让一串「1 人」把榜单压得没人气
-    const n0 = (it.win7 ? it.n7 : it.n30) || 0;
-    let n = n0;
-    if (!n) {
-      let hsh = 0;
-      for (let ci = 0; ci < it.w.length; ci++) hsh = (hsh * 31 + it.w.charCodeAt(ci)) >>> 0;
-      const lo = it.win7 ? 1 : 5, hi = it.win7 ? 3 : 12;
-      n = lo + (hsh % (hi - lo + 1));
-    }
-    const shown = n >= 10000 ? (n / 10000).toFixed(1) + 'w' : String(n);
-    // 人数为 0 就不挂数字（榜单里理论上不会出现，留着防止后端口径回退）
-    const nHtml = n > 0 ? `<span class="hot-n">${shown}<i>人</i></span>` : '';
-    // zero = 搜过但站内没结果：这种词不该把人送去一个空搜索页，改成「一键转成想法」
-    const zero = !!it.zero;
-    // 角标仿「大家都在搜」：主榜贴「热」，近 7 天补位贴「新」，0 结果的贴「缺」
-    const badge = it.win7
-      ? '<span class="hot-badge is-new7">新</span>'
-      : zero ? '' : '<span class="hot-badge is-hot">热</span>';
-    return `<button type="button" class="hot-item${rank <= 3 ? ' is-top' : ''}${zero ? ' is-zero' : ''}"
-      data-kw="${escapeHtml(it.w)}" data-zero="${zero ? '1' : '0'}"
-      title="${zero ? '站内还没搜到，点一下把它变成想法' : (it.win7 ? '近 7 天 ' + n + ' 人搜过，点一下去橱窗搜' : '近 30 天 ' + n + ' 人搜过，点一下去橱窗搜')}">
-      <span class="hot-no">${rank}</span>
-      <span class="hot-word">${escapeHtml(it.w)}</span>
-      ${badge}
-      ${zero ? '<span class="hot-zero">缺</span>' : ''}
-      ${nHtml}
-    </button>`;
-  }).join('');
-  applyHotFold();   // 重画（首次 / 换一换）之后把收起状态复原，别因为换一批就自己展开
+// ---------- 大家在找（首页 hero 一行）----------
+// 2026-11-14 从酒馆热搜榜搬来（站长定）：搜索词归搜索区，酒馆只留想法。
+// 三处刻意的取舍：
+//   1) 只取站内搜得到的词——zero 词（搜过但站内没结果）点进去是空结果页，首页不摆；
+//   2) 不带人数：人数是服务端给种子词随机抽的，摆在首屏反而露怯；
+//   3) 12 条全出（9 热 + 3 新），种子词贴「热」、近期真被搜过的贴「新」——
+//      两批词来源不同，角标一眼分清（2026-11-14 站长定，桌面折两行、手机只留前 4 个）。
+const HERO_HOT_MAX = 12;
+let heroHotLoaded = false;
+
+function renderHeroHot(items) {
+  const box = $('heroHotList'), wrap = $('heroHot');
+  if (!box || !wrap) return;
+  const seen = new Set();
+  const words = (Array.isArray(items) ? items : [])
+    .filter(it => it && it.w && !it.zero)
+    .map(it => ({ w: String(it.w).trim(), badge: it.seed ? '热' : (it.win7 ? '新' : '') }))
+    .filter(x => x.w && !seen.has(x.w) && seen.add(x.w))
+    .slice(0, HERO_HOT_MAX);
+  // 拉空/全被筛掉：整块继续隐身但占着一行（is-waiting），别把下方内容顶上去抖一下
+  if (!words.length) { wrap.classList.add('is-waiting'); return; }
+  box.innerHTML = words.map(x =>
+    `<button type="button" class="hero-hot-word" data-kw="${escapeHtml(x.w)}" title="点一下搜「${escapeHtml(x.w)}」">` +
+    (x.badge ? `<i class="hh-badge is-${x.badge === '热' ? 'hot' : 'new'}">${x.badge}</i>` : '') +
+    `${escapeHtml(x.w)}</button>`
+  ).join('');
+  wrap.classList.remove('is-waiting');
 }
 
-// ---------- 热搜榜收起 / 展开（2026-11-13）----------
-// 12 条全摊开：手机端 2 列要 6 行，把「提想法」的输入框整个顶到屏幕外；PC 也要 3 行。
-// 所以默认只露 4 条（宽屏一行、手机两行），下面那条「展开全部 12 条」点开看全。
-// 露几条不写死：列数跟着断点走（2 / 4 / 5 列），按实际 grid 列数算才不会留半行。
-// 展开状态记在本机（dm_hot_open）：真去点开的人，下次进来别再给他收起来。
-let hotOpen = false;
-try { hotOpen = localStorage.getItem('dm_hot_open') === '1'; } catch { /* 隐私模式记不住，每次默认收起 */ }
-
-function hotCols() {
-  const box = $('hotList');
-  if (!box) return 0;
-  // getComputedStyle 会把 repeat() 解析成每个列宽（"150px 150px ..."），空格数就是列数
-  const cols = (getComputedStyle(box).gridTemplateColumns || '').trim().split(/\s+/).filter(Boolean).length;
-  return cols > 0 ? cols : 4;
-}
-
-// 收起时露几条：宽屏一行就是一屏的量；手机一行只放得下 2 个词，只露 2 条太寒酸，给两行
-function hotFoldLimit() {
-  const cols = hotCols();
-  return cols >= 3 ? cols : cols * 2;
-}
-
-function applyHotFold() {
-  const box = $('hotList'), board = $('hotBoard'), btn = $('hotToggle');
-  if (!box || !board || !btn) return;
-  const items = box.querySelectorAll('.hot-item');
-  const total = items.length;
-  const fold = hotFoldLimit();
-  // 一屏都装得下就没有可展开的东西，按钮直接不出现
-  const foldable = total > fold;
-  const limit = (hotOpen || !foldable) ? total : fold;
-  items.forEach((el, i) => { el.hidden = i >= limit; });
-  board.classList.toggle('is-open', hotOpen && foldable);
-  btn.hidden = !foldable;
-  btn.setAttribute('aria-expanded', hotOpen && foldable ? 'true' : 'false');
-  const label = btn.querySelector('span');
-  if (label) label.textContent = hotOpen && foldable ? '收起' : `展开全部 ${total} 条`;
-}
-
-function toggleHotFold() {
-  hotOpen = !hotOpen;
-  try { localStorage.setItem('dm_hot_open', hotOpen ? '1' : '0'); } catch { /* 记不住就算了 */ }
-  applyHotFold();
-}
-
-async function loadHotSearch() {
-  const box = $('hotList');
-  if (!box || hotSearchLoaded) return;
-  hotSearchLoaded = true;
+async function loadHeroHot() {
+  if (heroHotLoaded) return;
+  heroHotLoaded = true;
   try {
     const r = await fetch('/api/search/hot?limit=12');
     if (!r.ok) throw new Error('hot');
     const d = await r.json();
-    const items = Array.isArray(d.items) ? d.items : [];
-    if (!items.length) { $('hotBoard').style.display = 'none'; return; }
-    hotItemsCache = items;
-    renderHotItems();
-    renderWishSuggest();
+    renderHeroHot(d.items);
   } catch {
-    hotSearchLoaded = false;   // 下次进页面再试
-    box.innerHTML = '';
-    $('hotBoard').style.display = 'none';
+    heroHotLoaded = false;   // 拉失败不缓存，下次进首页再试
+    const wrap = $('heroHot');
+    if (wrap) wrap.classList.add('is-waiting');   // 隐身但占位，不抖
   }
-}
-
-// 换一换：服务端每次组榜都重新抽（9 条种子 + 3 条近期真被搜过的词，人数也跟着重抽），
-// 所以这里重新要一批（roll=1 绕过 60s 缓存 + 浏览器缓存），不是本地洗牌。
-// 只有拉失败才退回归宿：把手里这 12 条洗个顺序，至少点下去有反应、不至于一点动静都没有。
-let hotRolling = false;
-async function shuffleHotItems() {
-  if (!hotItemsCache.length || hotRolling) return;
-  hotRolling = true;
-  try {
-    const r = await fetch('/api/search/hot?limit=12&roll=1', { cache: 'no-store' });
-    if (!r.ok) throw new Error('roll');
-    const d = await r.json();
-    const items = Array.isArray(d.items) ? d.items : [];
-    if (!items.length) throw new Error('empty');
-    hotItemsCache = items;
-    renderHotItems();
-    renderWishSuggest();
-    hotRolling = false;
-    return;
-  } catch { /* 网络/接口不行：往下走本地洗牌 */ }
-  for (let i = hotItemsCache.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [hotItemsCache[i], hotItemsCache[j]] = [hotItemsCache[j], hotItemsCache[i]];
-  }
-  renderHotItems();
-  hotRolling = false;
 }
 
 // ---------- 造梦酒馆：近7日热门 / 书架 ----------
@@ -11392,20 +11891,22 @@ async function loadBarBoard(force) {
 // 2026-11-13 起热门只出两类：想法、闲聊（作品有自己的综合榜，不再复述）。
 // 且按类型分两组摆（想要的归想要的、闲聊的归闲聊），组内按热度排、序号各自从 1 开始。
 // 保留 work/done 的渲染分支只是为了老缓存响应不至于画崩，正常不会再进来。
-const BH_KIND = { work: '作品', idea: '想要', done: '已实现', chat: '闲聊' };
-const BH_GROUP = { idea: '想法 · 还在征集', chat: '闲聊 · 散座' };
+const BH_KIND = { work: '作品', idea: '找工具', done: '已实现', chat: '闲聊' };
+// 2026-11-14 主题化后，想法池在界面上统一叫「找工具」（入口不再叫提想法），分组标题跟着改口径
+const BH_GROUP = { idea: '找工具 · 还在征集', chat: '闲聊 · 散座' };
 
   // 一张热门卡；i 是组内序号（从 0 起）。showKind=true 时带类型角标——
   // 只在「只有一个分组」时用得上，有组标题时角标是重复信息。
   // 闲聊卡角标跟散座分流同步（2026-11-14）：带作品的标「安利」、求工具的标「找工具」，其余照旧
-  function barHotCardHtml(it, i, showKind) {  const chatBadge = it.kind !== 'chat' ? '' : (it.work ? '安利' : it.seek ? '找工具' : '');
+  function barHotCardHtml(it, i, showKind) {  const chatBadge = it.kind !== 'chat' ? '' : (it.topic || (it.work ? '安利' : it.seek ? '找工具' : ''));
   const chatBadgeCls = it.kind !== 'chat' ? '' : (it.work ? ' is-rec' : it.seek ? ' is-seek' : '');
   const chatKindLabel = chatBadge || (BH_KIND[it.kind] || '推荐');
   const badge = showKind ? `<span class="bh-kind is-${it.kind}${chatBadgeCls}">${chatKindLabel}</span>` : '';
-  const icon = it.kind === 'chat' ? ic('chat', 18) : it.kind === 'idea' ? ic('wish', 18) : ic('check-circle', 18);
+  // 没有封面图就不摆图标位（2026-11-14 站长：闲聊那个纯装饰的气泡白占一列）——
+  // 只留真缩略图，文字直接从序号后面起排，右栏这点宽度全让给标题
   const thumb = it.thumb
     ? `<span class="bh-thumb"><img src="${escapeHtml(it.thumb)}" alt="" loading="lazy" decoding="async" /></span>`
-    : `<span class="bh-thumb is-text">${icon}</span>`;
+    : '';
   // 闲聊卡带的关联作品胶囊：点胶囊原地开作品详情弹窗（带来源记录，关掉回酒馆），
   // 点卡片其余部分弹帖子弹窗（全文 + 回应）
   const workChip = it.kind === 'chat' && it.work
@@ -11502,29 +12003,35 @@ function barIsTopicStart(text) {
   if (!barTagsOf(s).length) return false;
   return !/[\p{L}\p{N}]/u.test(s.replace(new RegExp(BAR_TAG_RE_SRC, 'g'), ''));
 }
-// 散座角标分流（2026-11-14）：以前只有「话题/闲聊」两种，一屏全是「闲聊」太单调。
-// 按现有数据分档，不动数据结构、不迁移老帖：
-//   关联了作品 → 「安利」（行上本来就挂着作品入口，标出来别淹没）；
-//   整条只剩 #标签 → 「话题」；
-//   带 #找工具 / #求工具 / #找资源 → 「找工具」（散座里求工具的不少，别跟闲聊混成一片）；
-//   其余 → 「闲聊」。
-// 优先级 带作品 > 话题 > 找工具：正文里的 #标签 胶囊照样可点进话题，不吃亏。
+// 角标分流（2026-11-14 主题化）：发帖时选过主题就直接用选的那个（闲聊/安利/找工具/分享，或自建 ≤4 字），
+// 不再靠「有没有关联作品 / 正文里有没有 #找工具」去猜。老帖子没有 topic 字段，仍按原口径兜底：
+//   关联了作品 → 「安利」；整条只剩 #标签 → 「话题」；带 #找工具/#求工具/#找资源 → 「找工具」；其余「闲聊」。
 // 找工具只认显式标签，不做「有没有人做过」这种句式识别——误伤太多（服务端 barPostSeek 同口径）。
 const BAR_SEEK_TAGS = ['找工具', '求工具', '找资源'];
-function barChatKindOf(p, topicStart) {
-  if (p && p.work) return 'rec';
-  if (topicStart) return 'topic';
-  if (p && p.seek) return 'seek';
-  if (p && BAR_SEEK_TAGS.some(s => barTagsOf(p.text).some(t => t.toLowerCase() === s))) return 'seek';
-  return 'chat';
-}
-const BAR_CHAT_KIND_LABEL = { rec: '安利', topic: '话题', seek: '找工具', chat: '闲聊' };
-const BAR_CHAT_KIND_CLS = { rec: 'br-kind-rec', topic: 'br-kind-topic', seek: 'br-kind-seek', chat: 'br-kind-chat' };
-const BAR_CHAT_KIND_TITLE = {
-  rec: '带着作品的闲聊：点作品名就能进去看',
-  topic: '只发了话题标签，等于开个话题等人来接',
-  seek: '在找一个能干活的工具（带 #找工具 标签的帖子）'
+const BAR_TOPIC_META = {
+  '闲聊': { key: 'chat', label: '闲聊', cls: 'br-kind-chat', title: '随便聊两句' },
+  '安利': { key: 'rec', label: '安利', cls: 'br-kind-rec', title: '安利自己觉得好的东西' },
+  '找工具': { key: 'seek', label: '找工具', cls: 'br-kind-seek', title: '在找一个能干活的工具，等创作者来接' },
+  '分享': { key: 'share', label: '分享', cls: 'br-kind-share', title: '分享踩过的坑或攒下的经验' }
 };
+const BAR_KIND_FALLBACK = {
+  rec: BAR_TOPIC_META['安利'],
+  seek: BAR_TOPIC_META['找工具'],
+  chat: BAR_TOPIC_META['闲聊'],
+  topic: { key: 'topic', label: '话题', cls: 'br-kind-topic', title: '只发了话题标签，等于开个话题等人来接' }
+};
+function barKindOf(p, topicStart) {
+  if (p && p.topic) {
+    return BAR_TOPIC_META[p.topic] ||
+      { key: 'custom', label: p.topic, cls: 'br-kind-custom', title: '作者自己起的主题' };
+  }
+  if (p && p.work) return BAR_KIND_FALLBACK.rec;
+  if (topicStart) return BAR_KIND_FALLBACK.topic;
+  if (p && (p.seek || BAR_SEEK_TAGS.some(s => barTagsOf(p.text).some(t => t.toLowerCase() === s)))) {
+    return BAR_KIND_FALLBACK.seek;
+  }
+  return BAR_KIND_FALLBACK.chat;
+}
 // 正文 → 带话题标签的 HTML：标签是可点的胶囊，点了看这个话题下的所有闲聊。
 // 第 4 个起不再解析，原样当文字，免得有人拿标签刷屏。
 function barTextHtml(text) {
@@ -11552,38 +12059,46 @@ function feedRowHtml(w) {
     const id = escapeHtml(i.id);
     return `<div class="bar-row is-idea${i.status === 'done' ? ' is-done' : ''}" data-type="idea" data-id="${id}" data-at="${escapeHtml(w.at || i.createdAt || '')}">
       <div class="br-line">
-        <span class="br-kind">想法</span>
+        <span class="br-kind ${(BAR_TOPIC_META[i.topic] || {}).cls || 'br-kind-seek'}" title="想要的东西，等创作者来接">${escapeHtml(i.topic || '找工具')}</span>
         <button type="button" class="br-title" data-open="${id}">${escapeHtml(i.title)}</button>
+      </div>
+      <div class="br-sub">
         ${wishStatusHtml(i)}
         <span class="br-meta">
           <span class="br-author">@${escapeHtml(i.author)}</span>
           <span class="br-when">${escapeHtml(wishWhen(i.createdAt))}</span>
-          <span class="br-stat" title="想要的人">${ic('thumb', 12)} ${i.wants || 0}</span>
-          <span class="br-stat" title="讨论数">${ic('chat', 12)} ${i.discussionCount || 0}</span>
+          <span class="br-acts">
+            <span class="br-stat" title="想要的人">${ic('thumb', 12)} ${i.wants || 0}</span>
+            <span class="br-stat" title="讨论数">${ic('chat', 12)} ${i.discussionCount || 0}</span>
+            ${i.mine ? `<button type="button" class="br-del" data-del="${id}" title="删掉这条">✕</button>` : ''}
+          </span>
         </span>
-        ${i.mine ? `<button type="button" class="br-del" data-del="${id}" title="删除这个想法">✕</button>` : ''}
       </div>
     </div>`;
   }
   const p = w.post;
   const id = escapeHtml(p.id);
   const topicStart = p.topicStart != null ? !!p.topicStart : barIsTopicStart(p.text);
-  const kind = barChatKindOf(p, topicStart);
+  const kind = barKindOf(p, topicStart);
   return `<div class="bar-row is-chat${topicStart ? ' is-topic' : ''}" data-type="chat" data-id="${id}" data-at="${escapeHtml(w.at || p.createdAt || '')}">
       <div class="br-line">
-        <span class="br-kind ${BAR_CHAT_KIND_CLS[kind]}"${BAR_CHAT_KIND_TITLE[kind] ? ` title="${BAR_CHAT_KIND_TITLE[kind]}"` : ''}>${BAR_CHAT_KIND_LABEL[kind]}</span>
+        <span class="br-kind ${kind.cls}" title="${escapeHtml(kind.title)}">${escapeHtml(kind.label)}</span>
         <span class="br-title">${barTextHtml(p.text)}</span>
-        ${p.work ? `<a class="br-work" href="/w/${encodeURIComponent(p.work.id)}" title="看这条闲聊关联的作品">${ic('check-circle', 12)} ${escapeHtml(p.work.title)}</a>` : ''}
+      </div>
+      <div class="br-sub">
+        ${p.work ? `<a class="br-work" href="/w/${encodeURIComponent(p.work.id)}" title="看这条闲聊关联的作品">${ic('check-circle', 12)}<span class="br-work-t">${escapeHtml(p.work.title)}</span></a>` : ''}
         <span class="br-meta">
           <span class="br-author">@${escapeHtml(p.author)}</span>
           <span class="br-when">${escapeHtml(wishWhen(p.createdAt))}</span>
           <!-- 行首计数收编成按钮（2026-11-13）：碰杯数一点就是碰杯、回应数一点直接展开回应区，不用先展开再找下面的钮 -->
-          <button type="button" class="br-stat br-stat-btn br-stat-like${p.liked ? ' is-on' : ''}" data-like="${id}"
-            title="碰个杯，表示你有同感">${ic('heart', 12)} <b>${p.likes || 0}</b></button>
-          <button type="button" class="br-stat br-stat-btn" data-focus-reply="${id}"
-            title="看回应，点这儿打开这条帖子">${ic('chat', 12)} <b>${p.replyCount || 0}</b></button>
+          <span class="br-acts">
+            <button type="button" class="br-stat br-stat-btn br-stat-like${p.liked ? ' is-on' : ''}" data-like="${id}"
+              title="碰个杯，表示你有同感">${ic('heart', 12)} <b>${p.likes || 0}</b></button>
+            <button type="button" class="br-stat br-stat-btn" data-focus-reply="${id}"
+              title="看回应，点这儿打开这条帖子">${ic('chat', 12)} <b>${p.replyCount || 0}</b></button>
+            ${p.mine ? `<button type="button" class="br-del" data-del-chat="${id}" title="删掉这句">✕</button>` : ''}
+          </span>
         </span>
-        ${p.mine ? `<button type="button" class="br-del" data-del-chat="${id}" title="删掉这句">✕</button>` : ''}
       </div>
     </div>`;
 }
@@ -11599,24 +12114,20 @@ function renderFeed(opts = {}) {
   const count = $('feedCount');
   const moreBtn = $('wishMore');
   const tagMode = !!feedState.tag;
-  // 话题过滤态里没有「想法」什么事，冷启动补位卡一起收掉
-  const sug = $('wishSuggest');
-  if (tagMode && sug) sug.hidden = true;
   if (count) {
     count.textContent = tagMode
       ? `话题 #${feedState.tag}# · ${feedState.tagTotal || feedState.rows.length} 句闲聊`
       : ((feedState.ideaTotal || feedState.chatTotal)
-        ? `${feedState.ideaTotal || 0} 个想法 · ${feedState.chatTotal || 0} 句闲聊` : '');
+        ? `${feedState.ideaTotal || 0} 个找工具 · ${feedState.chatTotal || 0} 句闲聊` : '');
   }
   const rows = feedRows();
   if (!rows.length) {
     list.innerHTML = tagMode
       ? `<div class="wish-empty">话题 #${escapeHtml(feedState.tag)}# 下还没有闲聊，下面这一句可以是你说的
           <button type="button" class="wish-empty-back" data-tag="">× 看全部闲聊</button></div>`
-      : '<div class="wish-empty">还没有人发言——在上面提个想法，或者随便说一句</div>';
+      : '<div class="wish-empty">还没有人说话——在上面选个主题，说第一句</div>';
     feedState.rendered = 0;
     if (moreBtn) moreBtn.style.display = 'none';
-    if (!tagMode) renderWishSuggest();
     return;
   }
   // 追加前先核一下 DOM 跟记录对不对得上（别处整块换过 innerHTML 时退回全量重绘，宁可慢一次也不能错位）
@@ -11647,11 +12158,10 @@ function renderFeed(opts = {}) {
       const li = tagMode ? 0 : (feedState.leftIdeas || 0);
       const lc = tagMode ? left : Math.max(0, left - li);
       moreBtn.textContent = li > 0
-        ? `加载更早的（还有 ${li} 条想法${lc > 0 ? ` · ${lc} 条闲聊` : ''}）→`
+        ? `加载更早的（还有 ${li} 条找工具${lc > 0 ? ` · ${lc} 条闲聊` : ''}）→`
         : (left ? `加载更早的（还有 ${left} 条）→` : '加载更早的 →');
     }
   }
-  if (!tagMode) renderWishSuggest();
 }
 
 // 只重画一行（盖楼后的局部刷新）：整表重绘会丢展开态、长列表还要重排一遍。
@@ -11867,10 +12377,9 @@ function updateChatTagHint() {
     return;
   }
   const alone = barIsTopicStart(ta.value);
-  // 带了 #找工具/#求工具/#找资源 的帖子角标会变成「找工具」——提前说一句，别让人以为白写了
-  const isSeek = tags.some(t => BAR_SEEK_TAGS.includes(t.toLowerCase()));
   box.hidden = false;
-  box.innerHTML = `<span class="cth-lead">${alone ? '只发话题，等于开个话题等人来接' : (isSeek ? '会归到 · 角标显示「找工具」' : '会归到')}</span>` +
+  // 角标现在由上面的主题决定，正文里的 #找工具 只算话题，不再承诺「角标变找工具」
+  box.innerHTML = `<span class="cth-lead">${alone ? '只发话题，等于开个话题等人来接' : '会归到'}</span>` +
     tags.map(t => {
       const hit = barTagsCache.find(x => x.tag.toLowerCase() === t.toLowerCase());
       return `<span class="cth-chip${hit ? ' is-exist' : ''}"
@@ -11910,7 +12419,7 @@ async function submitChat() {
     const workRef = workRefEl ? workRefEl.value.trim() : '';
     const r = await fetch('/api/bar/posts', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, workRef })
+      body: JSON.stringify({ text, workRef, topic: barTopic })
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || '没发出去，再试一次');
@@ -11918,15 +12427,17 @@ async function submitChat() {
     chatRefReset(true);   // 关联作品连 chip 一起清掉，发布框回到收起态
     updateChatCount();
     updateChatTagHint();
-    // 正在看某个话题时发了句别的：别让人「发完就找不着」——回到全部，同时把新话题说出来
-    const posted = Array.isArray(d.tags) ? d.tags : barTagsOf(d.text || '');
+    // 正在看某个话题时发了句别的：别让人「发完就找不着」——回到全部，同时把新话题说出来。
+    // 主题也混在 tags 里下发（服务端 barPostTagList），toast 里不重复念一遍主题
+    const posted = (Array.isArray(d.tags) ? d.tags : barTagsOf(d.text || ''))
+      .filter(t => t.toLowerCase() !== String(d.topic || barTopic).toLowerCase());
     const inTopic = feedState.tag && posted.some(t => t.toLowerCase() === feedState.tag.toLowerCase());
     if (feedState.tag && !inTopic) { feedState.tag = ''; feedState.tagTotal = 0; renderTopicBar(); }
     showToast(d.work
-      ? `说完了，已关联作品「${d.work.title}」`
+      ? `发好了，主题「${d.topic || barTopic}」· 已关联作品「${d.work.title}」`
         : (posted.length
-          ? `说完了，归到话题 ${posted.map(t => '#' + t).join(' ')}`
-          : '说完了，等有人接话'), undefined, 'ok');
+          ? `发好了，主题「${d.topic || barTopic}」，归到话题 ${posted.map(t => '#' + t).join(' ')}`
+          : `发好了，主题「${d.topic || barTopic}」`), undefined, 'ok');
     loadFeed(true);
     loadBarTags();   // 话题栏的句数跟着改，新话题也立刻出现在上面
   } catch (e) { showToast(e.message, undefined, 'err'); }
@@ -12030,7 +12541,7 @@ function focusBarComposer() {
   setTimeout(() => {
     const wrap = document.querySelector('.cmp-wrap');
     if (!wrap) return;
-    const input = barComposeMode === 'chat' ? $('chatInput') : $('wishInput');
+    const input = barTopic === '找工具' ? $('wishInput') : $('chatInput');
     try { wrap.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch { wrap.scrollIntoView(); }
     // 移动端软键盘弹出会抢焦点，等滚动坐稳再 focus；preventScroll 免得把刚滚好的位置又甩走
     if (input) setTimeout(() => { try { input.focus({ preventScroll: true }); } catch { input.focus(); } }, 320);
@@ -12066,22 +12577,75 @@ function setupPublishMenu() {
   window.addEventListener('resize', () => { if (pubMenuOpen) setPubMenu(false); });
 }
 
-// 统一发布器：一个输入窗口，两种心情。提想法走想法池（可被认领），随便聊进散座。
-// 数据仍分表（想法池的「N 人想要」不被闲聊稀释），切换只换表单、不换位置；
-// 选过就记住，下次进来还停在那个心情（默认提想法）。
-let barComposeMode = 'want';
-function setBarCompose(mode) {
-  barComposeMode = mode === 'chat' ? 'chat' : 'want';
+// 统一发布器（2026-11-14 主题化）：一个输入窗口 + 一行主题，不再有「提想法 / 随便聊」两个模式。
+// 选「找工具」走想法池（能认领、有「N 人想要」），其余主题走散座，主题随帖子落库（post.topic）。
+// 数据仍然分表：想法池的「N 人想要」不能被闲聊稀释，只是入口收成一个框 + 一个主题。
+const BAR_TOPICS = ['闲聊', '安利', '找工具', '分享'];
+const BAR_TOPIC_DEFAULT = '闲聊';
+const BAR_TOPIC_MAX = 4;   // 自建主题上限，跟服务端 normalizeBarTopic 同口径
+let barTopic = BAR_TOPIC_DEFAULT;
+
+// 自建主题只收字和数字：空格、#、标点一律剔掉（用户打了「找 工具」也算同一个）
+function barTopicClean(v) {
+  return String(v || '').replace(/[#\s]/g, '').replace(/[^\p{L}\p{N}]/gu, '').slice(0, BAR_TOPIC_MAX);
+}
+
+function setBarTopic(topic, opts = {}) {
+  const t = barTopicClean(topic);
+  barTopic = t || BAR_TOPIC_DEFAULT;
+  const isWant = barTopic === '找工具';
   const want = document.querySelector('.cmp-want'), chat = document.querySelector('.cmp-chat');
   if (!want || !chat) return;
-  want.hidden = barComposeMode !== 'want';
-  chat.hidden = barComposeMode !== 'chat';
-  document.querySelectorAll('.cmp-tab').forEach(b => {
-    const on = b.dataset.mode === barComposeMode;
+  want.hidden = !isWant;
+  chat.hidden = isWant;
+  // 固定四档 + 自建那一枚：自建主题就挂在 #cmpTopicCustom 上，不动态增删节点
+  const custom = $('cmpTopicCustom');
+  const isCustom = !BAR_TOPICS.includes(barTopic);
+  if (custom) {
+    custom.hidden = !isCustom;
+    custom.dataset.topic = isCustom ? barTopic : '';
+    custom.textContent = isCustom ? barTopic : '';
+  }
+  document.querySelectorAll('#cmpTopics .cmp-topic').forEach(b => {
+    const on = !b.hidden && !!b.dataset.topic && b.dataset.topic === barTopic;
     b.classList.toggle('is-on', on);
-    b.setAttribute('aria-selected', on ? 'true' : 'false');
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
-  try { localStorage.setItem('dm_bar_compose', barComposeMode); } catch { /* 隐私模式 */ }
+  const note = $('cmpNote');
+  if (note) {
+    note.textContent = isWant
+      ? '找工具会被创作者看到，可以点「我来实现」'
+      : '写 #话题 能归到一起 · 自己的帖子随时能删';
+  }
+  if (!opts.silent) { try { localStorage.setItem('dm_bar_topic', barTopic); } catch { /* 隐私模式 */ } }
+}
+
+// 自建主题的输入态：＋自建 就地展开成 4 字输入框，回车确认、Esc 取消、失焦有内容就确认
+function openTopicInput() {
+  const input = $('cmpTopicInput'), add = $('cmpTopicAdd');
+  if (!input || !add) return;
+  input.value = BAR_TOPICS.includes(barTopic) ? '' : barTopic;
+  input.hidden = false;
+  add.hidden = true;
+  add.setAttribute('aria-expanded', 'true');
+  try { input.focus({ preventScroll: true }); } catch { input.focus(); }
+}
+function closeTopicInput() {
+  const input = $('cmpTopicInput'), add = $('cmpTopicAdd');
+  if (input) { input.hidden = true; input.value = ''; }
+  if (add) { add.hidden = false; add.setAttribute('aria-expanded', 'false'); }
+}
+function commitTopicInput() {
+  const input = $('cmpTopicInput');
+  const t = barTopicClean(input ? input.value : '');
+  if (!t) { closeTopicInput(); return; }
+  setBarTopic(t);
+  closeTopicInput();
+}
+
+// 旧名兼容：?compose=want|chat 与发布菜单的 data-pub 还按老词传，内部映射成主题
+function setBarCompose(mode) {
+  setBarTopic(mode === 'chat' ? '闲聊' : '找工具');
 }
 
 // 「随便聊」输入框的绑定（列表交互都在 wishList 的容器代理里，见 setupWish）
@@ -12257,13 +12821,13 @@ function renderChatPost() {
   closeEmojiFloat();   // 面板挂在 body 上、绑的是上一份按钮，重画前先收掉
   const id = escapeHtml(p.id);
   const topicStart = p.topicStart != null ? !!p.topicStart : barIsTopicStart(p.text);
-  const kind = barChatKindOf(p, topicStart);
+  const kind = barKindOf(p, topicStart);
   box.innerHTML = `
     <div class="cp-main">
       <p class="cp-text">${barTextHtml(p.text)}</p>
-      ${p.work ? `<a class="cp-work" href="/w/${encodeURIComponent(p.work.id)}" title="看这条闲聊关联的作品">${ic('check-circle', 13)} ${escapeHtml(p.work.title)}</a>` : ''}
+      ${p.work ? `<a class="cp-work" href="/w/${encodeURIComponent(p.work.id)}?full=1" target="_blank" rel="noopener" title="新开页面看这部作品的完整大图（2026-11-14 站长要求：点产品别在原地跳，新开全图页）">${ic('check-circle', 13)} ${escapeHtml(p.work.title)}</a>` : ''}
       <div class="cp-meta">
-        <span class="br-kind ${BAR_CHAT_KIND_CLS[kind]}"${BAR_CHAT_KIND_TITLE[kind] ? ` title="${BAR_CHAT_KIND_TITLE[kind]}"` : ''}>${BAR_CHAT_KIND_LABEL[kind]}</span>
+        <span class="br-kind ${kind.cls}" title="${escapeHtml(kind.title)}">${escapeHtml(kind.label)}</span>
         <span class="br-author">@${escapeHtml(p.author)}</span>
         <span>${escapeHtml(wishWhen(p.createdAt))}</span>
       </div>
@@ -12357,7 +12921,7 @@ function renderWishStats(s) {
   box.hidden = !s.total;
   if (!s.total) return;
   box.innerHTML = `
-    <span class="bs-total"><b>${s.total}</b> 个想法</span>
+    <span class="bs-total"><b>${s.total}</b> 个找工具</span>
     <span class="bs-done"><b>${s.done}</b> 个已实现</span>
     <span class="bs-claimed"><b>${s.claimed}</b> 个正在做</span>
     <span class="bs-open"><b>${s.open}</b> 个征集中</span>
@@ -12379,19 +12943,6 @@ function renderWishDone(list) {
     </a>`).join('')}</div>`;
 }
 
-// 冷启动补位：想法还少的时候，把「搜过但站内没结果」的词摆出来，点一下就能变成想法
-function renderWishSuggest() {
-  const box = $('wishSuggest');
-  if (!box) return;
-  const list = $('wishList');
-  const count = list ? list.querySelectorAll('.bar-row.is-idea').length : 0;
-  const zeros = hotItemsCache.filter(x => x.zero).slice(0, 6);
-  if (count > 6 || !zeros.length) { box.hidden = true; return; }
-  box.hidden = false;
-  box.innerHTML = `<div class="ws-head"><h3>有人找过，但站内还没有</h3><span>点一下，把你的想法接上去</span></div>
-    <div class="ws-chips">${zeros.map(z => `<button type="button" class="ws-chip" data-sug="${escapeHtml(z.w)}">${escapeHtml(z.w)} <i>＋ 我想要</i></button>`).join('')}</div>`;
-}
-
 function openWishExtra(force) {
   const ta = $('wishDetail');
   const btn = $('wishExtraToggle');
@@ -12401,18 +12952,6 @@ function openWishExtra(force) {
   btn.setAttribute('aria-expanded', show ? 'true' : 'false');
   btn.textContent = show ? '− 收起补充说明' : '＋ 补充使用场景（选填，让创作者更懂你）';
   if (show) ta.focus();
-}
-
-// 热搜 zero 词 / 引导卡 → 想法输入框：把「没搜到」这个死胡同接回发布框
-function fillIdeaFromKeyword(kw) {
-  const input = $('wishInput');
-  if (!input) return;
-  const word = String(kw || '').slice(0, 40);
-  input.value = word;
-  openWishExtra(true);
-  input.focus();
-  try { input.setSelectionRange(word.length, word.length); } catch { /* 忽略 */ }
-  showToast(`站内还没搜到「${word}」，把想要的东西说具体一点就能发`, 3800);
 }
 
 // loadIdeas 已退役：想法列表改走 loadFeed（与闲聊合流归并渲染），动作后的刷新也统一调 loadFeed(true)
@@ -12441,7 +12980,7 @@ async function claimWish(id) {
 }
 
 async function deleteWish(id) {
-  if (!confirm('删除这个想法？')) return;
+  if (!confirm('删掉这条？')) return;
   try {
     const r = await fetch(`/api/ideas/${encodeURIComponent(id)}`, { method: 'DELETE' });
     const d = await r.json();
@@ -12480,7 +13019,7 @@ async function submitWish(opts = {}) {
   const input = $('wishInput');
   const title = input.value.trim();
   const detail = $('wishDetail') ? $('wishDetail').value.trim() : '';
-  if (title.length < 4) return showToast('想法至少 4 个字，说清楚一点', undefined, 'err');
+  if (title.length < 4) return showToast('至少写 4 个字，说清楚要什么', undefined, 'err');
   if (!state.user) { openAuth('login'); return; }
   const btn = $('wishSubmit');
   btn.disabled = true;
@@ -12501,7 +13040,7 @@ async function submitWish(opts = {}) {
     if (!r.ok) throw new Error(d.error || '发布失败');
     input.value = '';
     if ($('wishDetail')) $('wishDetail').value = '';
-    showToast('想法已发布，等着有人来接', undefined, 'ok');
+    showToast('已发布，等创作者点「我来实现」', undefined, 'ok');
     loadFeed(true);
     loadBarBoard(true);   // 近7日口径跟着变（新想法 +1），别让它停在旧数字
   } catch (err) { showToast(err.message, undefined, 'err'); }
@@ -12531,14 +13070,33 @@ function setupWish() {
   const sec = $('wishView');
   if (!sec || sec._init) return;
   sec._init = 1;
-  // 统一发布器的两种心情切换（绑一次）；上次用哪个就停在哪
-  $('cmpTabs').addEventListener('click', e => {
-    const b = e.target.closest('.cmp-tab');
-    if (b) setBarCompose(b.dataset.mode);
+  // 主题 chip（绑一次）：四档 + 「＋ 自建」；上次选过哪个就还停在哪
+  $('cmpTopics').addEventListener('click', e => {
+    if (e.target.closest('#cmpTopicAdd')) { openTopicInput(); return; }
+    const b = e.target.closest('.cmp-topic[data-topic]');
+    if (b && b.dataset.topic) { closeTopicInput(); setBarTopic(b.dataset.topic); }
   });
-  let savedCompose = 'want';
-  try { savedCompose = localStorage.getItem('dm_bar_compose') || 'want'; } catch { /* 隐私模式 */ }
-  setBarCompose(savedCompose);
+  const topicInput = $('cmpTopicInput');
+  if (topicInput) {
+    topicInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); commitTopicInput(); }
+      if (e.key === 'Escape') closeTopicInput();
+    });
+    // 失焦：写了字就当确认（点别处不是在反悔），空着就收回虚线按钮
+    topicInput.addEventListener('blur', () => {
+      if (topicInput.value.trim()) commitTopicInput(); else closeTopicInput();
+    });
+  }
+  let savedTopic = '';
+  try { savedTopic = localStorage.getItem('dm_bar_topic') || ''; } catch { /* 隐私模式 */ }
+  // 老键兜底：升级前存的是 'want' / 'chat'（默认 want），别让人回来发现选择被重置
+  if (!savedTopic) {
+    try {
+      const old = localStorage.getItem('dm_bar_compose');
+      if (old) savedTopic = old === 'chat' ? '闲聊' : '找工具';
+    } catch { /* 隐私模式 */ }
+  }
+  setBarTopic(savedTopic || BAR_TOPIC_DEFAULT);
   setupBarComposer();
   $('wishSubmit').onclick = () => submitWish();
   $('wishInput').addEventListener('keydown', e => { if (e.key === 'Enter') submitWish(); });
@@ -12547,8 +13105,7 @@ function setupWish() {
   });
   $('wishExtraToggle').onclick = () => openWishExtra();
 
-  // 大家最近在搜：搜得到的直接去搜；zero 词（站内没结果）不再送人去空搜索页
-  loadHotSearch();
+  // 热搜榜 2026-11-14 搬去首页 hero（见 renderHeroHot）：酒馆这边不再拉榜、也不再挂切换/展开的绑定
   // 话题栏：点标签原地过滤散座；「× 看全部闲聊」回全量
   loadBarTags();
   if ($('barTopics')) {
@@ -12568,26 +13125,6 @@ function setupWish() {
     if (idea) return openIdeaDetail(idea.dataset.bidea);
     const chat = e.target.closest('button[data-bchat]');
     if (chat) openChatPost(chat.dataset.bchat);
-  });
-  $('hotList').addEventListener('click', e => {
-    const b = e.target.closest('button[data-kw]');
-    if (!b) return;
-    if (b.dataset.zero === '1') fillIdeaFromKeyword(b.dataset.kw);
-    else applySearch(b.dataset.kw);
-  });
-  const hotShuffleBtn = $('hotShuffle');
-  if (hotShuffleBtn) hotShuffleBtn.addEventListener('click', shuffleHotItems);
-  const hotToggleBtn = $('hotToggle');
-  if (hotToggleBtn) hotToggleBtn.addEventListener('click', toggleHotFold);
-  // 断点一变列数就变（5 / 4 / 2 列），收起时露几条要跟着重算，否则 1080→390 会只剩半行
-  let hotFoldRaf = 0;
-  window.addEventListener('resize', () => {
-    if (hotFoldRaf) return;
-    hotFoldRaf = requestAnimationFrame(() => { hotFoldRaf = 0; applyHotFold(); });
-  });
-  $('wishSuggest').addEventListener('click', e => {
-    const b = e.target.closest('button[data-sug]');
-    if (b) fillIdeaFromKeyword(b.dataset.sug);
   });
   // 合流时间线的容器代理（一次绑定，重渲染不丢）：
   // 想法行 → 详情抽屉；闲聊行 → 弹帖子弹窗（全文 + 碰杯 + 回应都在弹窗里）；动作按钮按 data-* 分发
@@ -13343,7 +13880,7 @@ const REDEEM_STATUS = {
   used_up: { text: '曝光已投完', cls: 'done' },
   expired: { text: '已到期', cls: 'done' },
   cancelled: { text: '已撤下', cls: 'done' },
-  removed: { text: '后台下架', cls: 'done' }
+  removed: { text: '已下架', cls: 'done' }
 };
 // mode 是第 3 步「选套餐」的结果，也是整个面板唯一的计费模式开关：
 //   view  = 曝光包（按被看到扣，点击不计费、去向固定站内详情页）
@@ -13628,7 +14165,7 @@ function promoBoardHtml(b) {
         <span class="pb-tot"><i>${fmt(t.clicks)}</i><small>次点击</small></span>
         ${t.ctr ? `<span class="pb-tot"><i>${t.ctr}%</i><small>点击率</small></span>` : ''}
         ${t.people ? `<span class="pb-tot"><i>${fmt(t.people)}</i><small>位访客</small></span>` : ''}
-        <small class="pb-tot-note">近 ${days} 天所有灯火投放的真实效果，曝光按人次算（同一位访客一天看几次都计数，跟后台统计是同一本账）；「位访客」是这些人去重后的人数。</small>
+        <small class="pb-tot-note">近 ${days} 天所有灯火投放加起来的成绩。曝光是作品被看到的次数，点击是有人真的点开，位访客按人去重。</small>
       </div>` : '';
   // 点击率只在样本够（bill ≥ minBill）时才挂在行上展示——点击榜按点击数排，会把「8 曝光 8 点击 = 100%」
   // 这种小样本行带进来（2026-11-13 knovum 实例），不设门槛的话「怎么选」的打平点对照就被假百分比污染
@@ -13641,14 +14178,14 @@ function promoBoardHtml(b) {
       label: '曝光最多', unit: '次曝光',
       num: x => fmt(x.pv),
       meta: x => [x.author, x.people ? `${x.people} 人看到` : '', ctrWithHits(x)].filter(Boolean).join(' · '),
-      note: '1 次曝光 = 作品被真实访客看到一次，同一个人一天看几次就计几次（跟后台统计同口径）；后面的人数是背后不同的访客，一个人看好几次也只算 1 个。'
+      note: '1 次曝光 = 作品被一位访客看到一次，同一个人一天看几次就计几次；旁边的人数是背后不同的访客，一个人看好几次也只算 1 个。'
     },
     clicks: {
       label: '点击最多', unit: '次点击',
       num: x => fmt(x.clicks),
       // 带上曝光数：点击率才有分母可对，不然「点击率 6.8%」是 6.8% of what
       meta: x => [x.author, `${fmt(x.pv)} 次曝光`, ctrShown(x)].filter(Boolean).join(' · '),
-      note: '1 次点击 = 有人真的点开了你的作品，同一个人 60 秒内连点只算 1 次；点击率 = 点击 ÷ 曝光。'
+      note: '1 次点击 = 有人真的点开了作品，同一个人的连续点击只算 1 次；点击率 = 点击 ÷ 曝光。'
     },
     ctrs: {
       label: '点击率最高', unit: '点击率',
@@ -13656,7 +14193,7 @@ function promoBoardHtml(b) {
       meta: x => [x.author, `${x.clicks} 次点击 / ${x.pv} 次曝光`].filter(Boolean).join(' · '),
       // 榜面只显示最高的 5 件，容易让人觉得「点击率都 10%+」；补一句全体中位数当参照，
       // 数据来自服务端 ctrMedian（全部曝光满 minBill 的作品，含 0 点击的），样本不够就不写
-      note: `真扣过 ${minBill} 次曝光额度的作品才入榜，分母太小的百分比不算数`
+      note: `曝光满 ${minBill} 次的作品才入榜，样本太小的百分比不算数`
         + (b.ctrMedian != null && b.ctrMedianN >= 2 ? `；全部 ${b.ctrMedianN} 件已投作品里，正中间那件是 ${b.ctrMedian}%（一半比它高）` : '')
     }
   };
@@ -13664,7 +14201,7 @@ function promoBoardHtml(b) {
     const list = lists[key] || [], sp = SPEC[key];
     if (!list.length) {
       return `<div class="pb-empty">${key === 'ctrs'
-        ? `还没有真扣过 ${minBill} 次曝光额度的作品，样本够了就上榜`
+        ? `还没有曝光满 ${minBill} 次的作品，够数就上榜`
         : `近 ${days} 天还没有数据，空位等你来占`}</div>`;
     }
     return list.map((x, i) => `
@@ -13858,7 +14395,7 @@ function renderRedeem() {
           <small>1-${clickMax} 次${isCustomClick && redeemSel.clicks ? ` · ${redeemSel.clicks * effClickUnit()} 灯火` : ''}</small>
         </label></div>`;
   // 「怎么选」：打平点（等价 CTR = 曝光单价 ÷ 点击单价）单独报出来会唬人，所以把服务端算的该位
-  // 近 90 天实测点击率（slots[].realCtr，样本 realBill<200 时不用）标成「系统统计」摆出来，按数据分四种口径：
+  // 近 90 天实测点击率（slots[].realCtr，样本 realBill<200 时不用）标成「这个位的实测点击率」摆出来，按数据分四种口径：
   // 实测明显高于打平点（≥1.2 倍）→ 曝光包更省；明显低于（≤0.8 倍）→ 点击包更稳；
   // 两者咬得紧 → 说清两边成本差不多；没数据 → 退回只报打平点的通用话术。
   // 2026-11-12 点击价改成「曝光价 × 30」后，各位置打平点统一 3.3%，不再需要「首页 10% 特别唬人」那套特殊口径，
@@ -13876,11 +14413,11 @@ function renderRedeem() {
   const viewWin = ctrRatio >= 1.2;   // 实测已超过打平点：同样的钱买曝光更省
   const clickWin = realOk && ctrRatio <= 0.8;
   const modePickHtml = `<div class="redeem-modepick">${viewWin
-    ? `<b>怎么选：</b>系统统计的这个位近 90 天<b>实测点击率约 ${realCtr}%</b>，已经高过打平点 <b>${equivCtr}%</b>（每 100 次曝光被点开约 ${equivCtrHits} 次就打平）——同样的钱在这里选<b>曝光包</b>更省；只有你的封面明显比这个位的平均水平更不吸引人，才换成<b>点击包</b>。`
+    ? `<b>怎么选：</b>这个位近 90 天<b>实测点击率约 ${realCtr}%</b>，已经高过打平点 <b>${equivCtr}%</b>（每 100 次曝光被点开约 ${equivCtrHits} 次就打平）——同样的钱在这里选<b>曝光包</b>更省；只有你的封面明显比这个位的平均水平更不吸引人，才换成<b>点击包</b>。`
     : clickWin
-    ? `<b>怎么选：</b>这个位两种包「花同样的钱」对应的点击率约 <b>${equivCtr}%</b>（每 100 次曝光被点开约 ${equivCtrHits} 次就打平），而系统统计的近 90 天<b>实测点击率约 ${realCtr}%</b>，比打平点低——多数作品在这里选<b>点击包</b>更稳，只为真点开的人付费；<b>曝光包</b>只适合封面特别炸、预估能明显超过 ${equivCtr}% 的作品。`
+    ? `<b>怎么选：</b>这个位两种包「花同样的钱」对应的点击率约 <b>${equivCtr}%</b>（每 100 次曝光被点开约 ${equivCtrHits} 次就打平），而这个位近 90 天<b>实测点击率约 ${realCtr}%</b>，比打平点低——多数作品在这里选<b>点击包</b>更稳，只为真点开的人付费；<b>曝光包</b>只适合封面特别炸、预估能明显超过 ${equivCtr}% 的作品。`
     : realOk
-    ? `<b>怎么选：</b>这个位两种包「花同样的钱」对应的点击率约 <b>${equivCtr}%</b>（每 100 次曝光被点开约 ${equivCtrHits} 次就打平），系统统计的近 90 天<b>实测点击率约 ${realCtr}%</b>——两个数咬得很紧，选哪边成本都差不多：想攒曝光选<b>曝光包</b>，只想为真点开的人付费就选<b>点击包</b>。`
+    ? `<b>怎么选：</b>这个位两种包「花同样的钱」对应的点击率约 <b>${equivCtr}%</b>（每 100 次曝光被点开约 ${equivCtrHits} 次就打平），这个位近 90 天<b>实测点击率约 ${realCtr}%</b>——两个数咬得很紧，选哪边成本都差不多：想攒曝光选<b>曝光包</b>，只想为真点开的人付费就选<b>点击包</b>。`
     : `<b>怎么选：</b>封面标题够亮眼、看一眼就想点的作品，选<b>曝光包</b>更划算——点得多，按曝光算反而便宜；要访客多看几次才会点的作品（工具、需要琢磨的东西），选<b>点击包</b>更稳——只为真点开的人付费。这个位两种包「花同样的钱」对应的点击率约是 <b>${equivCtr}%</b>（每 100 次曝光被点开约 ${equivCtrHits} 次就打平）：预估你的作品能明显超过它就选曝光包，够不着或拿不准就选点击包。`}</div>`;
   const modeNote = mode === 'view'
     ? '曝光包：被看到一次扣一次，点开的人只计数、<b>不另收费</b>；去向固定为作品详情页。'
@@ -13898,7 +14435,7 @@ function renderRedeem() {
         </button>`).join('')}</div>
       <p class="rd-tip">${occupied
         ? `你选的是<b>${redeemSel.days} 天</b>：现在先排队，<b>从轮到你那天</b>才开始算天数，等待期不占。`
-        : `按次扣费不变，随时可以撤下，没用完的按原价退回；<b>${redeemSel.days} 天</b>后自动下线，剩下的灯火一起退回。`}</p>
+        : `按次算钱不变，随时可以撤下，没用完的按原价退回；<b>${redeemSel.days} 天</b>后自动下线，剩下的灯火一起退回。`}</p>
     </div>` : '';
 
   // ---------- 第 4 步：能选什么去向，由第 3 步的模式决定 ----------
@@ -14008,7 +14545,7 @@ function renderRedeem() {
         <div class="rfq-a">
           <p><b>曝光包</b>按「被看到」扣、<b>点击包</b>按「被点开」扣，用完自动下线；没投完的随时能撤，剩下的按原价退回。位置都在真实访客每天经过的地方，先投一小档试试水，看数据再加量。</p>
           <p>一件作品可以同时投几个位置，<b>每个位置单独计</b>：同一个人先在首页看到、点进详情又看到，就是两笔，各扣各自那一单——两块位置确实都露了面，不是同一笔重复收。同一笔投放哪怕在几个展示面都出现，同一个人一天也仍只扣一次。</p>
-          <p><a class="rfq-jump" href="javascript:void(0)" data-rv-jump>什么才算看见、会不会重复扣？看完整口径 ↓</a></p>
+          <p><a class="rfq-jump" href="javascript:void(0)" data-rv-jump>什么才算看见、会不会重复算？看完整说明 ↓</a></p>
         </div>
       </details>
     </div>
@@ -15886,6 +16423,16 @@ function applySearch(word) {
   if (location.pathname !== '/') navigate('/'); else loadWorks();
 }
 
+// 首页「大家在找」：词条是异步插进来的，绑在容器上（代理一次就够），点一下就是一次站内搜索
+function setupHeroHot() {
+  const box = $('heroHotList');
+  if (!box) return;
+  box.addEventListener('click', e => {
+    const b = e.target.closest('button[data-kw]');
+    if (b) applySearch(b.dataset.kw);
+  });
+}
+
 function setupSearchSuggest() {
   const input = $('searchInput');
   const panel = $('searchSuggest');
@@ -16081,13 +16628,18 @@ function fbRenderItems(items) {
   if (!box) return;
   const wrap = document.createElement('div');
   wrap.className = 'fb-items';
+  // 2026-11-14 晚 站长改口径：图片带上也行。缩略图 46px 挂回左侧；挂不出来的（没图/加载失败）
+  // 用首字占位补齐，保证每行同高、也不会剩破图图标（img onerror 直接移除，露出底色块）。
   wrap.innerHTML = items.map(it => {
     // title 是「名字 + 一句话」拼起来的老字段，两行都放它就会出现同一句话写两遍
     const name = it.titleName || it.title || '';
     const desc = it.titleTag || it.cardDesc || '';
     const meta = (it.categories && it.categories[0]) || (it.types && it.types[0]) || '';
+    const thumb = it.thumb
+      ? `<img class="fb-it-thumb" src="${escapeHtml(imgUrl(it.thumb, 400))}" alt="${escapeHtml(name)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()" />`
+      : `<span class="fb-it-thumb fb-it-thumb-empty">${escapeHtml((name || '·').slice(0, 1))}</span>`;
     return `<a class="fb-item" href="/w/${encodeURIComponent(it.id)}">
-      <img class="fb-it-img" src="${imgUrl(it.thumb, 120)}" alt="" loading="lazy" />
+      ${thumb}
       <span class="fb-it-body">
         <span class="fb-it-t">${escapeHtml(name)}</span>
         ${desc ? `<span class="fb-it-d">${escapeHtml(desc)}</span>` : ''}
@@ -16215,6 +16767,7 @@ function setupHeader() {
   });
 
   setupSearchSuggest();
+  setupHeroHot();
   setupFindBot();
 
   // PC：最新 / 最热 排序切换（H5 由筛选栏的「最新」tab 承担，这个按钮在 H5 上不显示）
@@ -16228,7 +16781,8 @@ function setupHeader() {
     };
   });
 
-  // 「我的收藏」现在在头像下拉里，入口函数见 toggleFavorites()
+  // 「收藏 / 喜欢」入口（2026-11-14）：头像下拉的两颗已撤，现在走「我的」tiles 和作者主页的
+  // 「收藏 / 喜欢」tab（独立页 /favs、/likes 保留，入口函数见 toggleFavorites / toggleLiked）
 
   // 造梦酒馆：回首页并平滑滚到造梦酒馆区块，短暂高亮提示位置
   // 展示方式切换：卡片网格 / 一行一个的列表（选择存 localStorage）
@@ -16659,6 +17213,9 @@ function afterAvatarChange() {
 // 微信验证重设模式：绑了微信的号忘了密码，切到这个模式免旧密码直接设新的
 // （服务端要求当前会话是微信登录签发且 10 分钟内，见 /api/me/password）
 let PASS_WX_RESET = false;
+// 这次打开弹窗时有没有「登录名」栏：网页版正常注册的账号不给这一栏（只改密码），
+// 提交时的提示文案和结果 toast 都按它分叉
+let PASS_CAN_ALIAS = true;
 
 function setPassMsg(text, kind) {
   const el = $('passMsg');
@@ -16671,6 +17228,11 @@ function openPassModal() {
   if (!state.user) { openAuth('login'); return; }
   const noPass = state.user.passSet === false;   // OAuth 建的号：没有密码可填，直接设一个新的
   const src = state.user.wechat ? '微信' : (state.user.google ? 'Google' : 'GitHub');
+  // 登录名（别名）只给「自动建的临时号」和早就设过登录名的号：
+  // 网页版正常注册的账号，账号名在注册时就定了，这里再让 TA「起一个登录名」等于重复设一次账号
+  // （2026-11-14 站长确认，小程序同一口径）
+  const canAlias = noPass || state.user.tempAcct === true || !!state.user.alias;
+  PASS_CAN_ALIAS = canAlias;
   ['passCurrent', 'passNew', 'passNew2'].forEach(id => { $(id).value = ''; });
   PASS_WX_RESET = false;
   $('passCurrentLabel').style.display = noPass ? 'none' : '';
@@ -16678,19 +17240,22 @@ function openPassModal() {
   // 绑了微信且已设过密码：提供「忘了密码 → 微信验证重设」入口（没设过密码的号本来就不需要旧密码）
   const canWxReset = !!(state.user.wechat && state.user.wechat.openid) && !noPass;
   $('passWxReset').style.display = canWxReset ? '' : 'none';
-  $('aliasInput').style.display = '';
-  $('aliasTip').style.display = '';
-  document.querySelector('label[for="aliasInput"]').style.display = '';
-  $('aliasInput').value = state.user.alias || '';
+  $('aliasInput').style.display = canAlias ? '' : 'none';
+  $('aliasTip').style.display = canAlias ? '' : 'none';
+  document.querySelector('label[for="aliasInput"]').style.display = canAlias ? '' : 'none';
+  $('aliasInput').value = canAlias ? (state.user.alias || '') : '';
   $('aliasInput').disabled = !!state.user.alias && state.user.aliasNextAt > Date.now();
   $('aliasTip').textContent = state.user.alias
     ? `当前登录名：${state.user.alias}。登录时「登录名 + 密码」和「系统账号名 + 密码」都能进。`
     : '登录时「登录名 + 密码」和「系统账号名 + 密码」都能进。设一次就行，之后 30 天才能改。';
-  $('passModal').querySelector('.modal-head h2').textContent = '账号与密码';
+  $('passModal').querySelector('.modal-head h2').textContent = canAlias ? '账号与密码' : '修改密码';
+  $('passNewLabel').textContent = canAlias ? '新密码（不想改密码就留空）' : '新密码';
   $('passSave').textContent = '保存';
-  $('passTip').textContent = noPass
-    ? `你这个账号是${src}登录时自动创建的，设一个登录名和密码，换设备也能用「登录名 + 密码」进。`
-    : '不想改密码就把密码两栏留空；改了密码后，其他设备会自动退出登录，当前这台设备不受影响。';
+  $('passTip').textContent = !canAlias
+    ? `登录时用「账号名 + 密码」进，账号名注册时就定了，不用另外起登录名。改完密码后其他设备会自动退出登录，当前这台设备不受影响。`
+    : (noPass
+      ? `你这个账号是${src}登录时自动创建的，设一个登录名和密码，换设备也能用「登录名 + 密码」进。`
+      : '不想改密码就把密码两栏留空；改了密码后，其他设备会自动退出登录，当前这台设备不受影响。');
   setPassMsg('');
   $('closePass').onclick = () => hideModal($('passModal'));
   $('passCancel').onclick = () => hideModal($('passModal'));
@@ -16725,7 +17290,10 @@ async function submitPass() {
   if (aliasChanged && !NAME_OK(alias)) return setPassMsg('登录名需 2-20 位，可为中文、字母、数字、下划线', 'err');
   // 密码选填：两栏都空 = 只保存登录名；填了就按改密码校验
   const wantPass = !!(p1 || p2);
-  if (!aliasChanged && !wantPass) return setPassMsg(wxReset ? '输入两遍新密码' : '没有要改的内容，填一下登录名或新密码吧', 'err');
+  if (!aliasChanged && !wantPass) {
+    return setPassMsg(wxReset ? '输入两遍新密码'
+      : (PASS_CAN_ALIAS ? '没有要改的内容，填一下登录名或新密码吧' : '请输入新密码'), 'err');
+  }
   if (wxReset) {
     // 微信重设：身份由服务端按会话核验（微信登录签发且 10 分钟内），这里只校验新密码本身
     if (!wantPass) return setPassMsg('输入两遍新密码', 'err');
@@ -17535,7 +18103,7 @@ async function loadFooterStats() {
     //   先亮「这是访问数据 + 点这里看口径」，再进具体数字）。说明面板（.fs-pop）是 hover 浮层：绝对定位在 ⓘ 正上方，
     //   不占文档流、不推页脚内容（2026-11-10 用户明确要求回到 hover 提示形态，不要占流展开块）。
     //   开合逻辑走 document 委托（bindFsInfoToggle），「关于本站」弹窗克隆出来的节点也能响应。
-    const fsInfoHtml = ` <span class="fs-info" tabindex="0" role="button" aria-expanded="false" aria-label="统计口径与防刷规则">${ic('info', 14)}</span>`;
+    const fsInfoHtml = ` <span class="fs-info" tabindex="0" role="button" aria-expanded="false" aria-label="统计规则与防刷说明">${ic('info', 14)}</span>`;
     const fsPopHtml =
       `<span class="fs-pop" role="note">` +
         `<b>怎么算的</b>` +

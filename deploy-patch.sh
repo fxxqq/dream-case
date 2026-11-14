@@ -35,7 +35,7 @@ SITE_URL="${SITE_URL:-https://idea.v5pc.com}"
 PM2_APP="${PM2_APP:-ai-works}"
 KEEP_BAK="${KEEP_BAK:-10}"
 
-DEFAULT_FILES=(server.js frontend/app.js frontend/style.css frontend/index.html frontend/admin.html)
+DEFAULT_FILES=(server.js frontend/app.js frontend/style.css frontend/index.html frontend/admin.html frontend/icons.js)
 
 cd "$(dirname "$0")" || exit 1
 
@@ -76,15 +76,52 @@ pull() { # $1=相对路径  $2=落地文件
 }
 
 # 把 diff 拆成 hunk 摘要：序号 <TAB> +行数 <TAB> -行数 <TAB> 首处改动
+# 首处改动会洗成人话：去掉 +/− 号、行首空白、注释符号（// /* * <!-- -->），
+# 只动了括号分号这类没信息量的行会被跳过，取下一行 —— 清单里看的是「改了什么」。
 hunk_summary() { # $1=diff文件
   awk '
-    /^@@/ {
-      if (n) printf "%d\t%d\t%d\t%s\n", n, add, del, first
-      n++; add=0; del=0; first=""; next
+    function pick() { return (cfirst != "") ? cfirst : first }
+    # 一个 hunk 里优先挑「注释行」当摘要：改动的目的通常写在中文注释里，
+    # 纯代码行（const x = ...）没有信息量。只扫前 12 行改动，免得大 hunk 拖慢。
+    function scan(line,   s) {
+      if (seen >= 12) return
+      seen++
+      s = clean(line)
+      if (s == "") return
+      if (line ~ /^[+-][ \t]*(\/\/+|\/\*+|\*+|<!--)/ && cfirst == "") cfirst = s
+      if (first == "") first = s
     }
-    /^\+/ && !/^\+\+\+/ { add++; if (first=="") { s=substr($0,2); gsub(/\t/," ",s); first=substr(s,1,58) } }
-    /^-/  && !/^---/   { del++; if (first=="") { s=substr($0,2); gsub(/\t/," ",s); first=substr(s,1,58) } }
-    END { if (n) printf "%d\t%d\t%d\t%s\n", n, add, del, first }
+    # 按显示宽度截断（中文算 2 列），免得多行摘要一长一短把清单撑乱
+    function wtrunc(s, maxw,   i, c, w, out, cw) {
+      out = ""; w = 0
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        cw = (c ~ /^[ -~]$/) ? 1 : 2
+        if (w + cw > maxw) break
+        out = out c; w += cw
+      }
+      return out
+    }
+    function clean(line,   s) {
+      s = substr(line, 2)
+      sub(/^[ \t]+/, "", s)
+      sub(/^\/\/+[ \t]*/, "", s)
+      sub(/^\/\*+[ \t]*/, "", s)
+      sub(/^\*+[ \t]*/, "", s)
+      sub(/[ \t]*\*\/$/, "", s)
+      sub(/^<!--[ \t]*/, "", s)
+      sub(/[ \t]*-->$/, "", s)
+      gsub(/\t/, " ", s)
+      if (s ~ /^[{}()\[\];,.]*$/) return ""
+      return wtrunc(s, 68)
+    }
+    /^@@/ {
+      if (n) printf "%d\t%d\t%d\t%s\n", n, add, del, pick()
+      n++; add=0; del=0; first=""; cfirst=""; seen=0; next
+    }
+    /^\+/ && !/^\+\+\+/ { add++; scan($0) }
+    /^-/  && !/^---/   { del++; scan($0) }
+    END { if (n) printf "%d\t%d\t%d\t%s\n", n, add, del, pick() }
   ' "$1"
 }
 
@@ -133,9 +170,12 @@ usage() { sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 
 # ---------------------------------------------------------------- plan
 # 机器可读的差异清单，专给 publish.sh 的「一键发版」解析（人看还是用 check）。
-# 输出每行 6 列，TAB 分隔：
-#   STATUS <TAB> 文件 <TAB> hunk数 <TAB> +行 <TAB> -行 <TAB> 首处改动
-# STATUS：DIRTY 有待发 / SYNCED 已同步 / NOPULL 线上取不到 / NOLOCAL 本地没有
+# 输出两种行，都是 6 列 TAB 分隔：
+#   DIRTY <TAB> 文件 <TAB> hunk数 <TAB> +行 <TAB> -行 <TAB> 首处改动
+#   HUNK  <TAB> 文件 <TAB> 序号   <TAB> +行 <TAB> -行 <TAB> 这一处的摘要
+# 每个 DIRTY 文件后面跟着它自己的 HUNK 行（publish.sh 就是靠这些行把
+# 「改了什么」一条条列出来的，不再只给一句文件级摘要）。
+# STATUS：DIRTY 有待发 / HUNK 具体的改动 / SYNCED 已同步 / NOPULL 线上取不到 / NOLOCAL 本地没有
 #
 # 为什么先算 md5：check/ship 是逐个 scp 拉全量再 diff，5 个文件要 5 次往返；
 # 这里 1 次 ssh 拿到线上 md5，只有真不一样的文件才拉，无差异时几乎秒回。
@@ -209,6 +249,12 @@ done" 2>/dev/null)
       printf 'SYNCED\t%s\t0\t0\t0\t\n' "$f"; continue
     fi
     printf 'DIRTY\t%s\t%s\t%s\t%s\t%s\n' "$f" "$nh" "$add" "$del" "$first"
+    # 再逐 hunk 补明细：一个 hunk 一行，摘要是这处改动里第一个 +/− 行的内容。
+    # 复用上面的 --strip-trailing-cr 差异文件，不额外 fork。
+    while IFS=$'\t' read -r hn hadd hdel hfirst; do
+      [ -n "$hn" ] || continue
+      printf 'HUNK\t%s\t%s\t%s\t%s\t%s\n' "$f" "$hn" "$hadd" "$hdel" "$hfirst"
+    done < <(hunk_summary "$df")
   done
 }
 
@@ -332,7 +378,9 @@ cmd_ship() {
     else
       do_stamp+=("$patched")
     fi
-    [[ "$f" == *server.js ]] && need_restart=1
+    # frontend/icons.js 是被 server.js require 的（SSR 直接读 ICONS），只上传不重启的话
+    # 线上 h1/服务端渲染还是旧图标，静态请求拿到的却是新的 —— 两边不一致，所以一并重启
+    [[ "$f" == *server.js || "$f" == *frontend/icons.js ]] && need_restart=1
   done
 
   ((${#do_files[@]})) || { c_warn "没有要发的改动"; return 0; }

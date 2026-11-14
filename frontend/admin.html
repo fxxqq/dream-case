@@ -99,6 +99,19 @@
     .sk-btn:hover { color:#b33; border-color:#e4b7b7; }
     .sk-btn.sk-btn-on { background:#fdeeee; border-color:#eec7c7; color:var(--danger); }
     .sk-btn:disabled { opacity:.5; cursor:default; }
+    /* 搜索词排行：占比条看不出东西，改成数字对齐的迷你表——人数是主指标（前台榜单按人数排） */
+    .sk-head, .sk-row { display:grid; grid-template-columns:minmax(80px,1fr) 64px 56px 64px 52px 52px 44px; gap:8px; align-items:center; }
+    .sk-head { padding:2px 0 6px; font-size:11px; font-weight:600; color:var(--muted); }
+    .sk-head span { text-align:right; }
+    .sk-head span:first-child { text-align:left; }
+    .sk-row { padding:6px 0; border-top:1px dashed #f0f0f6; font-size:13px; }
+    .sk-cell-name { font-weight:600; color:#444; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sk-c { text-align:right; color:var(--muted); font-size:12.5px; font-variant-numeric:tabular-nums; }
+    .sk-c-u { font-size:15px; font-weight:700; color:#333; }
+    .sk-c-u i { font-style:normal; font-size:11px; font-weight:500; color:var(--muted); margin-left:1px; }
+    .sk-c-zero { color:var(--danger); font-weight:600; }
+    .sk-c-dim { color:#b4b4c0; font-size:12px; }
+    .sk-row .sk-btn { justify-self:end; }
     /* 屏蔽名单区：虚线分隔，跟上面的正常排行明确分开，只有这一块管拉黑与恢复 */
     .sk-blocksec { margin-top:18px; padding-top:13px; border-top:1px dashed var(--border); }
     .sk-bsec-title { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 8px; font-size:12px; color:var(--muted); }
@@ -117,6 +130,21 @@
     .sk-add input:focus { border-color:#b9c4e8; }
     .sk-add button { font-size:12px; padding:4px 12px; border-radius:8px; border:1px solid var(--border); background:#fff; color:#444; cursor:pointer; }
     .sk-add button:hover { border-color:#b9c4e8; }
+
+    /* 找找在问什么：整句提问单开一块，跟上面搜索词分开——它不进热榜、也没有屏蔽按钮。
+       提问是口语整句，名字列给宽一点、超长省略，悬停看全文。 */
+    .fk-sec { margin-top:20px; }
+    .fk-q { min-width:120px; max-width:520px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .fk-tag { flex:none; font-size:11px; padding:1px 7px; border-radius:99px; background:#f3f4fb; color:#7b81a3; white-space:nowrap; }
+    .fk-tag-zero { background:#fdeeee; color:var(--danger); }
+    .fk-gap { margin-top:16px; padding-top:13px; border-top:1px dashed var(--border); }
+    .fk-gap-title { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 8px; font-size:12px; color:var(--muted); }
+    .fk-gap-title b { color:var(--danger); font-size:12.5px; }
+    .fk-gap-list { display:flex; flex-direction:column; gap:7px; margin-top:10px; }
+    .fk-gap-item { display:flex; align-items:baseline; gap:9px; font-size:12.5px; color:#444; }
+    .fk-gap-item b { flex:none; min-width:40px; font-size:11px; font-weight:600; color:var(--danger); }
+    .fk-gap-item span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    @media (max-width:820px) { .fk-q { min-width:0; max-width:46%; } }
 
     /* 行为流水：按人串起来的明细看板（谁·什么时候·做了什么），和上面几张聚合表分开看 */
     .bh-range { margin-left:auto; display:inline-flex; gap:6px; }
@@ -448,6 +476,25 @@
     .reply-send textarea { flex:1 1 240px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; font-size:13px; font-family:inherit; resize:vertical; background:#fafafe; }
     /* 反馈行的三个按钮整组换行，别拆散 */
     .fb-acts { display:flex; gap:6px; margin-left:auto; }
+
+    /* 造梦酒馆：想法 / 散座两段 + 楼层评论摊在帖子下面（2026-11-14 站长：评论的帖子都展示出来，方便审核） */
+    .idea-sec { display:flex; align-items:center; gap:8px; margin:20px 0 10px; font-size:13px; font-weight:600; color:var(--text); }
+    .idea-sec:first-child { margin-top:0; }
+    .idea-sec .idea-sec-n { font-weight:400; font-size:12px; color:var(--muted); }
+    .idea-sec .idea-sec-line { flex:1; height:1px; background:var(--border); }
+    .idea-cmts { margin-top:10px; padding:8px 12px; background:#fafbff; border:1px solid var(--border); border-radius:10px; }
+    .idea-cmt { display:flex; align-items:flex-start; gap:10px; padding:7px 0; font-size:12.5px; line-height:1.65; }
+    .idea-cmt + .idea-cmt { border-top:1px dashed #eceef6; }
+    .idea-cmt-main { flex:1; min-width:0; word-break:break-word; }
+    .idea-cmt-who { font-weight:600; color:#5b5bd6; margin-right:4px; }
+    .idea-cmt-at { font-size:11.5px; color:var(--muted); margin-left:6px; white-space:nowrap; }
+    .idea-cmt .btn { flex:none; padding:3px 9px; font-size:11.5px; }
+    .idea-cmt.is-hid .idea-cmt-main { opacity:.5; }
+    .row.is-hid { background:#fcfcfe; }
+    .row.is-hid .idea-body, .row.is-hid .row-meta { opacity:.55; }
+    .row.is-hid .idea-cmts { opacity:.75; }
+    .idea-cmt-none { padding:10px 0 2px; font-size:12px; color:var(--muted); }
+    .idea-body { font-size:13.5px; font-weight:600; color:var(--text); line-height:1.6; word-break:break-word; }
 
     /* 微信客服：消息推送的三行配置。Token/AESKey 是 40+ 位连续字符，
        必须 word-break 才肯换行，否则手机端会被这行把整页撑宽 */
@@ -869,6 +916,10 @@
       .login { margin:60px auto; padding:22px; width:calc(100% - 24px); }
       .ps-num { min-width:0; }
       .sk-name { max-width:130px; }
+      /* 搜索词迷你表手机放不下 7 列：收掉 7 天 / 最近两列 */
+      .sk-head, .sk-row { grid-template-columns:minmax(70px,1fr) 56px 50px 60px 44px; }
+      .sk-head span:nth-child(5), .sk-head span:nth-child(6),
+      .sk-row .sk-c:nth-child(5), .sk-row .sk-c:nth-child(6) { display:none; }
       /* 三列并排在手机上放不下：落成一列，顺序仍是 来源 → 设备 → 落地页 */
       .tr-grid { grid-template-columns:1fr; gap:12px; }
       .tr-col .ps-name { max-width:150px; }
@@ -938,6 +989,7 @@
           <button class="tab" data-tab="points">灯火明细</button>
           <button class="tab" data-tab="traffic">流量构成</button>
           <button class="tab" data-tab="outlinks">外链点击</button>
+          <button class="tab" data-tab="linkhealth">外链巡检</button>
           <button class="tab" data-tab="all">全部作品</button>
           <button class="tab" data-tab="promos">用户推广</button>
           <button class="tab" data-tab="discover">随便逛逛</button>
@@ -1112,6 +1164,14 @@
           <label>作品介绍 / 使用说明</label>
           <textarea name="prompt" rows="3" maxlength="3000"
                     placeholder="介绍一下：做什么用的、怎么体验、有什么亮点"></textarea>
+        </div>
+        <!-- 搜索关键词：作者投稿时在前台配的那组词（详情页胶囊、搜索和「找找」都按它命中）。
+             老作品没存过 = 留空走自动配词；存过（哪怕是清空）就按作者的意思原样回填，
+             清空保存 = 作者刻意不要关键词，服务端不再自动补。 -->
+        <div class="field">
+          <label>搜索关键词（选填，逗号 / 顿号分隔，最多 6 个，每个 ≤12 字）</label>
+          <input name="keywordsText" id="workKeywords" maxlength="120" placeholder="别人会搜的口语词 / 别名，如：待办、番茄钟、清单" autocomplete="off" />
+          <p class="cat-hint">搜索和首页「找找」都按这些词配对作品：多写别名更容易被翻到；<b>别填分类名和形态名</b>（会被检索忽略）。留空 = 按标题自动配。</p>
         </div>
         <div class="field" id="adminSiteField">
           <label>官网（选填，作品的主页 / 官方网站）</label>
@@ -1717,6 +1777,14 @@
       }).catch(() => { /* 不影响进入 */ });
       loadStats();
       renderTab(currentTab);
+      // 角标要能自己醒：每 60 秒拉一次待办数（有人申请管理员 / 投稿 / 回信，不用手动刷新才知道）。
+      // 401 会走 backToLogin 退回登录框，轮询里 adminBox 隐藏了就不再拉。
+      if (!window.__statsTimer) {
+        window.__statsTimer = setInterval(() => {
+          if ($('adminBox').style.display === 'none') return;
+          loadStats().catch(() => {});
+        }, 60000);
+      }
     }
 
     // 登录态失效了（比如服务端改过 ADMIN_KEY）→ 退回登录框，顺手清掉旧 cookie
@@ -1765,7 +1833,7 @@
         if (currentTab === 'traffic') renderTraffic(s);
         // 作品/互动统计卡已撤出「注册统计」页（2026-11-12 站长：跟注册无关），KPI 行只由 reg-stats 渲染
         // 待处理数直接标在对应标签上，一眼看到哪里有活
-        updateTabBadges({ pending: s.pending, offline: s.offline || 0, reports: s.reports, claims: s.claims || 0, feedback: s.feedback, friends: s.friendReqs || 0, wxkf: s.kf || 0, opensub: s.openSubmits || 0 });
+        updateTabBadges({ pending: s.pending, offline: s.offline || 0, reports: s.reports, claims: s.claims || 0, feedback: s.feedback, friends: s.friendReqs || 0, wxkf: s.kf || 0, opensub: s.openSubmits || 0, admins: s.adminApps || 0, badges: s.badgeApplies || 0, jury: s.juryOpen || 0, replies: s.repliesUnread || 0 });
       } catch (e) {
         if (e.status === 401 || e.status === 403) backToLogin('口令已失效，请重新输入');
         else toast(e.message);
@@ -2113,6 +2181,7 @@
 
     function renderTab(tab) {
       if (repliesTimer) { clearInterval(repliesTimer); repliesTimer = null; }
+      if (lhPoll) { clearInterval(lhPoll); lhPoll = null; }
       markTabSeen(tab);
       // 搜索框只跟作品列表（全部作品 / 待审核 / 已下架）走，其他 tab 收起；关键词保留，切回来还在
       // 随便逛逛那一格搜索条同理（#dscBar 由 loadDiscover 自己打开），别让两个搜索条同时挂着
@@ -2152,8 +2221,258 @@
       if (tab === 'opensub') return loadOpenSub();
       if (tab === 'traffic') return loadTraffic();
       if (tab === 'outlinks') return loadOutlinks();
+      if (tab === 'linkhealth') return loadLinkHealth();
       if (tab === 'deploy') return loadDeploy();
       if (tab === 'admins') return loadAdminsTab();
+    }
+
+    // ---- 外链巡检（2026-11-14）----
+    // 巡检本身跑在服务器上（tools/link-guard.js），118 条外链各自 curl 一遍约 45 秒，
+    // 所以是「起任务 + 页面轮询进度」，不是一次请求等到底。整页只读：唯一的写操作是白名单。
+    let lhPoll = null;
+    let lhCurrent = '';          // 当前在看哪一份报告
+    const LH_LEVELS = [
+      ['risky', '风险（疑似风险内容 / 域名停放页）', '#c62828'],
+      ['dead', '死链（404 / 域名解析不到 / 证书异常）', '#b3261e'],
+      ['warn', '需要注意（跳转 / 空壳 / 被限流）', '#b26a00'],
+      ['slow', '打不开（可能只是机房网络）', '#5b6472']
+    ];
+    const lhFmtTime = s => {
+      const t = typeof s === 'number' ? s : Date.parse(s || '');
+      return t ? new Date(t).toLocaleString('zh-CN', { hour12: false }) : '—';
+    };
+    const lhWho = f => {
+      if (!f) return '—';
+      if (f.kind === 'work') return '作品「' + (f.title || f.id || '?') + '」';
+      if (f.kind === 'profile') return '作者主页 ' + (f.title || f.id || '?');
+      if (f.kind === 'friend') return '友链 ' + (f.title || '?');
+      return f.title || f.id || '—';
+    };
+
+    async function loadLinkHealth() {
+      if (lhPoll) { clearInterval(lhPoll); lhPoll = null; }
+      panel.innerHTML = '<div class="empty">加载中…</div>';
+      let base;
+      try { base = await api('/api/admin/link-health'); }
+      catch (e) { panel.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; return; }
+      const running = !!(base.job && !base.job.endedAt);
+      const pick = (base.job && base.job.report) || lhCurrent || (base.reports[0] && base.reports[0].name) || '';
+      let rep = null;
+      if (pick) {
+        try { rep = await api('/api/admin/link-health/report?name=' + encodeURIComponent(pick)); lhCurrent = pick; }
+        catch { rep = null; lhCurrent = ''; }
+      }
+      renderLinkHealth(base, rep);
+      if (running) lhStartPoll();
+    }
+
+    function lhCountChips(count) {
+      const c = count || {};
+      const order = [['ok', '正常', '#2e7d32'], ['warn', '需注意', '#b26a00'], ['slow', '打不开', '#5b6472'], ['dead', '死链', '#b3261e'], ['risky', '风险', '#c62828']];
+      return order.filter(([k]) => typeof c[k] === 'number').map(([k, label, color]) =>
+        `<span style="display:inline-flex;align-items:center;gap:5px;margin-right:12px;font-size:13px;color:#4b5563">
+           <i style="width:7px;height:7px;border-radius:50%;background:${color};display:inline-block"></i>
+           ${label} <b style="color:${color}">${c[k]}</b></span>`).join('');
+    }
+
+    function lhReportHtml(rep) {
+      if (!rep) return '<div class="empty" style="padding:24px 0">还没有报告，点上面的「开始巡检」跑一轮。</div>';
+      const groups = LH_LEVELS.map(([k, label, color]) => {
+        const rows = (rep.results || []).filter(r => r.level === k);
+        if (!rows.length) return '';
+        return `
+          <h4 style="display:flex;align-items:center;gap:8px;margin:18px 0 8px">
+            <i style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block"></i>
+            ${esc(label)}（${rows.length}）
+          </h4>
+          ${k === 'slow' ? '<div class="hint" style="padding:0 0 8px;line-height:1.6">机房出口抖动、被墙、DNS 抖动都会长这样，<b>不等于死链</b>。手机上自己打开一次再定。</div>' : ''}
+          ${rows.map(r => {
+            const who = [...new Set((r.from || []).map(lhWho))];
+            const whoTxt = who.length > 2 ? who.slice(0, 2).join('、') + ` 等 ${who.length} 处` : who.join('、');
+            return `<div class="row">
+              <div class="row-main">
+                <div class="row-title" style="word-break:break-all">
+                  <a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer nofollow">${esc(r.url)}</a>
+                </div>
+                <div class="row-meta">${esc(whoTxt || '—')}${r.detail ? ' · ' + esc(r.detail) : ''}${r.title ? ' · 页面标题「' + esc(r.title) + '」' : ''}</div>
+              </div>
+            </div>`;
+          }).join('')}`;
+      }).join('');
+
+      const okRows = (rep.results || []).filter(r => r.level === 'ok');
+      return `
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0 2px">
+          <b style="font-size:15px">${lhFmtTime(rep.at)}</b>
+          <span style="color:#6b7280;font-size:13px">共 ${rep.total} 条 / ${rep.hosts || '?'} 个域名${rep.skipped ? `，跳过白名单 ${rep.skipped} 条` : ''}</span>
+        </div>
+        <div style="margin:6px 0 4px">${lhCountChips(rep.count)}</div>
+        ${groups || '<div class="empty" style="padding:20px 0">本份报告无异常，全部正常。</div>'}
+        ${okRows.length ? `<details style="margin-top:18px">
+          <summary style="cursor:pointer;font-size:13px;color:#6b7280">正常 ${okRows.length} 条（点开看明细）</summary>
+          <div style="margin-top:8px">${okRows.map(r => `<div class="row"><div class="row-main">
+            <div class="row-title" style="word-break:break-all"><a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer nofollow">${esc(r.url)}</a></div>
+            <div class="row-meta">${esc([...new Set((r.from || []).map(lhWho))].join('、') || '—')}</div>
+          </div></div>`).join('')}</div>
+        </details>` : ''}`;
+    }
+
+    function renderLinkHealth(base, rep) {
+      const job = base.job || null;
+      const sched = base.sched || { auto: true, hour: 9, lastRun: '', lastDay: '' };
+      const running = !!(job && !job.endedAt);
+      const pct = job && job.total ? Math.min(100, Math.round(job.done / job.total * 100)) : 0;
+      const stateTxt = running
+        ? `正在巡检：${job.phase || '探活中'} ${job.done}/${job.total || '?'}（${pct}%）`
+        : (job && job.error ? `上一轮失败：${job.error}` : (rep ? `上一轮 ${lhFmtTime(rep.at)} 完成` : '还没跑过'));
+
+      const hist = (base.reports || []).map(r => {
+        const c = r.count || {};
+        const bad = (c.dead || 0) + (c.risky || 0) + (c.warn || 0) + (c.slow || 0);
+        return `<option value="${esc(r.name)}"${r.name === lhCurrent ? ' selected' : ''}>${lhFmtTime(r.at)} · ${r.total} 条 · 异常 ${bad}</option>`;
+      }).join('');
+
+      const custom = base.custom || [];
+      const builtin = base.builtin || [];
+
+      panel.innerHTML = `
+        <div class="hint" style="padding-top:16px;line-height:1.7">
+          把站上所有「指出去」的链接（作品站点 / 仓库 / 作者主页链接 / 友链）在<strong>服务器上</strong>实跑一遍，
+          看哪些死了、域名被抢注成停放页、落地到赌博色情这类风险站。<b>只出报告，不自动下架、不改任何作品数据</b>。
+          一轮约 45 秒，跑完自动刷新；关掉页面也不影响它跑完。
+        </div>
+
+        <div style="display:flex;gap:10px;align-items:center;margin:16px 0 8px">
+          <button class="btn btn-primary btn-sm" id="lhRun"${running ? ' disabled' : ''}>${running ? '巡检中…' : '开始巡检'}</button>
+          <span id="lhState" style="font-size:13px;color:#4b5563">${esc(stateTxt)}</span>
+        </div>
+        <div id="lhBarWrap" style="height:6px;background:rgba(31,35,48,.07);border-radius:99px;overflow:hidden;margin-bottom:6px${running ? '' : ';display:none'}">
+          <i id="lhBar" style="display:block;height:100%;width:${pct}%;background:#6b7cff;transition:width .4s"></i>
+        </div>
+        <div id="lhLog" style="font-size:12px;color:#8b93a1${running ? '' : ';display:none'}">${running && job.log && job.log.length ? esc(job.log[job.log.length - 1]) : ''}</div>
+
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 4px;padding:10px 12px;background:rgba(31,35,48,.03);border-radius:10px">
+          <span style="font-size:13px;color:#4b5563">站内自动巡检</span>
+          <button class="btn btn-ghost btn-sm" id="lhSchedToggle">${sched.auto ? '已开启' : '已关闭'}</button>
+          <span style="font-size:13px;color:#4b5563">每天</span>
+          <select id="lhSchedHour" style="width:auto">${Array.from({ length: 24 }, (_, h) => `<option value="${h}"${h === sched.hour ? ' selected' : ''}>${String(h).padStart(2, '0')}:00</option>`).join('')}</select>
+          <span style="font-size:12px;color:#8b93a1">上次自动跑：${sched.lastRun ? esc(lhFmtTime(sched.lastRun)) : '还没跑过'}</span>
+        </div>
+        <div class="hint" style="padding:0 0 6px;line-height:1.6;font-size:12px">
+          这个定时器跟着站点进程走，跟你的 WorkBuddy 账号、本地电脑都没关系——换账号、换机器也照跑。跑的是同一个脚本，报告照旧落在这里。
+        </div>
+
+        <h4 style="margin-top:24px">报告内容</h4>
+        <div style="display:flex;gap:8px;align-items:center;margin:8px 0 4px">
+          ${(base.reports || []).length ? `<select id="lhHist" style="max-width:320px">${hist}</select>` : '<span style="font-size:13px;color:#6b7280">暂无历史报告</span>'}
+        </div>
+        <div id="lhReport">${lhReportHtml(rep)}</div>
+
+        <h4 style="margin-top:26px">白名单（${builtin.length + custom.length}）</h4>
+        <div class="hint" style="padding:0 0 10px;line-height:1.7">
+          名单里的域名<b>整段跳过不查</b>——因为机房侧查不出可信结果（比如苹果按 IP 限流、Google 系连不上）。
+          加进来就等于「这条以后不再看」，慎用。
+        </div>
+        <div style="margin-bottom:10px">
+          ${builtin.map(h => `<span class="tag" title="内置名单，写死在脚本里，页面删不掉" style="margin:0 6px 6px 0;opacity:.62">${esc(h)} · 内置</span>`).join('')}
+          ${custom.map(h => `<span class="tag" style="margin:0 6px 6px 0">${esc(h)}
+            <b data-lhdel="${esc(h)}" title="从白名单移除" style="cursor:pointer;color:#b3261e;margin-left:6px">×</b></span>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="lhAddHost" placeholder="例如 example.com" style="max-width:240px" />
+          <button class="btn btn-ghost btn-sm" id="lhAddBtn">加入白名单</button>
+        </div>`;
+
+      const runBtn = $('lhRun');
+      if (runBtn) runBtn.onclick = lhStartRun;
+      const addBtn = $('lhAddBtn');
+      if (addBtn) addBtn.onclick = () => lhSkip('add');
+      const addInput = $('lhAddHost');
+      if (addInput) addInput.onkeydown = e => { if (e.key === 'Enter') lhSkip('add'); };
+      panel.querySelectorAll('[data-lhdel]').forEach(el => {
+        el.onclick = () => lhSkip('remove', el.dataset.lhdel);
+      });
+      const histSel = $('lhHist');
+      if (histSel) histSel.onchange = () => { lhCurrent = histSel.value; loadLinkHealth(); };
+      const schedBtn = $('lhSchedToggle');
+      if (schedBtn) schedBtn.onclick = () => lhSched({ auto: !sched.auto });
+      const schedHour = $('lhSchedHour');
+      if (schedHour) schedHour.onchange = () => lhSched({ hour: Number(schedHour.value), resetDay: true });
+    }
+
+    async function lhSched(patch) {
+      try {
+        await api('/api/admin/link-health/schedule', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch)
+        });
+        toast(patch.auto === false ? '已关闭自动巡检' : '已保存');
+        loadLinkHealth();
+      } catch (e) { toast(e.message); }
+    }
+
+    function lhUpdateProgress(job) {
+      const bar = $('lhBar'), wrap = $('lhBarWrap'), st = $('lhState'), log = $('lhLog');
+      if (!job) return;
+      const running = !job.endedAt;
+      const pct = job.total ? Math.min(100, Math.round(job.done / job.total * 100)) : 0;
+      if (bar) bar.style.width = pct + '%';
+      if (wrap) wrap.style.display = running ? '' : 'none';
+      if (log) {
+        log.style.display = running ? '' : 'none';
+        if (job.log && job.log.length) log.textContent = job.log[job.log.length - 1];
+      }
+      if (st) {
+        st.textContent = running
+          ? `正在巡检：${job.phase || '探活中'} ${job.done}/${job.total || '?'}（${pct}%）`
+          : (job.error ? '上一轮失败：' + job.error : '本轮完成');
+      }
+    }
+
+    function lhStartPoll() {
+      if (lhPoll) clearInterval(lhPoll);
+      lhPoll = setInterval(async () => {
+        if (currentTab !== 'linkhealth') { clearInterval(lhPoll); lhPoll = null; return; }
+        let d;
+        try { d = await api('/api/admin/link-health/job'); } catch { return; }
+        lhUpdateProgress(d.job);
+        if (!d.job || d.job.endedAt) {
+          clearInterval(lhPoll); lhPoll = null;
+          if (d.job && d.job.error) toast('巡检失败：' + d.job.error);
+          else toast('巡检完成，报告已更新');
+          lhCurrent = (d.job && d.job.report) || '';
+          loadLinkHealth();
+        }
+      }, 2000);
+    }
+
+    async function lhStartRun() {
+      const btn = $('lhRun');
+      if (btn) { btn.disabled = true; btn.textContent = '巡检中…'; }
+      try {
+        const d = await api('/api/admin/link-health/run', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+        });
+        lhUpdateProgress(d.job);
+        toast('已开始，约 45 秒');
+        lhStartPoll();
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = '开始巡检'; }
+        toast(e.message);
+      }
+    }
+
+    async function lhSkip(action, hostRaw) {
+      const input = $('lhAddHost');
+      const host = hostRaw || (input && input.value) || '';
+      if (!host.trim()) return;
+      try {
+        await api('/api/admin/link-health/skip', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ host, action })
+        });
+        toast(action === 'remove' ? '已移出白名单' : '已加入白名单');
+        loadLinkHealth();
+      } catch (e) { toast(e.message); }
     }
 
     // ---- 管理员名单管理（2026-11-12 多管理员改版）----
@@ -2199,12 +2518,16 @@
               </div>
             </div>`).join('') : '<div class="empty">还没有收到申请</div>'}
           <h4>最近后台操作（写操作留痕，最多显示 60 条）</h4>
-          ${audit.length ? audit.map(a => `
+          ${audit.length ? audit.map(a => {
+            const what = a.what || (a.method + ' ' + a.url);
+            return `
             <div class="row" style="padding:6px 0">
               <div class="row-main">
-                <div class="row-meta" style="margin:0"><b>${esc(a.name || '?')}</b> · ${esc(a.method)} ${esc(a.url)} · ${esc(fmt(a.t))} · IP ${esc(a.ip || '')}</div>
+                <div class="row-meta" style="margin:0"><b>${esc(a.name || '?')}</b> · ${esc(what)} · ${esc(fmt(a.t))} · IP ${esc(a.ip || '')}</div>
+                ${a.what ? `<div class="row-meta" style="margin:2px 0 0;font-size:11px;color:#9ca3af">${esc(a.method)} ${esc(a.url)}</div>` : ''}
               </div>
-            </div>`).join('') : '<div class="empty">还没有记录</div>'}
+            </div>`;
+          }).join('') : '<div class="empty">还没有记录</div>'}
         `;
         const post = body => api('/api/admin/admins', {
           method: 'POST',
@@ -2223,12 +2546,12 @@
           catch (e) { toast(e.message || '操作失败'); }
         });
         panel.querySelectorAll('[data-approve]').forEach(b => b.onclick = async () => {
-          try { await post({ action: 'approve', username: b.dataset.approve }); toast('已通过，对方会收到站内消息'); loadAdminsTab(); }
+          try { await post({ action: 'approve', username: b.dataset.approve }); toast('已通过，对方会收到站内消息'); loadAdminsTab(); loadStats(); }
           catch (e) { toast(e.message || '操作失败'); }
         });
         panel.querySelectorAll('[data-reject]').forEach(b => b.onclick = async () => {
           if (!confirm('拒绝 @' + b.dataset.reject + ' 的管理员申请？')) return;
-          try { await post({ action: 'reject', username: b.dataset.reject }); toast('已拒绝'); loadAdminsTab(); }
+          try { await post({ action: 'reject', username: b.dataset.reject }); toast('已拒绝'); loadAdminsTab(); loadStats(); }
           catch (e) { toast(e.message || '操作失败'); }
         });
       } catch (e) {
@@ -2335,6 +2658,45 @@
       return true;
     }
 
+    // ---- 找找在问什么（来源 /api/find 的整句提问）：跟搜索词分开一块 ----
+    // 搜索框是「知道名字的人在找」，找找是「说不清叫什么的人在描述需求」；
+    // 最值钱的是下面的 gaps——问了但站里没有的，就是缺的内容（挑着做，或拿去征集）。
+    function findBlockHtml(fk) {
+      const top = Array.isArray(fk.top) ? fk.top : [];
+      const gaps = Array.isArray(fk.gaps) ? fk.gaps : [];
+      const maxN = Math.max(...top.map(x => x.n || 0), 1);
+      const rows = top.length
+        ? top.map(x => {
+            const tag = x.zero ? `<span class="fk-tag fk-tag-zero">${x.zero} 次没找到</span>`
+              : (x.blunt ? '<span class="fk-tag">只沾边</span>' : '');
+            return `
+              <div class="ps-row">
+                <span class="ps-name fk-q" title="${esc(x.q)}">${esc(x.q)}</span>
+                ${tag}
+                <span class="ps-bar"><i style="width:${Math.max(4, Math.round((x.n || 0) / maxN * 100))}%"></i></span>
+                <span class="ps-num">${x.n} 次 · 7 天 ${x.n7 || 0} · ${(x.last || '').slice(5, 10).replace('-', '/') || '—'}</span>
+              </div>`;
+          }).join('')
+        : '<div class="sk-empty">还没有人在找找里问过。接上之后这里会按提问次数排出来。</div>';
+      const gapHtml = gaps.length
+        ? `<div class="fk-gap">
+            <div class="fk-gap-title">
+              <span class="sk-blabel">问了但站里没有 <b>${gaps.length}</b> 条</span>
+              <span>· 按没找到的次数排，这些就是缺的内容</span>
+            </div>
+            <div class="fk-gap-list">
+              ${gaps.slice(0, 12).map(x => `<div class="fk-gap-item"><b>${x.zero} 次</b><span title="${esc(x.q)}">${esc(x.q)}</span></div>`).join('')}
+            </div>
+          </div>`
+        : '';
+      return `
+        <div class="promo-src fk-sec">
+          <h4>找找在问什么<span>今日 ${fk.todayN || 0} 次 · 近 7 天 ${fk.weekN || 0} 次 · 共 ${fk.words || 0} 句 · 整句原话，只记话不记人；不进前台热搜榜</span></h4>
+          ${rows}
+          ${gapHtml}
+        </div>`;
+    }
+
     function renderSearchKw(s) {
       const sk = (s && s.search) || {};
       const topRows = Array.isArray(sk.top) ? sk.top : [];
@@ -2353,14 +2715,27 @@
         : '<span class="sk-noblock">还没有屏蔽的词</span>';
       const rows = topRows.length
         ? (() => {
-            const maxSk = Math.max(...topRows.map(x => x.n || 0), 1);
-            return topRows.map(x => `
-              <div class="ps-row">
-                <span class="ps-name sk-name" title="${esc(x.q)}">${esc(x.q)}</span>
-                <span class="ps-bar"><i style="width:${Math.max(4, Math.round((x.n || 0) / maxSk * 100))}%"></i></span>
-                <span class="ps-num">${x.n} 次${x.zero ? ` · <b class="sk-zero">${x.zero} 次无结果</b>` : ''} · 7 天 ${x.n7 || 0} · ${(x.last || '').slice(5, 10).replace('-', '/') || '—'}</span>
+            const head = `
+              <div class="sk-head">
+                <span>搜索词</span>
+                <span title="搜过这个词的人数（账号/设备号去重，前台榜单按这个排；11-14 起才记录，更早的词没有人数）">人数</span>
+                <span title="累计搜索次数">次数</span>
+                <span title="搜了但没搜到任何结果的次数——缺内容的信号">无结果</span>
+                <span>7 天</span>
+                <span>最近</span>
+                <span></span>
+              </div>`;
+            const body = topRows.map(x => `
+              <div class="sk-row">
+                <span class="sk-cell-name" title="${esc(x.q)}">${esc(x.q)}</span>
+                <span class="sk-c sk-c-u">${x.u != null ? x.u + '<i>人</i>' : '<i>—</i>'}</span>
+                <span class="sk-c">${x.n || 0}</span>
+                <span class="sk-c${x.zero ? ' sk-c-zero' : ''}" title="${x.zero ? '搜了但没结果' : ''}">${x.zero || 0}</span>
+                <span class="sk-c sk-c-dim">${x.n7 || 0}</span>
+                <span class="sk-c sk-c-dim">${(x.last || '').slice(5, 10).replace('-', '/') || '—'}</span>
                 <button class="sk-btn" data-sk-blk="${esc(x.q)}" title="屏蔽：前台「大家最近在搜」不再展示这个词">屏蔽</button>
               </div>`).join('');
+            return head + body;
           })()
         : (blockedItems.length
             ? '<div class="sk-allblock">搜过的词都被屏蔽了，排行暂时空着。要放出来就去下面「已屏蔽」里点 ×。</div>'
@@ -2382,7 +2757,8 @@
               </span>
             </div>
           </div>
-        </div>`;
+        </div>
+        ${findBlockHtml((s && s.find) || {})}`;
     }
 
     // 搜索词 tab 的按钮交互：屏蔽/恢复、屏蔽名单里的 ×、手动添加（点按钮或回车）
@@ -2981,6 +3357,10 @@
     async function loadReplies() {
       if (repliesTimer) { clearInterval(repliesTimer); repliesTimer = null; }
       async function draw() {
+        // 正在输入时不重绘：15s 轮询会整块重建 DOM，把焦点和没发送的草稿一起冲掉
+        const inputting = panel.contains(document.activeElement) && document.activeElement.closest('.reply-send');
+        const hasDraft = !!panel.querySelector('.reply-send textarea') && Array.from(panel.querySelectorAll('.reply-send textarea')).some(t => t.value.trim());
+        if (inputting || hasDraft) return;
         let threads = [];
         try { const d = await api('/api/admin/replies'); threads = (d && d.threads) || []; } catch { threads = []; }
         if (!threads.length) { panel.innerHTML = '<div class="empty">还没有会话。作者从消息面板「给站长留言」私信，或就精选 / 消息回复后，会在这里出现。</div>'; return; }
@@ -3057,6 +3437,7 @@
                 ${w.anon ? '<span class="tag">匿名投稿</span>' : ''}
                 ${w.anonymous ? '<span class="tag">匿名发布</span>' : ''}
                 ${w.status === 'rejected' ? `<span class="tag bad">${w.juryRemoved ? '众判下架' : '管理员下架'}</span>` : ''}
+                ${w.jury && w.jury.flagged && !w.jury.removed ? `<span class="tag warn" title="众人小法官进行中：认定 ${w.jury.sus} 票 · 反对 ${w.jury.ok} 票；认定票净差满 ${w.jury.gap} 票会自动下架待整改">众判中 ${w.jury.sus}·${w.jury.ok}</span>` : ''}
                 ${w.hidden ? '<span class="tag bad">作者下架</span>' : ''}
                 ${w.featured ? '<span class="tag ok">精选' + (w.featuredUntil ? '·剩' + featDaysLeft(w.featuredUntil) + '天' : '') + '</span>' : ''}
                 ${w.pinned ? '<span class="tag">置顶</span>' : ''}
@@ -3098,6 +3479,9 @@
                   <button class="mi" data-act="assign" data-id="${w.id}" title="把作品指定给站内某个账号名下">指定账号</button>
                   <button class="mi" data-act="merge" data-id="${w.id}" title="重复投稿合并：把这件的浏览/点赞/收藏/评论/打赏/访问统计并入另一件，然后删除它">合并</button>
                   ${w.blockShift ? `<button class="mi" data-act="blockreset" data-id="${w.id}" title="清除屏蔽降权：用户仍然看不到它，只是这票不再影响首页排序">清除降权</button>` : ''}
+                  ${(w.status || 'approved') === 'approved' && !w.hidden ? (w.jury && w.jury.flagged && !w.jury.removed
+                    ? `<button class="mi" data-act="juryview" data-id="${w.id}" title="这件作品正在众判中，去「众人小法官」页看票数、结案清票或直接下架">查看众判</button>`
+                    : `<button class="mi" data-act="jury" data-id="${w.id}" title="把这件作品挂上「疑似推广」交给站内用户投票；认定票净差满 ${w.jury ? w.jury.gap : 5} 票自动下架，作品状态不变，随时可在「众人小法官」页结案清票">发起众判</button>`) : ''}
                   <button class="mi mi-danger" data-act="del" data-id="${w.id}">删除</button>
                 </div>
               </div>
@@ -4190,6 +4574,10 @@
 
     // 认领暗号：弹窗打开时的原值，提交时比对——没改动就不传，免得把「刚被别人认领后已作废」的旧暗号写回去
     let editorClaimCodeWas = '';
+    // 搜索关键词：这件作品「作者存没存过」关键词（undefined = 没存过，走自动配词；
+    // 存过数组（含 []）= 按作者的意思来）。提交时只有「填了词」或「存过」才带上 keywords 键，
+    // 没存过又留空就不传——服务端继续自动配词，不会因为后台看了一眼就冻结。
+    let editorKeywordsDefined = false;
     // 暗号认领额外奖励：也记一份原值，只用来决定保存后那句提示要不要提这一笔
     let editorClaimBonusWas = 0;
     let editorClaimBonusReasonWas = '';
@@ -4205,6 +4593,7 @@
       resetAiFill();   // 极速填写区收起并清空，避免上一条作品的原文留在框里
       const w = id ? WORK_CACHE[id] : null;
       editorClaimCodeWas = (w && w.claimCode) || '';   // reset() 已清空输入框，编辑时下面回填
+      editorKeywordsDefined = !!(w && Array.isArray(w.keywords));   // keywordsRaw 才是存档，publicWork 里那份是现算展示版
       editorClaimBonusWas = (w && w.claimBonus && w.claimBonus.points) || 0;
       editorClaimBonusReasonWas = (w && w.claimBonus && w.claimBonus.reason) || '';
       $('editorTitle').textContent = w ? '编辑作品：' + w.title : '新建作品';
@@ -4235,6 +4624,8 @@
         workForm.status.value = w.status || 'approved';
         workForm.repo.value = w.repo || '';
         workForm.claimCode.value = w.claimCode || '';   // 认领暗号回填（明文只有后台能看到）
+        // 搜索关键词回填：用存档 keywordsRaw（作者存过的原始词），没存过就留空（前台继续自动配词）
+        if ($('workKeywords')) $('workKeywords').value = Array.isArray(w.keywordsRaw) ? w.keywordsRaw.join('、') : '';
         // 暗号认领额外奖励回填（只在设了暗号的作品上生效，没值就是空）
         workForm.claimBonusPoints.value = (w.claimBonus && w.claimBonus.points) || '';
         workForm.claimBonusReason.value = (w.claimBonus && w.claimBonus.reason) || '';
@@ -4276,6 +4667,7 @@
       if (workForm.author && workForm.author.value.trim()) return true;
       if (workForm.prompt && workForm.prompt.value.trim()) return true;
       if (workForm.claimCode && workForm.claimCode.value.trim()) return true;   // 只填了暗号也算填过东西
+      if ($('workKeywords') && $('workKeywords').value.trim()) return true;   // 关键词填过也算
       if ($('pubTimeInput').value) return true;
       if (Object.keys(adminCollectLinks()).length) return true;
       if ((workForm.qrcode && workForm.qrcode.files.length) || galItems.length) return true;
@@ -4322,6 +4714,7 @@
           claimBonusPoints: workForm.claimBonusPoints ? workForm.claimBonusPoints.value : '',
           claimBonusReason: workForm.claimBonusReason ? workForm.claimBonusReason.value : '',
           prompt: workForm.prompt.value, site: workForm.site.value,
+          keywordsText: ($('workKeywords') ? $('workKeywords').value : ''),
           pubTime: $('pubTimeInput').value, t: Date.now()
         }));
       } catch {}
@@ -4359,6 +4752,7 @@
         adminRenderLinkInputs();
         workForm.prompt.value = d.prompt || '';
         workForm.site.value = d.site || '';
+        if ($('workKeywords')) $('workKeywords').value = d.keywordsText || '';
         $('pubTimeInput').value = d.pubTime || '';
         return true;
       } catch { return false; }
@@ -4575,6 +4969,13 @@
         if (!pickedCats.length) throw new Error('请至少选择一个分类');
         fd.set('categories', JSON.stringify(pickedCats));
         fd.set('category', pickedCats[0]);
+        // 搜索关键词：填了词、或这件作品本来就存过关键词，才带上 keywords 键——
+        // 存过的清空保存 = 作者刻意不要关键词（服务端不再自动补）；
+        // 没存过又留空就不传，服务端继续按标题自动配词。
+        const kwTextNow = String(($('workKeywords') && $('workKeywords').value) || '').trim();
+        if (kwTextNow || editorKeywordsDefined) {
+          fd.set('keywords', JSON.stringify(kwTextNow.split(/[,，、\s]+/).filter(Boolean)));
+        }
         // 认领暗号：编辑时「没动过就不传」（避免把刚失效的旧暗号写回去），清空 = 传空串 → 服务端摘掉
         if (editingId && claimNow === editorClaimCodeWas) fd.delete('claimCode');
         else fd.set('claimCode', claimNow);
@@ -4906,6 +5307,18 @@
           w.claimCode = r.code || '';
           if (!r.code) w.claimBonus = null;   // 暗号一清，额外奖励跟着作废（服务端已删，缓存同步一下）
           toast(r.code ? `「${w.title}」已设置认领暗号：${r.code}（记得发给作者）` : '已清除暗号，这件作品的认领回到人工审核');
+        } else if (act === 'jury') {
+          // 发起众判：与「众人小法官」页的手动贴标是同一个接口，只是不用再粘贴作品 ID
+          if (!confirm(`把「${w.title}」交给众人小法官？\n· 前台会挂出「疑似推广」投票入口，站内用户可以投票\n· 认定票净差满 ${w.jury ? w.jury.gap : 5} 票会自动下架待整改\n· 作品状态不变，随时可在「众人小法官」页结案清票`)) return;
+          const r = await api(`/api/admin/jury/${id}/flag`, { method: 'POST' });
+          if (w.jury) { w.jury.flagged = true; w.jury.removed = false; w.jury.sus = r.sus; w.jury.ok = r.ok2; w.jury.gap = r.gap; }
+          toast('已发起众判，前台会显示「疑似推广」投票入口');
+          patchRow(id);   // 行内角标原地换成「众判中」，按钮换成「查看众判」
+          loadStats();    // 「众人小法官」tab 的红点数跟着刷新
+        } else if (act === 'juryview') {
+          // 众判进行中：直接跳到「众人小法官」页（复用 tab 按钮自己的点击逻辑，省得另写一套切换）
+          const tabBtn = document.querySelector('.tab[data-tab="jury"]');
+          if (tabBtn) tabBtn.click();
         } else if (act === 'assign') {
           const cur = w.anonymous ? '' : (w.authorReal || w.author);
           const name = prompt(`把「${w.title}」指定给站内哪个账号？\n输入对方的注册账号名（「送灯火」页可搜索确认），确定后作品归到 TA 名下`, cur);
@@ -5105,9 +5518,9 @@
                 ${c.juryRemoved ? '<div class="row-meta" style="color:#a32d2d">这次下架由众判判定（不是手动下架）</div>' : ''}
                 ${c.votes && c.votes.length ? `
                   <details style="margin-top:6px">
-                    <summary style="cursor:pointer;font-size:12px;color:var(--muted)">投票明细（${c.votes.length} 票，新→旧，永久保密不显示投票人）</summary>
+                    <summary style="cursor:pointer;font-size:12px;color:var(--muted)">投票明细（${c.votes.length} 票，新→旧，投票人只在后台可见）</summary>
                     <div class="row-meta" style="line-height:1.9">
-                      ${c.votes.map((v, i) => `<span style="display:inline-block;margin-right:14px">第 ${c.votes.length - i} 票：${v.v === 'sus' ? '<b style="color:#b45309">疑似推广</b>' : '<span style="color:#0f6e56">不像推广</span>'} · ${esc(fmt(v.at))}</span>`).join('')}
+                      ${c.votes.map((v, i) => `<div style="display:block">第 ${c.votes.length - i} 票：${v.v === 'sus' ? '<b style="color:#b45309">疑似推广</b>' : '<span style="color:#0f6e56">不像推广</span>'} · <b>${esc(v.name || (v.gone ? '账号已注销（' + String(v.uid || '').slice(0, 6) + '）' : '未知用户'))}</b> · ${esc(fmt(v.at))}</div>`).join('')}
                     </div>
                   </details>` : '<div class="row-meta" style="color:var(--muted)">还没有人投票</div>'}
               </div>
@@ -5168,39 +5581,128 @@
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
 
-    // ---- 造梦酒馆（想法） ----
+    // ---- 造梦酒馆（想法 + 散座闲聊，评论逐层摊开） ----
+    // 2026-11-14 站长：评论的帖子都展示出来，方便审核。原来这一页只有想法，
+    // 散座的帖子和楼层回应在后台完全是暗的，只能等用户举报才浮上来。
+    const IDEA_STATUS_LABEL = i => i.hidden ? '已隐藏'
+      : i.status === 'done' ? '已实现'
+      : i.status === 'claimed' ? '实现中' : '征集中';
+    const DISC_KIND_LABEL = { scene: '补充场景', solution: '推荐方案', progress: '进展更新' };
+    const fmtTime = t => { try { return new Date(t).toLocaleString('zh-CN'); } catch { return ''; } };
+
     async function loadIdeasAdmin() {
       try {
-        const list = await api('/api/admin/ideas');
-        if (!list.length) { panel.innerHTML = '<div class="empty">还没有人提想法</div>'; return; }
-        const label = i => i.hidden ? '已隐藏'
-          : i.status === 'done' ? '已实现'
-          : i.status === 'claimed' ? '实现中' : '征集中';
-        panel.innerHTML = `<div class="row-meta" style="margin-bottom:10px">共 ${list.length} 个想法 · 隐藏后前台不再展示</div>`
-          + list.map(i => `
-          <div class="row">
+        const [list, disc, barRes] = await Promise.all([
+          api('/api/admin/ideas'),
+          api('/api/admin/idea-discussions').catch(() => []),
+          api('/api/admin/bar-posts').catch(() => ({ total: 0, items: [] }))
+        ]);
+        const bars = (barRes && barRes.items) || [];
+        const discByIdea = new Map();
+        disc.forEach(d => {
+          if (!discByIdea.has(d.ideaId)) discByIdea.set(d.ideaId, []);
+          discByIdea.get(d.ideaId).push(d);
+        });
+        discByIdea.forEach((arr, k) => discByIdea.set(k, arr.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))));
+        const replyTotal = bars.reduce((n, p) => n + (p.replies || []).length, 0);
+        const barTotal = barRes && barRes.total != null ? barRes.total : bars.length;
+        const barCap = barTotal > bars.length ? `（按新到旧，只列最近 ${bars.length} 条）` : '';
+
+        const cmtRow = (d) => `
+          <div class="idea-cmt${d.hidden ? ' is-hid' : ''}">
+            <div class="idea-cmt-main">
+              <span class="idea-cmt-who">@${esc(d.author || '匿名')}</span>
+              ${d.hidden ? '<span class="tag warn">已隐藏</span>' : ''}
+              <span class="tag">${esc(DISC_KIND_LABEL[d.kind] || '补充场景')}</span>
+              ${esc(d.text)}
+              <span class="idea-cmt-at">${fmtTime(d.createdAt)}</span>
+            </div>
+            <button class="btn btn-sm" data-disc-hide="${esc(d.id)}" data-next="${d.hidden ? '0' : '1'}">${d.hidden ? '恢复' : '隐藏'}</button>
+          </div>`;
+
+        const ideaHtml = list.map(i => {
+          const cmts = discByIdea.get(i.id) || [];
+          return `
+          <div class="row${i.hidden ? ' is-hid' : ''}">
             <div class="row-main">
               <div class="row-title">
-                <span class="tag ${i.hidden ? 'warn' : 'ok'}">${esc(label(i))}</span>
-                <span style="color:var(--muted);font-size:12px;margin-left:6px">@${esc(i.author)} · ${new Date(i.createdAt).toLocaleString('zh-CN')}</span>
+                <span class="tag ${i.hidden ? 'warn' : 'ok'}">${esc(IDEA_STATUS_LABEL(i))}</span>
+                <span style="color:var(--muted);font-size:12px;margin-left:6px">@${esc(i.author)} · ${fmtTime(i.createdAt)}</span>
               </div>
-              <div class="row-meta" style="font-size:13.5px;font-weight:600;color:var(--text)">${esc(i.title)}</div>
-              <div class="row-meta">${Icons.icon('thumb', 13)} ${i.wants} 人想要${i.claimer ? ` · ${Icons.icon('gear', 13)} ${esc(i.claimer.name)} 在做` : ''}${i.work ? ` · ✓ 已实现：${esc(i.work.title)}` : ''}</div>
+              <div class="idea-body">${esc(i.title)}</div>
+              <div class="row-meta">${Icons.icon('thumb', 13)} ${i.wants} 人想要${i.claimer ? ` · ${Icons.icon('gear', 13)} ${esc(i.claimer.name)} 在做` : ''}${i.work ? ` · ✓ 已实现：${esc(i.work.title)}` : ''} · 💬 ${cmts.length} 条评论</div>
+              ${cmts.length ? `<div class="idea-cmts">${cmts.map(cmtRow).join('')}</div>` : ''}
             </div>
             <div class="row-actions">
               <button class="btn btn-sm" data-idea-hide="${i.id}" data-next="${i.hidden ? '0' : '1'}">${i.hidden ? '恢复展示' : '隐藏'}</button>
               <button class="btn btn-danger btn-sm" data-idea-del="${i.id}">删除</button>
             </div>
+          </div>`;
+        }).join('');
+
+        const barHtml = bars.map(p => `
+          <div class="row${p.hidden ? ' is-hid' : ''}">
+            <div class="row-main">
+              <div class="row-title">
+                ${p.hidden ? '<span class="tag warn">已隐藏</span>' : ''}
+                ${p.topic ? `<span class="tag">${esc(p.topic)}</span>` : ''}
+                <span style="color:var(--muted);font-size:12px">@${esc(p.author || '匿名')} · ${fmtTime(p.createdAt)}</span>
+              </div>
+              <div class="idea-body" style="font-weight:400">${esc(p.text)}</div>
+              <div class="row-meta">🍻 ${p.likes || 0} 人碰杯 · 💬 ${(p.replies || []).length} 条回应${p.work ? ` · 挂作品：${esc(p.work.title)}` : ''}</div>
+              ${(p.replies || []).length ? `<div class="idea-cmts">${(p.replies || []).map(r => `
+                <div class="idea-cmt${r.hidden ? ' is-hid' : ''}">
+                  <div class="idea-cmt-main">
+                    <span class="idea-cmt-who">@${esc(r.author || '匿名')}</span>${r.hidden ? '<span class="tag warn">已隐藏</span>' : ''}${esc(r.text)}
+                    <span class="idea-cmt-at">${fmtTime(r.at)}</span>
+                  </div>
+                  <button class="btn btn-sm" data-bar-r-hide="${esc(p.id)}" data-rid="${esc(r.id)}" data-next="${r.hidden ? '0' : '1'}">${r.hidden ? '恢复' : '隐藏'}</button>
+                </div>`).join('')}</div>` : ''}
+            </div>
+            <div class="row-actions">
+              <a class="btn btn-ghost btn-sm" href="/bar?p=${encodeURIComponent(p.id)}" target="_blank" rel="noopener">看原帖</a>
+              <button class="btn btn-sm" data-bar-hide="${esc(p.id)}" data-next="${p.hidden ? '0' : '1'}">${p.hidden ? '恢复展示' : '隐藏'}</button>
+              <button class="btn btn-danger btn-sm" data-bar-del="${esc(p.id)}">删除</button>
+            </div>
           </div>`).join('');
+
+        panel.innerHTML = `<div class="row-meta" style="margin-bottom:4px">共 ${list.length} 个想法 · ${barTotal} 条散座闲聊 · ${replyTotal} 层回应 · 隐藏后前台不再展示</div>`
+          + `<div class="idea-sec">想法<span class="idea-sec-n">${list.length}</span><i class="idea-sec-line"></i></div>`
+          + (list.length ? ideaHtml : '<div class="empty">还没有人开口</div>')
+          + `<div class="idea-sec">散座闲聊<span class="idea-sec-n">${barTotal} 条 / ${replyTotal} 层回应${barCap}</span><i class="idea-sec-line"></i></div>`
+          + (bars.length ? barHtml : '<div class="empty">散座还没人说话</div>');
+
+        const put = (url, hidden, cb) => api(url, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hidden })
+        }).then(cb);
+
         panel.querySelectorAll('[data-idea-hide]').forEach(b => {
           b.onclick = async () => {
             b.disabled = true;
+            try { await put('/api/admin/ideas/' + b.dataset.ideaHide, b.dataset.next === '1', loadIdeasAdmin); }
+            catch (e) { toast(e.message); b.disabled = false; }
+          };
+        });
+        panel.querySelectorAll('[data-disc-hide]').forEach(b => {
+          b.onclick = async () => {
+            b.disabled = true;
+            try { await put('/api/admin/idea-discussions/' + b.dataset.discHide, b.dataset.next === '1', loadIdeasAdmin); }
+            catch (e) { toast(e.message); b.disabled = false; }
+          };
+        });
+        panel.querySelectorAll('[data-bar-hide]').forEach(b => {
+          b.onclick = async () => {
+            b.disabled = true;
+            try { await put('/api/admin/bar-posts/' + b.dataset.barHide, b.dataset.next === '1', loadIdeasAdmin); }
+            catch (e) { toast(e.message); b.disabled = false; }
+          };
+        });
+        panel.querySelectorAll('[data-bar-r-hide]').forEach(b => {
+          b.onclick = async () => {
+            b.disabled = true;
             try {
-              await api('/api/admin/ideas/' + b.dataset.ideaHide, {
-                method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hidden: b.dataset.next === '1' })
-              });
-              loadIdeasAdmin();
+              await put('/api/admin/bar-posts/' + b.dataset.barRHide + '/replies/' + b.dataset.rid, b.dataset.next === '1', loadIdeasAdmin);
             } catch (e) { toast(e.message); b.disabled = false; }
           };
         });
@@ -5211,6 +5713,16 @@
               await api('/api/ideas/' + b.dataset.ideaDel, { method: 'DELETE' });
               loadIdeasAdmin();
             } catch (e) { toast(e.message); }
+          };
+        });
+        panel.querySelectorAll('[data-bar-del]').forEach(b => {
+          b.onclick = async () => {
+            if (!confirm('删除这条闲聊？连同下面的回应一起消失，不可恢复。怕后悔就先用「隐藏」。')) return;
+            b.disabled = true;
+            try {
+              await api('/api/admin/bar-posts/' + b.dataset.barDel, { method: 'DELETE' });
+              loadIdeasAdmin();
+            } catch (e) { toast(e.message); b.disabled = false; }
           };
         });
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
@@ -6843,11 +7355,15 @@
     let plSortKey = 'points';
     let plSortDir = -1;
     let plQuery = '';
-    let plOnlyBusy = false;
+    let plOnlyBusy = true;   // 默认只列有灯火往来的人（一分没动过的空账号不该占满一屏）
     const plNum = n => (Number(n) || 0).toLocaleString('zh-CN');
     const PL_COLS = [
       { key: 'points', label: '余额', tip: '当前还剩的灯火' },
       { key: 'checkin', label: '签到', tip: '累计签到拿到的灯火 · 小字是累计签到天数（7 天一轮：5/5/10/10/20/20/30）' },
+      { key: 'wxbind', label: '绑微信', tip: '老账号绑定微信的一次性奖励（+300 盏）· 小字是领取日期' },
+      { key: 'ghBind', label: '绑GitHub', tip: '是否绑定了 GitHub · 小字是 GitHub 用户名（绑定本身目前不发灯火，只记状态）' },
+      { key: 'pwa', label: 'PWA', tip: '添加到桌面后用图标打开的一次性奖励（+200 盏）· 小字是领取日期' },
+      { key: 'adTotal', label: '看广告', tip: '看激励视频领灯火：主数字是累计次数（2026-11-14 起才记，之前的历史次数没有记录），小字是今天已看 X/3 次' },
       { key: 'tipIn', label: '被送', tip: '别人打赏给 TA 的合计（含小程序「看广告代送」——那笔平台出，确实进了 TA 账）' },
       { key: 'tipOut', label: '送出', tip: 'TA 打赏给别人的合计（不含看广告代送：那笔不扣 TA 自己的余额）' },
       { key: 'adminNet', label: '站长送', tip: '后台「送灯火 / 扣灯火」的净额：送 +、扣回 −' },
@@ -6879,6 +7395,7 @@
           ${tile(plNum(t.tipOut) + ' 盏', '送出打赏')}
           ${tile(plNum(t.adminNet) + ' 盏', '站长送（净）')}
           ${tile(plNum(t.promoSpent) + ' 盏', '投放消耗')}
+          ${tile(plNum(t.adTotal) + ' 次', '看广告累计')}
         </div>
         <div class="pl-bar">
           <input type="search" id="plSearch" placeholder="搜账号 / 昵称…" autocomplete="off" value="${esc(plQuery)}" />
@@ -6897,6 +7414,10 @@
           五个数字都取<strong>台账</strong>，不拿逐笔流水求和（流水只留最近 60 笔，老用户会被算少）：
           <b>余额</b> = share.json 里的当前灯火 ·
           <b>签到</b> = 累计签到拿到的灯火（7 天一轮 5/5/10/10/20/20/30，断签从第 1 天重数）·
+          <b>绑微信</b> = 老账号绑微信的一次性奖励 +300，小字是领取日期 ·
+          <b>绑GitHub</b> = 只记绑定状态（✓ + GitHub 用户名），绑定本身目前不发灯火 ·
+          <b>PWA</b> = 添加到桌面后用图标打开的一次性奖励 +200，小字是领取日期 ·
+          <b>看广告</b> = 小程序看激励视频领灯火（30/30/40 一天 3 次）的次数，主数字是累计次数、小字是今天 X/3；<strong>累计从 2026-11-14 起记</strong>，之前只存了当天次数，历史补不回来 ·
           <b>被送 / 送出</b> = tips.json 打赏台账全量求和，被送含小程序「看广告代送」（平台出钱、确实进作者账），送出不含（那笔不扣观众余额）·
           <b>站长送</b> = 后台送灯火 / 扣灯火的<strong>净额</strong>，扣回会抵减 ·
           <b>投放</b> = 推荐位订单「实付 − 已退回」，在投还没烧完的也算花出去了 ·
@@ -6927,7 +7448,7 @@
       const all = (plData.rows || []).map(r => ({ ...r, spendTotal: (r.tipOut || 0) + (r.promoSpent || 0) }));
       const q = plQuery.trim().toLowerCase();
       const list = all.filter(r => {
-        if (plOnlyBusy && !(r.points || r.checkin || r.tipIn || r.tipOut || r.adminNet || r.promoSpent)) return false;
+        if (plOnlyBusy && !(r.points || r.checkin || r.wxbind || r.pwa || r.ghBind || r.adTotal || r.adToday || r.tipIn || r.tipOut || r.adminNet || r.promoSpent)) return false;
         if (!q) return true;
         return String(r.username || '').toLowerCase().includes(q) || String(r.name || '').toLowerCase().includes(q);
       });
@@ -6947,23 +7468,34 @@
         const adminCell = admin
           ? `<td><b${admin < 0 ? ' class="pl-neg"' : ''}>${admin < 0 ? '−' + plNum(-admin) : plNum(admin)}</b></td>`
           : '<td class="pl-zero"><b>0</b></td>';
+        const ghCell = r.ghBind
+          ? `<td><b>✓</b><span class="pl-sub">${esc(r.ghLogin || '已绑')}</span></td>`
+          : '<td class="pl-zero"><b>—</b></td>';
         return `<tr>
           <td class="pl-who"><b>@${esc(r.name)}</b> <span class="tag">${esc(r.username)}</span>${r.isOwner ? ' <span class="tag bad">站长</span>' : ''}
             <span class="pl-sub">${r.works ? r.works + ' 件作品 · ' : ''}注册 ${esc(r.createdAt ? fmtDate(r.createdAt) : '—')}</span></td>
           ${cell(r.points)}
           ${cell(r.checkin, r.checkinDays ? r.checkinDays + ' 天' : '')}
+          ${cell(r.wxbind, r.wxBindAt ? fmtDate(r.wxBindAt).slice(5) : '')}
+          ${ghCell}
+          ${cell(r.pwa, r.pwaAt ? fmtDate(r.pwaAt).slice(5) : '')}
+          ${cell(r.adTotal, r.adToday ? '今天 ' + r.adToday + '/3' : '')}
           ${cell(r.tipIn, inSub)}
           ${cell(r.tipOut, outSub)}
           ${adminCell}
           ${cell(r.promoSpent, promoSub)}
           ${cell(r.spendTotal)}
         </tr>`;
-      }).join('') || '<tr><td colspan="8" class="pl-zero" style="text-align:center;padding:24px 0">没有匹配的用户</td></tr>';
+      }).join('') || '<tr><td colspan="12" class="pl-zero" style="text-align:center;padding:24px 0">没有匹配的用户</td></tr>';
       const s = k => list.reduce((n, r) => n + (Number(r[k]) || 0), 0);
       const foot = `<tr>
         <td>合计（当前 ${list.length} 人）</td>
         <td>${plNum(s('points'))}</td>
         <td>${plNum(s('checkin'))}</td>
+        <td>${plNum(s('wxbind'))}</td>
+        <td>${list.reduce((n, r) => n + (r.ghBind ? 1 : 0), 0)} 人</td>
+        <td>${plNum(s('pwa'))}</td>
+        <td>${plNum(s('adTotal'))}</td>
         <td>${plNum(s('tipIn'))}</td>
         <td>${plNum(s('tipOut'))}</td>
         <td>${plNum(s('adminNet'))}</td>
@@ -8233,6 +8765,7 @@
             : action === 'ignore' ? `已忽略 @${username} 的申请`
               : `已授予「${name}」· @${username}`);
           loadBadgesAdmin();
+          loadStats();   // 处理完申请同步刷新左侧「造梦勋章」角标
         };
         const formAction = action => async () => {
           const key = $('bdgKey').value;

@@ -280,7 +280,7 @@ body{
     <a class="logo" href="/" title="回造梦橱窗首页"><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
     <nav class="sh-nav" aria-label="主导航">
       <a class="nav-btn" href="/rank" data-tip="作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届" aria-label="星梦榜：作品的热度排行，访客、收藏、评论、灯火加权计分，每周换一届"><i class="ico" data-ico="rank"></i>星梦榜</a>
-      <a class="nav-btn" href="/bar" data-tip="说出你想要的作品，等创作者认领实现；也能在散座随便聊" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现"><i class="ico" data-ico="wish"></i>造梦酒馆</a>
+      <a class="nav-btn" href="/bar" data-tip="说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现"><i class="ico" data-ico="wish"></i>造梦酒馆</a>
       <a class="nav-btn active" href="/medals" data-tip="完成指定事情拿勋章，永久挂在你的主页和作品页" aria-label="造梦勋章：完成指定事情拿勋章，永久挂在你的主页和作品页" aria-current="page"><i class="ico" data-ico="medal"></i>造梦勋章</a>
     </nav>
     <div class="sh-auth" id="authBox"></div>
@@ -392,6 +392,12 @@ const fmtDay = at => {
   return (+m[1] === new Date().getFullYear()) ? md : m[1].slice(2) + '年' + md;
 };
 
+/* 手授类勋章顺带报「全站已授几人」：限量的一并带出上限（12/50 人），不限量的不编分母。
+   一个人都没授出去时不写，省得卡片上先挂一句「已授 0 人」。数字来自 /api/me/badges 的 count，
+   是 badges.json 里真记了时间的人头，不是「够格人数」——后者卡片上还写着「待授予」，两个数会打架。 */
+const grantNum = b => b.count + (b.limit ? '/' + b.limit : '');
+const grantText = b => (b.by && b.count) ? '已授 ' + grantNum(b) + ' 人' : '';
+
 const stateText = b => {
   if (b.state === 'on') {
     const tag = b.by ? '已授予' : '已点亮';
@@ -400,7 +406,9 @@ const stateText = b => {
   }
   if (b.state === 'doing') return b.now + ' / ' + b.goal;
   if (isApplied(b)) return '申请中';
-  return b.by ? (b.canApply ? '待授予 · 可申请' : '待授予') : '未开始';
+  const tail = b.by ? (b.canApply ? '待授予 · 可申请' : '待授予') : '未开始';
+  const g = grantText(b);
+  return g ? tail + ' · ' + g : tail;
 };
 const pct = b => b.state === 'on' ? 100 : (b.state === 'doing' ? Math.min(100, Math.round(b.now / b.goal * 100)) : 0);
 const iconSvg = k => '<svg viewBox="0 0 24 24"><path d="' + ICONS[k] + '"/></svg>';
@@ -466,6 +474,7 @@ function openSheet(i) {
     '<div class="meta">' + (b.state === 'on'
       ? '获得时间 <b>' + b.at + '</b>'
       : (b.state === 'doing' ? '当前进度 <b>' + b.now + ' / ' + b.goal + '</b>' : '尚未达成')) + '</div>' +
+    (grantText(b) ? '<div class="meta">全站已授 <b>' + grantNum(b) + '</b> 人</div>' : '') +
     applyHtml +
     '<button class="close" id="closeBtn">关闭</button>';
   mask.classList.add('show');

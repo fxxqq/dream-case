@@ -275,19 +275,103 @@ nav { display: flex; gap: 8px; flex: 1; }
 }
 .hero-link:hover { color: var(--primary-dark); border-bottom-color: currentColor; }
 .hero-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 3px; }
-/* hero 里的「问找找」：给不知道作品叫什么的人一条路。比搜索框低一级——淡紫胶囊、
-   小字，不跟「搜索」抢第一眼，但位置就在副标题下面，扫一眼能看见。 */
+/* hero 里的「让找找帮你翻」：给不知道作品叫什么的人一条路。比搜索框低一级——
+   小字胶囊，不跟「搜索」抢第一眼，但位置就在副标题下面，扫一眼能看见。
+   2026-11-14 升级质感：白底胶囊 + 渐变发丝描边 + 柔影，比之前的淡紫实底更挺括；
+   字号密度不动——首屏每多 30px 就少露半张作品卡。 */
 .hero-find {
-  display: inline-flex; align-items: center; gap: 5px;
-  margin-top: 12px; padding: 6px 13px 7px;
-  border: 1px solid #e2dffb; border-radius: 999px; background: #f7f5ff;
+  --hf-ring: linear-gradient(120deg, #cdc2f7, #eec9ec 45%, #bfd4f7);
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 14px; padding: 7px 17px 8px;
+  border: 1px solid transparent; border-radius: 999px;
+  background:
+    linear-gradient(180deg, #ffffff, #f8f5ff) padding-box,
+    var(--hf-ring) border-box;
   color: #5a52c9; font: inherit; font-size: 12.5px; line-height: 1.2; cursor: pointer;
-  transition: background-color .15s, border-color .15s, color .15s;
+  box-shadow: 0 1px 2px rgba(91, 76, 222, .06), 0 4px 16px rgba(91, 76, 222, .10);
+  transition: transform .18s ease, box-shadow .18s ease, color .15s;
 }
 .hero-find b { font-weight: 600; }
-.hero-find .hf-star { color: #7b6cf6; font-size: 11px; }
-.hero-find:hover { background: #efeaff; border-color: #cfc8f8; color: #4a41b8; }
+.hero-find:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(91, 76, 222, .08), 0 8px 24px rgba(91, 76, 222, .20);
+  color: #4a41b8;
+}
+.hero-find:active { transform: translateY(0); box-shadow: 0 1px 6px rgba(91, 76, 222, .14); }
 .hero-find:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* 两处小动效（星标呼吸 + 「让找找帮你翻」流光）都裹在 no-preference 里：
+   用户系统开了减弱动效就整套静止，静态观感不变。 */
+@media (prefers-reduced-motion: no-preference) {
+  /* 「让找找帮你翻」流光：紫→品红来回扫，3.2s 一轮，慢到只剩一点活气 */
+  .hero-find b {
+    background: linear-gradient(90deg, #6a5cf0, #b44cf0, #6a5cf0);
+    background-size: 200% auto;
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent; -webkit-text-fill-color: transparent;
+    animation: hf-shimmer 3.2s linear infinite;
+  }
+  /* 星标呼吸：轻微放大 + 一圈柔光，不抢字 */
+  .hero-find .hf-star {
+    display: inline-block;
+    color: #8a6bf6; font-size: 12px;
+    text-shadow: 0 0 6px rgba(138, 107, 246, .4);
+    animation: hf-twinkle 2.4s ease-in-out infinite;
+  }
+}
+@keyframes hf-shimmer { to { background-position: -200% center; } }
+@keyframes hf-twinkle {
+  0%, 100% { transform: scale(1) rotate(0deg); opacity: .8; }
+  50% { transform: scale(1.22) rotate(14deg); opacity: 1; }
+}
+/* ---------- 首页「大家在找」（2026-11-14 从酒馆热搜榜搬来）----------
+   一行小字 + 词条胶囊。2026-11-14 晚升级：裸文字改成极淡的紫底小胶囊——
+   词与词有了自己的「座位」，扫起来不糊成一串；底色只有 8% 紫，首屏依旧安静。
+   不显序号也不显人数：热搜是「扫一眼就走」的东西。词条本身是一次站内搜索。 */
+.hero-hot {
+  display: flex; align-items: center; justify-content: center; flex-wrap: wrap;
+  gap: 4px 8px; margin-top: 16px;
+  /* 2026-11-14 晚收小一档：字 12.5→11.5、胶囊 padding 3/13/4 → 2/10/3（站长：字和按钮都小点）。
+     整行是首屏的「配菜」，不该跟下面的精选抢视线。 */
+  font-size: 11.5px; line-height: 1.7; color: #8d87a6;
+  /* 占位高度按「两行词条胶囊」预留（2026-11-14 站长定 12 条：9 热 + 3 新，桌面必折两行）：
+     2 × (1.7em 行高 + 5px 上下 padding) + 6px 行间 gap。
+     is-waiting 时只有 label 小字，胶囊到位正好填满两行——下方内容不再被顶（抖动零容忍）。 */
+  min-height: calc(3.4em + 16px);
+}
+/* 词收小后 12 条在宽屏一行就放得下了（实测 ≥1100 一行、1024 折两行）：
+   宽屏只占一行的高度，别白留 30px 空地（hero 每多 30px 首屏就少露半张卡）。
+   1080 是留了余量的断点——词条长短会变。 */
+@media (min-width: 1080px) {
+  .hero-hot { min-height: calc(1.7em + 5px); }
+}
+/* 词条是异步插进来的：常驻占一行的高度，is-waiting 时整块隐身但位置留着，
+   词到了原地显形——下方内容不被推挤（visibility 而非 display，高度不塌） */
+.hero-hot.is-waiting { visibility: hidden; }
+/* 拉空 / 全被筛掉时也保持占位（见 app.js renderHeroHot：宁留一行安静空隙，不抖） */
+.hero-hot-label { display: inline-flex; align-items: center; gap: 4px; flex: none; margin-right: 2px; }
+.hero-hot-label .ico { font-size: 11px; color: var(--primary); }
+.hero-hot-list { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 5px 6px; min-width: 0; }
+.hero-hot-word {
+  border: 0; padding: 2px 10px 3px; border-radius: 999px;
+  font: inherit; color: #5a52c9; cursor: pointer;
+  background: rgba(123, 108, 246, .08);
+  transition: background-color .15s, color .15s, box-shadow .18s ease, transform .18s ease;
+}
+.hero-hot-word:hover {
+  background: #fff; color: var(--primary-dark);
+  box-shadow: 0 3px 12px rgba(91, 76, 222, .16);
+  transform: translateY(-1px);
+}
+.hero-hot-word:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* 热/新角标（2026-11-14）：「热」= 种子词（展示热度），「新」= 近 7 天真被搜过的词。
+   热用红、新用绿——跟价格红涨绿跌一套直觉，小角标不抢词本身。 */
+.hh-badge {
+  display: inline-block; font-style: normal; font-size: 9px; line-height: 1;
+  padding: 2px 3px 2px; border-radius: 4px; margin-right: 4px;
+  transform: translateY(-1px);
+}
+.hh-badge.is-hot { color: #d8434f; background: rgba(216, 67, 79, .10); }
+.hh-badge.is-new { color: #0d9463; background: rgba(13, 148, 99, .12); }
 /* 「小程序版更顺手」：动作词里的特例——淡紫胶囊底，比纯文字链接高一级，让人一眼挑出来 */
 .hero-link-mini {
   padding: 2px 10px 3px; border-radius: 999px; border-bottom: 0;
@@ -547,6 +631,19 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
 @media (prefers-reduced-motion: reduce) {
   .sk-line, .sk-img { animation: none; }
 }
+
+/* ---------- 作者页骨架屏（2026-11-14）----------
+   /u/ 主页作品区的加载态：铺与真卡同构的灰卡（4:3 封面块 + 标题/简介两行灰条），
+   数量照首屏 SSR 里的真卡抄，骨架高度≈真内容高度，数据回来整块替换不跳高度。
+   静音模式（html.dm-quiet）停掉 shimmer 后就是静止灰块，照样能看；
+   灰卡是纯占位，不许有 hover 抬起那套卡片动效。 */
+.sk-cover { width: 100%; aspect-ratio: 4 / 3; border-radius: 0; }
+.card-sk { cursor: default; }
+.card-sk:hover { transform: none; box-shadow: none; }
+.card-sk .sk-line { margin-bottom: 9px; }
+.card-sk .sk-foot { padding-top: 6px; }
+/* 档案卡 meta 行的占位灰条：入驻时间/常写分类回来前先撑住这一行的高度 */
+.author-meta .sk-au-meta { width: 220px; margin: 3px 0 0; }
 
 /* ---------- 「点灯」加载中（2026-11-10）----------
    造梦橱窗自己的 loading：一小扇拱顶橱窗里三盏灯依次亮起，灯亮着＝正在给你挑作品。
@@ -2274,7 +2371,11 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   position: relative; width: min(520px, calc(100vw - 32px)); margin-top: 10vh;
   background: var(--card); border-radius: 18px; overflow: hidden;
   box-shadow: 0 24px 64px rgba(20, 22, 40, .26);
-  display: flex; flex-direction: column; max-height: min(76vh, 660px);
+  display: flex; flex-direction: column;
+  /* 2026-11-14：固定高度（站长定）。原来是 max-height，高度跟着内容走——
+     问一句、答一条，整个框就往上长一截，正在打字时输入框会从手底下溜走。
+     聊天窗口的尺寸该由窗口决定，不由内容决定：这里写死，内容多了在 .fb-log 里滚。 */
+  height: min(76vh, 660px);
   animation: fbIn .18s ease-out;
 }
 @keyframes fbIn { from { opacity: 0; transform: translateY(10px) scale(.99); } to { opacity: 1; transform: none; } }
@@ -2301,9 +2402,15 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   text-decoration: none; color: inherit; transition: border-color .14s ease, box-shadow .14s ease;
 }
 .fb-item:hover { border-color: #c9c6f7; box-shadow: 0 4px 14px rgba(91, 91, 214, .1); }
-.fb-it-img {
-  width: 46px; height: 46px; flex: none; border-radius: 9px; object-fit: cover;
-  background: #eef0f7;
+/* 2026-11-14 晚：站长改口径「图片带上也行」，缩略图挂回左侧（46px，同早先撤掉前的尺寸）。
+   没图/挂不出来时由 app.js 兜首字占位（.fb-it-thumb-empty），不再出现破图图标。 */
+.fb-it-thumb {
+  flex: none; width: 46px; height: 46px; border-radius: 10px;
+  object-fit: cover; background: #f1f2f8; border: 1px solid var(--border);
+}
+.fb-it-thumb-empty {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; font-weight: 600; color: #8a84c9; background: #f6f2fd;
 }
 .fb-it-body { min-width: 0; flex: 1; overflow: hidden; }
 /* 必须是块级：inline 元素上的 overflow/text-overflow 不生效，长标题会直接压到右边的分类上 */
@@ -2356,7 +2463,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 
 @media (max-width: 640px) {
   .fb-box {
-    width: 100%; margin-top: 0; max-height: 86vh; border-radius: 18px 18px 0 0;
+    width: 100%; margin-top: 0; height: 86vh; height: 86dvh; border-radius: 18px 18px 0 0;
     position: absolute; bottom: 0; animation: fbUp .2s ease-out;
   }
   @keyframes fbUp { from { transform: translateY(24px); opacity: .6; } to { transform: none; opacity: 1; } }
@@ -2693,6 +2800,9 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 }
 .row-main { flex: 1; min-width: 0; }
 .row-title { font-size: 15px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+/* 标题文字单独包一层：.row-title 是 flex，纯文本匿名项不会收缩，
+   窄窗口下会整行溢出卡片；省略号必须加在能收缩的 span 上（2026-11-14） */
+.row-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-pin { position: static; font-size: 10px; padding: 2px 7px; }
 .row-intro {
   font-size: 13px; color: #6b7085; margin-top: 3px;
@@ -2720,7 +2830,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   .work-row { position: relative; padding: 10px; gap: 9px; }
   .row-thumb { width: 56px; height: 56px; }
   .row-main { min-width: 0; }
-  .row-title { display: block; font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .row-title { font-size: 14px; }
   .work-row .row-pin { position: static; }
   .row-intro { font-size: 12px; margin-top: 2px; }
   .row-meta { font-size: 11px; margin-top: 3px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -2902,6 +3012,8 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .pk-emoji { font-size: 15px; line-height: 1; }
 
 .rank-title { font-weight: 600; font-size: 15px; margin-bottom: 2px; }
+/* 名字后面的上架天数：小一号、颜色更轻，弱化处理（H5 榜单行同用一个类） */
+.rank-age { margin-left: 7px; font-size: 11.5px; font-weight: 400; color: #b3b8c9; white-space: nowrap; }
 /* 一句话简介：名字下一行小一号浅灰，与加粗名字区分（口径同 H5 榜单行，2026-11-12） */
 .rank-intro {
   font-size: 12px; color: #9aa0b4; margin-bottom: 4px;
@@ -2941,14 +3053,97 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   position: relative; background: #fff;
   border: 1px solid var(--border); border-radius: 16px; margin: 32px 0 24px;
   overflow: hidden;
+  /* 背景铺满整块卡头之后，压在皮肤上的文字配色由这几个变量决定；
+     浅底皮肤（纸韵 / 雾山 / 雪原 …）在下方用兄弟选择器换成深色字 */
+  --hero-ink: #fff;
+  --hero-ink-2: rgba(255, 255, 255, .84);
+  --hero-line: rgba(255, 255, 255, .34);
+  --hero-chip-bg: rgba(255, 255, 255, .16);
+  --hero-chip-bd: rgba(255, 255, 255, .32);
 }
+/* 背景铺满（2026-11-14 站长要求）：原来是顶部一条 84px 渐变带，下面是整块白，
+   头像骑在分界线上；现在让皮肤铺满整块卡头——头像、名字、meta 全部落在背景上。
+   做法是绝对定位成背景层 + 高度 100%，再由下面不透明的统计行 / 功能行 / tab 把下半截盖回白区，
+   所以不用改 HTML 结构，网页版和 SSR 版（/u/ 直出）一起生效 */
 .author-hero-band {
-  height: 84px;
   background: linear-gradient(135deg, #6d6df0 0%, #5b5bd6 55%, #7d5bd6 100%);
 }
-/* 渐变带上的星光点缀：纯 CSS 圆点，不引图片资源 */
-.author-hero-band::after {
-  content: ''; position: absolute; inset: 0; height: 84px;
+.author-hero-band.band-skin {
+  position: absolute; inset: 0 0 auto 0; height: 100%; z-index: 0;
+}
+
+/* ---- 主页星空（2026-11-14）----
+   渐变带上的动效皮肤，作者自己在「换背景」里挑，访客看到同一种。
+   纯 CSS 实现：不引图片、不用 canvas、不跑 JS 逐帧，切页面也不掉帧。
+   一个 .hs-* 类同时挂在两处——作者页的 .author-hero-band、弹层里的预览小条 .skin-thumb，
+   所以加一种星空只改这一块。默认 meteor（流星）。 */
+.band-skin, .skin-thumb { position: relative; overflow: hidden; }
+.band-skin::before, .band-skin::after,
+.skin-thumb::before, .skin-thumb::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+}
+.bs-m { display: none; }
+@keyframes hsTwinkle { 0%, 100% { opacity: .32 } 50% { opacity: 1 } }
+@keyframes hsShoot {
+  /* 用 left/top 而不是 translate：translate 写死像素的话，窄屏（64px 高）还没划完就被裁掉了 */
+  0% { left: -170px; top: 2px; opacity: 0 }
+  4% { opacity: 1 }
+  38% { left: 100%; top: 52px; opacity: .95 }
+  42%, 100% { left: 106%; top: 58px; opacity: 0 }
+}
+@keyframes hsDrift { 0% { transform: translate3d(-6%, 0, 0) } 100% { transform: translate3d(6%, 0, 0) } }
+@keyframes hsAurora {
+  0% { transform: translate3d(-4%, 0, 0) scaleY(1) }
+  50% { transform: translate3d(0, 0, 0) scaleY(1.09) }
+  100% { transform: translate3d(4%, 0, 0) scaleY(1.02) }
+}
+@keyframes hsTrail { 0%, 100% { opacity: .42 } 50% { opacity: 1 } }
+
+/* 1 · 流星（默认）：两层星点错拍呼吸，两颗流星不定时划过 */
+.hs-meteor .bs-m {
+  display: block; position: absolute; width: 150px; height: 2px; border-radius: 2px; opacity: 0;
+  transform: rotate(14deg);
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.75) 55%, #fff 96%);
+  filter: drop-shadow(0 0 5px rgba(255,255,255,.9));
+}
+.hs-meteor .bs-m1 { top: 2px; left: -170px; animation: hsShoot 9s linear infinite; }
+.hs-meteor .bs-m2 { top: 2px; left: -110px; width: 84px; animation: hsShoot 9s linear infinite 4.2s; }
+.hs-meteor::before {
+  background-image:
+    radial-gradient(circle 2px at 8% 26%, rgba(255,255,255,.8) 98%, transparent),
+    radial-gradient(circle 1.4px at 17% 64%, rgba(255,255,255,.5) 98%, transparent),
+    radial-gradient(circle 1.6px at 26% 34%, rgba(255,255,255,.6) 98%, transparent),
+    radial-gradient(circle 2.4px at 34% 74%, rgba(255,255,255,.45) 98%, transparent),
+    radial-gradient(circle 1.3px at 43% 18%, rgba(255,255,255,.6) 98%, transparent),
+    radial-gradient(circle 2px at 51% 56%, rgba(255,255,255,.65) 98%, transparent),
+    radial-gradient(circle 1.5px at 58% 30%, rgba(255,255,255,.45) 98%, transparent),
+    radial-gradient(circle 2.2px at 66% 68%, rgba(255,255,255,.6) 98%, transparent),
+    radial-gradient(circle 1.4px at 73% 22%, rgba(255,255,255,.5) 98%, transparent),
+    radial-gradient(circle 1.8px at 81% 52%, rgba(255,255,255,.55) 98%, transparent),
+    radial-gradient(circle 2.4px at 88% 32%, rgba(255,255,255,.6) 98%, transparent),
+    radial-gradient(circle 1.4px at 95% 70%, rgba(255,255,255,.45) 98%, transparent);
+  animation: hsTwinkle 5.4s ease-in-out infinite;
+}
+.hs-meteor::after {
+  background-image:
+    radial-gradient(circle 1.6px at 11% 72%, rgba(255,255,255,.5) 98%, transparent),
+    radial-gradient(circle 2.2px at 22% 18%, rgba(255,255,255,.55) 98%, transparent),
+    radial-gradient(circle 1.3px at 31% 48%, rgba(255,255,255,.4) 98%, transparent),
+    radial-gradient(circle 1.8px at 39% 84%, rgba(255,255,255,.5) 98%, transparent),
+    radial-gradient(circle 2.6px at 48% 36%, rgba(255,255,255,.6) 98%, transparent),
+    radial-gradient(circle 1.4px at 57% 66%, rgba(255,255,255,.42) 98%, transparent),
+    radial-gradient(circle 1.9px at 69% 14%, rgba(255,255,255,.55) 98%, transparent),
+    radial-gradient(circle 1.5px at 78% 76%, rgba(255,255,255,.45) 98%, transparent),
+    radial-gradient(circle 2.3px at 86% 58%, rgba(255,255,255,.5) 98%, transparent),
+    radial-gradient(circle 1.6px at 93% 26%, rgba(255,255,255,.42) 98%, transparent);
+  animation: hsTwinkle 7.8s ease-in-out infinite .9s;
+}
+
+/* 1/2/4 号共用原来那条紫渐变（带子上本来就是它，缩略图也要有）*/
+.hs-meteor, .hs-dots, .hs-aurora { background: linear-gradient(135deg, #6d6df0 0%, #5b5bd6 55%, #7d5bd6 100%); }
+
+/* 2 · 星点（原版）：静止小圆点，最省电的一种 */
+.hs-dots::after {
   background-image:
     radial-gradient(circle 2.5px at 12% 30%, rgba(255,255,255,.55) 98%, transparent),
     radial-gradient(circle 1.5px at 28% 68%, rgba(255,255,255,.4) 98%, transparent),
@@ -2956,11 +3151,478 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
     radial-gradient(circle 1.5px at 63% 62%, rgba(255,255,255,.35) 98%, transparent),
     radial-gradient(circle 2.5px at 78% 30%, rgba(255,255,255,.5) 98%, transparent),
     radial-gradient(circle 1.5px at 90% 66%, rgba(255,255,255,.4) 98%, transparent);
-  pointer-events: none;
 }
+
+/* 3 · 银河：深紫夜空 + 一条斜着的银河带 + 两团星云，整层极慢地左右漂 */
+.hs-galaxy { background: radial-gradient(130% 200% at 12% 40%, #3b2a83 0%, #241a5e 48%, #170f3c 100%); }
+.hs-galaxy::before {
+  background-image:
+    linear-gradient(112deg, rgba(255,255,255,0) 26%, rgba(186,166,255,.34) 44%, rgba(255,255,255,.26) 50%, rgba(186,166,255,.34) 56%, rgba(255,255,255,0) 74%),
+    radial-gradient(ellipse 26% 90% at 20% 62%, rgba(150,110,255,.55) 0%, rgba(150,110,255,0) 72%),
+    radial-gradient(ellipse 22% 80% at 80% 26%, rgba(80,180,255,.42) 0%, rgba(80,180,255,0) 72%);
+  filter: blur(4px);
+  animation: hsDrift 24s ease-in-out infinite alternate;
+}
+.hs-galaxy::after {
+  background-image:
+    radial-gradient(circle 1.6px at 5% 30%, #fff 98%, transparent),
+    radial-gradient(circle 2.2px at 12% 66%, rgba(255,255,255,.85) 98%, transparent),
+    radial-gradient(circle 1.2px at 19% 22%, rgba(255,255,255,.7) 98%, transparent),
+    radial-gradient(circle 1.8px at 26% 82%, rgba(255,255,255,.8) 98%, transparent),
+    radial-gradient(circle 2.4px at 33% 40%, #fff 98%, transparent),
+    radial-gradient(circle 1.3px at 40% 14%, rgba(255,255,255,.66) 98%, transparent),
+    radial-gradient(circle 1.7px at 47% 60%, rgba(255,255,255,.8) 98%, transparent),
+    radial-gradient(circle 1.2px at 54% 34%, rgba(255,255,255,.6) 98%, transparent),
+    radial-gradient(circle 2px at 61% 78%, #fff 98%, transparent),
+    radial-gradient(circle 1.4px at 68% 26%, rgba(255,255,255,.75) 98%, transparent),
+    radial-gradient(circle 1.9px at 75% 58%, rgba(255,255,255,.85) 98%, transparent),
+    radial-gradient(circle 1.2px at 82% 20%, rgba(255,255,255,.6) 98%, transparent),
+    radial-gradient(circle 2.3px at 88% 74%, #fff 98%, transparent),
+    radial-gradient(circle 1.5px at 94% 42%, rgba(255,255,255,.8) 98%, transparent),
+    radial-gradient(circle 1.3px at 97% 16%, rgba(255,255,255,.65) 98%, transparent);
+  animation: hsTwinkle 6.6s ease-in-out infinite;
+}
+
+/* 4 · 极光：三道近竖直的青绿/蓝/紫光帘，往下淡出，整层左右轻微游动（像天上挂着的帘子） */
+.hs-aurora::before {
+  background-image:
+    linear-gradient(96deg, rgba(120,255,214,0) 14%, rgba(120,255,214,.62) 19%, rgba(150,255,230,.3) 24%, rgba(120,255,214,0) 29%),
+    linear-gradient(94deg, rgba(120,200,255,0) 40%, rgba(140,205,255,.5) 46%, rgba(120,200,255,0) 53%),
+    linear-gradient(98deg, rgba(205,150,255,0) 64%, rgba(215,160,255,.44) 71%, rgba(205,150,255,0) 79%);
+  filter: blur(4px);
+  -webkit-mask-image: linear-gradient(180deg, #000 6%, rgba(0,0,0,.35) 74%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 6%, rgba(0,0,0,.35) 74%, transparent 100%);
+  animation: hsAurora 14s ease-in-out infinite alternate;
+}
+.hs-aurora::after {
+  background-image:
+    radial-gradient(circle 1.8px at 9% 34%, rgba(255,255,255,.8) 98%, transparent),
+    radial-gradient(circle 1.3px at 21% 72%, rgba(255,255,255,.55) 98%, transparent),
+    radial-gradient(circle 2px at 34% 26%, rgba(255,255,255,.7) 98%, transparent),
+    radial-gradient(circle 1.4px at 45% 62%, rgba(255,255,255,.5) 98%, transparent),
+    radial-gradient(circle 1.7px at 57% 34%, rgba(255,255,255,.72) 98%, transparent),
+    radial-gradient(circle 1.3px at 68% 78%, rgba(255,255,255,.5) 98%, transparent),
+    radial-gradient(circle 2.1px at 79% 28%, rgba(255,255,255,.7) 98%, transparent),
+    radial-gradient(circle 1.4px at 89% 60%, rgba(255,255,255,.55) 98%, transparent);
+  animation: hsTwinkle 7s ease-in-out infinite;
+}
+
+/* 5 · 星轨：长曝光那味儿——以带子下方为圆心的一圈圈弧线，慢慢亮暗呼吸 */
+.hs-trail { background: radial-gradient(150% 240% at 50% 118%, #2b3070 0%, #1d1a52 46%, #140f39 100%); }
+.hs-trail::before {
+  background-image: repeating-radial-gradient(circle at 50% 122%,
+    rgba(255,255,255,0) 0 17px,
+    rgba(200,215,255,.30) 17px 18px,
+    rgba(255,255,255,0) 18px 36px);
+  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.9) 0%, rgba(0,0,0,.55) 62%, transparent 96%);
+  mask-image: linear-gradient(180deg, rgba(0,0,0,.9) 0%, rgba(0,0,0,.55) 62%, transparent 96%);
+  animation: hsTrail 16s ease-in-out infinite;
+}
+.hs-trail::after {
+  background-image:
+    radial-gradient(circle 1.6px at 9% 30%, #fff 98%, transparent),
+    radial-gradient(circle 1.3px at 24% 62%, rgba(255,255,255,.8) 98%, transparent),
+    radial-gradient(circle 1.9px at 38% 26%, #fff 98%, transparent),
+    radial-gradient(circle 1.3px at 53% 70%, rgba(255,255,255,.75) 98%, transparent),
+    radial-gradient(circle 1.6px at 67% 34%, #fff 98%, transparent),
+    radial-gradient(circle 1.3px at 82% 58%, rgba(255,255,255,.8) 98%, transparent),
+    radial-gradient(circle 1.8px at 93% 22%, #fff 98%, transparent);
+  animation: hsTwinkle 7.4s ease-in-out infinite 1.1s;
+}
+
+/* 6 · 深空：整条带压成深夜蓝紫，星更密、留一点上部星云的光 */
+.hs-deep { background: linear-gradient(135deg, #090f2c 0%, #131a44 52%, #241a4c 100%); }
+.hs-deep::before {
+  background-image:
+    radial-gradient(circle 1.5px at 6% 22%, #fff 98%, transparent),
+    radial-gradient(circle 2px at 13% 62%, rgba(255,255,255,.85) 98%, transparent),
+    radial-gradient(circle 1.2px at 20% 34%, rgba(255,255,255,.7) 98%, transparent),
+    radial-gradient(circle 1.7px at 27% 78%, rgba(255,255,255,.8) 98%, transparent),
+    radial-gradient(circle 2.2px at 34% 20%, #fff 98%, transparent),
+    radial-gradient(circle 1.3px at 41% 56%, rgba(255,255,255,.7) 98%, transparent),
+    radial-gradient(circle 1.8px at 48% 36%, rgba(255,255,255,.85) 98%, transparent),
+    radial-gradient(circle 1.2px at 55% 74%, rgba(255,255,255,.65) 98%, transparent),
+    radial-gradient(circle 2.1px at 62% 26%, #fff 98%, transparent),
+    radial-gradient(circle 1.4px at 69% 62%, rgba(255,255,255,.75) 98%, transparent),
+    radial-gradient(circle 1.8px at 76% 30%, rgba(255,255,255,.85) 98%, transparent),
+    radial-gradient(circle 1.2px at 83% 72%, rgba(255,255,255,.65) 98%, transparent),
+    radial-gradient(circle 2.3px at 90% 38%, #fff 98%, transparent),
+    radial-gradient(circle 1.5px at 96% 66%, rgba(255,255,255,.75) 98%, transparent);
+  animation: hsTwinkle 5.8s ease-in-out infinite;
+}
+.hs-deep::after {
+  background-image:
+    radial-gradient(ellipse 60% 120% at 78% 8%, rgba(126,110,255,.5) 0%, rgba(126,110,255,0) 72%),
+    radial-gradient(ellipse 40% 90% at 16% 90%, rgba(90,160,255,.32) 0%, rgba(90,160,255,0) 70%);
+  animation: hsTwinkle 9s ease-in-out infinite .6s;
+}
+
+
+/* ---- 非星空的一组（2026-11-14 晚）----
+   站长说「不一定是星空」，于是补六种别的气质：晨光 / 雨幕 / 霓虹 / 海面 / 纸韵 / 沙丘。
+   跟星空那六种一样是纯 CSS，一个 .hs-* 类同时管作者页带子和弹层缩略图。 */
+
+/* 7 · 晨光：紫夜到金橙的过渡，右下角一轮将出的太阳，两条淡云慢慢漂 */
+.hs-dawn { background: linear-gradient(118deg, #2b2352 0%, #5d3a78 24%, #a95a78 50%, #e08a6e 74%, #ffc98d 100%); }
+.hs-dawn::before {
+  background-image:
+    radial-gradient(circle 58px at 79% 84%, rgba(255,246,216,.98) 0%, rgba(255,214,158,.72) 40%, rgba(255,160,140,0) 76%),
+    radial-gradient(ellipse 34% 100% at 79% 96%, rgba(255,225,180,.5) 0%, rgba(255,225,180,0) 72%),
+    radial-gradient(ellipse 60% 80% at 12% 0%, rgba(110,110,220,.38) 0%, rgba(110,110,220,0) 72%);
+  filter: blur(3px);
+  animation: hsGlow 9s ease-in-out infinite alternate;
+}
+.hs-dawn::after {
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,0) 48%, rgba(255,226,206,.30) 60%, rgba(255,255,255,0) 70%),
+    linear-gradient(180deg, rgba(255,255,255,0) 70%, rgba(255,198,178,.24) 80%, rgba(255,255,255,0) 92%);
+  animation: hsDrift 19s ease-in-out infinite alternate;
+}
+
+/* 8 · 雨幕：阴天灰蓝 + 两层斜雨往下落 + 地面一点湿光 */
+.hs-rain { background: linear-gradient(135deg, #46566e 0%, #37455c 52%, #29344a 100%); }
+.hs-rain::before {
+  background-image: repeating-linear-gradient(135deg,
+    rgba(210,232,255,0) 0 7px,
+    rgba(210,232,255,.28) 7px 8px,
+    rgba(210,232,255,0) 8px 16px);
+  animation: hsRain 1s linear infinite;
+}
+.hs-rain::after {
+  background-image:
+    radial-gradient(ellipse 60% 34% at 30% 108%, rgba(190,220,255,.30) 0%, rgba(190,220,255,0) 72%),
+    radial-gradient(ellipse 46% 26% at 78% 112%, rgba(190,220,255,.22) 0%, rgba(190,220,255,0) 72%),
+    repeating-linear-gradient(128deg,
+    rgba(230,244,255,0) 0 13px,
+    rgba(230,244,255,.18) 13px 14px,
+    rgba(230,244,255,0) 14px 28px);
+  animation: hsRain 1.7s linear infinite reverse;
+}
+
+/* 9 · 霓虹：深紫夜 + 青色网格 + 一道粉蓝地平线光，光是缓慢扫的 */
+.hs-neon {
+  background-image:
+    radial-gradient(ellipse 42% 130% at 6% 108%, rgba(60,240,255,.26) 0%, rgba(60,240,255,0) 72%),
+    radial-gradient(ellipse 38% 120% at 92% 0%, rgba(255,80,205,.24) 0%, rgba(255,80,205,0) 72%),
+    radial-gradient(120% 220% at 24% 108%, #33155e 0%, #190c34 54%, #0a0620 100%);
+}
+.hs-neon::before {
+  background-image:
+    repeating-linear-gradient(90deg, rgba(120,255,255,.18) 0 1px, rgba(120,255,255,0) 1px 26px),
+    repeating-linear-gradient(0deg, rgba(255,120,220,.14) 0 1px, rgba(255,120,220,0) 1px 17px);
+  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.22) 0%, rgba(0,0,0,.9) 64%, #000 100%);
+  mask-image: linear-gradient(180deg, rgba(0,0,0,.22) 0%, rgba(0,0,0,.9) 64%, #000 100%);
+}
+.hs-neon::after {
+  background-image: linear-gradient(180deg,
+    rgba(255,255,255,0) 60%,
+    rgba(255,80,210,.85) 61.2%,
+    rgba(180,180,255,.9) 62.4%,
+    rgba(120,255,255,.9) 63.4%,
+    rgba(255,255,255,0) 65%);
+  filter: drop-shadow(0 0 6px rgba(180,140,255,.9));
+  animation: hsScan 7s ease-in-out infinite alternate;
+}
+
+/* 10 · 海面：从深碧到浅青，横向波纹缓慢起伏，波光一闪一闪 */
+.hs-ocean { background: linear-gradient(160deg, #13405c 0%, #1a5f7f 40%, #2d90a6 74%, #5cc6c2 100%); }
+.hs-ocean::before {
+  background-image:
+    repeating-radial-gradient(circle at 50% 300%,
+    rgba(255,255,255,0) 0 21px,
+    rgba(255,255,255,.34) 21px 23px,
+    rgba(255,255,255,0) 23px 45px),
+    linear-gradient(180deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.02) 42%, rgba(255,255,255,.14) 100%);
+  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.15) 0%, rgba(0,0,0,.55) 46%, #000 100%);
+  mask-image: linear-gradient(180deg, rgba(0,0,0,.15) 0%, rgba(0,0,0,.55) 46%, #000 100%);
+  animation: hsWave 6.4s ease-in-out infinite alternate;
+}
+.hs-ocean::after {
+  background-image:
+    radial-gradient(circle 2.2px at 14% 76%, rgba(255,255,255,.9) 98%, transparent),
+    radial-gradient(circle 1.6px at 28% 64%, rgba(255,255,255,.7) 98%, transparent),
+    radial-gradient(circle 2.6px at 41% 82%, rgba(255,255,255,.85) 98%, transparent),
+    radial-gradient(circle 1.7px at 55% 68%, rgba(255,255,255,.7) 98%, transparent),
+    radial-gradient(circle 2.2px at 69% 86%, rgba(255,255,255,.8) 98%, transparent),
+    radial-gradient(circle 1.6px at 82% 70%, rgba(255,255,255,.65) 98%, transparent),
+    radial-gradient(circle 2.4px at 93% 84%, rgba(255,255,255,.8) 98%, transparent);
+  animation: hsTwinkle 4.4s ease-in-out infinite;
+}
+
+/* 11 · 纸韵：灰紫的旧纸，细纸纹 + 两团淡墨 + 一道钢笔横线 */
+.hs-paper { background: linear-gradient(148deg, #efe8d8 0%, #e2d8c4 46%, #cfc2a9 100%); }
+.hs-paper::before {
+  background-image:
+    repeating-linear-gradient(0deg, rgba(120,100,70,.06) 0 1px, rgba(120,100,70,0) 1px 4px),
+    repeating-linear-gradient(90deg, rgba(120,100,70,.045) 0 1px, rgba(120,100,70,0) 1px 5px),
+    radial-gradient(ellipse 22% 92% at 17% 44%, rgba(62,54,44,.30) 0%, rgba(62,54,44,0) 70%),
+    radial-gradient(ellipse 15% 70% at 63% 78%, rgba(72,60,48,.20) 0%, rgba(72,60,48,0) 72%);
+  filter: blur(1.2px);
+  animation: hsDrift 26s ease-in-out infinite alternate;
+}
+.hs-paper::after {
+  background-image:
+    radial-gradient(circle 7px at 85% 42%, rgba(184,62,50,.80) 0%, rgba(184,62,50,.5) 64%, rgba(184,62,50,0) 80%),
+    linear-gradient(90deg, rgba(70,60,48,0) 5%, rgba(70,60,48,.42) 10%, rgba(70,60,48,.42) 80%, rgba(70,60,48,0) 86%);
+  background-size: 100% 100%, 100% 1.4px;
+  background-position: 0 0, 0 68%;
+  background-repeat: no-repeat;
+}
+
+/* 12 · 沙丘：暮色里的沙丘脊线，一层层弧线 + 一颗低垂的落日 */
+.hs-dune { background: linear-gradient(168deg, #3a2b46 0%, #6f4757 26%, #b0755a 58%, #dba86e 86%, #f0cd93 100%); }
+.hs-dune::before {
+  /* 沙丘的脊线用一段内联 SVG 画（两条波状剪影），比纯渐变描得出形状；仍是不引外部资源的写法 */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 84' preserveAspectRatio='none'%3E%3Cpath d='M0,84 L0,52 C170,30 300,60 460,50 C630,39 740,12 890,28 C1030,42 1120,60 1200,52 L1200,84 Z' fill='%23c98d5e' fill-opacity='.55'/%3E%3Cpath d='M0,84 L0,68 C190,52 340,76 510,68 C690,59 810,40 950,54 C1075,66 1140,74 1200,68 L1200,84 Z' fill='%235a3346' fill-opacity='.82'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+}
+.hs-dune::after {
+  background-image:
+    radial-gradient(circle 22px at 86% 60%, rgba(255,246,208,.98) 0%, rgba(255,216,160,.68) 44%, rgba(255,200,150,0) 82%),
+    radial-gradient(ellipse 62% 92% at 86% 58%, rgba(255,196,146,.34) 0%, rgba(255,196,146,0) 76%);
+  animation: hsGlow 11s ease-in-out infinite alternate;
+}
+
+/* ---- 第三组「质感」（2026-11-14 深夜）：雾山 / 糖纸 / 胶片 / 雪原 / 樱花 / 雨窗 / 唱片 / 稿纸 ----
+   仍然是一个 .hs-* 类同时管带子和弹层缩略图。浅底那几种（雪原/樱花/稿纸/雾山）
+   注意别把白色调太满，否则「换背景」胶囊和头像白描边会糊在一起。 */
+
+/* 13 · 雾山：几层青灰远山叠在山脚，雾从下面漫上来、自己慢慢漂 */
+.hs-mist { background: linear-gradient(180deg, #e2eaf2 0%, #c6d3e0 44%, #a9b8c8 100%); }
+.hs-mist::before {
+  /* 三道山脊还是一次性画进内联 SVG：远淡近深，比纯渐变能描出起伏 */
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%201200%2084'%20preserveAspectRatio='none'%3E%3Cpath%20d='M0,84%20L0,46%20C120,22%20240,54%20360,40%20C470,28%20520,10%20640,26%20C760,42%20830,54%20940,36%20C1050,20%201120,40%201200,44%20L1200,84%20Z'%20fill='%238094a9'%20fill-opacity='.62'/%3E%3Cpath%20d='M0,84%20L0,62%20C150,48%20260,72%20400,60%20C540,48%20620,34%20760,50%20C900,66%201010,70%201200,56%20L1200,84%20Z'%20fill='%235a7187'%20fill-opacity='.8'/%3E%3Cpath%20d='M0,84%20L0,74%20C180,64%20300,80%20460,72%20C620,64%20700,56%20850,68%20C1000,80%201100,76%201200,70%20L1200,84%20Z'%20fill='%233a4e63'%20fill-opacity='.92'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+}
+.hs-mist::after {
+  background-image: linear-gradient(180deg, rgba(255,255,255,0) 40%, rgba(255,255,255,.40) 66%, rgba(255,255,255,.72) 100%);
+  animation: hsFog 17s ease-in-out infinite alternate;
+}
+
+/* 14 · 糖纸：粉紫黄三色底，一层小圆点像糖纸上的印花，一条斜白光慢慢扫 */
+.hs-candy { background: linear-gradient(125deg, #ffe1ee 0%, #f2daff 38%, #dbe9ff 64%, #fff5c9 100%); }
+.hs-candy::before {
+  background-image:
+    radial-gradient(circle at 6px 7px, rgba(255,255,255,.95) 0 2.6px, transparent 3px),
+    radial-gradient(circle at 19px 18px, rgba(255,164,203,.9) 0 3.4px, transparent 3.8px),
+    radial-gradient(circle at 31px 8px, rgba(255,222,116,.95) 0 2.2px, transparent 2.6px);
+  background-size: 36px 34px, 36px 34px, 36px 34px;
+  animation: hsBead 26s linear infinite alternate;
+}
+.hs-candy::after {
+  background-image: linear-gradient(104deg, rgba(255,255,255,0) 38%, rgba(255,255,255,.6) 48%, rgba(255,255,255,.16) 56%, rgba(255,255,255,0) 66%);
+  animation: hsSheen 13s ease-in-out infinite alternate;
+}
+
+/* 15 · 胶片：暖黑的片基，一层细颗粒，右侧一条橙红漏光、一道竖向划痕 */
+.hs-film { background: linear-gradient(140deg, #1d1813 0%, #2b2219 52%, #171210 100%); }
+.hs-film::before {
+  /* 颗粒用 feTurbulence 现算，先 saturate=0 去色，否则噪点是彩的、像电视雪花 */
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='140'%20height='140'%3E%3Cfilter%20id='n'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='0.55'%20numOctaves='3'/%3E%3CfeColorMatrix%20type='saturate'%20values='0'/%3E%3C/filter%3E%3Crect%20width='140'%20height='140'%20filter='url(%23n)'%20opacity='0.68'/%3E%3C/svg%3E");
+  background-size: 100px 100px;
+  opacity: .46;
+}
+.hs-film::after {
+  background-image:
+    linear-gradient(90deg, rgba(255,132,64,0) 60%, rgba(255,132,64,.42) 82%, rgba(255,190,112,.72) 94%, rgba(255,120,60,0) 100%),
+    linear-gradient(90deg, rgba(96,144,255,.28) 0%, rgba(96,144,255,0) 20%),
+    linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.52) 26%, rgba(255,255,255,.18) 62%, rgba(255,255,255,0) 100%);
+  background-size: 100% 100%, 100% 100%, 1.6px 100%;
+  background-position: 0 0, 0 0, 68% 0;
+  background-repeat: no-repeat;
+  animation: hsLeak 9s ease-in-out infinite alternate;
+}
+
+/* 16 · 雪原：冷白压到淡蓝，细雪粒一层层往下落，脚下一条雪坡反光 */
+.hs-snow { background: linear-gradient(180deg, #eef6ff 0%, #cfe3f8 46%, #a9c7e6 100%); }
+.hs-snow::before {
+  /* 别给雪点描边：一圈淡蓝灰在浅底上会变成"泡泡纸"。靠压深底色 + 白点柔光就够了 */
+  background-image:
+    radial-gradient(circle at 5px 6px, #fff 0 1.2px, rgba(255,255,255,.26) 1.9px, transparent 2.5px),
+    radial-gradient(circle at 14px 13px, #fff 0 .9px, rgba(255,255,255,.22) 1.5px, transparent 2px),
+    radial-gradient(circle at 22px 8px, #fff 0 1.5px, rgba(255,255,255,.3) 2.3px, transparent 3px);
+  background-size: 29px 29px, 29px 29px, 29px 29px;
+  animation: hsSnow 6.2s linear infinite;
+}
+.hs-snow::after {
+  background-image:
+    radial-gradient(ellipse 118% 72% at 24% 120%, rgba(255,255,255,.88) 0%, rgba(255,255,255,0) 62%),
+    radial-gradient(ellipse 96% 58% at 88% 124%, rgba(146,182,222,.5) 0%, rgba(146,182,222,0) 62%);
+}
+
+/* 17 · 樱花：淡粉底，一层椭圆花瓣斜着往左下飘，再叠一层更淡的远端花瓣 */
+.hs-sakura { background: linear-gradient(132deg, #fff5f9 0%, #ffe3ed 46%, #ffd3e4 100%); }
+.hs-sakura::before {
+  /* 椭圆点排得太整齐，像壁纸上的圆点。改用内联 SVG 画真花瓣：带旋转、有大有小 */
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20180%20130'%3E<path%20transform='translate(30,24)%20rotate(-22)%20scale(0.72)'%20d='M0,-8%20C7,-7%2010,-1%207,4%20C4,9%20-4,9%20-7,4%20C-10,-1%20-7,-7%200,-8%20Z'%20fill='%23f58bb2'%20opacity='.9'/><path%20transform='translate(96,12)%20rotate(40)%20scale(0.55)'%20d='M0,-8%20C7,-7%2010,-1%207,4%20C4,9%20-4,9%20-7,4%20C-10,-1%20-7,-7%200,-8%20Z'%20fill='%23ffb8d0'%20opacity='.78'/><path%20transform='translate(156,40)%20rotate(-6)%20scale(0.82)'%20d='M0,-8%20C7,-7%2010,-1%207,4%20C4,9%20-4,9%20-7,4%20C-10,-1%20-7,-7%200,-8%20Z'%20fill='%23f58bb2'%20opacity='.9'/><path%20transform='translate(58,74)%20rotate(62)%20scale(0.6)'%20d='M0,-8%20C7,-7%2010,-1%207,4%20C4,9%20-4,9%20-7,4%20C-10,-1%20-7,-7%200,-8%20Z'%20fill='%23ffb8d0'%20opacity='.78'/><path%20transform='translate(124,86)%20rotate(-40)%20scale(0.7)'%20d='M0,-8%20C7,-7%2010,-1%207,4%20C4,9%20-4,9%20-7,4%20C-10,-1%20-7,-7%200,-8%20Z'%20fill='%23f58bb2'%20opacity='.9'/><path%20transform='translate(176,104)%20rotate(14)%20scale(0.5)'%20d='M0,-8%20C7,-7%2010,-1%207,4%20C4,9%20-4,9%20-7,4%20C-10,-1%20-7,-7%200,-8%20Z'%20fill='%23ffb8d0'%20opacity='.78'/><path%20transform='translate(10,100)%20rotate(-64)%20scale(0.58)'%20d='M0,-8%20C7,-7%2010,-1%207,4%20C4,9%20-4,9%20-7,4%20C-10,-1%20-7,-7%200,-8%20Z'%20fill='%23f58bb2'%20opacity='.9'/>%3C/svg%3E");
+  background-size: 216px 156px;
+  background-repeat: repeat;
+  animation: hsPetal 9.5s linear infinite;
+}
+.hs-sakura::after {
+  background-image:
+    radial-gradient(ellipse 58% 104% at 84% 0%, rgba(255,255,255,.5) 0%, rgba(255,255,255,0) 72%),
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20180%20130'%3E<path%20transform='translate(26,28)%20rotate(-26)%20scale(1.0)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23f793b8'%20opacity='.92'/><path%20transform='translate(82,15)%20rotate(34)%20scale(0.78)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23ffb3cd'%20opacity='.8'/><path%20transform='translate(138,36)%20rotate(-10)%20scale(1.12)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23f793b8'%20opacity='.92'/><path%20transform='translate(52,76)%20rotate(58)%20scale(0.9)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23ffb3cd'%20opacity='.8'/><path%20transform='translate(110,88)%20rotate(-44)%20scale(1.0)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23f793b8'%20opacity='.92'/><path%20transform='translate(164,100)%20rotate(16)%20scale(0.72)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23ffb3cd'%20opacity='.8'/><path%20transform='translate(8,96)%20rotate(-68)%20scale(0.84)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23f793b8'%20opacity='.92'/><path%20transform='translate(94,116)%20rotate(104)%20scale(0.8)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23ffb3cd'%20opacity='.8'/>%3C/svg%3E");
+  background-size: 100% 100%, 268px 194px;
+  background-repeat: no-repeat, repeat;
+  opacity: .42;
+  animation: hsPetal 19s linear infinite reverse;
+}
+
+/* 18 · 雨窗：糊掉的窗外色，玻璃上一批大小不一的雨珠，几条水痕往下淌 */
+.hs-window { background: linear-gradient(156deg, #c6d5e2 0%, #a5b9ca 48%, #8da2b6 100%); }
+.hs-window::before {
+  /* 水珠要有体积：中心亮、下面渐淡、最外缘压一点灰蓝；纯白圆点看着像雪 */
+  background-image:
+    radial-gradient(circle 8px at 8% 44%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
+    radial-gradient(circle 5px at 17% 74%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
+    radial-gradient(circle 6.5px at 27% 26%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
+    radial-gradient(circle 4px at 36% 60%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
+    radial-gradient(circle 9px at 45% 84%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
+    radial-gradient(circle 5.5px at 54% 38%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
+    radial-gradient(circle 7px at 63% 68%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
+    radial-gradient(circle 4.5px at 72% 22%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
+    radial-gradient(circle 8px at 81% 52%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
+    radial-gradient(circle 5px at 90% 78%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
+    radial-gradient(circle 6px at 96% 34%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%);
+}
+.hs-window::after {
+  /* 四条粗细不等的水痕，底端亮一点（水积在那儿），整体极慢地往下淌 */
+  background-image:
+    linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.4) 62%, rgba(255,255,255,.86) 100%),
+    linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.34) 66%, rgba(255,255,255,.78) 100%),
+    linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.36) 70%, rgba(255,255,255,.74) 100%),
+    linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.3) 74%, rgba(255,255,255,.64) 100%);
+  background-size: 5px 90%, 3.6px 78%, 4.4px 86%, 2.8px 66%;
+  background-position: 22% -32%, 41% -20%, 64% -42%, 85% -24%;
+  background-repeat: no-repeat;
+  animation: hsDrip 11s ease-in-out infinite;
+}
+
+/* 19 · 唱片：深黑片基，一圈圈细纹，两块斜白反光极慢地亮暗（不整体旋转，带子会被切边） */
+.hs-vinyl { background: radial-gradient(circle at 78% 190%, #2a2a31 0%, #17171d 44%, #0a0a0e 100%); }
+.hs-vinyl::before {
+  background-image: repeating-radial-gradient(circle at 78% 190%,
+    rgba(255,255,255,0) 0 4px,
+    rgba(255,255,255,.085) 4px 5.1px,
+    rgba(255,255,255,0) 5.1px 7.6px);
+}
+.hs-vinyl::after {
+  background-image:
+    linear-gradient(108deg, rgba(255,255,255,0) 16%, rgba(255,255,255,.14) 28%, rgba(255,255,255,0) 40%),
+    linear-gradient(108deg, rgba(255,255,255,0) 58%, rgba(255,255,255,.10) 68%, rgba(255,255,255,0) 78%);
+  animation: hsGlow 10s ease-in-out infinite alternate;
+}
+
+/* 20 · 稿纸：浅绿底 + 十几行横线格 + 左侧一道红色边线 */
+.hs-grid { background: linear-gradient(180deg, #fafcf4 0%, #f1f8e8 100%); }
+.hs-grid::before {
+  background-image: repeating-linear-gradient(180deg,
+    rgba(122,164,130,0) 0 14px,
+    rgba(122,164,130,.42) 14px 15px);
+}
+.hs-grid::after {
+  background-image:
+    linear-gradient(90deg, rgba(212,122,122,0) 6.2%, rgba(214,126,126,.72) 6.5% 6.85%, rgba(212,122,122,0) 7.1%),
+    linear-gradient(180deg, rgba(150,180,150,.14) 0%, rgba(150,180,150,0) 30%);
+}
+
+@keyframes hsGlow { 0% { opacity: .84; transform: scale(1) } 100% { opacity: 1; transform: scale(1.05) } }
+@keyframes hsRain {
+  0% { background-position: 0 0 }
+  100% { background-position: -16px 22px }
+}
+@keyframes hsScan { 0% { opacity: .72 } 100% { opacity: 1 } }
+@keyframes hsWave {
+  0% { transform: translate3d(0, 2px, 0) }
+  100% { transform: translate3d(-8px, -2px, 0) }
+}
+@keyframes hsFog {
+  0% { opacity: .62 }
+  100% { opacity: 1 }
+}
+/* 平铺的花纹要挪 background-position，不能 translate，否则边上会露一条缝 */
+@keyframes hsBead {
+  0% { background-position: 0 0, 0 0, 0 0 }
+  100% { background-position: 17px 9px, -13px 11px, 9px -7px }
+}
+@keyframes hsSheen {
+  0% { transform: translate3d(-14%, 0, 0) }
+  100% { transform: translate3d(14%, 0, 0) }
+}
+@keyframes hsLeak { 0% { opacity: .74 } 100% { opacity: 1 } }
+@keyframes hsSnow {
+  0% { background-position: 0 0, 0 0, 0 0 }
+  100% { background-position: -6px 29px, 4px 29px, -2px 29px }
+}
+@keyframes hsPetal {
+  0% { background-position: 0 0, 0 0 }
+  100% { background-position: -20px 156px, 16px 156px }
+}
+@keyframes hsDrip {
+  0% { background-position: 22% -32%, 41% -20%, 64% -42%, 85% -24% }
+  100% { background-position: 22% 100%, 41% 100%, 64% 100%, 85% 100% }
+}
+
+/* ---- 铺满后的皮肤微调（2026-11-14）----
+   窄条时 36px 的波点只是点缀，铺到整块卡头就变成「包装纸」，字压在上面发花。
+   做法：作者页把糖纸的单元放大到 58px（点跟着变大、密度降下来）+ 整层降到 .8，
+   从「图案」退成「肌理」。弹层里的缩略图 .skin-thumb 不受影响，仍是原来那一版。
+   樱花同理：单元放到 240×180，让花瓣在大面积里散得开，不再挤成一列 */
+.author-hero-band.hs-candy::before {
+  background-size: 50px 47px, 50px 47px, 50px 47px;
+}
+/* 樱花铺满后反而要「小一点」：216px 的单元在 150px 高的卡头里只露半层，
+   花瓣被放大成一团粉斑。收到 190px，花瓣小而密，才像真在飘 */
+.author-hero-band.hs-sakura::before {
+  background-size: 190px 137px;
+}
+.author-hero-band.hs-sakura::after {
+  background-size: 100% 100%, 232px 168px;
+}
+/* 最关键的一步：纹样类整个「洗淡」——band 是背景层，opacity 降下来后卡片的白色底会透上来，
+   花纹从「图案」退成「纸的肌理」，名字压在哪儿都干净。文字在 band 之上，不受影响 */
+.author-hero-band.hs-candy { opacity: .78; }
+.author-hero-band.hs-sakura { opacity: .72; }
+
+/* 带子右上角的「换背景」：只有本人看得见，深色半透明胶囊压在皮肤上 */
+.author-band-skin {
+  position: absolute; top: 10px; right: 12px; z-index: 3;
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  font-size: 12px; font-family: inherit; line-height: 1;
+  padding: 5px 10px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.55); background: rgba(22,16,42,.44); color: #fff;
+  box-shadow: 0 1px 8px rgba(20,14,40,.28); backdrop-filter: blur(4px);
+  transition: background .15s, border-color .15s;
+}
+.author-band-skin:hover { background: rgba(22,16,42,.6); border-color: rgba(255,255,255,.86); }
+
+/* 换背景弹层：两组（星空 / 别样）预览小条，点了立刻换＋存 */
+.skin-modal { max-height: 88vh; overflow-y: auto; }
+.skin-group-t { margin: 16px 0 0; font-size: 12px; letter-spacing: .06em; color: var(--muted); }
+.skin-group:first-of-type .skin-group-t { margin-top: 14px; }
+.skin-group .skin-grid { margin-top: 8px; }
+.skin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+.skin-item {
+  display: block; width: 100%; padding: 7px; cursor: pointer; font-family: inherit;
+  border: 1px solid var(--border); border-radius: 12px; background: #fff;
+  transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.skin-item:hover { border-color: var(--primary); transform: translateY(-1px); }
+.skin-item.is-on { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(91,91,214,.16); }
+/* 缩略图不再自带底色：底色交给各自的 .hs-*，否则弹层里十二格全长一样 */
+.skin-thumb { display: block; height: 46px; border-radius: 8px; background-color: #5b5bd6; }
+.skin-name { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 7px; font-size: 12.5px; color: var(--muted); }
+.skin-item.is-on .skin-name { color: var(--primary); font-weight: 600; }
+.skin-modal-hint { margin: 0; font-size: 12.5px; color: var(--muted); }
+/* 背景铺满后卡头不再有分界线，头像改为从背景里起（原来是骑在 84px 带子下沿） */
 .author-hero-main {
   display: flex; align-items: flex-start; gap: 18px;
-  padding: 0 24px 18px; margin-top: -34px; position: relative;
+  padding: 22px 24px 20px; position: relative; z-index: 1;
 }
 .author-avatar {
   width: 84px; height: 84px; border-radius: 50%;
@@ -2970,7 +3632,48 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   overflow: hidden; flex: none;
 }
 .author-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.author-info { min-width: 0; padding-top: 40px; flex: 1; }
+.author-info { min-width: 0; padding-top: 44px; flex: 1; }
+
+/* ---- 卡头上的文字配色（背景铺满后新增）----
+   默认按深底皮肤走白字；浅底皮肤在下面整组换成深字，避免「雪原 / 纸韵」上出现白字看不清 */
+.author-hero .author-title { color: var(--hero-ink); text-shadow: 0 1px 10px rgba(10, 8, 28, .26); }
+.author-hero .author-meta { color: var(--hero-ink-2); }
+.author-hero .author-stats { color: var(--hero-ink-2); }
+.author-hero .author-meta .am-item + .am-item::before { color: var(--hero-line); }
+.author-hero .author-links .al-link {
+  color: var(--hero-ink); background: var(--hero-chip-bg); border-color: var(--hero-chip-bd);
+}
+.author-hero .author-links .al-link:hover {
+  color: var(--hero-ink); border-color: var(--hero-ink); background: rgba(255, 255, 255, .28);
+}
+.author-hero .author-nick-btn {
+  color: var(--hero-ink); background: var(--hero-chip-bg); border-color: var(--hero-chip-bd);
+}
+.author-hero .author-nick-btn:hover {
+  color: var(--hero-ink); border-color: var(--hero-ink); background: rgba(255, 255, 255, .28);
+}
+/* 「编辑主页」改成白玻璃：纯白实底压在花背景上像贴了张纸，半透明 + 模糊才融进去 */
+.author-hero .author-edit-btn {
+  background: rgba(255, 255, 255, .72); color: #2a2a3c;
+  border-color: rgba(255, 255, 255, .55);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 1px 8px rgba(28, 20, 56, .14);
+}
+.author-hero .author-edit-btn:hover {
+  background: rgba(255, 255, 255, .92); color: var(--primary);
+  border-color: rgba(255, 255, 255, .8);
+}
+/* 浅底皮肤：文字全部转深色（这些皮肤的底色亮，白字压不住） */
+:is(.hs-paper, .hs-mist, .hs-candy, .hs-snow, .hs-sakura, .hs-grid, .hs-window) ~ .author-hero-main {
+  --hero-ink: #232a36;
+  --hero-ink-2: rgba(35, 42, 54, .72);
+  --hero-line: rgba(35, 42, 54, .22);
+  --hero-chip-bg: rgba(255, 255, 255, .58);
+  --hero-chip-bd: rgba(35, 42, 54, .16);
+}
+:is(.hs-paper, .hs-mist, .hs-candy, .hs-snow, .hs-sakura, .hs-grid, .hs-window) ~ .author-hero-main .author-title {
+  text-shadow: 0 1px 10px rgba(255, 255, 255, .5);
+}
 .author-info h1, .author-info .author-title { font-size: 21px; margin-bottom: 4px; }
 .author-name-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .author-nick-btn {
@@ -3027,6 +3730,15 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .author-stat-grid {
   display: grid; grid-template-columns: repeat(6, 1fr);
   border-top: 1px solid var(--border); background: #fbfbfe;
+  /* 背景铺满后，这一行是不透明白底，正好把皮肤在卡头以下截断 */
+  position: relative; z-index: 1;
+}
+/* 卡头 → 统计行之间补一道 28px 白色渐隐：原来是一条硬边把彩色背景切成两截，
+   现在像画面自然淡出，背景再花也不会「贴纸贴上去」 */
+.author-stat-grid::before {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 28px;
+  background: linear-gradient(to top, rgba(251, 251, 254, .96), rgba(251, 251, 254, 0));
+  pointer-events: none;
 }
 .author-stat-grid .as-cell {
   display: flex; flex-direction: column; align-items: center; gap: 2px;
@@ -3057,6 +3769,8 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .author-acts {
   display: grid; grid-template-columns: repeat(4, 1fr);
   padding: 10px 6px 8px;
+  /* 同上：白底 + 抬到背景层之上，别让皮肤从统计行下面透上来 */
+  position: relative; z-index: 1; background: #fff;
 }
 .au-act {
   display: flex; flex-direction: column; align-items: center; gap: 7px;
@@ -3077,6 +3791,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   display: flex; align-items: stretch; gap: 4px;
   border-top: 1px solid var(--border);
   padding: 0 10px; background: #fff;
+  position: relative; z-index: 1;
 }
 .au-tab {
   position: relative; flex: 1 1 0; min-width: 0;
@@ -3096,11 +3811,12 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 #promoMine { scroll-margin-top: 84px; }
 
 @media (max-width: 640px) {
-  .author-hero-band { height: 64px; }
-  .author-hero-band::after { height: 64px; }
-  .author-hero-main { padding: 0 14px 14px; gap: 14px; margin-top: -28px; }
+  .author-band-skin { top: 7px; right: 9px; font-size: 11.5px; padding: 4px 9px; }
+  .skin-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .skin-thumb { height: 40px; }
+  .author-hero-main { padding: 18px 14px 16px; gap: 14px; }
   .author-avatar { width: 64px; height: 64px; font-size: 26px; }
-  .author-info { padding-top: 30px; }
+  .author-info { padding-top: 34px; }
   .author-info h1, .author-info .author-title { font-size: 18px; }
   .author-edit-btn { margin-top: 34px; padding: 7px 13px; font-size: 12.5px; }
   /* 手机六格改 3×2，分隔线跟着网格走：第 4 格起去掉左边线、补上边线 */
@@ -3222,14 +3938,93 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 }
 .author-del-btn:hover { color: var(--danger); }
 
-/* 「作品数据」入口侧栏（作者主页，仅本人可见）：左边作品流、右边一张入口卡。
+/* 「作品数据」入口侧栏（作者主页，仅本人可见）：左栏 = 档案卡 + 作品流，右边一张入口卡。
+   2026-11-14：档案卡从整页宽收窄成左栏宽，「作品数据」卡提到顶上和档案卡平齐——
+   不再压在作品流上面。右栏一张卡都没有时（访客 / 无勋章）has-side 摘掉，
+   档案卡回到整页宽，不留一列空白。
    卡片只做一件事：一键打开「作品数据」面板（面板是现成的弹层，不重复造页）。
    窄屏时收到作品上方——移动端没有右栏，放底部等于看不见 */
 .author-body {
-  display: grid; grid-template-columns: minmax(0, 1fr) 272px;
+  display: grid; grid-template-columns: minmax(0, 1fr);
   gap: 20px; align-items: start;
 }
-.author-side { position: sticky; top: 84px; }
+.author-body.has-side { grid-template-columns: minmax(0, 1fr) 272px; }
+.author-left { min-width: 0; }
+.author-side { position: sticky; top: 84px; margin-top: 32px; }   /* 32px = 档案卡的 margin-top，顶对齐 */
+
+/* 右栏加载占位（2026-11-14）：加载中先占住 272px 那一列，别让档案卡按整页宽先画一遍。
+   高度取右栏两张卡的大致位置（作品数据卡 + 勋章卡），回填时上下不跳。
+   纯灰块 + 一条循环的光带，比转圈安静；手机没有右栏，直接不显示 */
+.author-side-skel {
+  height: 132px; border-radius: 16px; overflow: hidden;
+  background: #f4f4fa; border: 1px solid #ebebf5; position: relative;
+}
+.author-side-skel::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.75) 50%, transparent 80%);
+  transform: translateX(-100%);
+  animation: asSkelSweep 1.15s ease-in-out infinite;
+}
+@keyframes asSkelSweep {
+  to { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .author-side-skel::after { animation: none; opacity: 0; }
+}
+@media (max-width: 900px) {
+  .author-side-skel { display: none !important; }   /* 手机上右栏在列表下面，占位块只会挡路 */
+}
+
+/* 「找找」补全提示条（2026-11-14）：本人主页作品 tab 顶部，grid 自动落左列第一格。
+   找找按标题/关键词/一句话定位/作品介绍对一句话问题，介绍和定位缺了就只剩标题能撞——
+   只提醒不拦发布，「补全」直达编辑器并聚焦缺的那一栏，保存后就地重算 */
+.author-find-strip {
+  background: #f7f7ff; border: 1px dashed #c9c9ee; border-radius: 14px;
+  padding: 12px 14px;
+}
+.afs-head { display: flex; align-items: flex-start; gap: 10px; }
+.afs-ico {
+  width: 34px; height: 34px; border-radius: 10px; flex: none;
+  background: #eeeefc; color: var(--primary);
+  display: flex; align-items: center; justify-content: center;
+}
+.afs-ico svg { width: 16px; height: 16px; display: block; }
+.afs-txt { min-width: 0; flex: 1; }
+.afs-txt b { display: block; font-size: 13.5px; line-height: 1.35; }
+.afs-txt span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+.afs-btn {
+  flex: none; font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  padding: 6px 14px; border-radius: 999px; border: 1px solid transparent;
+  background: linear-gradient(135deg, #6d6df0, #5b5bd6); color: #fff;
+  transition: filter .15s;
+}
+.afs-btn:hover { filter: brightness(1.08); }
+.afs-btn.is-mini { padding: 4px 12px; font-size: 12px; }
+.afs-rows { margin-top: 4px; }
+.afs-row {
+  display: flex; align-items: center; gap: 8px;
+  padding-top: 9px; margin-top: 9px; border-top: 1px dashed #e0e0f4;
+}
+.afs-work {
+  min-width: 0; flex: 1; font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.afs-chips { flex: none; display: inline-flex; gap: 5px; }
+.afs-chip {
+  font-style: normal; font-size: 11.5px; color: #b25e00;
+  background: #fff4e5; border: 1px solid #f0d9b5; border-radius: 999px; padding: 2px 8px;
+}
+@media (max-width: 640px) {
+  .author-find-strip { padding: 11px 12px; }
+  .afs-chips { display: none; }   /* 手机上一行放不下标题+胶囊+按钮：缺什么点进去编辑器会直接送到那一栏 */
+}
+/* 主页作品隐藏（2026-11-14）：本人看到的「已隐藏」条换成暖色，跟「找找」补全条一眼分开；
+   访客看到的是一句说明（不是空状态——数字还照实列在上面，两处得对得上） */
+.author-hide-strip { background: #fff9f0; border-color: #f0d3a8; }
+.author-hide-strip .afs-ico { background: #fdf0dc; color: #b4700f; }
+.author-hide-strip .afs-btn { background: linear-gradient(135deg, #f0a13c, #d98518); }
+.au-hidden-note p { margin: 0; }
+.au-hidden-note .au-hidden-sub { margin-top: 6px; font-size: 12.5px; color: var(--muted); }
 .creator-card {
   background: #fff; border: 1px solid var(--border); border-radius: 16px;
   padding: 16px;
@@ -3274,11 +4069,11 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .author-medals .author-badges { margin-top: 0; gap: 5px; }
 
 @media (max-width: 900px) {
-  /* 手机上先看列表（作品 / 收藏 / 喜欢），「作品数据」卡和勋章墙收到列表下面。
+  /* 手机上先看列表（作品 / 收藏 / 喜欢），档案卡全宽、「作品数据」卡和勋章墙收到列表下面。
      2026-11-14：加了 tab 之后不能再用 column-reverse——切完 tab 先撞上一张入口卡，
      列表反被推到第二屏，看着像 tab 没生效 */
   .author-body { display: flex; flex-direction: column; gap: 16px; }
-  .author-side { position: static; }
+  .author-side { position: static; margin-top: 0; }
 }
 
 /* 详情补充 */
@@ -3652,7 +4447,15 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   .hero-search .ico { font-size: 15px; }
   /* 手机端「问找找」跟着搜索胶囊走：同一行塞不下（胶囊满宽），就贴在它下面，
      收一点高度——hero 每多 30px，首屏就少露半张作品卡。 */
-  .hero-find { margin: -4px 0 10px; padding: 5px 12px 6px; font-size: 12px; }
+  .hero-find { margin: -4px 0 10px; padding: 5px 13px 6px; font-size: 12px; box-shadow: 0 1px 2px rgba(91, 76, 222, .05), 0 3px 12px rgba(91, 76, 222, .08); }
+  /* 「大家在找」手机端：跟着「问找找」后面一行，只留 4 个词——
+     第 5 个起藏掉，一行放得下，不把「本周精选」往下顶（hero 每多 30px 首屏就少露半张卡）。
+     桌面是 12 条两行（9 热 + 3 新带角标），手机首屏放不下就继续只露 4 个，角标照带。 */
+  .hero-hot { justify-content: flex-start; margin: 2px 0 12px; font-size: 11px; gap: 3px 5px;
+    /* 手机端胶囊 padding 是 2/3（共 5px），占位高度跟着改，别沿用桌面那版 */
+    min-height: calc(1.7em + 5px); }
+  .hero-hot-word { padding: 2px 8px 3px; }
+  .hero-hot-word:nth-child(n+5) { display: none; }
 }
 
 /* 窄屏（≤480）：一行实在挤不下，logo 只留图标隐藏文字（font-size:0），
@@ -5228,88 +6031,12 @@ a.board-row:hover:not(.is-me) { background: #f5f3ff; }
 
 
 /* ---------- 造梦酒肆：你有什么想法，让大家实现吗 ---------- */
-/* ===== 造梦酒馆：页头 + 大家最近在搜 ===== */
+/* ===== 造梦酒馆：页头 ===== */
 /* 导航里已有高亮的「造梦酒馆」，页面内不再放大标题，只留一段 padding 撑开间距 */
 #wishView { padding-top: 12px; }
 .bar-head { margin: 0 0 14px; }
 .bar-sub { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.6; }
 .bar-sub b { color: #2b2d3f; font-weight: 600; }
-
-.hot-board {
-  margin: 0 0 16px;
-  padding: 14px 16px 12px;
-  border: 1px solid #eae7f8;
-  border-radius: 16px;
-  background: linear-gradient(180deg, #fbfaff 0%, #ffffff 62%);
-}
-.hot-board-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
-.hot-board-title { font-size: 13.5px; font-weight: 600; color: #2b2d3f; }
-.hot-board-title .ico { color: var(--primary); margin-right: 3px; }
-.hot-board-note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--muted); }
-.hot-board-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px; }
-.hot-board-loading { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); padding: 6px 0; }
-.hot-item {
-  display: flex; align-items: center; gap: 8px; min-width: 0;
-  padding: 7px 8px; border: 0; border-radius: 9px;
-  background: transparent; cursor: pointer; text-align: left;
-  font: inherit; color: #34364a;
-}
-.hot-item:hover { background: #f4f1ff; }
-/* 收起时被藏起来的条目：`.hot-item` 自带 display:flex，会盖掉浏览器默认的 [hidden] */
-.hot-item[hidden] { display: none; }
-.hot-no { flex: none; width: 16px; font-size: 12px; font-weight: 700; color: #b3b0c6; text-align: center; }
-.hot-item.is-top .hot-no { color: var(--primary); }
-.hot-item:first-child .hot-no { color: #e0453a; }
-.hot-word { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hot-n { flex: none; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.hot-n i { font-style: normal; font-size: 10px; margin-left: 1px; opacity: .75; }
-.hot-badge {
-  flex: none; display: inline-block; margin-left: 4px; padding: 0 4px;
-  font-size: 9.5px; font-weight: 700; line-height: 1.5;
-  border-radius: 4px; background: #eaf7ef; color: #1f8a4c; vertical-align: 1px;
-}
-/* 「热」= 主榜（近 30 天人数前 8），仿「大家都在搜」的红描边小方标 */
-.hot-badge.is-hot {
-  background: #fff; color: #e0453a;
-  border: 1px solid #f5b0b5; padding: 0 3px; line-height: 1.4;
-}
-/* 「新」= 近 7 天热搜榜（后 4 条），仿蓝描边小方标 */
-.hot-badge.is-new7 {
-  background: #fff; color: #2f6fe4;
-  border: 1px solid #b3ccf7; padding: 0 3px; line-height: 1.4;
-}
-.hot-shuffle {
-  flex: none; border: 0; background: none; padding: 2px 0;
-  font: inherit; font-size: 11.5px; color: var(--muted); cursor: pointer;
-}
-.hot-shuffle i { font-style: normal; display: inline-block; margin-right: 1px; transition: transform .3s; }
-.hot-shuffle:hover { color: var(--primary); }
-.hot-shuffle:hover i { transform: rotate(180deg); }
-/* 「展开全部 / 收起」：横跨整行的细条，看着像列表还在往下延伸，而不是多挂一个按钮。
-   收起态默认只留一行——热搜是「顺手扫一眼」的版块，不该把提想法的输入框顶出首屏。 */
-.hot-more {
-  display: flex; align-items: center; justify-content: center; gap: 5px;
-  width: 100%; margin-top: 3px; padding: 6px 0 0;
-  border: 0; border-top: 1px solid #f1eefa; border-radius: 0;
-  background: none; font: inherit; font-size: 11.5px; color: var(--muted); cursor: pointer;
-}
-.hot-more:hover { color: var(--primary); }
-/* 条数不够一屏 / 还在加载时整条收掉：display:flex 会盖掉 [hidden]，得显式写一句 */
-.hot-more[hidden] { display: none; }
-.hot-more-caret {
-  width: 5px; height: 5px; margin-top: -3px;
-  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
-  transform: rotate(45deg); transition: transform .18s, margin-top .18s;
-}
-.hot-board.is-open .hot-more-caret { margin-top: 2px; transform: rotate(-135deg); }
-/* PC 端压扁：5 列 × 2 行，整块只占两行高，不跟发想法的输入框抢视线 */
-@media (min-width: 900px) {
-  .hot-board { margin-bottom: 12px; padding: 10px 16px 8px; }
-  .hot-board-head { margin-bottom: 5px; }
-  .hot-board-list { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px 6px; }
-  .hot-item { padding: 5px 6px; gap: 6px; }
-  .hot-item:hover { background: #f6f3ff; }
-}
 
 /* ===== 造梦酒馆：近7日热门 / 书架 ===== */
 /* 两块共用一套头（左标题 · 右出口），与「大家最近在搜」对齐；
@@ -5357,13 +6084,15 @@ a.board-row:hover:not(.is-me) { background: #f5f3ff; }
 }
 .bh-list > .bh-group:first-child { margin-top: 0; }
 .bh-group i { font-style: normal; font-weight: 400; color: #b3b0c6; font-variant-numeric: tabular-nums; }
+/* 缩略图只在真有封面时才出现（2026-11-14 起不再给没图的条目摆占位图标：
+   右栏一行就那么点宽，纯装饰的图标白吃一列，删掉后标题多露四五个字）。
+   所以这里不再有 .is-text 那种灰底图标位，别再往回加。 */
 .bh-thumb {
   flex: none; width: 44px; height: 44px; border-radius: 10px; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
   background: #f4f2ff; color: var(--primary);
 }
 .bh-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.bh-thumb.is-text { background: #f7f6fd; }
 .bh-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 /* 标签（作品/想要）和标题合并成一行（2026-11-12 站长定的）：标签不再独占一行 */
 .bh-title-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -5421,23 +6150,33 @@ a.board-row:hover:not(.is-me) { background: #f5f3ff; }
    吧台与散座合成一条主列：一个发布框（提想法 / 随便聊 切换），想法在前、闲聊在后。
    数据仍分表（想法池的「N 人想要」不被闲聊稀释），这里只合展示与输入。 */
 
-/* 统一发布器：一个输入窗口，两种心情。切换只换表单，不换位置 */
+/* 统一发布器（2026-11-14 起改叫「选个主题」）：第一行是主题 chip，不再有「提想法 / 随便聊」两个 tab。
+   选「找工具」落到想法池（能认领），其余主题落到散座；切换只换表单，不换位置 */
 .cmp-wrap {
   margin: 0 0 14px; padding: 12px 14px;
   background: #fff; border: 1px solid #eae7f8; border-radius: 16px;
 }
-.cmp-tabs { display: flex; align-items: center; gap: 4px; margin: 0 0 10px; }
-.cmp-tab {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 5px 13px; border: 0; border-radius: 999px; background: transparent;
-  font: inherit; font-size: 12.5px; color: #6a6f8a; cursor: pointer;
-  transition: background .16s, color .16s;
+.cmp-topics { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.cmp-topic-label { font-size: 11.5px; color: #a8a5bb; margin-right: 2px; }
+.cmp-topic {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 12px; border: 1px solid #e6e3f5; border-radius: 999px;
+  background: #fff; font: inherit; font-size: 12.5px; color: #5f6479; cursor: pointer;
+  transition: background .16s, color .16s, border-color .16s;
 }
-.cmp-tab .ico { font-size: 12px; }
-.cmp-tab:hover { color: var(--primary); }
-.cmp-tab.is-on { background: #f1eeff; color: var(--primary); font-weight: 600; }
+.cmp-topic:hover { border-color: #c9c2ff; color: var(--primary); }
+.cmp-topic.is-on { background: #f1eeff; border-color: #d9d2ff; color: var(--primary); font-weight: 600; }
+/* 自建主题：虚线框，跟固定四档区分开 */
+.cmp-topic-add { border-style: dashed; color: #9b98ad; }
+.cmp-topic-input {
+  width: 82px; padding: 4px 10px; border: 1px solid #d9d2ff; border-radius: 999px;
+  font: inherit; font-size: 12.5px; color: #2b2d3f; outline: none;
+}
+.cmp-topic-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(109, 86, 255, .08); }
 .cmp-note { margin-left: auto; font-size: 11px; color: #b3b0c6; }
 @media (max-width: 640px) { .cmp-note { display: none; } }
+/* 老的 tab 样式退役（2026-11-14 主题化后不再有这两个 tab），留一份兜底防缓存页面错版 */
+.cmp-tabs { display: none; }
 
 /* 两套表单收进同一张卡里：去掉各自原来的卡片壳，别出现卡中卡 */
 .cmp-wrap .chat-compose { margin: 0; padding: 0; border: 0; background: transparent; }
@@ -5522,8 +6261,6 @@ a.board-row:hover:not(.is-me) { background: #f5f3ff; }
   .bar-rail .bh-card { flex: none; min-width: 0; }
   .bar-rail .bh-thumb { width: 36px; height: 36px; border-radius: 8px; }
 
-  /* 主列约 790px：热搜板 5 列挤不下，收成 4 列 */
-  .bar-main .hot-board-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 /* 散座：一句话开聊。输入框不抢戏，重点是下面已经有人在说话 */
@@ -5742,29 +6479,45 @@ a.board-row:hover:not(.is-me) { background: #f5f3ff; }
 .bar-feed-head { display: flex; align-items: baseline; gap: 10px; margin: 24px 0 10px; }
 .bar-feed-note { font-size: 12.5px; color: var(--muted); }
 .bar-feed-count { margin-left: auto; font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.bar-row { padding: 11px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+/* 一行分两层（2026-11-14 改）：正文独占第一行整宽，作品胶囊/作者/时间/计数退到第二行。
+   原来是「标签 + 正文 + 作品胶囊 + 元信息」挤同一条 flex，长正文被两侧吃掉一半宽度，
+   两行还剩半句看不完、断行断在半个词上；分层后正文可用宽度从 ~60% 回到满宽，
+   第二行读起来也像论坛的「节点 · 作者 · 时间」那一条脚注。 */
+.bar-row { margin: 0 -16px; padding: 9px 16px 11px; border-bottom: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: background .12s; }
 .bar-row:last-child { border-bottom: 0; }
+.bar-row:hover { background: #f6f6fc; }
 .bar-row:hover .br-title { color: var(--primary); }
-.br-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.br-kind { flex: none; font-size: 11px; font-weight: 600; line-height: 1.7; padding: 0 7px; border-radius: 6px; background: #eef1ff; color: #4149c8; border: 1px solid #d8ddff; }
+.br-line { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.br-kind { flex: none; margin-top: 2px; font-size: 11px; font-weight: 600; line-height: 1.7; padding: 0 7px; border-radius: 6px; background: #eef1ff; color: #4149c8; border: 1px solid #d8ddff; }
 .br-kind-chat { background: #f1f1f4; color: #5a5f78; border-color: #e2e2ea; }
 /* 「安利」：带着作品的闲聊（2026-11-14 分流角标），青绿色跟话题的橙、闲聊的灰拉开 */
 .br-kind-rec { background: #e6f7f1; color: #128a63; border-color: #c4ecd9; }
 /* 「找工具」：带 #找工具 这类标签的帖子，蓝色跟「安利」的绿、话题的橙各自可辨 */
 .br-kind-seek { background: #e8f1ff; color: #2059c9; border-color: #cfe0ff; }
-.br-title { flex: 1 1 auto; min-width: 0; text-align: left; font-size: 14px; font-weight: 600; color: var(--text); background: none; border: none; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 「分享」与自建主题（2026-11-14 主题化）：分享用暖紫，自建主题统一走中性灰，别抢四档的主色 */
+.br-kind-share { background: #f6efff; color: #6c3fc4; border-color: #e6d8ff; }
+.br-kind-custom { background: #fff; color: #5f6479; border-color: #dedbe9; }
+.br-title { flex: 1 1 auto; min-width: 0; text-align: left; font-size: 14px; font-weight: 600; line-height: 1.55; color: var(--text); background: none; border: none; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* 闲聊正文（span 版）：想法标题仍单行截断，闲聊给两行——正文才是闲聊的主内容，
    塞不下的部分去帖子弹窗看全文（2026-11-13 弹窗版） */
 span.br-title { font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; overflow: hidden; word-break: break-word; }
 .bar-row.is-done .br-title { color: var(--muted); text-decoration: line-through; text-decoration-color: #bfe3cd; }
-.br-meta { flex: none; display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+/* 第二层：作者/时间靠左，计数与删除靠右，中间留给关联作品胶囊 */
+.br-sub { display: flex; align-items: center; gap: 10px; min-width: 0; margin-top: 5px; font-size: 12px; color: var(--muted); }
+.br-meta { flex: 1 1 auto; display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.br-acts { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; flex: none; }
 .br-stat { display: inline-flex; align-items: center; gap: 3px; font-variant-numeric: tabular-nums; }
 .br-del { flex: none; background: none; border: none; padding: 0 2px; font-size: 12px; color: #c4c7d6; cursor: pointer; }
 .br-del:hover { color: #e05b5b; }
 .br-chat-acts { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 @media (max-width: 700px) {
-  .br-meta .br-author, .br-meta .br-when { display: none; }
+  /* 手机上行更窄，第二层放不下「作者 + 时间 + 计数」三段：时间让位，作者留着——
+     一条闲聊是谁说的，比「几天前」更值得占这几十像素 */
+  .br-meta .br-when { display: none; }
+  .br-meta .br-author { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .wish-list.bar-feed { padding: 2px 12px; }
+  .bar-row { margin: 0 -12px; padding: 9px 12px 11px; }
+  .br-sub { margin-top: 4px; gap: 6px; }
 }
 
 /* ---------- 散座话题（正文里的 #话题，11-12；11-13 改单个 # 空格收尾） ----------
@@ -5901,7 +6654,7 @@ button.install-mini span { font-size: 11.5px; line-height: 1.6; color: var(--mut
 button.install-mini b { display: block; margin-top: 2px; color: var(--primary); font-weight: 600; }
 /* 小程序版弹窗：左边正方形小程序码（要被扫的，给足尺寸），右边步骤；窄屏上下堆叠 */
 /* 类名避开站内已有的 .mini-hero 小程序专栏 */
-.modal.modal-mini { max-width: 460px; }
+.modal.modal-mini { max-width: 520px; }
 .wxmini-lead {
   margin: 0 0 12px; padding: 10px 12px; border-radius: 10px;
   background: #f6f3ff; border: 1px solid #e6dfff;
@@ -5923,7 +6676,7 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
   font-size: 12px; line-height: 1.72; color: #4b6153;
 }
 .wxmini-note b { color: #2c7449; font-weight: 600; }
-@media (max-width: 460px) {
+@media (max-width: 520px) {
   .wxmini-hero { flex-direction: column; align-items: center; }
   .wxmini-steps { width: 100%; }
 }
@@ -6173,35 +6926,51 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .ck-mini a { margin-left: auto; flex: none; color: #5b5bd6; text-decoration: none; white-space: nowrap; font-weight: 600; }
 .ck-mini a:hover { text-decoration: underline; }
 
-/* 签到卡里的「看广告 +30」：网页播不了激励视频，这一条只做送去小程序的门。
-   和上面 7 天进度用同一套紫，但做成「有按钮的一行」，读起来是另一笔账而不是又一条规则。
-   文案两行封顶（标题 + 剩余次数），小屏按钮换到第二行，别把说明挤成三行断字。 */
+/* 签到卡里的「看视频领灯火」：仿小程序那张暖橙卡（2026-11-14 站长拍的版）——
+   标题行带「还剩 N 次」角标，中间三格价目（已领涂黑 / 下一个描橙边 / 最后一档上暖黄），
+   底下一根渐变大按钮。网页播不了激励视频，按钮点开仍是出码送去小程序那道门，
+   回来靠 /api/me/checkin 的 adReward.used 自动认账，额度规则全在服务端。 */
 .ck-ad {
-  display: flex; align-items: center; gap: 9px;
-  background: #f4f4ff; border: 1px solid #dcdcf8; border-radius: 10px;
-  padding: 8px 10px; margin: 9px 0 0;
+  background: linear-gradient(160deg, #fff7ec, #fffdf7);
+  border: 1px solid #ffe3c2; border-radius: 12px;
+  padding: 10px 12px 11px; margin: 9px 0 0;
 }
-.ck-ad-ico { flex: none; display: flex; color: #5b5bd6; }
-.ck-ad-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.ck-ad-main b { font-size: 12.5px; font-weight: 600; color: #4a4ac4; line-height: 1.45; }
-.ck-ad-main span { font-size: 11px; color: #7a7ac0; line-height: 1.5; }
+.ck-ad-head { display: flex; align-items: center; gap: 6px; }
+.ck-ad-ico { flex: none; display: flex; color: #f07f1f; }
+.ck-ad-head b { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: #45301c; }
+.ck-ad-badge {
+  flex: none; font-size: 10.5px; font-weight: 600; color: #c46a12;
+  background: #ffe9cf; border-radius: 999px; padding: 2px 8px;
+}
+.ck-ad-sub { font-size: 11px; color: #b08a63; line-height: 1.5; margin: 2px 0 8px; }
+.ck-ad-steps { display: flex; gap: 7px; margin: 0 0 9px; }
+.ck-ad-step {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; border-radius: 8px; padding: 5px 4px; line-height: 1.2;
+  background: #fff; border: 1px solid #f3e3cf;
+}
+.ck-ad-step b { font-size: 13px; font-weight: 700; color: #5a4632; }
+.ck-ad-step i { font-style: normal; font-size: 10px; color: #b99b77; }
+.ck-ad-step.is-done { background: #4a4038; border-color: #4a4038; }
+.ck-ad-step.is-done b { color: #fff; }
+.ck-ad-step.is-done i { color: #cdbba7; }
+.ck-ad-step.is-next { border-color: #f5a623; box-shadow: inset 0 0 0 1px #f5a623; }
+.ck-ad-step.is-next i { color: #c46a12; font-weight: 600; }
+.ck-ad-step.is-last { background: #fff4d8; border-color: #f6e3b0; }
+.ck-ad-step.is-last b { color: #d97a15; }
+.ck-ad-step.is-last i { color: #c99a4e; }
 .ck-ad-go {
-  flex: none; font-size: 12px; font-weight: 600; color: #fff; cursor: pointer;
-  background: var(--primary); border: none; border-radius: 999px; padding: 6px 12px;
-  white-space: nowrap; transition: background .15s, opacity .15s;
+  display: block; width: 100%; font-size: 13px; font-weight: 700; color: #fff; cursor: pointer;
+  background: linear-gradient(90deg, #ffab4a, #ff7d2e); border: none; border-radius: 999px;
+  padding: 9px 12px; transition: filter .15s, opacity .15s;
 }
-.ck-ad-go:hover:not(:disabled) { background: var(--primary-dark); }
-.ck-ad-go:disabled { background: #dfe1ec; color: var(--muted); cursor: default; }
-.ck-ad.is-done { background: #f7f7fb; border-color: var(--border); }
-.ck-ad.is-done .ck-ad-ico, .ck-ad.is-done .ck-ad-main b { color: var(--muted); }
-.ck-ad.is-done .ck-ad-main span { color: var(--muted); }
-@media (max-width: 640px) {
-  /* 手机上按钮挪到右下角单独一行：320px 宽时「每天 3 次 · 今天还剩 2 次，单日最多 100 盏」
-     和按钮并排会把说明压成三行断字，反而不如让按钮自己占一行 */
-  .ck-ad { flex-wrap: wrap; }
-  .ck-ad-main { flex: 1 1 calc(100% - 24px); }
-  .ck-ad-go { margin-left: auto; }
-}
+.ck-ad-go:hover:not(:disabled) { filter: brightness(1.05); }
+.ck-ad-go:disabled { background: #e8ddcf; color: #b3a48f; cursor: default; }
+.ck-ad-note { font-size: 10.5px; color: #c2a37c; text-align: center; line-height: 1.5; margin: 7px 0 0; }
+.ck-ad.is-done { background: #faf7f2; border-color: #ece4d8; }
+.ck-ad.is-done .ck-ad-head b { color: var(--muted); }
+.ck-ad.is-done .ck-ad-badge { color: #a89a86; background: #f0eae0; }
+.ck-ad.is-done .ck-ad-sub, .ck-ad.is-done .ck-ad-note { color: #b7ab9a; }
 /* 看广告引导弹窗（openCheckinAdQr）：一段说明 + 一张码，说明比推广补灯那张更短 */
 .ckad-lead { font-size: 12.5px; line-height: 1.7; color: var(--text); margin: 0 0 10px; }
 .ckad-state { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
@@ -6240,13 +7009,8 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .bar-stats .bs-done b { color: #1f8a4c; }
 .bar-stats .bs-claimed b { color: #a2600a; }
 /* 作者样式里的 display:flex 会盖掉 UA 的 [hidden]{display:none}，这里显式补回来 */
-.bar-stats[hidden], .wish-suggest[hidden], .wish-done-box[hidden] { display: none; }
+.bar-stats[hidden], .wish-done-box[hidden] { display: none; }
 
-.hot-zero {
-  flex: none; display: inline-block; padding: 0 4px; font-size: 9.5px;
-  line-height: 1.6; border-radius: 4px; background: #fff2e8; color: #c2410c; vertical-align: 1px;
-}
-.hot-item.is-zero .hot-word { color: #8a5a20; }
 
 .wish-compose-extra { margin: -4px 0 10px; }
 .wish-extra-toggle {
@@ -6289,22 +7053,6 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
   font-size: 11.5px; color: var(--primary); cursor: pointer;
 }
 .wish-open:hover { text-decoration: underline; }
-
-/* 冷启动补位：想法还少时，把「搜过但站内没有」的词摆出来 */
-.wish-suggest {
-  margin: 14px 0 4px; padding: 14px 16px; border: 1px dashed #ddd6ff;
-  border-radius: 14px; background: #fbfaff;
-}
-.ws-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-.ws-head h3 { margin: 0; font-size: 13.5px; font-weight: 600; color: #2b2d3f; }
-.ws-head span { font-size: 11.5px; color: var(--muted); }
-.ws-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.ws-chip {
-  padding: 7px 11px; border: 1px solid #e4e0fb; border-radius: 999px;
-  background: #fff; font: inherit; font-size: 12.5px; color: #34364a; cursor: pointer;
-}
-.ws-chip i { font-style: normal; color: var(--primary); font-size: 11px; }
-.ws-chip:hover { border-color: var(--primary); background: #f4f1ff; }
 
 /* 愿望成真：已落地成作品的想法 */
 .wish-done-box {
@@ -7353,6 +8101,10 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 /* 领奖台造型扁宽，按 1em 会显得比旁边图标小一圈，单独放一档 */
 .nav-btn .ico[data-ico="rank"] { width: 1.35em; height: 1.35em; vertical-align: -0.28em; }
 .page-title .ico[data-ico="rank"] { width: 1.15em; height: 1.15em; vertical-align: -0.22em; }
+/* 酒馆的啤酒杯剪影四周留白比领奖台多，1em 下比旁边两个图标小一圈，抬到 1.2em 齐平；
+   另外两个导航图标（领奖台彩色、小程序主紫）都有颜色，只它跟文字吃灰色会显得没做完，
+   这里显式给主紫（fill=currentColor，改 color 即可） */
+.nav-btn .ico[data-ico="wish"] { width: 1.2em; height: 1.2em; vertical-align: -0.22em; color: var(--primary); }
 /* 形态 SVG 图标：和旁边 emoji 视觉等大（emoji 天生占 1.1~1.2em） */
 .tico { font-size: 1.12em; }
 /* .ico svg 的百分比宽高在 inline-flex 嵌套里高度会塌陷（被压成横条），固定 em 尺寸 */
@@ -7402,6 +8154,8 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .fav-star.active, .row-fav:hover { color: var(--primary); }
 .row-fav.active { color: var(--primary); border-color: #b9b3f0; background: #f3f1ff; }
 .fav-star.active { background: rgba(255,255,255,.92); }
+/* 喜欢 tab 的心形按钮（复用 fav-star 圆底）：已赞态用点赞粉，别跟收藏的紫撞色 */
+.card-like.active { color: var(--danger); }
 .btn-fav { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
 /* 已收藏改回「浅紫」而不是实心紫（2026-11-13）：原来这里是实心紫，跟「打开网站」
    这颗唯一的实心主按钮撞色；现在和「已点赞」同一档语气——浅底 + 彩色图标，一屏只有一个实心。 */
@@ -7587,6 +8341,9 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 /* 列表视图的推荐行：与作品行同排版，只差推荐角标和缺图占位 */
 .promo-row { position: relative; border-color: #e2d7f5; background: #fffdfd; }
 .promo-row:hover { border-color: #c9b3ea; }
+/* 右上角有常显的「不想看」叉号（30px 圆钮），右侧留出它的位置，
+   别让标题省略号的收尾被叉号盖住（2026-11-14，与小程序 adcard-row 同口径） */
+.promo-row { padding-right: 44px; }
 
 /* 第一格的「不想看」叉号：和横幅广告同一套交互，按浅色原生卡配成白底小圆钮。
    z-index 要盖过铺满整卡的 .card-link（z-index:2），否则点叉号会变成点开作品。 */
@@ -8265,6 +9022,13 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .me-hero-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .me-hero-main b { font-size: 18px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .me-hero-main span { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 名字 + 身份标签（2026-11-14）：没设昵称时显示的就是账号名（和下面 @ 那行一样），
+   标一下「账号名」，用户才分得清这是显示名还是登录账号 */
+.me-hero-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.me-name-tag {
+  flex: none; padding: 0 5px; border: 1px solid rgba(138, 143, 163, .45); border-radius: 5px;
+  font-size: 10.5px; font-style: normal; line-height: 1.5; color: var(--muted);
+}
 /* 三栏数据条：对齐发现页 .disc-stats 的浅紫底圆角条 */
 .me-stats {
   margin-top: 14px; display: flex; align-items: stretch;
@@ -8554,6 +9318,8 @@ button.me-fav-empty { width: 100%; cursor: pointer; }
 .rk-main { flex: 1; min-width: 0; margin-left: 10px; }
 .rk-title-line { display: flex; align-items: center; gap: 5px; min-width: 0; }
 .rk-title { overflow: hidden; font-size: 14.5px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+/* H5 榜单行：上架天数比 PC 再小一号，跟着角标一起收着放 */
+.rk-title-line .rank-age { margin-left: 5px; font-size: 10.5px; flex: 0 0 auto; }
 .rk-new { flex: 0 0 auto; padding: 1px 5px; border-radius: 4px; background: #ffeee6; color: #e5751f; font-size: 9px; font-weight: 700; }
 .rk-sub { display: block; margin-top: 4px; color: #8a8fa3; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* 一句话简介：单独一行小一号浅灰，和加粗的名字区分开（2026-11-12 用户反馈） */
@@ -8742,6 +9508,14 @@ body.scroll-locked .site-bot { opacity: 0; pointer-events: none; }
   background: linear-gradient(100deg, #f6f5ff, #fff 72%);
 }
 .bot-panel > button.feedback-fab .ico { background: #eef0f5; color: #7a7f94; }
+
+/* ---------- 找我作品（2026-11-14）----------
+   面板里的第二扇门，指向第一屏那颗「说不清叫什么」的胶囊同一个弹层（/api/find）。
+   层级故意卡在中间：比形象「拿手事」低一档（那是它会什么），比装桌面/反馈亮一点（这是找人帮忙）。
+   只改字号和图标底色，背景仍是通用那条 #fafafd，别再加一层渐变——窗口里已经三条彩色行了。 */
+.bot-panel > button.bot-find { color: #4b45c6; border-color: #ddd9f7; }
+.bot-panel > button.bot-find .ico { background: #e6e3fb; color: #4b45c6; }
+.bot-panel > button.bot-find::after { color: #8f8ad8; opacity: .7; }
 
 /* ---------- 形象专属动作（2026-11-09）----------
    面板第一条，是这个形象的「拿手事」。比普通功能行更醒目一点，
@@ -9828,10 +10602,12 @@ html.dm-quiet .jar-fly-star { display: none; }
 }
 .bh-work:hover { background: #e6e1f7; color: var(--primary); }
 
-/* 散座时间线闲聊行里的关联作品胶囊：插在正文和计数之间，不抢正文的戏 */
+/* 散座时间线闲聊行里的关联作品胶囊：改到第二层单独摆（2026-11-14），
+   跟作者/时间同一行，不再跟正文抢宽度，所以放宽到 46% 让长标题也能露全 */
 .br-work {
-  flex: none;
-  max-width: 32%;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 46%;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -9848,9 +10624,21 @@ html.dm-quiet .jar-fly-star { display: none; }
 }
 .br-work:hover { background: #e6e1f7; color: var(--primary); }
 .br-work .ico { flex: none; }
-/* 窄屏：行内空间金贵，胶囊只留图标+截断的名字，作者/时间本来就藏了 */
+/* 作品名单独包一层才好截断：inline-flex 父级对裸文本节点不生效 ellipsis，长名会被硬切 */
+.br-work-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 想法行的状态胶囊（「✓ 已实现「…」」）也挤在同一层：给它跟作品胶囊同款的浅底，
+   否则第二层全是纯文字（状态 + 作者 + 时间）会糊成一片；长的只给一半宽度 */
+.br-sub .wish-status {
+  flex: 0 1 auto; min-width: 0; max-width: 46%;
+  padding: 1px 8px; border-radius: 999px; font-size: 11.5px; line-height: 1.6;
+  background: #f4f4f8; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.br-sub .wish-status.is-done { background: #eaf7f0; color: #1f8a4c; }
+.br-sub .wish-status.is-claimed { background: #fff5e6; color: #a2600a; }
+/* 窄屏：第二层只剩胶囊和计数，作者/时间本来就藏了，胶囊可以放宽一点 */
 @media (max-width: 640px) {
-  .br-work { max-width: 38%; font-size: 11px; }
+  .br-work { max-width: 46%; font-size: 11px; }
 }
 
 /* ---------- 发布成功弹窗（投稿即时上线后弹出） ----------
@@ -9871,6 +10659,17 @@ html.dm-quiet .jar-fly-star { display: none; }
 .pubok-sub b { color: var(--primary); font-size: 15px; }
 .pubok-sec { margin-top: 22px; }
 .pubok-sec-head { margin: 0 0 10px; font-size: 14px; color: var(--text); }
+/* 发布成功弹窗里的「找找自测」：一个淡紫胶囊按钮，跟 hero 那颗「让找找帮你翻」同一族 */
+.pubok-find .pubok-hint { margin: 0 0 12px; }
+.pubok-find-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 18px; border-radius: 999px; border: none; cursor: pointer;
+  font-size: 14px; font-weight: 600; font-family: inherit;
+  background: rgba(124, 92, 255, 0.12); color: var(--primary);
+  transition: background 0.15s ease;
+}
+.pubok-find-btn:hover { background: rgba(124, 92, 255, 0.2); }
+.pubok-find-btn .hf-star { font-size: 13px; }
 .pubok-composer {
   display: flex; gap: 10px; align-items: flex-start;
   padding: 12px; border: 1px solid var(--border); border-radius: 12px;
