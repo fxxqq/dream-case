@@ -19,6 +19,7 @@
 # 并且始终以「线上副本」为基底打补丁 —— 上传回去仍是 LF，不会把整站改成 CRLF。
 #
 # 用法：
+#   ./deploy-patch.sh plan                           # 机器可读的差异清单（publish.sh 的一键发版用）
 #   ./deploy-patch.sh check                          # 看默认文件集差在哪
 #   ./deploy-patch.sh check frontend/app.js          # 只看一个
 #   ./deploy-patch.sh ship frontend/app.js           # 交互选 hunk
@@ -55,7 +56,9 @@ if [ -z "${SERVER_IP:-}" ] || [ -z "${SERVER_USER:-}" ] || [ -z "${REMOTE_DIR:-}
   exit 1
 fi
 
-SSH="ssh -o BatchMode=yes -o LogLevel=ERROR $SERVER_USER@$SERVER_IP"
+# -n：ssh 别读本地 stdin。不加上这个，ssh 会把调用方的终端输入（甚至管道内容）
+# 当成要转发给远端的数据吞掉 —— 表现为「用管道喂 publish.sh 时按键全失效」。
+SSH="ssh -n -o BatchMode=yes -o LogLevel=ERROR $SERVER_USER@$SERVER_IP"
 SCP="scp -q -o BatchMode=yes -o LogLevel=ERROR"
 
 # 归一化行尾，比对与打补丁都在 LF 世界进行
@@ -82,6 +85,18 @@ hunk_summary() { # $1=diff文件
     /^\+/ && !/^\+\+\+/ { add++; if (first=="") { s=substr($0,2); gsub(/\t/," ",s); first=substr(s,1,58) } }
     /^-/  && !/^---/   { del++; if (first=="") { s=substr($0,2); gsub(/\t/," ",s); first=substr(s,1,58) } }
     END { if (n) printf "%d\t%d\t%d\t%s\n", n, add, del, first }
+  ' "$1"
+}
+
+# 一次 awk 出总结：hunk数 <TAB> +行 <TAB> -行 <TAB> 首处改动
+# （plan 每个文件要调一次，别用 grep×3 + cut + head 堆 fork —— msys 下一个 fork 上百毫秒）
+diffstat_one() { # $1=diff文件
+  awk '
+    /^@@/ { nh++; next }
+    /^\+\+\+/ || /^---/ { next }
+    /^\+/ { add++; if (nh<=1 && first=="") { s=substr($0,2); gsub(/\t/," ",s); first=substr(s,1,58) } }
+    /^-/  { del++; if (nh<=1 && first=="") { s=substr($0,2); gsub(/\t/," ",s); first=substr(s,1,58) } }
+    END { printf "%d\t%d\t%d\t%s\n", nh+0, add+0, del+0, first }
   ' "$1"
 }
 
@@ -116,10 +131,91 @@ mk_tmp() { local d=".deploy-patch.tmp.$$"; rm -rf "$d"; mkdir -p "$d"; echo "$d"
 
 usage() { sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 
+# ---------------------------------------------------------------- plan
+# 机器可读的差异清单，专给 publish.sh 的「一键发版」解析（人看还是用 check）。
+# 输出每行 6 列，TAB 分隔：
+#   STATUS <TAB> 文件 <TAB> hunk数 <TAB> +行 <TAB> -行 <TAB> 首处改动
+# STATUS：DIRTY 有待发 / SYNCED 已同步 / NOPULL 线上取不到 / NOLOCAL 本地没有
+#
+# 为什么先算 md5：check/ship 是逐个 scp 拉全量再 diff，5 个文件要 5 次往返；
+# 这里 1 次 ssh 拿到线上 md5，只有真不一样的文件才拉，无差异时几乎秒回。
+cmd_plan() {
+  local files=("$@"); ((${#files[@]})) || files=("${DEFAULT_FILES[@]}")
+  local tmp; tmp="$(mk_tmp)"; trap "rm -rf '$tmp'" EXIT
+
+  # 远端一次性回传每个文件的 md5（统一按去掉 \r 的内容算，和本地归一化口径一致）
+  local remote=""
+  remote=$($SSH "cd $REMOTE_DIR 2>/dev/null || exit 1
+for f in ${files[*]}; do
+  if [ -f \"\$f\" ]; then
+    printf 'OK %s %s\n' \"\$(tr -d '\\r' < \"\$f\" | md5sum | cut -d' ' -f1)\" \"\$f\"
+  else
+    printf 'MISSING - %s\n' \"\$f\"
+  fi
+done" 2>/dev/null)
+
+  if [ -z "$remote" ]; then
+    printf 'NOPULL\t-\t0\t0\t0\t连不上线上（网络 / SSH key / 路径）\n'
+    return 1
+  fi
+
+  local st sum f rsum lsum onraw on loc df nh add del first
+  declare -A RM=()
+  while read -r st sum f; do
+    [ -n "$f" ] && RM["$f"]="$st:$sum"
+  done <<< "$remote"
+
+  # 第一遍只判状态，把「内容确实不同」的文件收进候选
+  local -a cand=()
+  for f in "${files[@]}"; do
+    if [ ! -f "$f" ]; then
+      printf 'NOLOCAL\t%s\t0\t0\t0\t本地没有\n' "$f"; continue
+    fi
+    rsum="${RM[$f]:-}"
+    if [ -z "$rsum" ]; then
+      printf 'NOPULL\t%s\t0\t0\t0\t线上查不到\n' "$f"; continue
+    fi
+    if [ "${rsum%%:*}" = "MISSING" ]; then
+      printf 'NOPULL\t%s\t0\t0\t0\t线上没有这个文件\n' "$f"; continue
+    fi
+    lsum=$(tr -d '\r' < "$f" | md5sum | cut -d' ' -f1)
+    if [ "$lsum" = "${rsum#*:}" ]; then
+      printf 'SYNCED\t%s\t0\t0\t0\t\n' "$f"; continue
+    fi
+    cand+=("$f")
+  done
+  ((${#cand[@]})) || return 0
+
+  # 候选文件用一次 tar.gz 流拉回来：比逐个 scp 少 N-1 次往返。
+  # 必须压缩：明文 tar 是 3.4MB / 10 秒，gz 后 1MB / 2.6 秒（家宽上行是瓶颈）。
+  local raw="$tmp/raw"; mkdir -p "$raw"
+  for f in "${cand[@]}"; do
+    case "$f" in */*) mkdir -p "$raw/${f%/*}";; esac
+  done
+  $SSH "cd $REMOTE_DIR && tar czf - ${cand[*]}" 2>/dev/null | tar xzf - -C "$raw" 2>/dev/null || true
+
+  for f in "${cand[@]}"; do
+    onraw="$raw/$f"; on="$raw/.on"; loc="$raw/.loc"; df="$raw/.diff"
+    if [ ! -f "$onraw" ]; then
+      # tar 没带回来（远端无 tar / 中途断），退回逐个 scp
+      pull "$f" "$onraw" 2>/dev/null || { printf 'NOPULL\t%s\t0\t0\t0\t拉取失败\n' "$f"; continue; }
+    fi
+    # 直接用 --strip-trailing-cr 比，不再 tr 出两份临时文件（msys 下每个 fork 上百毫秒）。
+    # 差异只在行尾，hunk 划分跟 ship 的归一化比对完全一致。
+    diff -u --strip-trailing-cr "$onraw" "$f" > "$df"
+    IFS=$'\t' read -r nh add del first < <(diffstat_one "$df")
+    nh=${nh:-0}
+    if [ "$nh" -eq 0 ]; then
+      printf 'SYNCED\t%s\t0\t0\t0\t\n' "$f"; continue
+    fi
+    printf 'DIRTY\t%s\t%s\t%s\t%s\t%s\n' "$f" "$nh" "$add" "$del" "$first"
+  done
+}
+
 # ---------------------------------------------------------------- check
 cmd_check() {
   local files=("$@"); ((${#files[@]})) || files=("${DEFAULT_FILES[@]}")
-  local tmp; tmp="$(mk_tmp)"; trap "rm -rf '$tmp'" RETURN
+  local tmp; tmp="$(mk_tmp)"; trap "rm -rf '$tmp'" EXIT
   local synced=0 dirty=0 missing=0 f onraw on loc df
   printf '%-24s %8s %8s %6s %s\n' "文件" "线上" "本地" "hunk" "变化"
   for f in "${files[@]}"; do
@@ -131,14 +227,13 @@ cmd_check() {
     [[ -f "$f" ]] || { printf '%-24s %8s %8s %6s %s\n' "$f" "$(wc -l <"$onraw")" "—" "—" "本地没有"; continue; }
     norm "$onraw" > "$on"; norm "$f" > "$loc"
     diff -u "$on" "$loc" > "$df"
-    local nh add del
-    nh=$(grep -c '^@@' "$df" 2>/dev/null || true); nh=${nh:-0}
+    local nh add del first0
+    IFS=$'\t' read -r nh add del first0 < <(diffstat_one "$df")
+    nh=${nh:-0}
     if [[ "$nh" -eq 0 ]]; then
       printf '%-24s %8s %8s %6s %s\n' "$f" "$(wc -l <"$on")" "$(wc -l <"$loc")" "0" "已同步"
       synced=$((synced+1)); continue
     fi
-    add=$(grep -c '^+' "$df" || true); del=$(grep -c '^-' "$df" || true)
-    add=$((add-2)); del=$((del-2))   # 去掉 --- / +++ 两行头
     printf '%-24s %8s %8s %6s \033[33m+%s -%s\033[0m\n' "$f" "$(wc -l <"$on")" "$(wc -l <"$loc")" "$nh" "$add" "$del"
     hunk_summary "$df" | while IFS=$'\t' read -r n a d first; do
       printf '   #%-2s +%-4s -%-4s %s\n' "$n" "$a" "$d" "$first"
@@ -170,7 +265,7 @@ cmd_ship() {
   done
   ((${#files[@]})) || die "要指定文件，例如：ship frontend/app.js --hunks 1,3"
 
-  local tmp; tmp="$(mk_tmp)"; trap "rm -rf '$tmp'" RETURN
+  local tmp; tmp="$(mk_tmp)"; trap "rm -rf '$tmp'" EXIT
   local onraw on loc df sel patched eol
   local -a do_files=() do_stamp=()
   local need_restart=0
@@ -355,6 +450,7 @@ cmd_rollback() {
 # ---------------------------------------------------------------- main
 sub="${1:-}"; shift || true
 case "$sub" in
+  plan)     cmd_plan "$@";;
   check)    cmd_check "$@";;
   ship)     cmd_ship "$@";;
   backups)  cmd_backups "$@";;
