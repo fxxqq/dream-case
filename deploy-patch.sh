@@ -30,9 +30,6 @@
 #   ./deploy-patch.sh rollback frontend/app.js 20261114-163000
 set -uo pipefail
 
-SERVER_IP="${SERVER_IP:-47.95.66.103}"
-SERVER_USER="${SERVER_USER:-root}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/ai-works-site}"
 SITE_URL="${SITE_URL:-https://idea.v5pc.com}"
 PM2_APP="${PM2_APP:-ai-works}"
 KEEP_BAK="${KEEP_BAK:-10}"
@@ -40,14 +37,26 @@ KEEP_BAK="${KEEP_BAK:-10}"
 DEFAULT_FILES=(server.js frontend/app.js frontend/style.css frontend/index.html frontend/admin.html)
 
 cd "$(dirname "$0")" || exit 1
-SSH="ssh -o BatchMode=yes -o LogLevel=ERROR $SERVER_USER@$SERVER_IP"
-SCP="scp -q -o BatchMode=yes -o LogLevel=ERROR"
+
+# 线上连接信息不写进代码：从项目根的 .deploy.env 读取（该文件已 gitignore），
+# 也可以用环境变量传入。本仓库是公开的，真实 IP / SSH 用户 / 部署路径不该出现在提交里。
+[ -f .deploy.env ] && . ./.deploy.env
 
 c_ok()   { printf '\033[32m%s\033[0m\n' "$*"; }
 c_warn() { printf '\033[33m%s\033[0m\n' "$*"; }
 c_err()  { printf '\033[31m%s\033[0m\n' "$*"; }
 c_dim()  { printf '\033[2m%s\033[0m\n' "$*"; }
 die()    { c_err "✗ $*"; exit 1; }
+
+if [ -z "${SERVER_IP:-}" ] || [ -z "${SERVER_USER:-}" ] || [ -z "${REMOTE_DIR:-}" ]; then
+  c_err "✗ 缺少线上连接信息（SERVER_IP / SERVER_USER / REMOTE_DIR 有一项没给）"
+  echo "  把 .deploy.env.example 复制成 .deploy.env 填好即可；"
+  echo "  或临时用环境变量传入：SERVER_IP=... SERVER_USER=... REMOTE_DIR=... ./deploy-patch.sh check"
+  exit 1
+fi
+
+SSH="ssh -o BatchMode=yes -o LogLevel=ERROR $SERVER_USER@$SERVER_IP"
+SCP="scp -q -o BatchMode=yes -o LogLevel=ERROR"
 
 # 归一化行尾，比对与打补丁都在 LF 世界进行
 norm() { tr -d '\r' < "$1"; }
