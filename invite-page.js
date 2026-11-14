@@ -127,15 +127,17 @@ const ICON_SHARE = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" 
 
 /**
  * @param {object} o
- * @param {object} o.seo      seo 模块（用它的 esc / breadcrumbHtml / breadcrumbLd / SITE_NAME）
- * @param {string} o.base     站点根地址（由 seo.baseUrl(req) 生成，不写死域名）
- * @param {number} o.count    当前已收录的公开作品数
- * @param {number} o.authors  创作者数
- * @param {string[]} o.types  站内配置的作品形态
+ * @param {object} o.seo        seo 模块（用它的 esc / breadcrumbHtml / breadcrumbLd / SITE_NAME）
+ * @param {string} o.base       站点根地址（由 seo.baseUrl(req) 生成，不写死域名）
+ * @param {string} o.shareBase  海报固定印的正式站点根地址（本地预览也印线上域名，转发出去才打得开）
+ * @param {number} o.count      当前已收录的公开作品数
+ * @param {number} o.authors    创作者数
+ * @param {string[]} o.types    站内配置的作品形态
  */
 function render(o) {
   const seo = o.seo;
   const base = o.base;
+  const shareBase = String(o.shareBase || '').replace(/\/+$/, '');
   const count = Number(o.count) || 0;
   const authors = Number(o.authors) || 0;
   const types = (o.types || []).slice(0, 12);
@@ -162,7 +164,7 @@ function render(o) {
 
   const typeChips = types.map(t => `<span class="iv-type">${esc(t)}</span>`).join('');
 
-  const block = `<div id="seoContent" class="seo-wrap iv-wrap" data-count="${count}" data-authors="${authors}">
+  const block = `<div id="seoContent" class="seo-wrap iv-wrap" data-count="${count}" data-authors="${authors}" data-share-base="${esc(shareBase)}">
   ${STYLE}
   ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name: '邀请收录' }])}
 
@@ -176,7 +178,8 @@ function render(o) {
       <a class="iv-btn iv-btn-main" href="/" data-iv-submit>提交我的作品 ${ICON_SHARE}</a>
       <button type="button" class="iv-btn iv-btn-ghost" id="ivJumpPoster">生成邀请海报 ${ICON_DOWNLOAD}</button>
     </div>
-    <p class="iv-stat">目前已收录 <b>${count}</b> 件作品 · 来自 <b>${authors}</b> 位创作者，仍在持续增加</p>
+    <!-- 不写「N 位创作者」的数字：这个数只统计已投稿作者，对外容易被误读成站点注册账号总数 -->
+    <p class="iv-stat">目前已收录 <b>${count}</b> 件作品，独立开发者与创作者仍在陆续加入</p>
   </header>
 
   <!-- 海报工作区：页面内实时预览，不弹窗，扫一眼就知道转发出去是什么样 -->
@@ -184,12 +187,12 @@ function render(o) {
     <div class="iv-share">
       <div>
         <h2 id="ivPosterTitle">顺手把这张海报转给同好</h2>
-        <p>海报上会带上这页的二维码，朋友扫一下就能进来投稿。已登录时二维码会自动带上你的邀请身份，好友从这张海报进来注册，灯火会记到你名下。</p>
+        <p>海报上的二维码指向站内首页，朋友扫一下就能进站逛作品、直接点投稿。已登录时二维码会自动带上你的邀请身份，好友从这张海报进来注册，灯火会记到你名下。</p>
         <div class="iv-tpls" role="group" aria-label="选择海报配色">
           <span class="iv-tpls-label">配色</span>
-          <button type="button" class="iv-tpl" data-tpl="light" aria-pressed="true">浅色</button>
+          <button type="button" class="iv-tpl" data-tpl="grad" aria-pressed="true">渐变</button>
+          <button type="button" class="iv-tpl" data-tpl="light" aria-pressed="false">浅色</button>
           <button type="button" class="iv-tpl" data-tpl="dark" aria-pressed="false">深色</button>
-          <button type="button" class="iv-tpl" data-tpl="grad" aria-pressed="false">渐变</button>
         </div>
         <div class="iv-share-actions">
           <button type="button" class="iv-btn iv-btn-main" id="ivSave">${ICON_DOWNLOAD} 保存海报</button>
@@ -212,7 +215,7 @@ function render(o) {
   <!-- 收录范围：直接读后台配置的形态，后台改了这里跟着变 -->
   <section class="iv-section" aria-labelledby="ivScopeTitle">
     <h2 id="ivScopeTitle">什么能被收录</h2>
-    <p class="iv-sub">不用是「大项目」，一个解决自己问题的小工具也算。只要是你本人创作、或已获得授权，并且能给别人一个用得上的入口。<br />下面是站内归类用的作品形态，提交时选合适的就好。</p>
+    <p class="iv-sub">不用是「大项目」，一个先解决了自己问题的小工具，认真做完也算。只要是你本人创作（或已获授权），并且能给别人一个用得上的入口。<br />下面是站内归类用的作品形态，提交时选合适的就好。</p>
     <div class="iv-types">${typeChips || '<span class="iv-type">网站</span><span class="iv-type">小程序</span><span class="iv-type">智能体</span>'}</div>
   </section>
 

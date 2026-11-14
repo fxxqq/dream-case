@@ -1,26 +1,27 @@
 /* 造梦橱窗 Service Worker
  * 策略：
  *  - 页面导航（HTML）：网络优先，失败回退缓存，再失败回退 /offline.html
- *  - JS / CSS：网络优先（配合服务端 no-cache，保证发版后尽快拿到新代码），失败回退缓存
+ *  - JS / CSS：先用缓存立即返回、后台更新（stale-while-revalidate）。
+ *    页面里的 app.js / style.css 都带 ?v=<mtime>，发版后 URL 必然变化 → 天然拿新代码，
+ *    所以不必为了「及时生效」牺牲每次导航的 285K 流量（旧策略 networkFirst 就是这么亏的）。
  *  - 图标 / manifest 等静态资源：缓存优先
- *  - /uploads 图片：缓存优先 + 运行时缓存上限 120 张
+ *  - /uploads 图片、缩略图 /t/：缓存优先 + 运行时缓存上限 120 张
  *  - /api、/admin、跨域请求：完全不拦截
  * 发版时把 VERSION 常量 +1，旧缓存会在 activate 阶段自动清理。
  */
-const VERSION = 'v78';
+const VERSION = 'v89';   // v89: 注册后按 IP 自助认领弹窗（ipClaimModal + /api/claim/ip-*）
 const SHELL_CACHE = `shell-${VERSION}`;
 const STATIC_CACHE = `static-${VERSION}`;
 const IMG_CACHE = `img-${VERSION}`;
 const OFFLINE_URL = '/offline.html';
 const IMG_CACHE_MAX = 120;
+const STATIC_CACHE_MAX = 40;   // 带版本号的 js/css 每发一版都会留下一份，别让它无限涨
 
-// 预缓存：离线兜底所需的最小集合（'/' 仅作离线兜底，线上仍以网络为准）
+// 预缓存：只放「离线兜底 + 无版本号」的资源。
+// 以前把 /app.js /style.css 也列在这里，但页面真正请求的是 /app.js?v=xxx，
+// 缓存键不同 → 安装时白白多下 300K，还一份都用不上。
 const PRECACHE_URLS = [
   OFFLINE_URL,
-  '/style.css',
-  '/app.js',
-  '/icons.js',
-  '/vendor/qrcode.js',
   '/favicon.svg',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
@@ -83,11 +84,14 @@ async function cacheFirst(request, cacheName) {
   return fresh;
 }
 
-async function staleWhileRevalidate(request, cacheName) {
+async function staleWhileRevalidate(request, cacheName, trimMax) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
   const network = fetch(request).then(res => {
-    if (res && res.ok) cache.put(request, res.clone());
+    if (res && res.ok) {
+      cache.put(request, res.clone());
+      if (trimMax) trimCache(cacheName, trimMax);
+    }
     return res;
   }).catch(() => undefined);
   return cached || (await network) || Response.error();
@@ -108,14 +112,14 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // JS / CSS：网络优先，保证代码更新及时生效
+  // JS / CSS：缓存优先 + 后台更新。版本号在 URL 上，发版不会拿到旧代码
   if (/\.(js|css)(\?|$)/.test(url.pathname + url.search)) {
-    event.respondWith(networkFirst(request, STATIC_CACHE));
+    event.respondWith(staleWhileRevalidate(request, STATIC_CACHE, STATIC_CACHE_MAX));
     return;
   }
 
-  // 用户上传图片：缓存优先（离线也能看到看过的作品图）
-  if (url.pathname.startsWith('/uploads/')) {
+  // 用户上传图片、缩略图：缓存优先（离线也能看到看过的作品图）
+  if (url.pathname.startsWith('/uploads/') || url.pathname.startsWith('/t/')) {
     event.respondWith(cacheFirst(request, IMG_CACHE));
     return;
   }

@@ -7,17 +7,18 @@
   const W = 1080, H = 1350, PAD = 72;
   const FONT = '"PingFang SC","Microsoft YaHei","Hiragino Sans GB","Noto Sans SC",system-ui,sans-serif';
 
-  // 三套配色：浅色（默认）/ 深色 / 品牌渐变
+  // 三套配色：浅色（默认，放第一个）/ 品牌渐变 / 深色
   const TPLS = {
     light: {
       cardName: '浅色',
-      bg: ['#ffffff', '#f5f4ff', '#ecebff'],
+      // 底色不能贴纯白：作品截图多是白底页面，底色带一点薰衣草紫调，截图才沉得下去
+      bg: ['#fdfcff', '#f8f6ff', '#f0ecff'],
       text: '#181728', sub: '#6d6c88',
-      border: 'rgba(24,23,40,.08)',
+      border: 'rgba(24,23,40,.15)',
       pillBg: 'rgba(91,91,214,.09)', pillText: '#4a4ac4',
-      glow1: 'rgba(124,124,240,.20)', glow2: 'rgba(236,120,180,.14)',
-      shadow: 'rgba(38,34,92,.16)',
-      qrPad: '#ffffff', qrBorder: 'rgba(24,23,40,.10)'
+      glow1: 'rgba(124,124,240,.20)', glow2: 'rgba(91,91,214,.12)',
+      shadow: 'rgba(38,34,92,.24)',
+      qrPad: '#ffffff', qrBorder: 'rgba(24,23,40,.14)'
     },
     dark: {
       cardName: '深色',
@@ -267,7 +268,7 @@
     // 作者
     ctx.fillStyle = t.sub;
     ctx.font = `400 28px ${FONT}`;
-    const authorText = `${work.verified ? '✔ ' : ''}@${work.authorName || work.author || '匿名'}${work.category ? ' · ' + work.category : ''}`;
+    const authorText = `@${work.authorName || work.author || '匿名'}${work.category ? ' · ' + work.category : ''}`;
     ctx.fillText(clipLines(ctx, wrap(ctx, authorText, maxTextW), 1, maxTextW)[0] || '', PAD, titleBottom + 18);
 
     // 标签胶囊（紧跟作者行，随标题行数自适应）
@@ -403,8 +404,8 @@
     if (hint) {
       hint.style.display = show ? '' : 'none';
       hint.textContent = qrMode === 'link'
-        ? '扫码直接打开你填的作品地址（你填的第一个入口），适合现在就想去用的人。'
-        : '扫码先看站内详情页：图和介绍都在，人留在站里，也更容易被别的作品带走。';
+        ? '扫码直达你填的作品链接，不经过站内详情页。'
+        : '扫码先到站内详情页：图和介绍都在，人也留在站里，更容易被别的作品带走。';
     }
   }
 

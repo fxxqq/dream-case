@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex,nofollow" />
+<title>造梦勋章 · 造梦橱窗</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<!--
+  造梦勋章页（/medals）
+  - 独立文件，不接入 app.js / SPA 路由；服务端 app.get('/medals') 直接回本文件。
+  - 数据全部来自 GET /api/me/badges：勋章定义、进度、点亮时间、申请状态由服务端实时算。
+  - L3 站长授予类走 POST /api/admin/badges（后台）；圆梦之人 / 守梦之人 / 铸梦之人开放用户申请。
+-->
+<style>
+:root{
+  --bg:#f7f7fb; --card:#fff; --text:#1f2330; --muted:#7a8095;
+  --primary:#5b5bd6; --border:#e6e8f0;
+  --lamp:#f59e0b; --lamp-l:#ffd66b; --gold:#8a6d1f; --off:#b6bac8;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
+  background:var(--bg); color:var(--text); line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  /* 站头 / 页脚夹在中间：内容不足一屏时页脚也贴着底，不浮在半空 */
+  display:flex; flex-direction:column; min-height:100vh;
+}
+.wrap{max-width:1000px;margin:0 auto;padding:28px 20px 60px;width:100%;flex:1 0 auto}
+
+/* 页内标题：返回箭头的活儿交给站头的 logo（点它回首页） */
+.hd{padding:8px 0 22px}
+.hd h1{font-size:22px;font-weight:600;letter-spacing:.4px;text-align:center}
+.hd .sub{font-size:13px;color:var(--muted);text-align:center;margin-top:4px}
+.tally{
+  display:flex;justify-content:center;gap:18px;margin-top:14px;
+  font-size:12.5px;color:var(--muted);
+}
+.tally b{color:var(--text);font-weight:600;font-size:14px}
+.tally .sep{width:1px;background:var(--border)}
+
+.sec{margin-top:34px}
+.sec-hd{display:flex;align-items:baseline;gap:9px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+.lv{
+  font-size:10.5px;font-weight:600;letter-spacing:.6px;padding:2px 7px;border-radius:5px;
+  color:#8a6d1f;background:#fdf3d7;border:1px solid #f0e0a8;transform:translateY(-1px);
+}
+.sec-hd h2{font-size:15px;font-weight:600}
+.sec-hd .desc{font-size:12px;color:var(--muted);margin-left:auto;text-align:right}
+
+.grid{display:flex;flex-wrap:wrap;gap:14px;margin-top:16px}
+
+.card{
+  width:176px;background:var(--card);border:1px solid var(--border);border-radius:14px;
+  padding:18px 13px 13px;text-align:center;cursor:pointer;position:relative;
+  transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;
+  font-family:inherit;color:inherit;
+  animation:up .34s ease both;
+}
+@keyframes up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.card:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(31,35,48,.09);border-color:#d5d8e6}
+.card:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.card.on{border-color:rgba(245,158,11,.38);background:linear-gradient(180deg,#fffdf7,#fff 62%)}
+.card.on:hover{box-shadow:0 8px 22px rgba(245,158,11,.18)}
+
+.medal{
+  width:56px;height:56px;margin:0 auto 11px;border-radius:50%;
+  display:grid;place-items:center;transition:.2s;
+}
+.medal.on{
+  background:radial-gradient(circle at 32% 26%,var(--lamp-l),var(--lamp) 74%);
+  box-shadow:0 4px 14px rgba(245,158,11,.3),inset 0 0 0 3px rgba(255,255,255,.55);
+}
+.medal.off{background:#f1f2f7;box-shadow:inset 0 0 0 1px #e4e6ef}
+.medal svg{width:26px;height:26px;fill:none;stroke:#fff;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.medal.off svg{stroke:var(--off)}
+
+.nm{font-size:13.5px;font-weight:600;letter-spacing:.2px}
+.off .nm{color:#5d6479}
+.cd{font-size:11.5px;color:var(--muted);margin-top:3px;min-height:18px}
+
+.bar{height:4px;border-radius:3px;background:#eef0f6;margin:10px 0 6px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:3px;background:var(--lamp);transition:width .5s ease}
+.off .bar{opacity:.55}
+
+.st{font-size:11px;color:var(--muted);white-space:nowrap}
+.on .st{color:#b4740a;font-weight:500}
+/* 日期弱化成灰色元信息，别跟着状态字一起高亮，否则更像进度读数 */
+.on .st .dt{color:var(--muted);font-weight:400}
+
+.load-tip{margin-top:36px;text-align:center;font-size:12.5px;color:var(--muted);padding:40px 0}
+
+.soon{margin-top:36px}
+.soon h3{
+  font-size:12.5px;color:var(--muted);font-weight:500;
+  display:flex;align-items:center;gap:9px;
+}
+.soon h3::after{content:"";flex:1;height:1px;background:var(--border)}
+.soon-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.soon-list span{
+  font-size:12px;color:#9096a8;background:#f2f3f8;border:1px dashed #e0e2ec;
+  border-radius:8px;padding:5px 11px;
+}
+.soon-list b{font-weight:500;color:#6a7085}
+
+.page-note{
+  margin-top:44px;padding-top:18px;border-top:1px solid var(--border);
+  font-size:11.5px;color:#a0a5b6;text-align:center;line-height:1.9;
+}
+
+.mask{
+  position:fixed;inset:0;background:rgba(20,22,32,.34);opacity:0;pointer-events:none;
+  transition:opacity .2s;z-index:60;backdrop-filter:blur(1.5px);
+}
+.mask.show{opacity:1;pointer-events:auto}
+.sheet{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-46%) scale(.96);
+  width:min(360px,calc(100vw - 36px));background:#fff;border-radius:18px;
+  padding:26px 22px 20px;z-index:61;opacity:0;pointer-events:none;
+  transition:opacity .2s,transform .22s cubic-bezier(.2,.9,.3,1);
+  box-shadow:0 18px 48px rgba(20,22,32,.22);text-align:center;
+}
+.sheet.show{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+.sheet .medal{width:72px;height:72px;margin-bottom:14px}
+.sheet .medal svg{width:34px;height:34px}
+.sheet h3{font-size:16px;font-weight:600}
+.sheet .lvl{font-size:11.5px;color:var(--muted);margin-top:3px}
+.sheet .condbox{
+  margin:16px 0 0;padding:12px 14px;background:#fafbfe;border:1px solid var(--border);
+  border-radius:10px;text-align:left;
+}
+.sheet .condbox p{font-size:12.5px;color:#4a5063;line-height:1.75}
+.sheet .condbox .k{color:var(--muted);font-size:11.5px;display:block;margin-bottom:3px}
+.sheet .meta{margin-top:12px;font-size:12px;color:var(--muted);text-align:left;padding:0 2px}
+.sheet .meta b{color:#b4740a;font-weight:500}
+.sheet .close{
+  margin-top:18px;width:100%;height:38px;border:0;border-radius:10px;background:#f2f3f8;
+  color:#5d6479;font-size:13px;font-family:inherit;cursor:pointer;transition:.16s;
+}
+.sheet .close:hover{background:#e9ebf3}
+
+.apply-box{margin-top:14px;text-align:left}
+.apply-box .k{font-size:11.5px;color:var(--muted);display:block;margin-bottom:6px;padding:0 2px}
+.apply-box textarea{
+  width:100%;border:1px solid var(--border);border-radius:10px;background:#fafbfe;
+  font-family:inherit;font-size:12.5px;color:var(--text);line-height:1.6;
+  padding:9px 11px;resize:vertical;min-height:66px;outline:none;transition:border-color .16s;
+}
+.apply-box textarea:focus{border-color:var(--primary);background:#fff}
+.apply-btn{
+  margin-top:9px;width:100%;height:38px;border:0;border-radius:10px;
+  background:var(--lamp);color:#fff;font-size:13px;font-weight:500;
+  font-family:inherit;cursor:pointer;transition:.16s;
+}
+.apply-btn:hover{background:#e08c09}
+.apply-tip{
+  margin-top:14px;padding:10px 12px;border-radius:10px;text-align:left;
+  background:#fdf6e8;border:1px solid #f3e3bd;color:#8a6d1f;font-size:12px;line-height:1.6;
+}
+.apply-tip.dim{background:#f6f7fb;border-color:#e4e6ef;color:#9096a8}
+.apply-cancel{
+  margin-top:8px;width:100%;height:32px;border:0;border-radius:9px;background:transparent;
+  color:#a0a5b6;font-size:12px;font-family:inherit;cursor:pointer;transition:.16s;
+}
+.apply-cancel:hover{color:var(--danger);background:#fdf3f3}
+
+/* —— 站头：/medals 是独立页（刻意不引 app.js / SPA 路由），所以这里手写一份轻量版，
+   高度 60px、白底、底部 1px 线、导航胶囊高亮都跟主站 .site-header 对齐；
+   内层容器跟页面内容同为 1000px，logo 和左栏卡片才在同一条竖线上。
+   ≤640px 跟随主站策略：顶级导航不摆（手机端站点靠底部 tab），只留 logo 和登录/我的。 —— */
+.site-header{background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+.sh-inner{max-width:1000px;margin:0 auto;padding:0 20px;height:60px;display:flex;align-items:center;gap:24px}
+.logo{
+  display:inline-flex;align-items:center;gap:8px;flex:none;
+  font-size:18px;font-weight:700;color:var(--primary);text-decoration:none;letter-spacing:.2px;
+}
+.logo-mark{display:block;flex:none}
+.sh-nav{display:flex;align-items:center;gap:4px;flex:1;min-width:0}
+.sh-nav .nav-btn{
+  display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;
+  font-size:14px;color:var(--muted);text-decoration:none;white-space:nowrap;transition:.16s;
+}
+.sh-nav .nav-btn:hover{color:var(--text);background:#f2f3f9}
+.sh-nav .nav-btn.active{color:var(--primary);background:#eeeefc;font-weight:600}
+.sh-nav .nav-btn .ico{display:inline-flex;width:15px;height:15px}
+.sh-nav .nav-btn .ico svg{width:15px;height:15px;display:block}
+/* 导航黑话提示：与 style.css 里 .main-nav .nav-btn[data-tip] 同一份视觉（本页不引 style.css，故复制一份） */
+.sh-nav .nav-btn[data-tip]{position:relative}
+.sh-nav .nav-btn[data-tip]::after{
+  content:attr(data-tip);position:absolute;top:calc(100% + 10px);left:0;
+  width:max-content;max-width:262px;padding:8px 11px 9px;border-radius:9px;
+  background:#22253a;color:#fff;font-size:12.5px;font-weight:400;line-height:1.65;
+  letter-spacing:0;text-align:left;white-space:normal;box-shadow:0 10px 28px rgba(24,24,48,.2);
+  opacity:0;visibility:hidden;pointer-events:none;z-index:30;
+  transform:translateY(-4px);transition:opacity .14s ease,transform .14s ease,visibility .14s;
+}
+.sh-nav .nav-btn[data-tip]::before{
+  content:"";position:absolute;top:calc(100% - 4px);left:16px;
+  border:5px solid transparent;border-bottom-color:#22253a;
+  opacity:0;visibility:hidden;pointer-events:none;z-index:30;
+  transform:translateY(-4px);transition:opacity .14s ease,transform .14s ease,visibility .14s;
+}
+.sh-nav .nav-btn[data-tip]:hover::before,.sh-nav .nav-btn[data-tip]:hover::after,
+.sh-nav .nav-btn[data-tip]:focus-visible::before,.sh-nav .nav-btn[data-tip]:focus-visible::after{
+  opacity:1;visibility:visible;transform:translateY(0)
+}
+.sh-auth{flex:none;display:flex;align-items:center;gap:10px}
+.sh-login{
+  border:1px solid var(--border);background:#fff;color:var(--text);text-decoration:none;
+  font-size:13.5px;padding:7px 15px;border-radius:10px;transition:.16s;white-space:nowrap;
+}
+.sh-login:hover{border-color:#cdd0e0;color:var(--primary)}
+.sh-user{
+  display:inline-flex;align-items:center;gap:6px;max-width:160px;text-decoration:none;
+  font-size:13.5px;color:var(--text);padding:5px 12px 5px 6px;border-radius:999px;background:#f2f3f9;
+}
+.sh-user:hover{background:#eaecf5}
+.sh-user b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sh-user .ico{display:inline-flex;flex:none}
+.sh-user .ico svg{width:22px;height:22px;display:block}
+
+/* —— 页脚：照主站 .site-footer 的分层式（左品牌栏 / 右纵向链接栏 / 落款），
+   底色 #f3f3f9 + 顶部渐隐线；分组间距、字号都跟主站一致，只有容器宽度跟本页对齐。 —— */
+.site-footer{
+  flex:none;background:#f3f3f9;border-top:1px solid #dce0ea;
+  color:var(--muted);font-size:13px;padding:28px 0 22px;margin-top:36px;
+}
+.ft-inner{max-width:1000px;margin:0 auto;padding:0 20px}
+.ft-grid{display:flex;flex-wrap:wrap;gap:26px 52px;align-items:flex-start}
+.ft-brand{flex:1 1 250px;min-width:230px}
+.ft-name{display:block;font-size:16px;font-weight:700;color:var(--text);letter-spacing:.01em}
+.ft-desc{display:block;margin-top:8px;font-size:13px;line-height:1.75}
+/* 开源鸣谢行：图标与文字排在同一行内流动（不做 flex item），窄屏换行时图标不会孤零零占一行 */
+.ft-oss{font-size:12.5px;line-height:1.9;margin-top:10px}
+.ft-oss .ico{display:inline-flex;vertical-align:-2px;margin-right:5px}
+.ft-oss .ico svg{width:14px;height:14px;display:block}
+.ft-oss a{color:var(--primary);text-decoration:none;white-space:nowrap}
+.ft-oss a:hover{text-decoration:underline}
+.ft-links{
+  display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;
+  gap:24px 48px;flex:2 1 auto;
+}
+.ft-group{display:flex;flex-direction:column;gap:9px;min-width:72px}
+.ft-label{font-size:12.5px;color:var(--text);font-weight:600;opacity:.92;letter-spacing:.04em;margin-bottom:3px}
+.ft-links a{color:var(--muted);text-decoration:none;font-size:13px;line-height:1.5}
+.ft-links a:hover{color:var(--primary)}
+.ft-base{display:flex;align-items:center;gap:14px;margin-top:18px;font-size:12.5px;opacity:.85}
+.ft-base a{color:var(--muted);text-decoration:none;margin-left:auto}
+.ft-base a:hover{color:var(--primary)}
+
+@media(max-width:640px){
+  .wrap{padding:22px 16px 48px}
+  .hd h1{font-size:19px}
+  .card{width:calc(50% - 7px);padding:16px 10px 12px}
+  .sec-hd{flex-wrap:wrap}
+  .sec-hd .desc{margin-left:0;flex:1 0 100%;text-align:left;margin-top:2px}
+  .tally{gap:14px}
+  /* 站头 / 页脚的手机端：跟主站一样不摆顶级导航 */
+  .sh-inner{height:52px;gap:12px;padding:0 16px}
+  .sh-nav{display:none}
+  .sh-auth{margin-left:auto}
+  .logo{font-size:16px}
+  .logo-mark{width:23px;height:23px}
+  .ft-inner{padding:0 16px}
+  /* 手机上分层栏自然折行：品牌栏独占一排，链接组横向流 */
+  .ft-grid{gap:20px 28px}
+  .ft-links{gap:16px 28px;justify-content:flex-start}
+  /* 落款行手机端只留备案号（主站同规则），© 走「我的 → 关于本站」 */
+  .ft-base .fb-text{display:none}
+}
+</style>
+<!-- 站头图标：与主站共用同一份 icons.js（不能加 defer，页面一出来就要把 data-ico 填好） -->
+<script src="/icons.js"></script>
+</head>
+<body>
+<!-- 站头：与主站同款（logo / 导航 / 登录态）。本页不引 app.js，导航是普通链接整页跳转，
+     登录态由下面的 load() 顺带从 /api/me/badges 拿到后填入 #authBox。 -->
+<header class="site-header">
+  <div class="sh-inner">
+    <a class="logo" href="/" title="回造梦橱窗首页"><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
+    <nav class="sh-nav" aria-label="主导航">
+      <a class="nav-btn" href="/rank" data-tip="作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届" aria-label="星梦榜：作品的热度排行，访客、收藏、评论、灯火加权计分，每周换一届"><i class="ico" data-ico="rank"></i>星梦榜</a>
+      <a class="nav-btn" href="/bar" data-tip="说出你想要的作品，等创作者认领实现；也能在散座随便聊" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现"><i class="ico" data-ico="wish"></i>造梦酒馆</a>
+      <a class="nav-btn active" href="/medals" data-tip="完成指定事情拿勋章，永久挂在你的主页和作品页" aria-label="造梦勋章：完成指定事情拿勋章，永久挂在你的主页和作品页" aria-current="page"><i class="ico" data-ico="medal"></i>造梦勋章</a>
+    </nav>
+    <div class="sh-auth" id="authBox"></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <header class="hd">
+    <h1>造梦勋章</h1>
+    <p class="sub">橱窗里摆出来的梦</p>
+    <div class="tally" id="tally"></div>
+  </header>
+  <main id="main"></main>
+
+  <section class="soon">
+    <h3>在路上</h3>
+    <div class="soon-list">
+      <span><b>满窗皆梦</b> · 10 件过审</span>
+      <span><b>梦笔生花</b> · 作品被设为精选</span>
+      <span><b>四时不断</b> · 连续四季都有投稿</span>
+    </div>
+  </section>
+
+  <!-- 页面自己的注脚：讲口径，不是站级页脚（站级页脚在 .wrap 外面） -->
+  <p class="page-note">
+    勋章是记录，不是奖励：点亮不发灯火，也就不值得为它演戏<br />
+    全部由服务端实时结算 · 站长授予的枚数合计在手授一栏
+  </p>
+</div>
+
+<!-- 站级页脚：结构与主站 .site-footer 一致（左品牌栏 / 四组纵向链接栏 / 落款）。
+     只放纯链接——「安装到桌面」「小程序码」「合作洽谈」这些挂在 app.js 上的按钮本页没有，不放。 -->
+<footer class="site-footer">
+  <div class="ft-inner">
+    <div class="ft-grid">
+      <div class="ft-brand">
+        <b class="ft-name">造梦橱窗</b>
+        <span class="ft-desc">收录独立开发者、创作者自制的网站、小程序、智能体、软件、游戏</span>
+        <div class="ft-oss">
+          <span class="ico" data-ico="github"></span>
+          <span>本站开源在 <a href="https://github.com/fxxqq/dream-case" target="_blank" rel="noopener noreferrer">GitHub</a>，欢迎 Star / PR · 服务器部署在 <a href="https://www.aliyun.com/minisite/goods?userCode=tw6ffyfu" target="_blank" rel="nofollow sponsored noopener noreferrer">阿里云 <span aria-hidden="true">↗</span></a></span>
+        </div>
+      </div>
+      <nav class="ft-links" aria-label="页脚导航">
+        <div class="ft-group"><span class="ft-label">逛逛</span><a href="/column">软件精选</a><a href="/open">开源好物</a></div>
+        <div class="ft-group"><span class="ft-label">参与</span><a href="/invite">邀请收录</a><a href="/howto">投稿指南</a><a href="/guide">外宣指南</a></div>
+        <div class="ft-group"><span class="ft-label">合作</span><a href="/ads">投放合作</a><a href="/?feedback=1">意见建议</a></div>
+        <div class="ft-group"><span class="ft-label">订阅</span><a href="/feed.xml">RSS</a><a href="/sitemap.xml">站点地图</a></div>
+        <div class="ft-group"><span class="ft-label">站务</span><a href="/admin">管理入口</a><a href="/admin?apply=1">申请管理员</a></div>
+      </nav>
+    </div>
+    <div class="ft-base">
+      <span class="fb-text">© 2026 造梦橱窗</span>
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
+    </div>
+  </div>
+</footer>
+
+<div class="mask" id="mask"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+
+<script>
+/* 图标：24×24 线性符号 */
+const ICONS = {
+  flame:  'M12 3c3 3.8 4.6 6 4.6 8.6a4.6 4.6 0 0 1-9.2 0C7.4 9.1 9 6.9 12 3z',
+  stars:  'M7.4 6h9.2L11 19M5.4 21.2h7.4',
+  door:   'M6.5 3.5h11v17h-11zM13.6 12.2h1.4',
+  back:   'M4.5 11a7.5 7.5 0 1 1 2.6 5.7M4 6v5h5',
+  moon:   'M20 14.5A8.2 8.2 0 0 1 9.5 4 8.6 8.6 0 1 0 20 14.5z',
+  window: 'M4.5 4.5h15v15h-15zM12 4.5v15M4.5 12h15',
+  shelf:  'M4.5 6h15M4.5 12h15M4.5 18h15',
+  cloud:  'M7 16.5a3.4 3.4 0 0 1 .3-6.8 5 5 0 0 1 9.5 1.2A3.1 3.1 0 0 1 16.6 16.5z',
+  chart:  'M4.4 17.6l4.8-5 3 2.7 5.2-6.4M15.6 8.9h3.6v3.5M4.4 20.4h15.2',
+  crown:  'M4 17.2h16l1.4-8.6-4.9 3.4L12 5.4 7.5 12 2.6 8.6zM4 20h16',
+  podium: 'M4.6 19.8h14.8M7.2 19.8v-4.6h3.2v4.6M10.4 19.8V8.6h3.2v11M13.6 19.8v-6.8h3.2v6.8',
+  steps:  'M3.8 19.8h4.4v-3.8h4.4V12h4.4V8.2h3.2',
+  code:   'M9 8.2 5.2 12 9 15.8M15 8.2 18.8 12 15 15.8',
+  pass:   'M6.6 12h10.8M6.6 12a2.2 2.2 0 1 1-4.4 0 2.2 2.2 0 0 1 4.4 0zM17.4 12a2.2 2.2 0 1 0 4.4 0 2.2 2.2 0 0 0-4.4 0z',
+  eye:    'M2.6 12S6.2 6.9 12 6.9 21.4 12 21.4 12 17.8 17.1 12 17.1 2.6 12 2.6 12zM12 14.2a2.2 2.2 0 1 1 0-4.4 2.2 2.2 0 0 1 0 4.4z',
+  chat:   'M4.5 5.5h15v10h-8.6L6.4 19v-3.5H4.5z',
+  key:    'M15.2 8.6a4.1 4.1 0 1 1-4.4-4.1M11.4 9.4 4.2 16.6v3.8h3.8l1-1',
+  hand:   'M4.6 16.8c2.4 1.9 4.7 2.9 7.4 2.9s5-1 7.4-2.9M12 3.6v6.2M9.2 6.4a2.8 2.8 0 1 1 5.6 0',
+  shield: 'M12 3.2 18.8 6v5.9c0 4-2.9 7-6.8 8.9-3.9-1.9-6.8-4.9-6.8-8.9V6z',
+  hammer: 'M12.9 2.3l6.3 6.3-2.1 2.1-6.3-6.3z M13.9 7.6 5.6 15.9 M4.9 15.2l1.4 1.4',
+  flag:   'M6 20.4V4M6 4h11l-1.7 4L17 12H6',
+  phone:  'M8 3.5h8A1.5 1.5 0 0 1 17.5 5v14A1.5 1.5 0 0 1 16 20.5H8A1.5 1.5 0 0 1 6.5 19V5A1.5 1.5 0 0 1 8 3.5zM11 17.4h2',
+  link:   'M10 7.5 12.4 5.1a4 4 0 0 1 5.7 5.7L15.7 13.2M14 16.5l-2.4 2.4a4 4 0 0 1-5.7-5.7l2.4-2.4M9.5 14.5l5-5'
+};
+
+/* 层级：颜色 + 说明 */
+const TIERS = [
+  { key:'L1', name:'梦的开始', color:'#f59e0b', desc:'自动结算 · 人人可得 · 管留存' },
+  { key:'L2', name:'橱窗陈列', color:'#5b5bd6', desc:'有难度 · 会稀缺 · 代表能力' },
+  { key:'L3', name:'造梦者名录', color:'#8a6d1f', desc:'站长授予 · 开放的勋章可申请' }
+];
+
+/* —— 数据全部来自 /api/me/badges：勋章定义、进度、点亮时间、申请状态都由服务端算 ——
+   页面只负责画。这里留一个空数组，接口没回来（或挂了）时渲染成"加载中"，不假装有数据。 */
+let BADGES = [];
+let loggedIn = false;
+const isApplied = b => b.state === 'off' && !!b.applied;
+
+/* 日期一律写成「11月12日」，不用 11/12 —— 它就贴在进度条下面，
+   斜杠数字一眼会被当成 bar 的数值（11 比 12）。往年才补短年份。 */
+const fmtDay = at => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(at || ''));
+  if (!m) return '';
+  const md = (+m[2]) + '月' + (+m[3]) + '日';
+  return (+m[1] === new Date().getFullYear()) ? md : m[1].slice(2) + '年' + md;
+};
+
+const stateText = b => {
+  if (b.state === 'on') {
+    const tag = b.by ? '已授予' : '已点亮';
+    const day = fmtDay(b.at);
+    return tag + (day ? ' · <span class="dt">' + day + '</span>' : '');
+  }
+  if (b.state === 'doing') return b.now + ' / ' + b.goal;
+  if (isApplied(b)) return '申请中';
+  return b.by ? (b.canApply ? '待授予 · 可申请' : '待授予') : '未开始';
+};
+const pct = b => b.state === 'on' ? 100 : (b.state === 'doing' ? Math.min(100, Math.round(b.now / b.goal * 100)) : 0);
+const iconSvg = k => '<svg viewBox="0 0 24 24"><path d="' + ICONS[k] + '"/></svg>';
+
+function cardHtml(b, i) {
+  const tier = TIERS.find(t => t.key === b.t);
+  return '<button class="card ' + (b.state === 'on' ? 'on' : 'off') + '" style="animation-delay:' + (i * 28) + 'ms" data-i="' + BADGES.indexOf(b) + '">' +
+    '<div class="medal ' + (b.state === 'on' ? 'on' : 'off') + '">' + iconSvg(b.icon) + '</div>' +
+    '<div class="nm">' + b.name + '</div>' +
+    '<div class="cd">' + b.cond + '</div>' +
+    '<div class="bar"><i style="width:' + pct(b) + '%;background:' + tier.color + '"></i></div>' +
+    '<div class="st">' + stateText(b) + '</div>' +
+  '</button>';
+}
+
+function render() {
+  let n = 0, html = '';
+  TIERS.forEach(tier => {
+    const list = BADGES.filter(b => b.t === tier.key);
+    html += '<section class="sec"><div class="sec-hd">' +
+      '<span class="lv">' + tier.key + '</span><h2>' + tier.name + '</h2>' +
+      '<span class="desc">' + tier.desc + '</span></div><div class="grid">' +
+      list.map((b, i) => cardHtml(b, i)).join('') + '</div></section>';
+  });
+  document.getElementById('main').innerHTML = html;
+
+  n = BADGES.filter(b => b.state === 'on').length;
+  document.getElementById('tally').innerHTML =
+    '<span><b>' + n + '</b> / ' + BADGES.length + ' 已点亮</span>' +
+    '<span class="sep"></span>' +
+    '<span>自动成就 <b>' + BADGES.filter(b => b.t !== 'L3').length + '</b> 枚</span>' +
+    '<span class="sep"></span>' +
+    '<span>手授 <b>' + BADGES.filter(b => b.t === 'L3').length + '</b> 枚</span>';
+}
+
+const mask = document.getElementById('mask');
+const sheet = document.getElementById('sheet');
+
+function openSheet(i) {
+  const b = BADGES[i];
+  const tier = TIERS.find(t => t.key === b.t);
+  let applyHtml = '';
+  if (b.t === 'L3' && b.state !== 'on') {
+    if (isApplied(b)) {
+      applyHtml =
+        '<div class="apply-tip">申请已提交 · ' + fmtDay(b.applied.at) + ' · 等站长看一眼</div>' +
+        '<button class="apply-cancel" id="cancelApply">撤回申请</button>';
+    } else if (b.canApply) {
+      applyHtml =
+        '<div class="apply-box"><span class="k">申请这枚勋章</span>' +
+        '<textarea id="applyText" maxlength="200" rows="3" placeholder="说说你觉得这枚为什么该给你（200 字内）"></textarea>' +
+        '<button class="apply-btn" id="applyBtn">提交申请</button></div>';
+    } else {
+      applyHtml = '<div class="apply-tip dim">这枚暂未开放申请，等站长来敲</div>';
+    }
+  }
+  sheet.innerHTML =
+    '<div class="medal ' + (b.state === 'on' ? 'on' : 'off') + '">' + iconSvg(b.icon) + '</div>' +
+    '<h3>' + b.name + '</h3>' +
+    '<div class="lvl">' + tier.key + ' ' + tier.name + (b.by ? ' · ' + b.by + '授予' : ' · 自动结算') + '</div>' +
+    '<div class="condbox"><span class="k">点亮条件</span><p>' + b.cond + '</p></div>' +
+    (b.note ? '<div class="condbox"><span class="k">说明</span><p>' + b.note + '</p></div>' : '') +
+    '<div class="meta">' + (b.state === 'on'
+      ? '获得时间 <b>' + b.at + '</b>'
+      : (b.state === 'doing' ? '当前进度 <b>' + b.now + ' / ' + b.goal + '</b>' : '尚未达成')) + '</div>' +
+    applyHtml +
+    '<button class="close" id="closeBtn">关闭</button>';
+  mask.classList.add('show');
+  sheet.classList.add('show');
+  document.getElementById('closeBtn').onclick = closeSheet;
+  const ab = document.getElementById('applyBtn');
+  if (ab) ab.onclick = async () => {
+    const text = document.getElementById('applyText').value.trim();
+    if (!text) { document.getElementById('applyText').focus(); return; }
+    if (!loggedIn) { location.href = '/?login=1'; return; }
+    ab.disabled = true; ab.textContent = '提交中…';
+    const r = await fetch('/api/me/badges/apply', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: b.key, text: text.slice(0, 200) })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      ab.disabled = false; ab.textContent = '提交申请';
+      alert(d.error || '提交失败，稍后再试');
+      return;
+    }
+    BADGES = d.badges || BADGES;
+    render(); openSheet(i);
+  };
+  const cb = document.getElementById('cancelApply');
+  if (cb) cb.onclick = async () => {
+    cb.disabled = true; cb.textContent = '撤回中…';
+    const r = await fetch('/api/me/badges/apply/' + encodeURIComponent(b.key), { method: 'DELETE', credentials: 'same-origin' });
+    const d = await r.json().catch(() => ({}));
+    BADGES = d.badges || BADGES;
+    render(); openSheet(i);
+  };
+}
+
+function closeSheet() {
+  mask.classList.remove('show');
+  sheet.classList.remove('show');
+}
+
+mask.onclick = closeSheet;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+document.addEventListener('click', e => {
+  const c = e.target.closest('.card');
+  if (c) openSheet(Number(c.dataset.i));
+});
+/* 返回不再单设箭头：站头的 logo 就是回首页入口，手机上也是点它。 */
+
+/* —— 站头登录区：只有两种样子，跟主站头部同一套说法 ——
+   已登录：胶囊头像 + 昵称 → /me；未登录：「登录 / 注册」→ 首页带 login=1 回来直接弹登录框。
+   昵称来自接口，必须转义后再拼。 */
+const authBox = document.getElementById('authBox');
+const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function renderAuth(name) {
+  if (!authBox) return;
+  authBox.innerHTML = loggedIn
+    ? '<a class="sh-user" href="/me" title="我的主页"><span class="ico" data-ico="user"></span><b>' + esc(name || '我') + '</b></a>'
+    : '<a class="sh-login" href="/?login=1">登录 / 注册</a>';
+  if (window.Icons) Icons.hydrate(authBox);   // 后插的节点要手动水合
+}
+async function load() {
+  try {
+    const r = await fetch('/api/me/badges', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    const d = await r.json();
+    if (Array.isArray(d.badges)) BADGES = d.badges;
+    if (Array.isArray(d.tiers)) {
+      // 文案以服务端为准，颜色留本地（纯视觉，不该让接口管）
+      d.tiers.forEach(t => {
+        const cur = TIERS.find(x => x.key === t.key);
+        if (cur) { cur.name = t.name || cur.name; cur.desc = t.desc || cur.desc; }
+      });
+    }
+    loggedIn = !!d.loggedIn;
+    if (loggedIn && d.name) document.querySelector('.hd .sub').textContent = d.name + ' · 已点亮的梦';
+    renderAuth(d.name);
+  } catch (e) {
+    renderAuth('');   // 接口挂了也把站头的登录入口画出来，别留一个空位
+    document.getElementById('main').innerHTML = '<div class="load-tip">没连上服务器，刷新试试</div>';
+    return;
+  }
+  render();
+  if (!loggedIn) {
+    document.getElementById('tally').insertAdjacentHTML('afterend',
+      '<p class="load-tip" style="padding:10px 0 0">登录后才会记录你的进度 · <a href="/?login=1" style="color:#5b5bd6">去登录</a></p>');
+  }
+}
+load();
+</script>
+</body>
+</html>

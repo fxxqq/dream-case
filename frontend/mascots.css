@@ -1,0 +1,259 @@
+/* 造梦橱窗 · 小助手形象动效（2026-11-09 从 style.css 抽出）
+ *
+ * 为什么单独一份：形象库 mascots.js 现在有两个使用方——
+ *   1) 首页右下角小助手（.site-bot，布局与面板还在 style.css 里）
+ *   2) /mascots「换个形象」独立页（不加载 340K 的 style.css，只读这一份）
+ * 所以把「只跟形象画面有关」的通用层 + 各形象专属动作放这里，谁用谁引。
+ *
+ * 约定：每个形象一个前缀（lam- 灯火 / jar- 星星罐 / moo- 月亮 / bf- 梦蝶 / door- 小门 /
+ * quill- 羽毛笔 / bt- 纸船 / cl- 云枕 / lt- 梦信 / mb- 八音盒 / ct- 梦猫 / bot- 原版机器人）。
+ * 加新形象：mascots.js 加一项 + 这里补一段动效，style.css 不用动。
+ * ⚠️ 必须在 style.css 之后加载（同优先级靠后生效），别把顺序写反。
+ */
+
+/* —— 通用层：所有新形象共用 —— */
+.site-bot .m-float { animation: botFloat 3.4s ease-in-out infinite; }
+.site-bot .m-shadow {
+  transform-box: fill-box; transform-origin: center;
+  animation: botShadow 3.4s ease-in-out infinite;
+}
+.site-bot .m-eye {
+  transform-box: fill-box; transform-origin: center;
+  animation: mBlink 5.2s infinite;
+}
+@keyframes mBlink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  94%, 96% { transform: scaleY(.1); }
+}
+/* 眼睛整组平移跟鼠标（JS 写 transform），眨眼在单只眼睛上，互不冲突 */
+.site-bot .bot-eyes, .site-bot .lam-eyes { transition: transform .18s ease-out; }
+
+/* —— G 原版机器人（Trae 风格） —— */
+.site-bot .bot-float { animation: botFloat 3.2s ease-in-out infinite; }
+.site-bot .bot-shadow {
+  transform-box: view-box; transform-origin: 60px 119px;
+  animation: botShadow 3.2s ease-in-out infinite;
+}
+.site-bot .bot-eye { transform-box: fill-box; transform-origin: center; animation: botBlink 4.6s infinite; }
+/* 胳膊绕肩膀转（挥手）：transform-origin 落在手臂顶部 */
+.site-bot .bot-arm { transform-box: fill-box; transform-origin: 50% 8%; }
+.site-bot.bot-hi .bot-arm,
+.site-bot.bot-wave .bot-arm { animation: botWave .9s ease-in-out 2; }
+@keyframes botWave {
+  /* 正角度才往外甩（负角度会甩进身体被挡住）；抬到身侧再收回，来回一次 */
+  0%, 100% { transform: rotate(0); }
+  20% { transform: rotate(118deg); } 45% { transform: rotate(82deg); } 70% { transform: rotate(122deg); }
+}
+.site-bot .bot-head {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: botTilt 9s ease-in-out infinite;
+}
+@keyframes botFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes botShadow { 0%, 100% { transform: scaleX(1); opacity: .55; } 50% { transform: scaleX(.82); opacity: .3; } }
+@keyframes botBlink {
+  0%, 90%, 100% { transform: rotate(45deg) scaleY(1); }
+  94%, 96% { transform: rotate(45deg) scaleY(.12); }
+}
+@keyframes botTilt {
+  /* 两段动作：前半段左右张望（幅度小），后半段歪头再回正 */
+  0%, 24%, 100% { transform: rotate(0); }
+  30% { transform: rotate(-5deg); } 36% { transform: rotate(4deg); } 42% { transform: rotate(0); }
+  76% { transform: rotate(-6deg); } 82% { transform: rotate(4deg); } 90% { transform: rotate(0); }
+}
+
+/* —— A 灯火小精灵：灯身轻摆，火苗自己抖 —— */
+.site-bot .lam-sway {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: lamSway 5.6s ease-in-out infinite;
+}
+@keyframes lamSway { 0%, 100% { transform: rotate(0); } 35% { transform: rotate(-2.4deg); } 70% { transform: rotate(2deg); } }
+.site-bot .lam-flame {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: lamFlick 3.1s ease-in-out infinite;
+}
+@keyframes lamFlick {
+  0%, 100% { transform: scale(1, 1); }
+  30% { transform: scale(.97, 1.05); }
+  55% { transform: scale(1.02, .97); }
+  78% { transform: scale(.99, 1.03); }
+}
+/* 点它：火苗鼓一下，像被吹了口气 */
+.site-bot.bot-hi .lam-flame { animation: lamFlare .95s ease-out; }
+@keyframes lamFlare { 0% { transform: scale(1); } 35% { transform: scale(1.16, 1.22); } 100% { transform: scale(1); } }
+
+/* —— B 星星罐：木塞轻浮，罐里的星各自闪 —— */
+.site-bot .jar-cork {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: jarCork 5s ease-in-out infinite;
+}
+@keyframes jarCork { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.6px); } }
+.site-bot .jar-star {
+  transform-box: fill-box; transform-origin: center;
+  animation: jarTwinkle 3.2s ease-in-out infinite;
+}
+@keyframes jarTwinkle { 0%, 100% { opacity: .55; transform: scale(.86); } 50% { opacity: 1; transform: scale(1.08); } }
+.site-bot.bot-hi .jar-cork { animation: jarPop .95s ease-out; }
+@keyframes jarPop {
+  0% { transform: translateY(0) rotate(0); }
+  30% { transform: translateY(-13px) rotate(-12deg); }
+  55% { transform: translateY(-9px) rotate(9deg); }
+  100% { transform: translateY(0) rotate(0); }
+}
+
+/* —— C 月亮小梦：整张脸轻轻呼吸 —— */
+.site-bot .moo-face {
+  transform-box: fill-box; transform-origin: 50% 50%;
+  animation: mooBreath 6s ease-in-out infinite;
+}
+@keyframes mooBreath { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }
+
+/* —— D 梦蝶：翅膀一合一开 —— */
+.site-bot .bf-wing {
+  transform-box: view-box; transform-origin: 60px 68px;
+  animation: bfFlap 2.4s ease-in-out infinite;
+}
+@keyframes bfFlap { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(.74); } }
+.site-bot.bot-hi .bf-wing { animation: bfFlare 1s ease-out; }
+@keyframes bfFlare {
+  0% { transform: scaleX(1); } 30% { transform: scaleX(1.14) rotate(-2deg); }
+  60% { transform: scaleX(.66); } 100% { transform: scaleX(1); }
+}
+
+/* —— E 梦之门：门缝暖光轻轻呼吸，点它门就开 —— */
+.site-bot .door-glow {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: doorGlow 3.8s ease-in-out infinite;
+}
+@keyframes doorGlow { 0%, 100% { opacity: .72; transform: scaleY(1); } 50% { opacity: 1; transform: scaleY(1.02); } }
+.site-bot .door-star {
+  transform-box: fill-box; transform-origin: center;
+  animation: jarTwinkle 2.8s ease-in-out infinite;
+}
+.site-bot .door-leaf { transform-box: view-box; transform-origin: 35px 92px; }
+.site-bot.bot-hi .door-leaf { animation: doorOpen 1.15s cubic-bezier(.3, 1.2, .4, 1); }
+@keyframes doorOpen {
+  0% { transform: scaleX(1); }
+  28% { transform: scaleX(.1); }
+  62% { transform: scaleX(.16); }
+  100% { transform: scaleX(1); }
+}
+
+/* —— F 羽毛笔：笔身轻晃，笔尖那颗星一明一暗 —— */
+.site-bot .quill-body {
+  transform-box: fill-box; transform-origin: 24% 94%;
+  animation: quillSway 5.4s ease-in-out infinite;
+}
+@keyframes quillSway { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-2.6deg); } 65% { transform: rotate(2deg); } }
+.site-bot .quill-spark {
+  transform-box: fill-box; transform-origin: center;
+  animation: sparkPulse 2.6s ease-in-out infinite;
+}
+@keyframes sparkPulse { 0%, 100% { opacity: .5; transform: scale(.82); } 50% { opacity: 1; transform: scale(1.12); } }
+.site-bot.bot-hi .quill-body { animation: quillFlourish 1s ease-out; }
+@keyframes quillFlourish {
+  0% { transform: rotate(0); } 25% { transform: rotate(-9deg); }
+  55% { transform: rotate(5deg); } 100% { transform: rotate(0); }
+}
+
+/* —— H 纸船：整只船随波轻摇，桅杆上的星一明一暗 —— */
+.site-bot .bt-rock {
+  transform-box: fill-box; transform-origin: 50% 92%;
+  animation: btRock 5s ease-in-out infinite;
+}
+@keyframes btRock {
+  0%, 100% { transform: rotate(-2.6deg) translateY(0); }
+  50% { transform: rotate(2.6deg) translateY(-2px); }
+}
+.site-bot .bt-star {
+  transform-box: fill-box; transform-origin: center;
+  animation: sparkPulse 2.8s ease-in-out infinite;
+}
+.site-bot.bot-hi .bt-rock { animation: btSurge .95s ease-out; }
+@keyframes btSurge {
+  0% { transform: rotate(0) translateY(0); }
+  30% { transform: rotate(6deg) translateY(-6px); }
+  62% { transform: rotate(-5deg) translateY(-2px); }
+  100% { transform: rotate(0) translateY(0); }
+}
+
+/* —— I 云枕：整朵云慢慢横漂，边漂边呼吸 —— */
+.site-bot .cl-drift { animation: clDrift 9s ease-in-out infinite; }
+@keyframes clDrift { 0%, 100% { transform: translateX(-2.4px); } 50% { transform: translateX(2.4px); } }
+.site-bot .cl-breathe {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: clBreathe 5.6s ease-in-out infinite;
+}
+@keyframes clBreathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.035, .972); } }
+.site-bot .cl-spark {
+  transform-box: fill-box; transform-origin: center;
+  animation: sparkPulse 3.6s ease-in-out infinite;
+}
+.site-bot.bot-hi .cl-breathe { animation: clPuff .95s ease-out; }
+@keyframes clPuff { 0% { transform: scale(1); } 35% { transform: scale(1.08, 1.06); } 100% { transform: scale(1); } }
+
+/* —— J 梦信：信纸往上探一截，火漆跟着亮一下 —— */
+.site-bot .lt-paper { animation: ltPeek 6s ease-in-out infinite; }
+@keyframes ltPeek { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3.6px); } }
+.site-bot .lt-seal {
+  transform-box: fill-box; transform-origin: center;
+  animation: jarTwinkle 3.6s ease-in-out infinite;
+}
+.site-bot .lt-spark {
+  transform-box: fill-box; transform-origin: center;
+  animation: sparkPulse 3.2s ease-in-out infinite;
+}
+.site-bot.bot-hi .lt-paper { animation: ltOut 1s ease-out; }
+@keyframes ltOut {
+  0% { transform: translateY(0); }
+  35% { transform: translateY(-11px); }
+  70% { transform: translateY(-4px); }
+  100% { transform: translateY(0); }
+}
+
+/* —— K 八音盒：音符一个个往上飘散，发条跟着转 —— */
+.site-bot .mb-rock {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: mbRock 5.2s ease-in-out infinite;
+}
+@keyframes mbRock { 0%, 100% { transform: rotate(0); } 40% { transform: rotate(-1.8deg); } 75% { transform: rotate(1.4deg); } }
+.site-bot .mb-note {
+  transform-box: fill-box; transform-origin: center;
+  animation: mbNote 3.8s ease-in-out infinite;
+}
+@keyframes mbNote {
+  0% { opacity: 0; transform: translateY(7px) scale(.88); }
+  22% { opacity: 1; }
+  72% { opacity: .85; }
+  100% { opacity: 0; transform: translateY(-16px) scale(1.04); }
+}
+.site-bot .mb-key {
+  transform-box: fill-box; transform-origin: 50% 50%;
+  animation: mbKey 5.2s linear infinite;
+}
+@keyframes mbKey { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(200deg); } }
+.site-bot.bot-hi .mb-key { animation: mbKeySpin 1s ease-out; }
+@keyframes mbKeySpin { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
+
+/* —— L 梦猫：尾巴慢慢扫，脑袋跟着打盹 —— */
+.site-bot .ct-tail {
+  transform-box: fill-box; transform-origin: 6% 88%;
+  animation: ctTail 4.2s ease-in-out infinite;
+}
+@keyframes ctTail { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(8deg); } }
+.site-bot .ct-body {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: mooBreath 5.4s ease-in-out infinite;
+}
+.site-bot .ct-head {
+  transform-box: fill-box; transform-origin: 50% 100%;
+  animation: ctNod 7s ease-in-out infinite;
+}
+@keyframes ctNod { 0%, 100% { transform: rotate(0); } 45% { transform: rotate(-2.4deg); } 68% { transform: rotate(1.4deg); } }
+.site-bot .ct-spark {
+  transform-box: fill-box; transform-origin: center;
+  animation: sparkPulse 4s ease-in-out infinite;
+}
+
+/* 点它：所有形象通用的一次扭腰（叠在各自的专属反应上面） */
+.site-bot.bot-hi .bot-svg { animation: botWiggle .55s ease; }
+@keyframes botWiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-9deg); } 60% { transform: rotate(7deg); } }

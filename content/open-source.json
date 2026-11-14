@@ -1,0 +1,294 @@
+{
+  "intro": "GitHub 上那些「装上就能用、想改也能自己搭」的东西。这里只收外链，不放代码、不搬截图——觉得好用就自己去仓库看一眼。",
+  "updatedAt": "2026-11-12",
+  "items": [
+    {
+      "repo": "localsend/localsend",
+      "name": "LocalSend",
+      "cat": "app",
+      "lang": "Dart",
+      "license": "Apache-2.0",
+      "desc": "手机和电脑互传文件：同一个 Wi-Fi 就能传，不经过任何服务器，也不压缩画质。装了就不用再给自己发微信文件。"
+    },
+    {
+      "repo": "Kuingsmile/PicList",
+      "name": "PicList",
+      "cat": "app",
+      "lang": "TypeScript",
+      "license": "MIT",
+      "desc": "图床客户端：一次配好，复制粘贴就能上传，顺手加水印、改名、转格式。写图文的人省掉一半来回折腾。"
+    },
+    {
+      "repo": "agalwood/Motrix",
+      "name": "Motrix",
+      "cat": "app",
+      "lang": "TypeScript",
+      "license": "MIT",
+      "desc": "下载器：HTTP、BT、磁力都收，界面干净、不弹广告，装上就安静干活。"
+    },
+    {
+      "repo": "pot-app/pot-desktop",
+      "name": "Pot",
+      "cat": "app",
+      "lang": "JavaScript",
+      "license": "GPL-3.0",
+      "desc": "划词翻译：选中哪个词就翻哪个词，可以切多家引擎，还能截图 OCR。看外文文档时最顺手的一个。"
+    },
+    {
+      "repo": "syncthing/syncthing",
+      "name": "Syncthing",
+      "cat": "app",
+      "lang": "Go",
+      "license": "MPL-2.0",
+      "desc": "两台设备之间点对点同步文件夹，数据不经过任何云盘；同一个局域网里断网也能同步。"
+    },
+    {
+      "repo": "siyuan-note/siyuan",
+      "name": "思源笔记",
+      "cat": "app",
+      "lang": "TypeScript",
+      "license": "AGPL-3.0",
+      "desc": "本地优先的双链笔记：数据全在自己电脑上，一块块写、随手链，能导出干净的 Markdown。中文作者做的，中文排版很讲究。"
+    },
+    {
+      "repo": "tw93/Pake",
+      "name": "Pake",
+      "cat": "app",
+      "lang": "Rust",
+      "license": "GPL-3.0",
+      "desc": "把任意网页包成一个几十兆的桌面应用：一条命令、不用写 Electron 样板代码，微信读书、YouTube 都能变成独立窗口。想给常用网页做个只干一件事的客户端，从这儿起步。"
+    },
+    {
+      "repo": "RSSNext/Folo",
+      "name": "Folo",
+      "cat": "app",
+      "lang": "TypeScript",
+      "license": "AGPL-3.0",
+      "desc": "AI 信息流阅读器：RSS、推特、播客、B 站订阅塞进同一条时间线，还能给每条内容生成摘要。订阅多到看不完的时候，靠它先筛一遍。"
+    },
+    {
+      "repo": "louislam/uptime-kuma",
+      "name": "Uptime Kuma",
+      "cat": "self",
+      "lang": "JavaScript",
+      "license": "MIT",
+      "desc": "自托管监控：把自己的站、接口、服务器挂上去，掉线就推送提醒，还自带一个好看得不像运维工具的状态页。"
+    },
+    {
+      "repo": "usememos/memos",
+      "name": "Memos",
+      "cat": "self",
+      "lang": "Go",
+      "license": "MIT",
+      "desc": "一句话就能发的私人想法流，单文件 SQLite，Docker 一条命令跑起来。跟本站「投递灵感」是同一个念头，只是没有别人看着。"
+    },
+    {
+      "repo": "sissbruecker/linkding",
+      "name": "linkding",
+      "cat": "self",
+      "lang": "Python",
+      "license": "MIT",
+      "desc": "自建书签夹：存链接、打标签、全文搜，界面极简。装完基本就不想再用浏览器收藏夹了。"
+    },
+    {
+      "repo": "wallabag/wallabag",
+      "name": "wallabag",
+      "cat": "self",
+      "lang": "PHP",
+      "license": "MIT",
+      "desc": "稍后读：把网页正文抽出来存进自己的库，广告和弹窗全剥掉，只留干净的阅读版。"
+    },
+    {
+      "repo": "ArchiveBox/ArchiveBox",
+      "name": "ArchiveBox",
+      "cat": "self",
+      "lang": "Python",
+      "license": "MIT",
+      "desc": "网页存档：把链接、浏览记录整批存成本地快照，原站哪天删了，你这儿还能翻出原样。"
+    },
+    {
+      "repo": "lissy93/dashy",
+      "name": "Dashy",
+      "cat": "self",
+      "lang": "Vue",
+      "license": "MIT",
+      "desc": "个人导航首页：把常用服务摆成一屏，带状态灯。自建服务一多，一眼就能看清哪个挂了。"
+    },
+    {
+      "repo": "go-gitea/gitea",
+      "name": "Gitea",
+      "cat": "self",
+      "lang": "Go",
+      "license": "MIT",
+      "desc": "一条命令起一个自己的 Git 服务：仓库、Issue、PR、CI 都有，占用比 GitLab 轻太多，小团队够用。"
+    },
+    {
+      "repo": "dani-garcia/vaultwarden",
+      "name": "Vaultwarden",
+      "cat": "self",
+      "lang": "Rust",
+      "license": "AGPL-3.0",
+      "desc": "Bitwarden 的自托管服务端，Rust 写的，一个容器加几十兆内存就够。密码库放在自己机器上，客户端照旧用官方的。"
+    },
+    {
+      "repo": "immich-app/immich",
+      "name": "Immich",
+      "cat": "self",
+      "lang": "TypeScript",
+      "license": "AGPL-3.0",
+      "desc": "自建相册：手机自动备份、人脸和地点分类、时间线浏览，还能多人共享。想把几万张照片从网盘搬回来，这是目前最像成品的一个。"
+    },
+    {
+      "repo": "excalidraw/excalidraw",
+      "name": "Excalidraw",
+      "cat": "web",
+      "lang": "TypeScript",
+      "license": "MIT",
+      "desc": "手绘风白板：画流程、架构、草图都像手画的，一条链接分享出去就能一起改。写稿配图比截图好看得多。"
+    },
+    {
+      "repo": "Stirling-Tools/Stirling-PDF",
+      "name": "Stirling PDF",
+      "cat": "web",
+      "lang": "TypeScript",
+      "license": "MIT",
+      "desc": "PDF 全能箱：合并、拆分、压缩、转 Word、加水印、去密码。可自托管，文件在自己机器上处理，不上传第三方。"
+    },
+    {
+      "repo": "CorentinTh/it-tools",
+      "name": "IT-Tools",
+      "cat": "web",
+      "lang": "Vue",
+      "license": "GPL-3.0",
+      "desc": "一百来个开发者小工具塞在一个页面里：时间戳、Base64、正则、UUID、哈希、单位换算。收藏一次省掉一堆搜索。"
+    },
+    {
+      "repo": "GoogleChromeLabs/squoosh",
+      "name": "Squoosh",
+      "cat": "web",
+      "lang": "TypeScript",
+      "license": "Apache-2.0",
+      "desc": "图片压缩：拖进去拖出来，压缩前后左右对比，全程在浏览器本地算。作品封面太大的话，先过一遍它。"
+    },
+    {
+      "repo": "dgtlmoon/changedetection.io",
+      "name": "changedetection.io",
+      "cat": "web",
+      "lang": "Python",
+      "license": "Apache-2.0",
+      "desc": "盯着某个网页，一变就通知你：蹲补货、蹲公告、蹲政策更新都好使，比手动刷新体面。"
+    },
+    {
+      "repo": "hoppscotch/hoppscotch",
+      "name": "Hoppscotch",
+      "cat": "web",
+      "lang": "TypeScript",
+      "license": "MIT",
+      "desc": "Postman 的开源替代：调接口、存集合、生成文档、切环境，浏览器直接打开，也能自己部署。团队不用按人头付订阅费。"
+    },
+    {
+      "repo": "ChatGPTNextWeb/NextChat",
+      "name": "NextChat",
+      "cat": "web",
+      "lang": "TypeScript",
+      "license": "MIT",
+      "desc": "开箱能用的 AI 对话界面：填个 key 或接自建接口就能聊，支持多模型、提示词、插件，也能打包成桌面端。懒得自己写前端时先用它。"
+    },
+    {
+      "repo": "shadcn-ui/ui",
+      "name": "shadcn/ui",
+      "cat": "build",
+      "lang": "TypeScript",
+      "license": "MIT",
+      "desc": "不是装好的组件库，是一份可以复制进项目的组件源码：样式随便改，不用跟版本号打架。现在做后台界面的默认起手。"
+    },
+    {
+      "repo": "lucide-icons/lucide",
+      "name": "Lucide",
+      "cat": "build",
+      "lang": "TypeScript",
+      "license": "ISC",
+      "desc": "一套统一风格的线性图标，一千多个，SVG 直接拷。本站头部那排小图标就是这一类。"
+    },
+    {
+      "repo": "penpot/penpot",
+      "name": "Penpot",
+      "cat": "build",
+      "lang": "Clojure",
+      "license": "MPL-2.0",
+      "desc": "开源的 Figma：设计稿和代码在同一个文件里对齐，团队协作不按人头收费，可以自己搭。"
+    },
+    {
+      "repo": "umami-software/umami",
+      "name": "Umami",
+      "cat": "build",
+      "lang": "TypeScript",
+      "license": "MIT",
+      "desc": "网站统计：只看该看的（访问、来源、设备），不用挂 Cookie 弹窗，数据在自己服务器上。小站比 GA 干净。"
+    },
+    {
+      "repo": "walinejs/waline",
+      "name": "Waline",
+      "cat": "build",
+      "lang": "JavaScript",
+      "license": "GPL-2.0",
+      "desc": "评论系统：一条 Docker 起，支持 Markdown、表情、登录，自带后台和审核。给静态站加评论区最省事的方案之一。"
+    },
+    {
+      "repo": "DIYgod/RSSHub",
+      "name": "RSSHub",
+      "cat": "build",
+      "lang": "TypeScript",
+      "license": "AGPL-3.0",
+      "desc": "把没有 RSS 的网站变成 RSS：微博、B 站、公众号、小红书都有人写过路由。想盯什么，先来这儿找找有没有现成的。"
+    },
+    {
+      "repo": "withastro/astro",
+      "name": "Astro",
+      "cat": "build",
+      "lang": "TypeScript",
+      "license": "MIT",
+      "desc": "内容型网站框架：默认不往浏览器塞 JS，写完 Markdown 就是个快站。博客、文档、落地页这类以文字为主的站，起手比单页应用省心。"
+    },
+    {
+      "repo": "tailwindlabs/tailwindcss",
+      "name": "Tailwind CSS",
+      "cat": "build",
+      "lang": "TypeScript",
+      "license": "MIT",
+      "desc": "原子化 CSS：样式直接写在标签的 class 里，不用来回切文件、也不用给每个块起名。上手第一天会嫌长，第二个项目就回不去了。"
+    },
+    {
+      "repo": "521xueweihan/HelloGitHub",
+      "name": "HelloGitHub",
+      "cat": "source",
+      "lang": "",
+      "license": "",
+      "desc": "中文月刊，每月挑一批开源项目写人话介绍。这个页面的选题有一半是从这儿捡的——想持续找新东西，订它。"
+    },
+    {
+      "repo": "ruanyf/weekly",
+      "name": "科技爱好者周刊",
+      "cat": "source",
+      "lang": "",
+      "license": "",
+      "desc": "阮一峰每周五更新的周刊：工具、资源、观点、一句话消息。中文技术圈最长寿的读物，翻旧刊比翻热搜有用。"
+    },
+    {
+      "repo": "awesome-selfhosted/awesome-selfhosted",
+      "name": "awesome-selfhosted",
+      "cat": "source",
+      "lang": "",
+      "license": "",
+      "desc": "自托管软件大全，按类目分好、标了许可证。想到「这功能有没有能自己搭的」，先来这儿翻一眼。"
+    },
+    {
+      "repo": "1c7/chinese-independent-developer",
+      "name": "中国独立开发者项目列表",
+      "cat": "source",
+      "lang": "",
+      "license": "",
+      "desc": "按「刚上线 / 已上线 / 已关闭」分组的项目清单，谁在做什么一眼扫完。想知道同行最近在折腾什么，来这儿翻比刷时间线有效。"
+    }
+  ]
+}

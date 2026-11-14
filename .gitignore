@@ -42,3 +42,9 @@ Thumbs.db
 
 # 本地截图验证脚本
 _iconpreview/
+
+# 发布锁：改代码期间存在，deploy.sh 见到就中止发版（内容是本机临时状态，不入库）
+.deploy-lock
+
+# deploy-patch.sh 的临时工作目录（线上副本 + 待发版本）
+.deploy-patch.tmp.*

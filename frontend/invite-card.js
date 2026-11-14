@@ -54,12 +54,12 @@
   if (!root || !cv || !cv.getContext) return;
   var box = document.getElementById('ivPosterBox');
   var ctx = cv.getContext('2d');
-  var tpl = 'light';
+  var tpl = 'grad';
   var qrImg = null, qrFor = '';
   var logoImgs = {}, logoPromises = {};
   var me = null;                 // /api/me 的登录态
   var count = Number(root.dataset.count || 0) || 0;
-  var authors = Number(root.dataset.authors || 0) || 0;
+  // 海报不展示「N 位创作者」：这个数只统计已投稿作者，对外容易被误读成站点注册账号总数
   var SCOPES = ['网站', '小程序', 'App', '智能体', '软件', '游戏'];
   var POINTS = ['免费收录，不用报名也不用付费', '过审就有独立主页，链接固定可分享', '能被搜索、被逛到、被扫码打开'];
 
@@ -133,11 +133,14 @@
   }
 
   // ---------- 链接 ----------
+  // 海报上的码固定印正式站点的首页：本地预览时也是线上地址，
+  // 否则把本地地址发给别人，对方打不开。取不到服务端注入的域名才退回当前地址。
+  var SHARE_BASE = String((root.dataset.shareBase || location.origin || '')).replace(/\/+$/, '');
+  function shareHost() { return SHARE_BASE.replace(/^https?:\/\//i, ''); }
   function refName() { return me ? (me.id || me.username || '') : ''; }
   function inviteUrl() {
-    var u = location.origin + '/invite';
     var r = refName();
-    return r ? u + '?ref=' + encodeURIComponent(r) : u;
+    return SHARE_BASE + '/' + (r ? '?ref=' + encodeURIComponent(r) : '');
   }
   function inviteName() {
     return me ? (me.nickname || me.displayName || me.username || '') : '';
@@ -145,7 +148,7 @@
   function inviteText() {
     return [
       '【造梦橱窗 · 邀请你来收录作品】',
-      '你亲手做的网站、小程序、App、智能体、软件、游戏，都可以免费收录进来；提交过审后就有独立主页，能被搜到、被分享、被扫码打开。',
+      '你亲手做的网站、小程序、App、智能体、软件、游戏，都可以免费收录进来（不用是大项目，认真做完的小工具也算）；提交过审后就有独立主页，能被搜到、被分享、被扫码打开。',
       '作者本人来投就行 → ' + inviteUrl(),
       '来自「造梦橱窗」：目标很朴素，让创作被看见'
     ].join('\n');
@@ -176,11 +179,11 @@
     ctx.fillStyle = t.text;
     ctx.font = '700 36px ' + FONT;
     ctx.fillText(SITE, PAD + 82, 58);
-    // 题眼：先说「为什么做」，下面才讲「怎么参与」。
-    // 原来这里写的是站点口号，和大标题「值得被更多人看见」几乎同义，换成这句初心更朴素也不重复。
+    // 题眼：先说「收录什么」，下面才讲「为什么」。
+    // 大标题已含「被更多人看见」，这行小字换成站点定位，不再重复口号。
     ctx.fillStyle = t.pillText;
     ctx.font = '500 24px ' + FONT;
-    ctx.fillText('目标很朴素：让创作被看见', PAD + 82, 114);
+    ctx.fillText('收录独立开发者、创作者自己开发的产品', PAD + 82, 114);
 
     // 邀请角标
     ctx.fillStyle = t.pillBg;
@@ -192,14 +195,14 @@
     // 主标题（两行，字号固定，靠 wrap 兜长文本）
     ctx.fillStyle = t.text;
     ctx.font = '700 84px ' + FONT;
-    var titleLines = wrap('你做的东西，\n值得被更多人看见', W - PAD * 2).slice(0, 2);
+    var titleLines = wrap('每一个用心的作品，\n都值得被更多人看见', W - PAD * 2).slice(0, 2);
     var ty = 280;
     titleLines.forEach(function (l) { ctx.fillText(l, PAD, ty); ty += 106; });
 
     // 副标题
     ctx.fillStyle = t.sub;
     ctx.font = '400 30px ' + FONT;
-    var subLines = wrap('不用是大项目，一个认真做完的小工具也算。', W - PAD * 2).slice(0, 2);
+    var subLines = wrap('不用是大项目，一个认真做完的小工具，也算。', W - PAD * 2).slice(0, 2);
     var sy = ty + 14;
     subLines.forEach(function (l) { ctx.fillText(l, PAD, sy); sy += 46; });
 
@@ -228,7 +231,8 @@
     ctx.fillText('件作品已收录', PAD + 44 + nw, panelY + 58);
     ctx.fillStyle = t.sub;
     ctx.font = '400 23px ' + FONT;
-    ctx.fillText('来自 ' + authors + ' 位创作者 · 持续增加中', PAD + 34, panelY + 102);
+    // 海报是对外物料：不印「N 位创作者」的具体数字，容易被误读成站内注册账号总数，只做定性表述
+    ctx.fillText('来自独立开发者与创作者 · 持续增加中', PAD + 34, panelY + 102);
 
     // 三条价值点
     var ly = panelY + panelH + 46;
@@ -267,7 +271,7 @@
     ctx.fillText('扫码来收录你的作品', PAD, 1140);
     ctx.fillStyle = t.sub;
     ctx.font = '400 22px ' + FONT;
-    ctx.fillText(fit(location.host + '/invite', leftW), PAD, 1190);
+    ctx.fillText(fit(shareHost(), leftW), PAD, 1190);
     ctx.font = '400 23px ' + FONT;
     ctx.fillText(fit(inviteName() ? '@' + inviteName() + ' 邀请你' : '作者本人提交 · 审核通过后上架', leftW), PAD, 1232);
 
@@ -398,7 +402,7 @@
   function bind() {
     document.querySelectorAll('.iv-tpl').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        tpl = btn.dataset.tpl || 'light';
+        tpl = btn.dataset.tpl || 'grad';
         document.querySelectorAll('.iv-tpl').forEach(function (b) {
           b.setAttribute('aria-pressed', String(b === btn));
         });

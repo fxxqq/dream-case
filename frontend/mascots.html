@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-admin="__ADMIN__">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex,follow" />
+<title>换个形象 - 造梦橱窗</title>
+<link rel="icon" href="/favicon.svg" />
+<!--
+  换形象页（/mascots）
+  - 独立文件：不接入 app.js / SPA 路由，服务端 app.get('/mascots') 直接回本文件。
+  - 站头 / 站脚照 /medals 的做法手写一份轻量版（同高 60px、同底色、同链接分组）：
+    本页不引 app.js，导航都是整页跳转，登录态由 /api/mascots/state 顺带给出。
+  - 形象库只有一份：mascots.js（window.MASCOTS），与首页右下角小助手同一套数据。
+  - 动效只有一份：mascots.css（首页 style.css 里的形象动效已抽到这里，两边共用）。
+  - 选择只存本机：localStorage['dm_mascot']，与首页小助手读的是同一个键。
+  - 页面不参与收录（私人偏好页），noindex。
+-->
+<link rel="stylesheet" href="/mascots.css" />
+<style>
+:root{
+  --bg:#f7f7fb; --card:#fff; --text:#1f2330; --muted:#7a8095;
+  --primary:#5b5bd6; --border:#e6e8f0; --soft:#f4f3ff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
+  background:var(--bg); color:var(--text); line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1000px;margin:0 auto;padding:28px 20px 60px}
+
+/* ---------- 站头：与主站 .site-header 同款（/medals 已有一份，这里设成一样）
+   本页不引 app.js，导航是普通链接整页跳转；容器 1000px 与 .wrap 对齐，logo 和内容左边缘同一条线。
+   ≤640px 跟随主站策略：顶级导航不摆，只留 logo 和登录/我的。 ---------- */
+.site-header{background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+.sh-inner{max-width:1000px;margin:0 auto;padding:0 20px;height:60px;display:flex;align-items:center;gap:24px}
+.logo{
+  display:inline-flex;align-items:center;gap:8px;flex:none;
+  font-size:18px;font-weight:700;color:var(--primary);text-decoration:none;letter-spacing:.2px;
+}
+.logo-mark{display:block;flex:none}
+.sh-nav{display:flex;align-items:center;gap:4px;flex:1;min-width:0}
+.sh-nav .nav-btn{
+  display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;
+  font-size:14px;color:var(--muted);text-decoration:none;white-space:nowrap;transition:.16s;
+}
+.sh-nav .nav-btn:hover{color:var(--text);background:#f2f3f9}
+.sh-nav .nav-btn.active{color:var(--primary);background:#eeeefc;font-weight:600}
+.sh-nav .nav-btn .ico{display:inline-flex;width:15px;height:15px}
+.sh-nav .nav-btn .ico svg{width:15px;height:15px;display:block}
+/* 导航黑话提示：与 style.css 里 .main-nav .nav-btn[data-tip] 同一份视觉（本页不引 style.css，故复制一份） */
+.sh-nav .nav-btn[data-tip]{position:relative}
+.sh-nav .nav-btn[data-tip]::after{
+  content:attr(data-tip);position:absolute;top:calc(100% + 10px);left:0;
+  width:max-content;max-width:262px;padding:8px 11px 9px;border-radius:9px;
+  background:#22253a;color:#fff;font-size:12.5px;font-weight:400;line-height:1.65;
+  letter-spacing:0;text-align:left;white-space:normal;box-shadow:0 10px 28px rgba(24,24,48,.2);
+  opacity:0;visibility:hidden;pointer-events:none;z-index:30;
+  transform:translateY(-4px);transition:opacity .14s ease,transform .14s ease,visibility .14s;
+}
+.sh-nav .nav-btn[data-tip]::before{
+  content:"";position:absolute;top:calc(100% - 4px);left:16px;
+  border:5px solid transparent;border-bottom-color:#22253a;
+  opacity:0;visibility:hidden;pointer-events:none;z-index:30;
+  transform:translateY(-4px);transition:opacity .14s ease,transform .14s ease,visibility .14s;
+}
+.sh-nav .nav-btn[data-tip]:hover::before,.sh-nav .nav-btn[data-tip]:hover::after,
+.sh-nav .nav-btn[data-tip]:focus-visible::before,.sh-nav .nav-btn[data-tip]:focus-visible::after{
+  opacity:1;visibility:visible;transform:translateY(0)
+}
+.sh-auth{flex:none;display:flex;align-items:center;gap:10px;margin-left:auto}
+.sh-login{
+  border:1px solid var(--border);background:#fff;color:var(--text);text-decoration:none;
+  font-size:13.5px;padding:7px 15px;border-radius:10px;transition:.16s;white-space:nowrap;
+}
+.sh-login:hover{border-color:#cdd0e0;color:var(--primary)}
+.sh-user{
+  display:inline-flex;align-items:center;gap:6px;max-width:160px;text-decoration:none;
+  font-size:13.5px;color:var(--text);padding:5px 12px 5px 6px;border-radius:999px;background:#f2f3f9;
+}
+.sh-user:hover{background:#eaecf5}
+.sh-user b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sh-user .ico{display:inline-flex;flex:none}
+.sh-user .ico svg{width:22px;height:22px;display:block}
+
+/* ---------- 页面标题（站头之下，本页自己的） ---------- */
+.hd{padding:6px 0 20px}
+.hd h1{font-size:22px;font-weight:600;letter-spacing:.4px;text-align:center}
+.hd .sub{font-size:13px;color:var(--muted);text-align:center;margin-top:4px}
+
+/* ---------- 当前形象 ---------- */
+.hero{
+  display:flex;align-items:center;gap:26px;
+  background:var(--card);border:1px solid var(--border);border-radius:18px;
+  padding:20px 26px 20px 20px;margin-top:8px;
+  box-shadow:0 6px 22px rgba(31,35,48,.05);
+}
+.hero-art{
+  flex:none;width:160px;height:160px;border-radius:16px;
+  display:grid;place-items:center;
+  background:radial-gradient(circle at 50% 42%,#f6f4ff,#fbfaff 62%,#fff 100%);
+  border:1px solid #eeeafd;
+}
+.hero-art .site-bot{width:132px;margin:0 auto}
+.hero-info{min-width:0}
+.now{
+  display:inline-block;font-size:11px;letter-spacing:.6px;color:#6a63c9;
+  background:var(--soft);border:1px solid #e2dffa;border-radius:6px;padding:2px 7px;
+}
+.hero-info h2{font-size:24px;font-weight:600;letter-spacing:.5px;margin-top:8px}
+.hero-info .quote{font-size:13px;color:var(--muted);margin-top:6px}
+.hero-acts{display:flex;flex-wrap:wrap;gap:9px;margin-top:16px}
+.btn-ghost{
+  height:34px;padding:0 15px;border:1px solid var(--border);border-radius:9px;
+  background:#fff;color:#4a5063;font-size:12.5px;font-family:inherit;
+  cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;
+  transition:.16s;
+}
+.btn-ghost:hover{border-color:#c3c4ee;color:var(--primary);background:#fbfaff;transform:translateY(-1px)}
+.btn-ghost:active{transform:none}
+/* 全部形象内测时，随机按钮置灰：普通用户没得换，别让人白点 */
+.btn-ghost[disabled]{opacity:.5;cursor:default}
+.btn-ghost[disabled]:hover{border-color:var(--border);color:#4a5063;background:#fff;transform:none}
+
+/* ---------- 形象列表 ---------- */
+.list-hd{display:flex;align-items:baseline;gap:8px;margin:30px 2px 0}
+.list-hd h2{font-size:15px;font-weight:600}
+.list-hd .cnt{font-size:12px;color:var(--muted)}
+.list-hd .tip{margin-left:auto;font-size:11.5px;color:#a0a5b6}
+
+.grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));
+  gap:12px;margin-top:14px;
+}
+.sk{
+  position:relative;background:var(--card);border:1px solid var(--border);border-radius:14px;
+  padding:14px 10px 11px;text-align:center;cursor:pointer;font-family:inherit;color:inherit;
+  transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease,background .16s ease;
+}
+.sk:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(31,35,48,.08);border-color:#d7d5f0;background:#fdfdff}
+.sk:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.sk.on{border-color:#b9b4f2;background:linear-gradient(180deg,#faf9ff,#fff 66%)}
+.sk.on:hover{box-shadow:0 8px 20px rgba(91,91,214,.14)}
+.sk .site-bot{width:92px;margin:0 auto}
+/* 缩略图里的动效默认暂停：12 个一起动太吵、也费电；悬停 / 当前选中那个再跑起来 */
+.sk .site-bot *{animation-play-state:paused}
+.sk:hover .site-bot *,.sk.on .site-bot *{animation-play-state:running}
+.sk .nm{display:block;font-size:13.5px;font-weight:600;margin-top:6px;letter-spacing:.2px}
+.sk .qt{display:block;font-size:11.5px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 「拿手事」：每个形象在首页面板里的那一条按钮（2026-11-09）。
+   写在这里是为了让人知道换形象不只是换脸——选了它，面板第一条就是这件事。 */
+.sk .hk{display:block;font-size:11px;color:#6a63c9;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sk .hk b{font-weight:600}
+.hero-info .hact{font-size:12.5px;color:#6a63c9;margin-top:8px}
+.hero-info .hact b{font-weight:600}
+.sk .tick{
+  position:absolute;top:8px;right:8px;width:18px;height:18px;border-radius:50%;
+  display:none;place-items:center;background:var(--primary);color:#fff;font-size:11px;
+}
+.sk.on .tick{display:grid}
+
+/* 内测形象：给用户看得见、点不动；站长自己点得动（他就是来看效果的） */
+.sk.lock{background:#fbfbfe;border-style:dashed;cursor:default}
+.sk.lock:hover{transform:none;box-shadow:none;border-color:var(--border);background:#fbfbfe}
+.sk.lock .site-bot{opacity:.72;filter:saturate(.8)}
+.sk.lock:hover .site-bot *{animation-play-state:paused}
+.beta{
+  font-size:10px;letter-spacing:.4px;padding:1px 6px;border-radius:6px;
+  color:#a8761c;background:#fff8e8;border:1px solid #f2e2bb;white-space:nowrap;
+}
+.sk .beta{position:absolute;top:8px;left:8px}
+.hero-head{display:flex;align-items:center;gap:7px}
+.hero-head .beta{display:none}
+.hero-head .beta.on{display:inline-block}
+
+/* ---------- 页面注脚（讲口径，不是站级页脚） + 轻提示 ---------- */
+.page-note{
+  margin-top:40px;padding-top:16px;border-top:1px solid var(--border);
+  font-size:11.5px;color:#a0a5b6;text-align:center;line-height:1.9;
+}
+.page-note a{color:#8b8ba8}
+
+/* ---------- 站级页脚：照主站 .site-footer 分层式（左品牌栏 / 右纵向链接栏 / 落款）。
+   只放纯链接——「安装到桌面」「小程序码」「合作洽谈」这些挂 app.js 的按钮本页没有，不放。 ---------- */
+.site-footer{
+  flex:none;background:#f3f3f9;border-top:1px solid #dce0ea;
+  color:var(--muted);font-size:13px;padding:28px 0 22px;margin-top:36px;
+}
+.ft-inner{max-width:1000px;margin:0 auto;padding:0 20px}
+.ft-grid{display:flex;flex-wrap:wrap;gap:26px 52px;align-items:flex-start}
+.ft-brand{flex:1 1 250px;min-width:230px}
+.ft-name{display:block;font-size:16px;font-weight:700;color:var(--text);letter-spacing:.01em}
+.ft-desc{display:block;margin-top:8px;font-size:13px;line-height:1.75}
+.ft-oss{font-size:12.5px;line-height:1.9;margin-top:10px}
+.ft-oss .ico{display:inline-flex;vertical-align:-2px;margin-right:5px}
+.ft-oss .ico svg{width:14px;height:14px;display:block}
+.ft-oss a{color:var(--primary);text-decoration:none;white-space:nowrap}
+.ft-oss a:hover{text-decoration:underline}
+.ft-links{
+  display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;
+  gap:24px 48px;flex:2 1 auto;
+}
+.ft-group{display:flex;flex-direction:column;gap:9px;min-width:72px}
+.ft-label{font-size:12.5px;color:var(--text);font-weight:600;opacity:.92;letter-spacing:.04em;margin-bottom:3px}
+.ft-links a{color:var(--muted);text-decoration:none;font-size:13px;line-height:1.5}
+.ft-links a:hover{color:var(--primary)}
+.ft-base{display:flex;align-items:center;gap:14px;margin-top:18px;font-size:12.5px;opacity:.85}
+.ft-base a{color:var(--muted);text-decoration:none;margin-left:auto}
+.ft-base a:hover{color:var(--primary)}
+.toast{
+  position:fixed;left:50%;bottom:34px;transform:translate(-50%,10px);
+  padding:9px 16px;border-radius:10px;background:rgba(31,35,48,.9);color:#fff;
+  font-size:12.5px;opacity:0;pointer-events:none;transition:.22s;z-index:50;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* 形象统一尺寸：本页不加载 style.css，这里补上 .site-bot 的基础盒模型 */
+.site-bot{display:block;width:64px;line-height:0}
+.site-bot .bot-figure{display:block}
+.site-bot .bot-svg{display:block;width:100%;height:auto}
+
+@media(max-width:640px){
+  .wrap{padding:22px 16px 48px}
+  /* 站头 / 页脚的手机端：跟主站一样不摆顶级导航 */
+  .sh-inner{height:52px;gap:12px;padding:0 16px}
+  .sh-nav{display:none}
+  .sh-auth{margin-left:auto}
+  .logo{font-size:16px}
+  .logo-mark{width:23px;height:23px}
+  .ft-inner{padding:0 16px}
+  /* 手机上分层栏自然折行：品牌栏独占一排，链接组横向流 */
+  .ft-grid{gap:20px 28px}
+  .ft-links{gap:16px 28px;justify-content:flex-start}
+  /* 落款行手机端只留备案号（主站同规则） */
+  .ft-base .fb-text{display:none}
+  .hd h1{font-size:19px}
+  .hero{flex-direction:column;gap:14px;padding:18px 16px;text-align:center}
+  .hero-art{width:100%;height:150px}
+  .hero-art .site-bot{width:118px}
+  .hero-acts{justify-content:center}
+  .grid{grid-template-columns:repeat(2,1fr);gap:10px}
+  .list-hd .tip{display:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .sk .site-bot *{animation-play-state:paused!important}
+  .sk,.hero,.toast{transition:none}
+}
+</style>
+<!-- 站头图标：与主站共用同一份 icons.js（不能加 defer，页面一出来就要把 data-ico 填好） -->
+<script src="/icons.js"></script>
+</head>
+<body>
+<!-- 站头：与主站同款（logo / 导航 / 登录态）。本页不引 app.js，导航是普通链接整页跳转，
+     登录态由页面底部的 /api/mascots/state 顺带拿到后填入 #authBox。 -->
+<header class="site-header">
+  <div class="sh-inner">
+    <a class="logo" href="/" title="回造梦橱窗首页"><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
+    <nav class="sh-nav" aria-label="主导航">
+      <a class="nav-btn" href="/rank" data-tip="作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届" aria-label="星梦榜：作品的热度排行，访客、收藏、评论、灯火加权计分，每周换一届"><i class="ico" data-ico="rank"></i>星梦榜</a>
+      <a class="nav-btn" href="/bar" data-tip="说出你想要的作品，等创作者认领实现；也能在散座随便聊" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现"><i class="ico" data-ico="wish"></i>造梦酒馆</a>
+      <a class="nav-btn" href="/medals" data-tip="完成指定事情拿勋章，永久挂在你的主页和作品页" aria-label="造梦勋章：完成指定事情拿勋章，永久挂在你的主页和作品页"><i class="ico" data-ico="medal"></i>造梦勋章</a>
+    </nav>
+    <div class="sh-auth" id="authBox"></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <header class="hd">
+    <h1>换个形象</h1>
+    <p class="sub">挑一个站在右下角陪你 · 每个都有自己的小动作和一件拿手事</p>
+  </header>
+
+  <section class="hero">
+    <div class="hero-art">
+      <div class="site-bot"><div class="bot-figure" id="heroFigure"></div></div>
+    </div>
+    <div class="hero-info">
+      <div class="hero-head">
+        <span class="now">当前形象</span>
+        <span class="beta" id="heroBeta">内测中 · 仅你可选</span>
+      </div>
+      <h2 id="heroName">灯火</h2>
+      <p class="quote" id="heroQuote">灯亮着，要帮忙吗？</p>
+      <p class="hact" id="heroAct">拿手事 · <b>点亮今日</b></p>
+      <div class="hero-acts">
+        <button type="button" class="btn-ghost" id="randBtn">随机换一个</button>
+        <a class="btn-ghost" href="/">回首页看效果</a>
+      </div>
+    </div>
+  </section>
+
+  <div class="list-hd">
+    <h2>全部形象</h2>
+    <span class="cnt" id="cnt"></span>
+    <span class="tip" id="listTip">点一下就换 · 悬停能看动效</span>
+  </div>
+  <section class="grid" id="grid" aria-label="形象列表"></section>
+
+  <!-- 页面自己的注脚：讲口径与回程，不是站级页脚（站级页脚在 .wrap 外面） -->
+  <p class="page-note">
+    <span id="footNote"></span><br />
+    小助手窗口里的「换个形象」随时回到这一页 · <a href="/">回首页</a>
+  </p>
+</div>
+
+<!-- 站级页脚：结构与主站 .site-footer 一致（左品牌栏 / 四组纵向链接栏 / 落款）。 -->
+<footer class="site-footer">
+  <div class="ft-inner">
+    <div class="ft-grid">
+      <div class="ft-brand">
+        <b class="ft-name">造梦橱窗</b>
+        <span class="ft-desc">收录独立开发者、创作者自制的网站、小程序、智能体、软件、游戏</span>
+        <div class="ft-oss">
+          <span class="ico" data-ico="github"></span>
+          <span>本站开源在 <a href="https://github.com/fxxqq/dream-case" target="_blank" rel="noopener noreferrer">GitHub</a>，欢迎 Star / PR · 服务器部署在 <a href="https://www.aliyun.com/minisite/goods?userCode=tw6ffyfu" target="_blank" rel="nofollow sponsored noopener noreferrer">阿里云 <span aria-hidden="true">↗</span></a></span>
+        </div>
+      </div>
+      <nav class="ft-links" aria-label="页脚导航">
+        <div class="ft-group"><span class="ft-label">逛逛</span><a href="/column">软件精选</a><a href="/open">开源好物</a></div>
+        <div class="ft-group"><span class="ft-label">参与</span><a href="/invite">邀请收录</a><a href="/howto">投稿指南</a><a href="/guide">外宣指南</a></div>
+        <div class="ft-group"><span class="ft-label">合作</span><a href="/ads">投放合作</a><a href="/?feedback=1">意见建议</a></div>
+        <div class="ft-group"><span class="ft-label">订阅</span><a href="/feed.xml">RSS</a><a href="/sitemap.xml">站点地图</a></div>
+        <div class="ft-group"><span class="ft-label">站务</span><a href="/admin">管理入口</a><a href="/admin?apply=1">申请管理员</a></div>
+      </nav>
+    </div>
+    <div class="ft-base">
+      <span class="fb-text">© 2026 造梦橱窗</span>
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
+    </div>
+  </div>
+</footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="/mascots.js"></script>
+<script>
+(function(){
+  var M = window.MASCOTS || {};
+  var KEY = 'dm_mascot';
+  var DEFAULT = 'lamp';
+  var ids = Object.keys(M);
+  if (!ids.length) return;
+
+  // 站长标识由服务端注入（后台口令 cookie 换来的，前端读不到也不需要读）
+  var ADMIN = document.documentElement.getAttribute('data-admin') === '1';
+  // 内测形象（mascots.js 里 beta:true）普通用户看得见、点不动，只有站长能选
+  function isBeta(id){ return !!(M[id] && M[id].beta); }
+  var pool = ids.filter(function(id){ return ADMIN || !isBeta(id); });   // 自己可选的池子
+  var userPool = ids.filter(function(id){ return !isBeta(id); });        // 用户可用的那几个
+  // 2026-11-10：12 个形象全部内测，userPool 是空的。普通用户没有可换的池子，
+  // 但要有一张「当前形象」当样例展示，否则 hero 区会空着。取默认形象，它自己也在内测。
+  var SHOW_FALLBACK = userPool[0] || (M[DEFAULT] ? DEFAULT : ids[0]);
+
+  var heroFigure = document.getElementById('heroFigure');
+  var heroName = document.getElementById('heroName');
+  var heroQuote = document.getElementById('heroQuote');
+  var heroAct = document.getElementById('heroAct');
+  var heroBeta = document.getElementById('heroBeta');
+  var grid = document.getElementById('grid');
+  var toastEl = document.getElementById('toast');
+  var cntEl = document.getElementById('cnt');
+  var cells = [];
+  var cur = '';
+
+  function read(){
+    var v = '';
+    try { v = localStorage.getItem(KEY) || ''; } catch(e){}
+    if (M[v] && (ADMIN || !isBeta(v))) return v;                 // 内测形象只认站长的
+    if (M[v] && !ADMIN){ try { localStorage.removeItem(KEY); } catch(e){} }
+    return SHOW_FALLBACK;
+  }
+
+  var toastTimer = null;
+  function toast(text){
+    toastEl.textContent = text;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 1800);
+  }
+
+  function paint(id, save){
+    if (!M[id]) return;
+    cur = id;
+    heroFigure.innerHTML = M[id].svg;
+    heroName.textContent = M[id].name;
+    heroQuote.textContent = M[id].bubble;
+    if (heroAct){
+      var a = M[id].act;
+      heroAct.innerHTML = a && a.label ? '拿手事 · <b>' + a.label + '</b>' : '';
+      heroAct.style.display = a && a.label ? '' : 'none';
+    }
+    // 角标文案分两种人：站长是「仅你可选」，普通用户是「暂未开放」（2026-11-10 全部形象内测）
+    heroBeta.className = 'beta' + (isBeta(id) ? ' on' : '');
+    heroBeta.textContent = ADMIN ? '内测中 · 仅你可选' : '内测中 · 暂未开放';
+    cells.forEach(function(c){
+      var on = c.getAttribute('data-id') === id;
+      c.classList.toggle('on', on);
+      c.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    if (save){
+      try { localStorage.setItem(KEY, id); } catch(e){}
+      document.title = M[id].name + ' · 换个形象 - 造梦橱窗';
+      toast('换成「' + M[id].name + '」');
+    }
+  }
+
+  // 列表：一项一个按钮，键盘也能选（aria-pressed 表示当前选中）
+  ids.forEach(function(id){
+    var skin = M[id];
+    var locked = !ADMIN && isBeta(id);
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sk' + (locked ? ' lock' : '');
+    b.setAttribute('data-id', id);
+    b.setAttribute('aria-pressed', 'false');
+    b.setAttribute('aria-label', (locked ? skin.name + '（内测中，暂不可选）' : '换成' + skin.name + '：' + skin.bubble));
+    if (locked) b.setAttribute('aria-disabled', 'true');
+    b.innerHTML =
+      (isBeta(id) ? '<span class=beta>内测中</span>' : '') +
+      '<span class=tick aria-hidden=true>✓</span>' +
+      '<span class=site-bot><span class=bot-figure>' + skin.svg + '</span></span>' +
+      '<span class=nm>' + skin.name + '</span>' +
+      '<span class=qt>' + skin.bubble + '</span>' +
+      (skin.act && skin.act.label ? '<span class=hk>拿手事 · <b>' + skin.act.label + '</b></span>' : '');
+    b.addEventListener('click', function(){
+      if (locked) { toast('「' + skin.name + '」内测中，站长测试完就开放'); return; }
+      if (id !== cur) paint(id, true);
+    });
+    grid.appendChild(b);
+    cells.push(b);
+  });
+
+  cntEl.textContent = ids.length + ' 个';
+  if (!ADMIN){
+    if (userPool.length){
+      document.getElementById('listTip').textContent = '内测中的还在测，先随机换一个';
+      document.getElementById('randBtn').textContent = '随机换一个';
+      document.getElementById('footNote').textContent =
+        '标着「内测中」的还在测，暂时只有站长能用；你现在用的这几个可以随机换，选择只记在这台设备上';
+    } else {
+      // 全部形象都在内测：没得换，把按钮说清楚，别让人白点
+      document.getElementById('listTip').textContent = '全部形象都在内测中';
+      var rb = document.getElementById('randBtn');
+      rb.textContent = '全部内测中';
+      rb.disabled = true;
+      rb.title = ids.length + ' 个形象都还在测，站长测完逐个开放';
+      document.getElementById('footNote').textContent =
+        ids.length + ' 个形象都在内测，暂时只有站长能选，站长测完会逐个开放；右下角先固定是默认的「灯火」';
+    }
+  } else {
+    document.getElementById('footNote').textContent =
+      '内测中的形象只有你能选（用户那边点不动）；选择只记在这台设备上，换设备回默认的「灯火」';
+  }
+
+  // 随机：用户只在开放的那几个里抽，站长在全部里抽；避开当前这个才像真的「换」
+  document.getElementById('randBtn').addEventListener('click', function(){
+    var src = ADMIN ? ids : pool;
+    if (src.length < 2) { toast('全部形象都在内测，等站长测完就开放'); return; }
+    var next = cur;
+    while (next === cur) next = src[Math.floor(Math.random() * src.length)];
+    paint(next, true);
+  });
+
+  /* —— 站头登录区：跟 /medals 同一套说法 ——
+     已登录：胶囊头像 + 昵称 → /me；未登录：「登录 / 注册」→ 首页带 login=1 回来直接弹登录框。
+     只问 /api/mascots/state（admin 本来就从这里来），不额外拉 /api/me，
+     免得在一个纯偏好页上触发到访/签到那套逻辑。 */
+  var authBox = document.getElementById('authBox');
+  function esc(t){
+    return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){
+      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+    });
+  }
+  function renderAuth(loggedIn, name){
+    if (!authBox) return;
+    authBox.innerHTML = loggedIn
+      ? '<a class="sh-user" href="/me" title="我的主页"><span class="ico" data-ico="user"></span><b>' + esc(name || '我') + '</b></a>'
+      : '<a class="sh-login" href="/?login=1">登录 / 注册</a>';
+    if (window.Icons) Icons.hydrate(authBox);   // 后插的节点要手动水合
+  }
+  renderAuth(false, '');   // 先画登录入口，接口慢了也不留空位
+  fetch('/api/mascots/state', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+    .then(function(r){ return r.json(); })
+    .then(function(d){ renderAuth(!!d.loggedIn, d.name || ''); })
+    .catch(function(){});
+
+  paint(read(), false);
+})();
+</script>
+</body>
+</html>

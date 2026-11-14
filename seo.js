@@ -29,6 +29,12 @@ function setTypeIcons(map) {
   Object.assign(TYPE_ICONS, map);
 }
 
+// 聚合页筛选胶囊的分类图标：站内固定六大分类各配一个，自定义分类回退 other
+const CATEGORY_SVG = {
+  '效率工具': 'bolt', '生活助手': 'home', '内容创作': 'palette',
+  '学习教育': 'bulb', '娱乐游戏': 'shapes', '开发工具': 'gear'
+};
+
 // schema.org 应用分类映射
 const APP_CATEGORY = {
   '效率工具': 'BusinessApplication',
@@ -83,9 +89,18 @@ function esc(s) {
   }[m]));
 }
 
+// 截断（meta description / RSS / JSON-LD 共用）：优先按句号等句读收尾，不在半句话上砍断。
+// 攒得下完整句子就攒（不超上限为止），一句都放不下（或首句超长）才退回硬截加 …。
 function truncate(s, n) {
   const str = String(s || '').replace(/\s+/g, ' ').trim();
   if (str.length <= n) return str;
+  const parts = str.split(/(?<=[。！？!?；;…])/).filter(Boolean);
+  let out = '';
+  for (const p of parts) {
+    if ((out + p).length > n) break;
+    out += p;
+  }
+  if (out) return out;
   return str.slice(0, n - 1).replace(/[，,。.、\s]+$/, '') + '…';
 }
 
@@ -183,13 +198,66 @@ function osBadgeHtml(w) {
   return '';
 }
 
-// 付费标识：默认免费不输出，只有标注收费才显示
+// 付费 / 灯火解锁标识：默认免费不输出，只有作者标注了才显示
+// 两种口径要分开写清楚：付费=要花钱买；N 盏解锁=要花灯火才能看入口
+// （打赏是全站通用能力，不再作为作品标注，所以这里没有「可送灯火」徽章）
 function paidBadgeHtml(w) {
+  if (w.paidModel === 'lamp' && w.lampPrice) {
+    return `<span class="os-badge paid" title="需要用 ${Number(w.lampPrice)} 盏灯火解锁才能看到入口">${svgIco('lock')} ${Number(w.lampPrice)} 盏解锁</span>`;
+  }
   return w.paid ? `<span class="os-badge paid" title="需要付费或含付费版本">${svgIco('coin')} 付费</span>` : '';
 }
 
 // 展示名：有昵称用昵称，没有就用账号名（链接/作者页仍按账号）
 function nameOf(w) { return w.anonymous ? '匿名' : (w.authorName || w.author); }
+
+// 作者页链接：统一 /u/<账号id>（纯 ASCII，链接里不出现汉字）；
+// 无主作品（还没认领、没有 userId）回落到 /u/<账号名>——服务端对名字链接一直兼容。
+// 原始作品带 userId；publicWork 视图（详情页 / 相关作品）带 authorId，两个字段都认。
+function authorHref(w) {
+  const uid = w.userId || w.authorId;
+  return uid ? '/u/' + uid : '/u/' + encodeURIComponent(w.author);
+}
+
+// 外链域名（去掉 www.）：description 里写「可直达 xxx.com」比写「来站内看截图」有信息量
+function domainOf(url) {
+  try { return String(new URL(String(url)).hostname || '').replace(/^www\./, ''); } catch { return ''; }
+}
+// 上线月份
+function monthOf(iso) {
+  const d = new Date(iso || 0);
+  return Number.isNaN(d.getTime()) ? '' : `${d.getFullYear()} 年 ${d.getMonth() + 1} 月`;
+}
+
+// 作品摘要（meta description / JSON-LD 共用）：作者写了简介就用简介；
+// 没写就用页面上可确认的事实拼一句 —— 每页都有实质差异，不再套「来造梦橱窗查看截图与使用方式」这种空话。
+// 只陈述已有数据（形态/分类/宣传图数/外链域名/开源/上线月份/作者），不推测功能。
+function describeWork(w, maxLen = 150) {
+  // 「一眼看懂」优先：定位 + 解决什么 + 适合谁，三句拼起来比正文首句更像一份摘要。
+  // 这三项都是作者自己填的短句，不涉及编造。
+  const quick = [
+    w.positioning,
+    w.problem ? `解决：${w.problem}` : '',
+    w.audience ? `适合：${w.audience}` : ''
+  ].filter(Boolean).map(s => String(s).replace(/[。．.！!？?]+$/, '')).join('。');
+  if (quick) return truncate(quick + '。', maxLen);
+  const own = String(w.introText || md.plain(String(w.intro || '')) || '').replace(/\s+/g, ' ').trim();
+  if (own) return truncate(own, maxLen);
+  const type = typesOf(w).join('/');
+  const mids = [];
+  if (type) mids.push(`${w.category ? w.category + '类' : ''}${type}`);
+  const shots = Array.isArray(w.images) ? w.images.length : 0;
+  if (shots > 0) mids.push(`收录 ${shots} 张宣传图`);
+  const dom = domainOf(w.link);
+  if (dom) mids.push(`可直达 ${dom}`);
+  if (w.openSource === true) mids.push('源码开源');
+  const ym = monthOf(w.createdAt);
+  if (ym) mids.push(`${ym}上线`);
+  let s = `${w.title || '未命名作品'}：${mids.length ? '一个' + mids.join('、') + '。' : ''}`;
+  const who = nameOf(w);
+  if (who && who !== '匿名') s += `作者 ${who}。`;
+  return truncate(s, maxLen);
+}
 
 function cardHtml(w, suffix = '') {
   return `<a class="card seo-card" href="/w/${esc(w.id)}${suffix}">
@@ -207,6 +275,36 @@ function cardHtml(w, suffix = '') {
 /** 作品详情页的服务端渲染正文
  *  opts.full = true 时输出「完整页面」形态：完整展示宣传图，并给出在橱窗内互动/返回的入口。
  *  两种形态共用同一个 canonical（/w/:id），避免被搜索引擎当成重复页面。 */
+// 「一眼看懂」速览卡：把作者填的内容结构字段排成一问一答。
+// 这段是全页最值得给搜索引擎和 AI 抓取器读的文本——短句、有主语、不依赖上下文，
+// 比一整篇「这款作品采用了…」更容易被当成摘要摘走。
+// 前端详情弹窗里有一份同样逻辑的实现（frontend/app.js 的 quickLookParts + renderQuickLook），
+// 改文案时两边一起改。注意弹窗那边把「它是什么」拆成标题下的副标题了，这里仍完整列四行。
+function quickLookHtml(w) {
+  const rows = [
+    ['它是什么', w.positioning],
+    ['解决什么', w.problem],
+    ['适合谁', w.audience],
+    ['和同类比', w.diff]
+  ].filter(([, v]) => String(v || '').trim());
+  const steps = (Array.isArray(w.steps) ? w.steps : []).filter(s => String(s || '').trim());
+  // 只有零散一句就撑一整张卡显得空：要么有定位句，要么至少两行内容
+  if (!rows.length && !steps.length) return '';
+  if (!String(w.positioning || '').trim() && rows.length + steps.length < 2) return '';
+  const dl = rows.length ? `<dl class="seo-quick-dl">
+      ${rows.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('\n      ')}
+    </dl>` : '';
+  const ol = steps.length ? `<div class="seo-quick-steps">
+      <h3>上手${steps.length === 3 ? '三' : ''}步</h3>
+      <ol>${steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
+    </div>` : '';
+  return `<section class="seo-quick">
+    <h2>一眼看懂</h2>
+    ${dl}
+    ${ol}
+  </section>`;
+}
+
 function workArticle(base, w, trail, related = [], opts = {}) {
   const miniOnly = isMiniOnly(w);
   // 小程序没有可点的外链，按钮不能写成「打开小程序」—— 那是网页，会骗人
@@ -217,8 +315,16 @@ function workArticle(base, w, trail, related = [], opts = {}) {
   const suffix = full ? '?full=1' : '';
 
   const date = String(w.createdAt || '').slice(0, 10);
+  // 关键词胶囊：作者自己标过的搜索词，点一下就是一次站内搜索（/?q=... 是搜索页的入口）。
+  // 对爬虫也有用：这些词在正文里是可见文本 + 站内链接，比只塞 meta keywords 实在。
+  const kws = Array.isArray(w.keywords) ? w.keywords.filter(Boolean) : [];
+  const kwHtml = kws.length ? `<div class="seo-kw">
+    <span class="seo-kw-title">关键词</span>
+    ${kws.map(k => `<a href="/?q=${esc(encodeURIComponent(k))}">${esc(k)}</a>`).join('')}
+  </div>` : '';
+  // 同分类优先、不足补同作者（见 server.js relatedWorksOf），标题不再写死「同类」
   const relatedHtml = related.length ? `<section class="seo-related">
-    <h2>同类作品推荐</h2>
+    <h2>相关作品</h2>
     <div class="gallery">${related.map(x => cardHtml(x, suffix)).join('')}</div>
   </section>` : '';
 
@@ -234,8 +340,11 @@ function workArticle(base, w, trail, related = [], opts = {}) {
     <img src="${esc(qrImg)}" alt="${esc(w.title)} 小程序码" />
     <p>${miniOnly ? '用微信扫一扫打开小程序' : (w.qrReal ? '手机扫码打开' : '扫码打开作品')}</p>
   </div>` : '';
-  const miniNoEntry = (miniOnly && !w.qrcode && !w.link)
+  const miniNoEntry = (miniOnly && !w.qrcode && !w.link && !w.lampPrice)
     ? `<p class="seo-mini-empty">${svgIco('mobile')} 作者还没上传小程序码，暂时打不开。</p>` : '';
+  // 灯火解锁：服务端页（含爬虫落地页）也不许出现入口，只说明怎么解锁
+  const lampHtml = w.lampPrice
+    ? `<p class="seo-mini-empty">${svgIco('lock')} 这件作品需要用 ${Number(w.lampPrice)} 盏灯火解锁，登录后在作品页点「用灯火解锁」就能看到下载 / 网页 / 小程序入口。</p>` : '';
 
   // 服务端页同样要记动作埋点：搜索引擎落地页是重要入口，不能只有橱窗弹窗有数
   const firstType = typesOf(w)[0] || 'Web';
@@ -255,16 +364,19 @@ function workArticle(base, w, trail, related = [], opts = {}) {
     </div>
     <p class="seo-author">作者：${w.anonymous
       ? '<span rel="author">匿名</span>'
-      : `<a href="/u/${encodeURIComponent(w.author)}" rel="author">@${esc(nameOf(w))}</a>`}
+      : `<a href="${authorHref(w)}" rel="author">@${esc(nameOf(w))}</a>`}
       · ${w.likes || 0} 点赞 · ${w.favs || 0} 人收藏 · ${w.commentCount || 0} 评论 · ${w.views || 0} 浏览${date ? ' · ' + esc(date) : ''}</p>
     <img class="seo-cover" src="${esc(w.image)}" alt="${esc(w.title)} 作品截图" />
+    ${quickLookHtml(w)}
     ${gallery}
     ${qrHtml}
     ${miniNoEntry}
+    ${lampHtml}
     <div class="seo-intro md-body">${w.introHtml || (w.intro ? esc(w.intro).replace(/\n/g, '<br>') : '<p>作者暂未填写作品介绍。</p>')}</div>
+    ${kwHtml}
     <div class="seo-actions">
-      ${w.link ? `<a class="${miniOnly ? 'btn-ghost' : 'btn-primary'}" href="${esc(w.link)}" target="_blank" rel="nofollow noopener" ${actAttr}>${svgIco(linkIco)} ${linkLabel}</a>` : ''}
-      ${w.repo ? `<a class="btn-ghost" href="${esc(w.repo)}" target="_blank" rel="nofollow noopener">${svgIco('folder')} 源码仓库</a>` : ''}
+      ${w.link ? `<a class="${miniOnly ? 'btn-ghost' : 'btn-primary'}" href="/out/${esc(w.id)}?k=link" target="_blank" rel="nofollow noopener" ${actAttr}>${svgIco(linkIco)} ${linkLabel}</a>` : ''}
+      ${w.repo ? `<a class="btn-ghost" href="/out/${esc(w.id)}?k=repo" target="_blank" rel="nofollow noopener">${svgIco('folder')} 源码仓库</a>` : ''}
       ${full ? `<a class="btn-ghost" href="/w/${esc(w.id)}">在橱窗里打开（点赞 / 收藏 / 评论）</a>` : ''}
       ${w.category ? `<a class="btn-ghost" href="/c/${encodeURIComponent(w.category)}">更多${esc(w.category)}作品</a>` : ''}
       <a class="btn-ghost" href="/">返回首页</a>
@@ -279,7 +391,7 @@ function workLd(base, w, pageUrl) {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
     name: w.title,
-    description: truncate(md.plain(w.intro || '') || `${w.title}，由 ${nameOf(w)} 提交的${w.category}类${typesOf(w).join('/')}作品。`, 300),
+    description: describeWork(w, 300),
     url: pageUrl,
     image: absolute(base, w.image),
     applicationCategory: APP_CATEGORY[w.category] || 'UtilitiesApplication',
@@ -288,7 +400,7 @@ function workLd(base, w, pageUrl) {
     datePublished: w.createdAt,
     author: w.anonymous
       ? { '@type': 'Person', name: '匿名' }
-      : { '@type': 'Person', name: nameOf(w), url: absolute(base, '/u/' + encodeURIComponent(w.author)) },
+      : { '@type': 'Person', name: nameOf(w), url: absolute(base, authorHref(w)) },
     interactionStatistic: [
       {
         '@type': 'InteractionCounter',
@@ -301,7 +413,11 @@ function workLd(base, w, pageUrl) {
         userInteractionCount: w.views || 0
       }
     ],
-    isPartOf: { '@type': 'WebSite', name: SITE_NAME, url: base + '/' }
+    isPartOf: { '@type': 'WebSite', name: SITE_NAME, url: base + '/' },
+    // 内容结构字段进结构化数据：featureList（上手步骤）和 audience（适合谁）都是
+    // SoftwareApplication 的合法属性，AI 摘录时能直接拿到「给谁用 / 怎么开始」
+    ...(Array.isArray(w.steps) && w.steps.length ? { featureList: w.steps.slice(0, 5) } : {}),
+    ...(w.audience ? { audience: { '@type': 'Audience', audienceType: w.audience } } : {})
   };
 }
 
@@ -361,8 +477,12 @@ function collectionFaq({ kind, name, facts }) {
 }
 
 /** 独立列表页（/c/:cat、/t/:type），完全服务端渲染 */
-function listPage(base, { title, description, h1, activeName, kind = 'c', subtitle, items, trail, page, hasMore, prevHref, nextHref, canonical, categories, types, noindex = false, facts = null }) {
+function listPage(base, { title, description, h1, activeName, kind = 'c', subtitle, intro = '', items, trail, page, hasMore, prevHref, nextHref, canonical, categories, types, noindex = false, facts = null, counts = null }) {
   const chipHref = c => '/' + kind + '/' + encodeURIComponent(c);
+  // 筛选胶囊的图标：形态页用 TYPE_SVG，分类页用 CATEGORY_SVG，都没有就回退 other
+  const chipIco = c => svgIco(kind === 't' ? (TYPE_SVG[c] || 'other') : (CATEGORY_SVG[c] || 'other'));
+  // 当前页 H1 前的大图标块：同一个映射
+  const headIcoKey = kind === 't' ? (TYPE_SVG[activeName] || 'other') : (CATEGORY_SVG[activeName] || 'other');
   const faq = facts ? collectionFaq({ kind, name: activeName, facts }) : null;
   const headHtml = head({
     title,
@@ -415,15 +535,16 @@ function listPage(base, { title, description, h1, activeName, kind = 'c', subtit
     </div>
   </header>
   <main class="container">
-    <div class="page-head">
+    <div class="page-head list-page-head">
       ${breadcrumbHtml(base, trail)}
-      <h1>${esc(h1)}</h1>
+      <h1 class="list-h1"><span class="ph-ico" aria-hidden="true">${svgIco(headIcoKey)}</span>${esc(h1)}</h1>
       <p>${esc(subtitle)}</p>
+      ${intro ? `<p class="page-intro">${esc(intro)}</p>` : ''}
     </div>
     <div class="type-bar">
-      ${categories.map(c => `<a class="chip${c === activeName ? ' active' : ''}" href="${chipHref(c)}">${esc(c)}</a>`).join('')}
+      ${categories.map(c => `<a class="chip${c === activeName ? ' active' : ''}" href="${chipHref(c)}">${chipIco(c)}<span class="chip-name">${esc(c)}</span>${counts && Number(counts[c]) >= 0 ? `<span class="chip-count">${counts[c]}</span>` : ''}</a>`).join('')}
     </div>
-    <div class="gallery">${items.map(cardHtml).join('') || '<div class="empty"><p>该分类下暂无作品</p></div>'}</div>
+    <div class="gallery">${items.map(w => cardHtml(w)).join('') || '<div class="empty"><p>该分类下暂无作品</p></div>'}</div>
     ${faq ? faq.html : ''}
     <nav class="seo-pager">
       ${prevHref ? `<a class="btn-ghost" href="${esc(prevHref)}">← 上一页</a>` : ''}
@@ -438,27 +559,25 @@ function listPage(base, { title, description, h1, activeName, kind = 'c', subtit
     <div class="container footer-inner">
       <div class="footer-meta">
         <span>${SITE_NAME} · 收录大家的网站、个人站、小程序、桌面客户端、机器人等作品</span>
-        <a class="footer-icp" href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
       </div>
-      <!-- 与 SPA 页脚同一口径：不显示额外标识，rel 保留 nofollow sponsored -->
-      <div class="footer-host">
-        <span>服务器部署在</span>
-        <a href="https://www.aliyun.com/minisite/goods?userCode=tw6ffyfu" target="_blank" rel="nofollow sponsored noopener noreferrer">阿里云 <span aria-hidden="true">↗</span></a>
-      </div>
+      <!-- 与 SPA 页脚同一口径：开源 + 服务商鸣谢合并一行；阿里云 rel 保留 nofollow sponsored -->
       <div class="footer-oss">
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
-        <span>本站已开源，欢迎</span>
-        <a href="https://github.com/fxxqq/dream-case" target="_blank" rel="noopener noreferrer">Star / Fork / PR <span aria-hidden="true">↗</span></a>
+        <span>本站开源在 <a href="https://github.com/fxxqq/dream-case" target="_blank" rel="noopener noreferrer">GitHub</a>，欢迎 Star / PR · 服务器部署在 <a href="https://www.aliyun.com/minisite/goods?userCode=tw6ffyfu" target="_blank" rel="nofollow sponsored noopener noreferrer">阿里云 <span aria-hidden="true">↗</span></a></span>
       </div>
       <a href="/sitemap.xml" class="footer-link">站点地图</a>
       <a href="/?feedback=1" class="footer-link">意见反馈</a>
+    </div>
+    <div class="container footer-base">
+      <span class="fb-text">© 2026 ${SITE_NAME}</span>
+      <a class="footer-icp" href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
     </div>
   </footer>
 </body>
 </html>`;
 }
 
-function sitemapXml(base, { works, categories, types, authors, siteUpdated, categoryLastmod = {}, typeLastmod = {} }) {
+function sitemapXml(base, { works, categories, types, authors, siteUpdated, categoryLastmod = {}, typeLastmod = {}, extraUrls = [] }) {
   const urls = [];
   const add = (loc, lastmod, priority, changefreq, image) => {
     const lines = [
@@ -483,10 +602,13 @@ function sitemapXml(base, { works, categories, types, authors, siteUpdated, cate
   add('/chronicle', updated, '0.5', 'weekly'); // 造梦编年史（站点大事记）
   add('/install', updated, '0.5', 'monthly');  // 安装到桌面（PWA + 小程序码落地页）
   add('/invite', updated, '0.7', 'weekly');    // 邀请收录页（可生成分享海报）
+  // 站方编辑页（如精选专栏）：由调用方传入，seo.js 不反向依赖业务数据
+  extraUrls.forEach(u => { if (u && u.loc) add(u.loc, u.lastmod || '', u.priority || '0.6', u.changefreq || 'monthly'); });
   categories.forEach(c => add('/c/' + encodeURIComponent(c), categoryLastmod[c] || updated, '0.7', 'weekly'));
   types.forEach(t => add('/t/' + encodeURIComponent(t), typeLastmod[t] || updated, '0.6', 'weekly'));
   works.forEach(w => add('/w/' + w.id, w.createdAt, '0.9', 'monthly', w.image));
-  authors.forEach(a => add('/u/' + encodeURIComponent(a.name), a.lastmod, '0.5', 'weekly'));
+  // 作者页地址优先用个性地址（作者自设的 /u/<slug>），没设退回账号 id
+  authors.forEach(a => add(a.slug ? '/u/' + a.slug : (a.uid ? '/u/' + a.uid : '/u/' + encodeURIComponent(a.name)), a.lastmod, '0.5', 'weekly'));
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
@@ -573,6 +695,7 @@ function websiteLd(base) {
 module.exports = {
   SITE_NAME, SITE_TAGLINE, SITE_SLOGAN, TYPE_ICONS, TYPE_SVG, APP_CATEGORY, OS_BY_TYPE, setTypeIcons,
   svgIco, esc, truncate, baseUrl, absolute, head,
+  describeWork, nameOf, domainOf,
   breadcrumbHtml, breadcrumbLd, cardHtml,
   workArticle, workLd, homeBlock, listPage,
   sitemapXml, robotsTxt, rssXml, websiteLd
