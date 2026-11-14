@@ -3,6 +3,8 @@
 # 双击桌面「发布造梦橱窗」→ 弹这个菜单 → 选 1 看差异、选 2 发补丁、选 3 回滚。
 # 真正的活都交给 deploy-patch.sh，这里只管把路径和提示摆顺，不藏任何额外逻辑。
 cd "$(dirname "$0")" || exit 1
+# 清屏 + 终端标题：顺手把登录 shell 启动时的无关提示抹掉，菜单从干净一屏开始
+printf '\033[2J\033[H\033]0;造梦橱窗 · 补丁发版\007'
 SELF="./deploy-patch.sh"
 INTERACTIVE=0; [ -t 0 ] && INTERACTIVE=1
 
@@ -15,7 +17,7 @@ trap 'printf "\n"; exit 130' INT
 
 banner() {
   printf '\n\033[1m  造梦橱窗 · 补丁发版\033[0m\n'
-  printf '  \033[2m本地 %s ｜ 线上 idea.v5pc.com\033[0m\n\n' "$(pwd)"
+  printf '  \033[2m线上 idea.v5pc.com ｜ 只发你点中的 hunk\033[0m\n\n'
 }
 
 menu() {

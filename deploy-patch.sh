@@ -40,8 +40,8 @@ KEEP_BAK="${KEEP_BAK:-10}"
 DEFAULT_FILES=(server.js frontend/app.js frontend/style.css frontend/index.html frontend/admin.html)
 
 cd "$(dirname "$0")" || exit 1
-SSH="ssh -o BatchMode=yes $SERVER_USER@$SERVER_IP"
-SCP="scp -q -o BatchMode=yes"
+SSH="ssh -o BatchMode=yes -o LogLevel=ERROR $SERVER_USER@$SERVER_IP"
+SCP="scp -q -o BatchMode=yes -o LogLevel=ERROR"
 
 c_ok()   { printf '\033[32m%s\033[0m\n' "$*"; }
 c_warn() { printf '\033[33m%s\033[0m\n' "$*"; }
@@ -260,11 +260,13 @@ cmd_ship() {
   done
   c_ok "✓ 已上传"
 
-  local any_js=0
-  for f in "${do_files[@]}"; do [[ "$f" == *.js ]] && any_js=1; done
-  if ((any_js)); then
-    if $SSH "cd $REMOTE_DIR && $(printf 'node --check %q && ' "${do_files[@]}" | sed 's/ && $//')" 2>/dev/null; then
-      c_ok "✓ 线上语法校验通过"
+  # 只把 .js 文件交给 node --check：node 对 .html/.css 直接抛
+  # ERR_UNKNOWN_FILE_EXTENSION，混进去会让整条命令失败、误触发回滚（2026-11-14 踩）。
+  local js_list=()
+  for f in "${do_files[@]}"; do [[ "$f" == *.js ]] && js_list+=("$f"); done
+  if ((${#js_list[@]})); then
+    if $SSH "cd $REMOTE_DIR && $(printf 'node --check %q && ' "${js_list[@]}" | sed 's/ && $//')" 2>/dev/null; then
+      c_ok "✓ 线上语法校验通过（${js_list[*]}）"
     else
       c_err "✗ 线上语法校验失败，回滚"; do_rollback "$stamp" "${do_files[@]}"; return 1
     fi
