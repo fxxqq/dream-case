@@ -50,7 +50,8 @@
 | OAuth 配置 | GitHub / Google / 微信三套，env 优先、`data/oauth.json` 兜底，未配置自动隐藏入口 |
 | 广告位 / 积分兑换 | 固定广告位定义；推荐位 `REDEEM_SLOTS`（位置、单价、套餐、独占与排队、双计费） |
 | 用户 / 会话 | 注册登录、账号名保留词与冒充防护 |
-| 用户私信 | `/api/dm/*`：一对一私聊（会话列表 / 发送 / 已读 / 免打扰 / 清空 / 「只接收聊过的人」开关）；拉黑复用 user.blockedUsers；未读以合成条目并入 `/api/me/notices` 的「消息」栏。**内测中（2026-11-15）**：默认只对站长开放（`site-owners.json` / `SITE_OWNERS`），`/api/me` 下发 `dmBeta` 控制前端入口显隐；例外是站长主动发起的会话对方可回话。正式开放加环境变量 `DM_BETA=open` 即可，代码不用改 |
+| 关注关系 | `data/follows.json` 一张边表（`{from,to,at}`）+ 内存双向索引；`POST/DELETE /api/authors/:ref/follow`、`GET /api/me/following`；作品第一次对公众可见时给关注者发站内信，**同一作者 24 小时内只打扰一次**（连发多件合并成一条），作者自己也会收到合并后的「N 人关注了你」 |
+| 用户私信 | `/api/dm/*`：一对一私聊（会话列表 / 发送 / 已读 / 免打扰 / 清空 / 「只接收聊过的人」开关）；拉黑复用 user.blockedUsers；未读以合成条目并入 `/api/me/notices` 的「消息」栏。**内测中（2026-11-15）**：默认只对站长开放（`site-owners.json` / `SITE_OWNERS`），`/api/me` 下发 `dmBeta` 控制前端入口显隐；例外是站长主动发起的会话对方可回话。正式开放加环境变量 `DM_BETA=open` 即可，代码不用改。**举报与保留期（2026-11-15）**：`POST /api/dm/threads/:id/report` 举报时随单快照「被举报那条 + 前后各 2 条」进 `reports.json`（`target: 'dm'`，后台同一列表处理）——不给后台开「读所有人私信」的口子；同一人对同一会话 24 小时内只落一条（再举只累加 `count`）；后台用 `/api/admin/reports/:id/dm-close` 关闭会话（`t.closed`，双方不能再发、历史读到保留期满），`takedown` 对私信投诉会明确拒绝。正文保留 `DM_RETAIN_DAYS = 180` 天，`pruneDms()` 启动时 + 每 6 小时清一次（超期消息逐条删、清空的会话连壳删）；`DM_MAX_THREADS` 兜底也只淘汰超保留期的会话，不静默删活跃会话；保留期经 `/api/dm/threads` 的 `retainDays` 下发给前端显示 |
 | 限流 | 内存滑动窗口，按 IP / 用户 / 动作 |
 | 访问统计 | 全站 PV/UV、流量构成（来源 / 设备 / 落地页）、外宣渠道、作品维度统计 |
 | 反刷闸门 | 单 IP / 单访客 / 单作品多维配额，分享归因熔断 |
@@ -106,7 +107,7 @@
 | `admins.json` / `admin-audit.json` | 管理员名单（含每人 `perms` 权限模块）、申请队列、后台写操作留痕 |
 | `share.json` | **灯火账本 + 分享归因**：每个用户的灯火流水、IP 明细、邀请归因、微信绑定奖励标记（存哈希，解绑不丢） |
 | `notices.json` | 站内消息（灯火到账、审核结果等） |
-| `dms.json` | 用户私信会话（一对一；按人存已读/清空水位，未读合成进站内消息，不落 notices 实体） |
+| `dms.json` | 用户私信会话（一对一；按人存已读/清空水位，未读合成进站内消息，不落 notices 实体；正文保留 180 天，`pruneDms()` 定时清） |
 | `ads.json` / `ad-stats.json` / `ad-redemptions.json` | 广告素材、曝光点击统计、推荐位兑换订单 |
 | `visits.json` / `work-visits.json` / `work-actions.json` | 全站 PV/UV、作品维度访问、体验动作埋点（访问 / 下载 / 扫码意图） |
 | `search-log.json` / `search-seed.json` | 真实搜索词、热搜冷启动种子 |

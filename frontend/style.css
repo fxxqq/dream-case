@@ -84,7 +84,9 @@ html[data-page="author"] #creatorCard { display: none !important; }
   font-size: 13px;
 }
 
-.container { max-width: 1200px; margin: 0 auto; padding: 0 20px; width: 100%; }
+/* 页面主容器：宽度不再写死 1200 —— 选 5/6 列时由 --page-max 放宽（见 .gallery 上面那段），
+   保证 2K 屏上作品区不会缩成中间一条窄带、两侧各空 600px。窄屏仍受 100% 限制 */
+.container { max-width: var(--page-max, 1200px); margin: 0 auto; padding: 0 20px; width: 100%; }
 
 /* Header */
 .site-header {
@@ -272,15 +274,18 @@ nav { display: flex; gap: 8px; flex: 1; }
 .hero-search { display: none; }
 /* 手机端定位文案：PC 有大标题，不需要（≤640px 档里打开） */
 .hero .hero-tagline { display: none; }
-.hero h1, .hero .hero-title { font-size: 30px; letter-spacing: .01em; margin-bottom: 10px; text-wrap: balance; }
+/* 大屏标题跟着视口缓升（2026-11-15）：容器放宽到 1660 后，30px 标题在中间显得空，
+   用 clamp 让它从 1280 屏的 30px 长到 2K 的 40px，中间任何宽度都是连续过渡、不跳档 */
+.hero h1, .hero .hero-title { font-size: clamp(30px, 1.1vw + 14px, 40px); letter-spacing: .01em; margin-bottom: 10px; text-wrap: balance; }
 .hero h1 .grad, .hero .hero-title .grad {
   background: linear-gradient(92deg, var(--primary), #9b8cff 55%, #e070c9);
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: transparent;
 }
 .hero p { color: var(--muted); font-size: 15px; }
-/* 副标题压小（2026-11-10 定档 12px）：目的是压缩 hero 高度，让首屏多露下面的作品列表 */
-.hero .hero-sub { margin-top: 8px; font-size: 12px; line-height: 1.6; }
+/* 副标题压小（2026-11-10 定档 12px）：目的是压缩 hero 高度，让首屏多露下面的作品列表。
+   2026-11-15：大屏再抬半档到 13.5px，2K 上 12px 的中文偏小、比卡片正文还弱 */
+.hero .hero-sub { margin-top: 8px; font-size: clamp(12px, .14vw + 10.7px, 13.5px); line-height: 1.6; }
 /* 副标题里的动作词（提交作品 / 投递灵感 / 点亮灯火）：紫色字 + hover 出下划线 */
 .hero-link {
   border: 0; background: none; padding: 0; font: inherit; line-height: inherit;
@@ -541,16 +546,37 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
   display: grid; grid-template-columns: repeat(auto-fill, minmax(212px, 1fr));
   gap: 20px; padding-bottom: 48px;
 }
-/* 每行 4 / 5 / 6 个由用户自选（.cols-4 / .cols-5 / .cols-6，记在本机）；窄屏交给下面的媒体查询回落 */
-@media (min-width: 901px) {
+/* ---------- 桌面列数：不改字号，只按「屏幕能放下几张卡」分档（2026-11-15）----------
+   用户选的 4/5/6 是「宽屏下最多几张」，屏幕窄一档就自动减列，
+   绝不让卡被压到 226px 以下（原来 1024 屏选 6 列会压成 145px/张，字全糊在一起）：
+     ≥1500      → 4 / 5 / 6
+     1260~1499  → 4 / 5 / 5
+     1000~1259  → 4 / 4 / 4
+     901~999    → 3 / 3 / 3
+   卡宽全程落在 226~273px；galleryCols() 量的是真实列数，分页条数自动跟着走
+   装不下的档位不再出现在开关里（app.js maxGalleryCols 按同样的断点过滤：
+   1440 / 1366 的本子只有 4 / 5 可选，免得点了「6 列」却还是 5 列） */
+@media (min-width: 901px) and (max-width: 999px) {
+  .gallery.cols-4, .gallery.cols-5, .gallery.cols-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 1000px) and (max-width: 1259px) {
+  .gallery.cols-4, .gallery.cols-5, .gallery.cols-6 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (min-width: 1260px) {
   .gallery.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .gallery.cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .gallery.cols-6 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+@media (min-width: 1500px) {
   .gallery.cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }
-/* 6 列在中等屏幕每张卡偏窄，≥1240px 时把容器放宽到 1320（每张卡 ~196px）观感才正常；
-   页大小跟实测栅格走（galleryCols 量的是真实列数），列数变化不会造成分页错位 */
+/* 整页跟着列数放宽：5 列 1330 / 6 列 1660，卡宽才够 240+。
+   4 列保持 1200（262px/张，本来就不挤）；窄屏被 viewport 卡住，写多大都一样。
+   只在首页生效（#homeView 被 route() 用 inline display:none 藏起来时不匹配）——
+   榜单/酒馆/开源是另一套版式，主栏拉太宽反而难读，不跟着变 */
 @media (min-width: 1240px) {
-  body:has(.gallery.cols-6) .container { max-width: 1320px; }
+  body:has(#homeView:not([style*="none"])):has(#gallery.cols-5) { --page-max: 1330px; }
+  body:has(#homeView:not([style*="none"])):has(#gallery.cols-6) { --page-max: 1660px; }
 }
 .card {
   background: var(--card); border: 1px solid var(--border); border-radius: 14px;
@@ -566,7 +592,7 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
   font-size: 0; text-decoration: none;
 }
 .card .fav-star, .work-row .row-fav, .work-row .row-block, .card .card-share { z-index: 3; }
-.card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(60,60,120,.12); }
+.card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(60, 60, 120, .10); }
 /* 封面统一比例 4:3：不论横图还是竖版截图都裁成同一块画面，列表节奏整齐；
    裁切从顶部开始（网页截图最上面是标题区，手机截图是界面头部），比居中裁更有信息量 */
 .card-img {
@@ -579,13 +605,13 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
 .card-img-wrap { position: relative; overflow: hidden; }
 
 /* ---------- 橱窗效果（2026-11-12 站长要的：首页每张卡都像摆进橱窗）----------
-   封面不再是一张「贴上去的图」，而是隔了一层玻璃的展品。三层全部是装饰层，
+   封面不再是一张「贴上去的图」，而是隔了一层玻璃的展品。全部是装饰层，
    都不吃点击（pointer-events: none），层级压在图片之上、徽标/按钮（z-index ≥2）之下：
    1) ::after  玻璃本身的静态反光 —— 顶部射灯光晕 + 左上斜向反光 + 底部展台暗影
-   2) ::before hover 时横扫而过的一道高光（走近橱窗，玻璃转了个角度）
-   3) 图片 hover 轻微推近，配合卡片已有的抬起，像人往前凑了一步
-   铁律：静音模式（html.dm-quiet）会停掉所有 animation，所以 ::before 的基础态必须
-   是「光带在画外、opacity:0」——停在画外就看不见，不会留一道白条挂在封面上。 */
+   2) 图片 hover 轻微推近，配合卡片已有的抬起，像人往前凑了一步
+   原先还有一道「横穿封面的白条扫光」（::before）。2026-11-15 站长说它和扇面各玩各的、
+   太花，已删掉 —— 光改成从 ✦ 发出的那一下（.card-actions::before，见「卡片操作扇面」），
+   和五颗按钮同一个圆心、同一段时间，看上去是「灯亮了，扇子顺着光散开」。 */
 #gallery .card-img-wrap { overflow: hidden; }
 
 #gallery .card-img-wrap::after {
@@ -601,29 +627,11 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .6);
 }
 
-#gallery .card-img-wrap::before {
-  content: ''; position: absolute; top: -32%; left: 0; z-index: 1; pointer-events: none;
-  width: 48%; height: 164%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, .58), rgba(255, 255, 255, 0));
-  transform: translateX(-150%) rotate(15deg); opacity: 0;
-  filter: blur(2.5px);
-}
-/* hover 才挂动画：离开即卸载，再进来会重播一遍（比常驻 animation 省电，也不会自己循环闪） */
-#gallery .card:hover .card-img-wrap::before {
-  animation: cabinetSweep 1.05s cubic-bezier(.25, .6, .3, 1) .04s;
-}
-@keyframes cabinetSweep {
-  0%   { transform: translateX(-150%) rotate(15deg); opacity: 0; }
-  16%  { opacity: .8; }
-  68%  { opacity: .62; }
-  100% { transform: translateX(270%) rotate(15deg); opacity: 0; }
-}
-
 #gallery .card-img {
   transform-origin: 50% 42%;
   transition: transform .55s cubic-bezier(.22, .61, .36, 1);
 }
-#gallery .card:hover .card-img { transform: scale(1.035); }
+#gallery .card:hover .card-img { transform: scale(1.02); }
 /* 触屏没有 hover：不推近、不扫光，静态玻璃层照样在（否则移动端卡片会「什么都不像」） */
 @media (hover: none) {
   #gallery .card:hover .card-img { transform: none; }
@@ -719,7 +727,10 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
   position: absolute; left: 10px; top: 10px; max-width: calc(100% - 20px);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   background: rgba(31, 35, 48, .82); color: #fff;
-  font-size: 12px; padding: 4px 10px; border-radius: 999px; backdrop-filter: blur(4px);
+  font-size: 12px; padding: 4px 10px; border-radius: 999px;
+  /* 刻意不做毛玻璃：底色 .82 本来就看不出模糊，但 backdrop-filter 会让每张卡多一次
+     「读回背景 + 模糊」，而且封面 hover 推近时还要逐帧重算 —— 省掉它 */
+  
   z-index: 2;
 }
 /* 封面胶囊是深色底：形态图标统一提亮为白，跟旁边的字同色 */
@@ -2808,8 +2819,11 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   background: #fff; color: var(--primary); font-weight: 600;
   box-shadow: 0 1px 4px rgba(60, 60, 120, .14);
 }
-/* 窄屏列数交给 auto-fill 自己算，这个开关就没意义了，直接收起 */
-@media (max-width: 900px) {
+/* 装不下的档位由 app.js 用 hidden 收掉（syncColsToggle）；类选择器权重比 UA 的
+   [hidden]{display:none} 高，这里得自己写一条，否则 hidden 不生效 */
+.cols-toggle[hidden], .cols-toggle .ct-btn[hidden] { display: none; }
+/* 1000~1259 只有 4 列一种可能，900 以下交给 auto-fill 自己算 —— 没得选就整块收起 */
+@media (max-width: 1259px) {
   .cols-toggle { display: none; }
 }
 
@@ -7041,6 +7055,35 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .dm-compose .btn-primary { flex: none; height: 40px; padding: 0 20px; border-radius: 12px; }
 .dm-compose-tip { flex: none; margin: 0; padding: 0 16px 10px; font-size: 11px; color: var(--muted); text-align: right; }
 .dm-compose-tip.is-warn { color: #b45309; text-align: left; }
+/* 保留期说明：写在这里是给用户看的，数字由 /api/dm/threads 的 retainDays 回填 */
+.dm-retain { margin: 9px 0 0; font-size: 11px; line-height: 1.5; color: var(--muted); }
+/* 举报弹窗 */
+/* 从私信弹窗里唤起，层级必须压过 #dmMask(130)，否则弹窗被盖住「点了没反应」 */
+#dmReportModal { z-index: 140; }
+.dm-report-to { margin: 0 0 14px; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.dm-report-reasons { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 16px; }
+.dm-reason {
+  padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px;
+  background: #fafafe; font-family: inherit; font-size: 12.5px; line-height: 1.4;
+  color: var(--text); cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.dm-reason:hover { border-color: var(--primary); color: var(--primary); }
+.dm-reason.is-on {
+  border-color: var(--primary); color: var(--primary);
+  background: rgba(91, 91, 214, .08); font-weight: 600;
+}
+.dm-report-block {
+  display: flex; align-items: center; gap: 8px;
+  margin: 14px 0 16px; font-size: 12.5px; color: var(--text); cursor: pointer;
+}
+.dm-report-block input { flex: none; width: 15px; height: 15px; accent-color: var(--primary); }
+/* 触屏端：长按收到的气泡要能弹举报，别让系统选中文字/弹「拷贝」气泡抢走手势 */
+@media (hover: none) {
+  .dm-msg:not(.is-mine) .dm-bubble {
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+}
 /* 私信空态：复用铃铛的空态骨架，但列表区自己没有上下留白时补一点 */
 .dm-empty { margin: auto; padding: 30px 12px; }
 /* 作品详情里的「私信」图标胶囊：和点赞/收藏同规格，不抢送灯火的主位 */
@@ -9230,8 +9273,9 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
   .tab-bar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 80;
     display: flex; align-items: stretch;
+    /* 底栏是 fixed + 通栏：带 backdrop-filter 的话，页面每滚一帧都要把整条底栏
+       背后的内容重新模糊一次 —— 手机滚动的最大一笔开销。底色 .96 本来就看不出模糊 */
     background: rgba(255, 255, 255, .96);
-    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
     border-top: 1px solid var(--border);
     /* 底栏整体加高（2026-11-14）：手机端点底栏时常连着上面的作品卡一起点中，
        竖向热区从 ~55px 提到 ~66px，指头稍偏上仍落在底栏里 */
@@ -11156,11 +11200,13 @@ html.dm-quiet .jar-fly-star { display: none; }
    卡片操作扇面（2026-11-15 站长要的）
    --------------------------------------------------------------------------
    原来封面右下角并排三颗圆钮（收藏/分享/屏蔽），谁的卡片都挂着三个点，封面像控制面板。
-   现在只留一颗 ✦：鼠标进卡片（触屏点这颗）时，五颗动作沿四分之一圆弧从按钮位置扇出。
+   现在只留一颗 ✦：鼠标靠近这颗 ✦（触屏点这颗）时，五颗动作沿四分之一圆弧从按钮位置扇出。
      点赞 → 收藏 → 分享 → 屏蔽 → 送灯火，序号越大角度越大，收起来全缩回那颗里。
+   桌面刻意不认「鼠标进卡片」——封面大部分面积是留给「点开详情」的，
+   指针扫过封面不该弹出一把按钮（见「展开态」那段的 @media (hover:hover)）。
 
    角度、半径都不写死在 JS：JS 只给序号 --i，角度 = --a0 + i × --da。
-   间隔是固定弦长（22° @ 90px ≈ 34px），所以 5 颗正好铺满 88° 的四分之一弧，
+   间隔是固定弦长（22° @ 72px ≈ 27px），5 颗正好铺满 88° 的四分之一弧，
    只有 3 颗时收成 44° 的一小把 —— 颗距恒定，不会缩成一排孤零零的球。
    位移用「转出去再转回来」：
      rotate(-a) translateY(-r) rotate(a)
@@ -11175,38 +11221,66 @@ html.dm-quiet .jar-fly-star { display: none; }
 .card:has(.card-actions) { container-type: inline-size; }
 .card-actions {
   /* 先写死一份兜底：不认识 cqw / container-type 的老浏览器读不懂下一行，会留着这两个值 */
-  --sz: 29px;                         /* 按钮直径 */
-  --r: 90px;                          /* 扇出半径 */
-  --sz: clamp(22px, 13.4cqw, 29px);   /* 按钮直径：按卡片宽度缩（26px 宽的窄卡也不会小到点不准） */
-  --r: clamp(58px, 42cqw, 90px);      /* 扇出半径（90px 时弦长 ≈ 34px，颗与颗之间留 5px） */
+  --sz: 21.5px;                       /* 按钮直径 */
+  --r: 72px;                          /* 扇出半径 */
+  /* 直径和半径按同一比例（0.32）一起缩：扇子的「形状」一点没变，只是整把变小一号。
+     只缩半径不缩按钮，五颗就会挤在 108° 上垂成一条珠链 —— 那不是扇子。
+     22° 夹角配 72px 半径，弦长 ≈ 27.5px，给 21.5px 的扣子留 6px 缝（比原来还松一点）。 */
+  --sz: clamp(20px, 9.6cqw, 21.5px);  /* 按钮直径：按卡片宽度缩（手机双列 168px 的小卡也留 20px 好点） */
+  --r: clamp(64px, 32cqw, 72px);      /* 扇出半径 */
   --a0: 8deg;              /* 第一颗的起角：0deg = 正上方，往左为正 */
   --da: 22deg;             /* 相邻两颗的夹角（固定弦长，颗距不随数量变） */
   position: absolute; right: 10px; bottom: 20px; z-index: 4;
   width: var(--sz); height: var(--sz);
+  /* 容器本身不接指针：扇面比这颗扣子大得多，容器若默认可点，封面右下角就多出一块
+     「点了不打开详情」的死区。热区只给 .ca-trigger（和展开后的五颗），
+     其余地方一律穿透到卡片链接 —— 想点详情的人照常点。 */
+  pointer-events: none;
 }
 
 /* 扇面底光：从按钮位置往左上晕开的一团柔光，把白玻璃按钮托起来，
    同时把封面压暗一点点（不压暗的话白扣子落在浅色截图上会糊成一片） */
 .card-actions .ca-glow {
   position: absolute; left: 50%; top: 50%; z-index: 0;
-  width: calc(var(--r) * 2.2); height: calc(var(--r) * 2.2);
-  margin: calc(var(--r) * -1.1) 0 0 calc(var(--r) * -1.1);
+  width: calc(var(--r) * 1.7); height: calc(var(--r) * 1.7);
+  margin: calc(var(--r) * -0.85) 0 0 calc(var(--r) * -0.85);
   border-radius: 50%; pointer-events: none;
   /* 两团都用长尾渐变（0 → 0 在 68%），中间不留硬边圆环：
      半径比扇面大一圈，光要像「从角落透出来」，不能像贴了个圆片 */
   background:
-    radial-gradient(circle at 50% 50%, rgba(22, 16, 58, .24) 0%, rgba(22, 16, 58, .08) 30%, rgba(22, 16, 58, 0) 68%),
-    radial-gradient(circle at 50% 50%, rgba(126, 116, 240, .19) 0%, rgba(126, 116, 240, .06) 36%, rgba(126, 116, 240, 0) 66%);
+    radial-gradient(circle at 50% 50%, rgba(22, 16, 58, .11) 0%, rgba(22, 16, 58, .04) 30%, rgba(22, 16, 58, 0) 68%),
+    radial-gradient(circle at 50% 50%, rgba(126, 116, 240, .15) 0%, rgba(126, 116, 240, .05) 36%, rgba(126, 116, 240, 0) 66%);
   opacity: 0; transform: scale(.55);
   transition: opacity .34s ease, transform .55s cubic-bezier(.2, 1.05, .35, 1);
 }
 
-/* 两道扩散光环：展开瞬间从按钮上荡开，收起时直接归零 */
-.card-actions .ca-ripple {
-  position: absolute; inset: 0; z-index: 1; border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, .92);
-  box-shadow: 0 0 12px rgba(150, 140, 255, .55);
-  opacity: 0; pointer-events: none;
+/* 灯：从 ✦ 本身发出来的一小团暖光，和五颗按钮同一个圆心、同一段时间。
+   它不是「盖在封面上的光罩」，而是扇面的光 —— 只在按钮散开时亮一下，
+   峰值在 100ms 左右（按钮刚起步），到最后一颗落位时已经散尽。
+   位置/大小跟 --r 走，所以 4/5/6 列和手机端都对着各自那颗 ✦。 */
+.card-actions::before {
+  content: ''; position: absolute; left: 50%; top: 50%; z-index: 1;
+  width: calc(var(--r) * 2.6); height: calc(var(--r) * 2.6);
+  margin: calc(var(--r) * -1.3) 0 0 calc(var(--r) * -1.3);
+  border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle at 50% 50%,
+      rgba(255, 206, 142, .58)   0%,
+      rgba(255, 216, 162, .30)  20%,
+      rgba(255, 226, 182, .10)  38%,
+      rgba(255, 236, 200, 0)    58%);
+  opacity: 0; transform: scale(.25);
+}
+
+/* 隐形桥：展开后指针从 ✦ 挪到五颗上，中间有将近 50px 是空的（半径 72 - 两颗的直径），
+   没有这枚圆，鼠标一越过空隙扇面就塌了。它跟着 --r 走、永远透明，只在展开时
+   （@media hover:hover 里 .card-actions:hover）才打开 pointer-events，
+   闭合状态完全穿透，不会挡住封面上的点击。z-index:0 —— 必须压在五颗（2）和 ✦（3）下面，
+   否则它会把按钮自己的点击吃掉。 */
+.card-actions::after {
+  content: ''; position: absolute; left: 50%; top: 50%; z-index: 0;
+  width: calc(var(--r) * 2.4); height: calc(var(--r) * 2.4);
+  margin: calc(var(--r) * -1.2) 0 0 calc(var(--r) * -1.2);
+  border-radius: 50%; pointer-events: none;
 }
 
 /* ---------- 五颗动作 ---------- */
@@ -11215,6 +11289,7 @@ html.dm-quiet .jar-fly-star { display: none; }
   width: var(--sz); height: var(--sz);
   padding: 0; border: 0; background: none;
   display: block; cursor: pointer;
+  pointer-events: auto;                 /* 容器整体不接指针，五颗各自接回来 */
   --ang: calc(var(--a0) + var(--i, 0) * var(--da, 0deg));
   transform: rotate(calc(var(--ang) * -.5)) translateY(0) scale(.3);
   opacity: 0; visibility: hidden;
@@ -11230,12 +11305,12 @@ html.dm-quiet .jar-fly-star { display: none; }
   background: linear-gradient(150deg, rgba(255, 255, 255, .97), rgba(255, 255, 255, .82));
   box-shadow: 0 5px 16px rgba(24, 18, 66, .26), 0 0 0 1px rgba(28, 22, 70, .07),
               inset 0 1px 0 rgba(255, 255, 255, .95);
-  -webkit-backdrop-filter: blur(10px) saturate(1.5);
-  backdrop-filter: blur(10px) saturate(1.5);
+  /* 不用毛玻璃：扇面是「五颗同时在动」的层，每颗带 backdrop-filter 等于每帧
+     读回背景再模糊五次；而封面本身就是柔和的图，模糊与不模糊肉眼几乎无差 */
   transition: transform .26s cubic-bezier(.2, 1.4, .4, 1), background .22s ease,
               color .22s ease, box-shadow .26s ease;
 }
-.card-actions .ca-face svg { width: 15px; height: 15px; display: block; }
+.card-actions .ca-face svg { width: 13px; height: 13px; display: block; }
 .card-actions .ca-item:hover .ca-face { transform: scale(1.14); }
 /* 悬浮那颗连气泡一起抬到最上层：扇面里相邻两颗只隔 34px，气泡必然压到隔壁一点，
    压在下面就会一半被盖住 —— 气泡本身 pointer-events:none，挡住的那颗照样点得到 */
@@ -11249,7 +11324,6 @@ html.dm-quiet .jar-fly-star { display: none; }
   font-size: 11.5px; font-weight: 600; line-height: 1; letter-spacing: .02em;
   color: #fff; background: rgba(24, 20, 52, .8);
   box-shadow: 0 6px 18px rgba(18, 12, 48, .28);
-  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
   opacity: 0; pointer-events: none;
   transform: translateY(-50%) translateX(5px);
   transition: opacity .16s ease, transform .24s cubic-bezier(.2, 1.3, .4, 1);
@@ -11299,17 +11373,27 @@ html.dm-quiet .jar-fly-star { display: none; }
   position: absolute; inset: 0; z-index: 3;
   width: 100%; height: 100%; padding: 0; border: 0; border-radius: 50%;
   display: grid; place-items: center; cursor: pointer;
-  background: linear-gradient(150deg, rgba(255, 255, 255, .97), rgba(255, 255, 255, .84));
-  box-shadow: 0 5px 16px rgba(24, 18, 66, .24), 0 0 0 1px rgba(28, 22, 70, .07),
-              inset 0 1px 0 rgba(255, 255, 255, .95);
-  -webkit-backdrop-filter: blur(10px) saturate(1.5);
-  backdrop-filter: blur(10px) saturate(1.5);
+  pointer-events: auto;                 /* 唯一常驻热区（见下一条 ::before 的「附近」） */
+  /* 半透明：静止时只是一片蒙在封面上的磨砂玻璃（.52 → .3），不压封面
+     展开时（见下方展开态）提亮回 .95，变成扇面的实心锚点 */
+  background: linear-gradient(150deg, rgba(255, 255, 255, .54), rgba(255, 255, 255, .30));
+  /* 里面那圈极淡的冷灰是给浅色封面用的：只有白边的话，扣子落在米白封面会整个化掉 */
+  box-shadow: 0 4px 12px rgba(24, 18, 66, .16), 0 0 0 1px rgba(255, 255, 255, .58),
+              inset 0 0 0 1px rgba(88, 82, 138, .13), inset 0 1px 0 rgba(255, 255, 255, .8);
+  /* 这里原本也有 backdrop-filter。它是「每张卡常驻一颗」，一屏十几张卡一起滚动时
+     等于十几块区域逐帧重算背景模糊 —— 半透明靠底色就够，模糊省掉 */
   transition: background .3s ease, box-shadow .3s ease, transform .4s cubic-bezier(.2, 1.2, .4, 1);
 }
-.card-actions .ca-spark { display: block; line-height: 0; }
+.card-actions .ca-spark { display: block; line-height: 0; opacity: .82; transition: opacity .3s ease; }
 .card-actions .ca-trigger svg {
-  width: 16px; height: 16px; display: block;
-  transition: transform .55s cubic-bezier(.2, 1.2, .4, 1);
+  width: 14px; height: 14px; display: block;
+  transition: transform .42s cubic-bezier(.16, 1, .3, 1);
+}
+/* 「星号附近」的口径：扣子四周外扩 9px 的隐形热区（直径约 40px）。
+   伪元素继承触发器的 pointer-events，指针扫进来就等于进了扇面 —— 不必真对准那颗 21px 的扣子。
+   扩得克制：这块同时也是点击热区（点击 = 展开，见 app.js），扩太大会糊住封面。 */
+.card-actions .ca-trigger::before {
+  content: ''; position: absolute; inset: -9px; border-radius: 50%;
 }
 /* 已互动小红点：点赞或收藏过就在 ✦ 角上点一颗（不支持 :has 的老浏览器就是没有，不影响功能） */
 .card-actions .ca-dot {
@@ -11321,69 +11405,73 @@ html.dm-quiet .jar-fly-star { display: none; }
 .card-actions:has(.ca-item.active) .ca-dot { opacity: 1; transform: scale(1); }
 
 /* ---------- 展开态 ----------
-   桌面：鼠标进卡片就摊开（不用去瞄那颗 30px 的扣子）；
+   桌面：鼠标进到 ✦ 附近才摊开（.card-actions:hover —— 容器自己 pointer-events:none，
+         只有那颗扣子和它外扩 9px 的热区接指针，所以扫过封面不会弹扇面，
+         想点开详情的人照常点卡片）；
    触屏：点一下 ✦ 摊开（.is-open），点别处收起；
    键盘：Tab 进扇面（:has(:focus-visible)）也摊开，五颗能逐个走。
    这里刻意不用 :focus-within —— 鼠标点一下触发器也会留下焦点，扇面就会「粘住」不放。
    transform 只在这里写两遍（显式展开 / hover 展开），因为媒体查询没法混进同一个选择器列表；
-   触屏端刻意不认 .card:hover —— 手机点完卡片会留着 hover 态，扇面会一直挂在那儿。 */
+   触屏端刻意不认 :hover —— 手机点完卡片会留着 hover 态，扇面会一直挂在那儿。 */
 .card-actions.is-open .ca-item,
 .card-actions:has(:focus-visible) .ca-item {
   transform: rotate(calc(var(--ang) * -1)) translateY(calc(var(--r) * -1)) rotate(var(--ang)) scale(1);
   opacity: 1; visibility: visible;
-  transition: transform .46s cubic-bezier(.16, 1.42, .34, 1) calc(var(--i, 0) * 34ms),
-              opacity .18s ease calc(var(--i, 0) * 34ms),
-              visibility 0s linear calc(var(--i, 0) * 34ms);
+  transition: transform .46s cubic-bezier(.22, 1.16, .36, 1) calc(30ms + var(--i, 0) * 30ms),
+              opacity .18s ease calc(30ms + var(--i, 0) * 30ms),
+              visibility 0s linear calc(30ms + var(--i, 0) * 30ms);
 }
 .card-actions.is-open .ca-glow,
 .card-actions:has(:focus-visible) .ca-glow { opacity: 1; transform: scale(1); }
+.card-actions.is-open::before,
+.card-actions:has(:focus-visible)::before { animation: caLux .52s cubic-bezier(.25, .7, .3, 1) both; }
 .card-actions.is-open .ca-trigger,
 .card-actions:has(:focus-visible) .ca-trigger {
-  background: linear-gradient(150deg, #fff, #f5f4ff);
-  box-shadow: 0 0 0 4px rgba(91, 91, 214, .13), 0 8px 22px rgba(91, 91, 214, .34),
+  background: linear-gradient(150deg, rgba(255, 255, 255, .96), rgba(248, 247, 255, .9));
+  box-shadow: 0 0 0 3px rgba(255, 196, 132, .26), 0 8px 20px rgba(240, 168, 92, .26),
               inset 0 1px 0 rgba(255, 255, 255, .95);
   transform: scale(.87);
 }
+.card-actions.is-open .ca-spark,
+.card-actions:has(:focus-visible) .ca-spark { opacity: 1; }
 .card-actions.is-open .ca-trigger svg,
 .card-actions:has(:focus-visible) .ca-trigger svg { transform: rotate(-90deg) scale(1.08); }
-.card-actions.is-open .ca-ripple,
-.card-actions:has(:focus-visible) .ca-ripple { animation: caRipple .8s cubic-bezier(.22, .72, .3, 1) both; }
-.card-actions.is-open .ca-ripple.is-2,
-.card-actions:has(:focus-visible) .ca-ripple.is-2 { animation-delay: .09s; }
 
 @media (hover: hover) {
-  .card:hover .card-actions .ca-item {
+  .card-actions:hover .ca-item {
     transform: rotate(calc(var(--ang) * -1)) translateY(calc(var(--r) * -1)) rotate(var(--ang)) scale(1);
     opacity: 1; visibility: visible;
-    transition: transform .46s cubic-bezier(.16, 1.42, .34, 1) calc(var(--i, 0) * 34ms),
-                opacity .18s ease calc(var(--i, 0) * 34ms),
-                visibility 0s linear calc(var(--i, 0) * 34ms);
+    transition: transform .46s cubic-bezier(.22, 1.16, .36, 1) calc(30ms + var(--i, 0) * 30ms),
+                opacity .18s ease calc(30ms + var(--i, 0) * 30ms),
+                visibility 0s linear calc(30ms + var(--i, 0) * 30ms);
   }
-  .card:hover .card-actions .ca-glow { opacity: 1; transform: scale(1); }
-  .card:hover .card-actions .ca-trigger {
-    background: linear-gradient(150deg, #fff, #f5f4ff);
-    box-shadow: 0 0 0 4px rgba(91, 91, 214, .13), 0 8px 22px rgba(91, 91, 214, .34),
+  .card-actions:hover .ca-glow { opacity: 1; transform: scale(1); }
+  .card-actions:hover::before { animation: caLux .52s cubic-bezier(.25, .7, .3, 1) both; }
+  /* 展开后把隐形桥接上，指针在五颗之间移动才不会掉出扇面 */
+  .card-actions:hover::after { pointer-events: auto; }
+  .card-actions:hover .ca-trigger {
+    background: linear-gradient(150deg, rgba(255, 255, 255, .96), rgba(248, 247, 255, .9));
+    box-shadow: 0 0 0 3px rgba(255, 196, 132, .26), 0 8px 20px rgba(240, 168, 92, .26),
                 inset 0 1px 0 rgba(255, 255, 255, .95);
     transform: scale(.87);
   }
-  .card:hover .card-actions .ca-trigger svg { transform: rotate(-90deg) scale(1.08); }
-  .card:hover .card-actions .ca-ripple { animation: caRipple .8s cubic-bezier(.22, .72, .3, 1) both; }
-  .card:hover .card-actions .ca-ripple.is-2 { animation-delay: .09s; }
+  .card-actions:hover .ca-spark { opacity: 1; }
+  .card-actions:hover .ca-trigger svg { transform: rotate(-90deg) scale(1.08); }
 }
 
-/* 涟漪：从按钮位置向外荡开两圈，半径约等于扇面半径就散尽（不散尽会显脏） */
-@keyframes caRipple {
-  0%   { transform: scale(.6); opacity: .95; }
-  70%  { opacity: .35; }
-  100% { transform: scale(5.6); opacity: 0; }
+/* 灯亮：先涨开再散尽（.25 → 1.15），散尽时刚好压住扇面最后落位的那一下 */
+@keyframes caLux {
+  0%   { transform: scale(.25); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: scale(1.15); opacity: 0; }
 }
 
 /* 手机端只补两处小的：贴边近一点、图标再小一档
    （直径/半径已经被 clamp + cqw 按卡片宽度算好了，这里不用再改） */
 @media (max-width: 640px) {
   .card-actions { bottom: 16px; right: 8px; }
-  .card-actions .ca-face svg { width: 13px; height: 13px; }
-  .card-actions .ca-trigger svg { width: 14px; height: 14px; }
+  .card-actions .ca-face svg { width: 12px; height: 12px; }
+  .card-actions .ca-trigger svg { width: 13px; height: 13px; }
 }
 
 /* 减少动效：动画和位移全关，只剩「瞬间出现」——功能一个不少 */
@@ -11391,7 +11479,7 @@ html.dm-quiet .jar-fly-star { display: none; }
   .card-actions .ca-item,
   .card-actions.is-open .ca-item,
   .card-actions:has(:focus-visible) .ca-item,
-  .card:hover .card-actions .ca-item {
+  .card-actions:hover .ca-item {
     transition: none;
   }
   .card-actions .ca-glow,
@@ -11399,8 +11487,89 @@ html.dm-quiet .jar-fly-star { display: none; }
   .card-actions .ca-tip,
   .card-actions .ca-face,
   .card-actions .ca-dot { transition: none; }
-  .card-actions.is-open .ca-ripple,
-  .card-actions:has(:focus-visible) .ca-ripple,
-  .card:hover .card-actions .ca-ripple { animation: none; }
+  .card-actions::before { animation: none !important; opacity: 0 !important; }
 }
 
+
+/* ---------- 关注创作者（2026-11-15） ---------- */
+/* 作者页 / 作品详情共用同一颗按钮：没关注是实心主色（这一页唯一的主行动），
+   已关注退成描边（别再喊了）。粉丝数跟在文字后面用 .fb-num 压暗——它是信息，不是主张。
+   hover 在已关注态变暖红，鼠标移上去就知道「再点一下是取消」。 */
+.author-follow-btn,
+.detail-follow {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: inherit; font-size: 12.5px; font-weight: 600; line-height: 1;
+  padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--primary); background: var(--primary); color: #fff;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .15s, color .15s, border-color .15s, transform .12s;
+}
+.author-follow-btn:hover,
+.detail-follow:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+.author-follow-btn:active,
+.detail-follow:active { transform: scale(.96); }
+.author-follow-btn.is-on,
+.detail-follow.is-on { background: #fff; color: var(--primary); border-color: #d9d7f5; }
+.author-follow-btn.is-on:hover,
+.detail-follow.is-on:hover { background: #fff5f5; color: var(--danger); border-color: #f0c9cb; }
+/* 作者页那颗按钮长在星空带上（20 种底色，深浅都有），所以它不能走「主色实心」——
+   紫色实心压在同色系渐变上就是一块看不出边界的暗斑（实测「关注」两个字糊在带子里）。
+   改成不透明白底：深底上是唯一的亮块，浅底上靠投影立住，20 种皮肤都不用单独调。
+   已关注降成半透明白 + 灰字，是「这事办完了」的视觉语义，不再喊人点。 */
+.author-follow-btn {
+  background: #fff; color: var(--primary); border-color: rgba(255, 255, 255, .92);
+  box-shadow: 0 2px 10px rgba(28, 24, 66, .18);
+}
+.author-follow-btn:hover {
+  background: #fff; color: var(--primary-dark); border-color: #fff;
+  box-shadow: 0 3px 13px rgba(28, 24, 66, .24);
+}
+.author-follow-btn.is-on {
+  background: rgba(255, 255, 255, .86); color: #5d6180;
+  border-color: rgba(255, 255, 255, .5); box-shadow: none;
+}
+.author-follow-btn.is-on:hover { background: #fff; color: var(--danger); border-color: #fff; }
+.author-follow-btn .ico,
+.detail-follow .ico { font-size: 1.05em; }
+.author-follow-btn .fb-num,
+.detail-follow .fb-num { font-weight: 500; opacity: .7; }
+/* 按钮自己是圆角实心块，里面的图标不能带 .ico 的胶囊底色（同 .detail-cat .ico 那条坑） */
+.author-follow-btn .ico,
+.detail-follow .ico { padding: 0; background: none; border-radius: 0; }
+
+/* 「我关注的创作者」列表：一行一个人。名字 + 粉丝数在一行，最近一件作品在下一行，
+   右侧一颗「已关注」（点一下当场从列表里摘掉）。 */
+.fl-list { display: flex; flex-direction: column; gap: 10px; }
+.fl-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; background: var(--card);
+  border: 1px solid var(--border); border-radius: 14px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.fl-row:hover { border-color: #d9d7f5; box-shadow: 0 4px 14px rgba(91, 91, 214, .06); }
+.fl-ava {
+  position: relative; flex: 0 0 auto; width: 42px; height: 42px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; overflow: hidden;
+}
+.fl-ava img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.fl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; color: inherit; text-decoration: none; }
+.fl-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; font-weight: 600; }
+.fl-fans { font-size: 11.5px; font-weight: 500; color: var(--muted); }
+.fl-latest { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl-follow {
+  flex: 0 0 auto; font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  padding: 6px 14px; border-radius: 999px;
+  border: 1px solid #e0dcfa; background: #f6f5fe; color: var(--primary);
+  transition: background .15s, border-color .15s, color .15s;
+}
+.fl-follow:hover { background: #fff5f5; border-color: #f0c9cb; color: var(--danger); }
+/* 站内消息里的「关注」小标签：暖橘，和酒馆的青色、私信的紫色都不撞 */
+.nc-follow { background: #fff1e6; color: #a4560f; }
+
+@media (max-width: 640px) {
+  .fl-row { padding: 11px 12px; gap: 10px; }
+  .fl-ava { width: 38px; height: 38px; border-radius: 11px; font-size: 15px; }
+  .fl-latest { font-size: 12px; }
+  .fl-follow { padding: 6px 12px; }
+}

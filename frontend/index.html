@@ -234,10 +234,16 @@
           </div>
         </div>
         <div class="featured-row" id="featRow">
+          <!-- 首屏直出占位：服务端把本周精选的前 20 张卡直接写进 HTML（见 server.js 的 ssrFeatCard），
+               下面那组骨架只作为「服务端没给数据」时的兜底（直出成功时 shell() 会把整块骨架摘掉）。
+               这样首屏第一块图片内容跟着 HTML 一起到，不用等 app.js 跑完再拉 /api/featured。 -->
+          <!--SSR_FEATURED-->
+          <!--FEAT_SK_START-->
           <div class="feat-sk" aria-hidden="true"><span class="sk-img feat-sk-img"></span><span class="feat-sk-body"><span class="sk-line" style="width:72%"></span><span class="sk-line" style="width:46%"></span><span class="sk-foot"><span class="sk-line" style="width:34%"></span><span class="sk-line" style="width:20%"></span></span></span></div>
           <div class="feat-sk" aria-hidden="true"><span class="sk-img feat-sk-img"></span><span class="feat-sk-body"><span class="sk-line" style="width:60%"></span><span class="sk-line" style="width:38%"></span><span class="sk-foot"><span class="sk-line" style="width:28%"></span><span class="sk-line" style="width:24%"></span></span></span></div>
           <div class="feat-sk" aria-hidden="true"><span class="sk-img feat-sk-img"></span><span class="feat-sk-body"><span class="sk-line" style="width:66%"></span><span class="sk-line" style="width:42%"></span><span class="sk-foot"><span class="sk-line" style="width:30%"></span><span class="sk-line" style="width:16%"></span></span></span></div>
           <div class="feat-sk" aria-hidden="true"><span class="sk-img feat-sk-img"></span><span class="feat-sk-body"><span class="sk-line" style="width:58%"></span><span class="sk-line" style="width:44%"></span><span class="sk-foot"><span class="sk-line" style="width:26%"></span><span class="sk-line" style="width:22%"></span></span></span></div>
+          <!--FEAT_SK_END-->
         </div>
         <!-- 精选横滑进度条：滑块宽度=可视比例，可拖可点；一屏放得下时整个隐藏 -->
         <div class="feat-bar" id="featBar" hidden>
@@ -252,12 +258,12 @@
            （自己的作品排不进主列表，只在下面这条"预备区"里挂着）。
            整版块挪进酒馆 /bar 右栏（紧跟推荐位「我也想推荐自己的作品」下面），卡片形式，见 bar-rail -->
 
-      <!-- PC：形态 / 分类 / 开源 / 时间 四个下拉胶囊 + 右端排序切换。
+      <!-- PC：形态 / 场景 / 分类 / 开源 / 时间 下拉胶囊 + 行首排序切换（2026-11-15 场景挪到形态后）。
            2026-11-11：「随便逛逛 / 最新 / 最热」从下面 list-head 挪到这行右端——
            筛选行右边本来大片空着，排序正好补位；list-head 一行也不用再挤三组控件。
            排序做成 filterRow 的兄弟节点而不是子节点：renderFiltersPC 每次重画 filterRow
            的 innerHTML，放里面会被整个冲掉。H5 不受影响（排序由筛选栏 tab 承担）。 -->
-      <!-- PC：排序切换（随便逛逛/最新/最热）放行首 + 形态 / 分类 / 开源 / 时间 四个下拉胶囊跟后面。
+      <!-- PC：排序切换（随便逛逛/最新/最热）放行首 + 形态 / 场景 / 分类 / 开源 / 时间 下拉胶囊跟后面（场景 2026-11-15 挪到第三，在形态后）。
            2026-11-11 二改：先按「筛选行右端」做过一版，用户截图划箭头指出还是不够显眼——
            挪到行首（最左），视线扫到筛选行第一眼就是它，四个下拉退居其后。
            排序做成 filterRow 的兄弟节点而不是子节点：renderFiltersPC 每次重画 filterRow
@@ -271,7 +277,7 @@
         </div>
         <div class="filter-row" id="filterRow"></div>
       </div>
-      <!-- H5 移动端专属：与微信小程序橱窗同款——一行 tab（形态/分类/开源/时间/最新），点开在下方展开胶囊面板 -->
+      <!-- H5 移动端专属：与微信小程序橱窗同款——一行 tab（形态/场景/分类/开源/时间/最新，2026-11-15 场景挪到形态后），点开在下方展开胶囊面板 -->
       <div class="fbar-wrap h5-only" id="filterWrap">
         <div class="fbar"></div>
         <div class="fbar-panel" hidden><div class="fbar-chips"></div></div>
@@ -298,11 +304,14 @@
           </span>
         </span>
         <div class="head-controls">
-          <!-- 每行 4 / 5 个：用户自己选，记在本机；窄屏自动回落到响应式列数 -->
+          <!-- 每行 4 / 5 / 6 个：用户自己选，记在本机。
+               2026-11-15 起这是「宽屏下最多几张」——屏幕放不下这么多 226px 的卡时自动减列
+               （见 style.css 的 .gallery 分段）；装不下的档位直接不显示（app.js syncColsToggle），
+               所以 1440 / 1366 的本子上只会看到 4 列 / 5 列两个按钮，点了都真生效 -->
           <div class="cols-toggle" id="colsToggle" role="group" aria-label="每行显示数量">
-            <button class="ct-btn" data-cols="4" title="每行显示 4 个">4 列</button>
-            <button class="ct-btn" data-cols="5" title="每行显示 5 个">5 列</button>
-            <button class="ct-btn" data-cols="6" title="每行显示 6 个">6 列</button>
+            <button class="ct-btn" data-cols="4" title="每行 4 个（窗口变窄会自动减列）">4 列</button>
+            <button class="ct-btn" data-cols="5" title="每行 5 个（窗口变窄会自动减列）">5 列</button>
+            <button class="ct-btn" data-cols="6" title="每行 6 个（需要 1500px 以上的屏幕宽度）">6 列</button>
           </div>
           <!-- 排序切换（随便逛逛/最新/最热）2026-11-11 挪到上面筛选行右端（id=sortToggle 不变） -->
           <!-- 展示方式：卡片 / 列表 -->
@@ -686,6 +695,8 @@
               <!-- 自己的主页才显示：作者页地址（/u/xxx）改成好记的个性地址 -->
               <button type="button" class="author-nick-btn" id="authorSlugBtn" style="display:none" title="把作者页链接换成好记的地址"><i class="ico" data-ico="link"></i> 个性地址</button>
               <!-- 别人的主页才显示：给作者直送灯火（不挂具体作品，全额转作者账上；每天对同一位作者限 50 盏 / 5 笔） -->
+              <!-- 别人的主页才显示：关注这位创作者（他发新作会在站内消息里提醒你；粉丝数挂在按钮上） -->
+              <button type="button" class="author-follow-btn" id="authorFollowBtn" style="display:none"></button>
               <button type="button" class="author-nick-btn" id="authorTipBtn" style="display:none" title="用你的灯火支持这位作者"><i class="ico" data-ico="lamp"></i> 送灯火</button>
               <!-- 别人的主页才显示：一对一发私信（不经过站长，对方在「私信」里直接看到） -->
               <button type="button" class="author-nick-btn" id="authorDmBtn" style="display:none" title="给这位作者发私信"><i class="ico" data-ico="chat"></i> 私信</button>
@@ -924,6 +935,22 @@
       <div class="empty" id="favEmpty" style="display:none">
         <div class="empty-icon"><i class="ico" data-ico="palette"></i></div>
         <p>还没有收藏的作品——遇到喜欢的点卡片右上角 ★，也可以点亮一盏灯火支持 TA</p>
+      </div>
+    </section>
+
+    <!-- 我关注的创作者（独立页面 /following，2026-11-15）：关注是「人级」的收藏。
+         列表按作者最近更新排序，由 app.js 的 loadFollowPage() 渲染。
+         这一页不另做「未读小圆点」：那需要给每个人存一份看到哪了的水位，
+         一个新作提醒交给站内消息就够了，别为一个小红点多养一份状态。 -->
+    <section id="followView" style="display:none">
+      <div class="page-head">
+        <h2 class="page-title"><i class="ico" data-ico="person"></i> 我关注的创作者</h2>
+        <p>他们发新作品时站内消息会提醒你；这里按最近更新排</p>
+      </div>
+      <div class="fl-list" id="followList"></div>
+      <div class="empty" id="followEmpty" style="display:none">
+        <div class="empty-icon"><i class="ico" data-ico="palette"></i></div>
+        <p>还没有关注任何创作者——打开一位作者的主页，点名字旁边的「关注」，他发新作就会来找你</p>
       </div>
     </section>
 
@@ -1493,6 +1520,7 @@
           <button type="button" class="dm-policy" id="dmPolicyBtn" role="switch" aria-checked="false" title="打开后，只有你聊过的人能给你发新私信">
             <span>只接收聊过的人</span><span class="ud-switch"><i></i></span>
           </button>
+          <p class="dm-retain" id="dmRetainTip">对话记录保留 180 天，到期自动清除</p>
         </footer>
       </section>
       <section class="dm-pane dm-chat-pane" id="dmChatPane">
@@ -1507,6 +1535,7 @@
           <div class="dm-menu" id="dmMenu" style="display:none">
             <button type="button" data-dmact="mute">消息免打扰</button>
             <button type="button" data-dmact="clear">清空对话</button>
+            <button type="button" data-dmact="report">举报这段对话</button>
             <button type="button" data-dmact="block">屏蔽此人</button>
           </div>
         </header>
@@ -1517,6 +1546,28 @@
         </div>
         <p class="dm-compose-tip" id="dmComposeTip">Enter 发送，Shift + Enter 换行</p>
       </section>
+    </div>
+  </div>
+
+  <!-- 举报私信：私信没有旁观者，举报是唯一的出口。
+       只让用户说「哪条、为什么」，证据由服务端随手截（被举报那条 + 前后各 2 条）-->
+  <div class="modal-mask" id="dmReportModal" style="display:none">
+    <div class="modal modal-dm-report">
+      <div class="modal-head">
+        <h2>举报私信</h2>
+        <button class="close-btn" id="closeDmReport" title="关闭">✕</button>
+      </div>
+      <p class="dm-report-to" id="dmReportTo"></p>
+      <label>举报原因 *</label>
+      <div class="dm-report-reasons" id="dmReportReasons"></div>
+      <label>补充说明（选填）</label>
+      <textarea id="dmReportDesc" rows="3" maxlength="500" placeholder="发生了什么？写清楚有助于我们判断"></textarea>
+      <label class="dm-report-block">
+        <input type="checkbox" id="dmReportBlock" checked />
+        <span>同时屏蔽对方（立刻不再收到对方私信）</span>
+      </label>
+      <button type="button" class="btn-primary btn-block" id="dmReportBtn">提交举报</button>
+      <p class="form-hint">提交时会一并保存被举报消息及其前后各 2 条作为凭证，只用于处理这次举报。</p>
     </div>
   </div>
 
@@ -1802,6 +1853,9 @@
         <p class="detail-lead" id="detailLead" style="display:none"></p>
         <div class="detail-headrow">
           <button class="detail-author" id="detailAuthor"></button>
+          <!-- 关注作者（2026-11-15）：贴在作者名后面而不是塞进下面那排动作胶囊里——
+               那排已经有 7 个按钮，关注是「对人的动作」，跟作者名放一起才读得通 -->
+          <button type="button" class="detail-follow" id="detailFollow" style="display:none"></button>
           <div class="detail-cat" id="detailCategory"></div>
         </div>
         <button class="claim-entry" id="claimEntry" style="display:none"></button>
@@ -1834,8 +1888,9 @@
           <button class="btn-like btn-cmt" id="detailCmt" title="跳到评论区：说点什么，或向作者提问"><i class="ico" data-ico="chat"></i><span class="sr-label">评论</span><span id="detailCmtNum">0</span></button>
           <!-- 送灯火是唯一带「暖意」的动作，保留可见文字按钮，不并进图标堆 -->
           <button class="btn-tip" id="detailTip" title="用灯火支持作者或这件作品"><i class="ico b-ico" data-ico="lamp"></i> <span class="tip-word">送灯火</span></button>
-          <!-- 私信作者：图标胶囊（文字只给读屏），和点赞/收藏同一排，不抢「送灯火」的主位 -->
-          <button class="btn-like btn-dm" id="detailDm" title="给作者发私信"><i class="ico" data-ico="chat"></i><span class="sr-label">私信</span></button>
+          <!-- 私信作者：图标胶囊（文字只给读屏），和点赞/收藏同一排，不抢「送灯火」的主位；
+               图标用 mail 信封，别和左边评论的 chat 气泡撞脸（2026-11-15） -->
+          <button class="btn-like btn-dm" id="detailDm" title="给作者发私信"><i class="ico" data-ico="mail"></i><span class="sr-label">私信</span></button>
           <button class="btn-share" id="shareCardBtn" title="生成一张带二维码的分享图，发朋友圈/小红书都行"><i class="ico b-ico" data-ico="sharecard"></i><span class="sr-label">分享卡片</span></button>
           <button class="btn-share btn-pack" id="promoKitBtn" title="按平台生成投稿文案，复制就能去外站投"><i class="ico b-ico" data-ico="megaphone"></i> 外宣包</button>
           <button class="btn-link btn-code" id="detailRedeem" style="display:none"><i class="ico b-ico" data-ico="gift"></i> 兑换码</button>
@@ -3108,11 +3163,16 @@
 
   <!-- 全页图标兜底水合：赶在 qrcode/app.js 这些同步脚本开始下载之前执行，
        此时整棵 DOM 已解析完，首绘前把所有 data-ico 占位符填掉（幂等，重复调无害） -->
+  <!-- 首屏直出的启动数据（本周精选 + 广告位）：服务端按这次请求生成，app.js 读它原地接管，
+       不再为首屏多发两个请求。没有直出数据时这里什么都不输出，app.js 照旧走接口。 -->
+  <!--SSR_BOOT-->
   <script>if (window.Icons) Icons.hydrate();</script>
   <script src="/vendor/qrcode.js"></script>
   <script src="/qr-guard.js"></script>
   <script src="/md.js"></script>
   <script src="/sharecard.js"></script>
+  <!-- app.js 保持挂在 body 末尾（2026-11-15 试过挪到 head + defer：解析期间就开始下，
+       实测 Fast3G 下跟阻塞的 style.css 抢带宽，FCP 反而晚 0.4~2.7s，已回退）。 -->
   <script src="/app.js"></script>
 </body>
 </html>

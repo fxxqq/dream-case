@@ -6246,20 +6246,35 @@
       try {
         const list = await api('/api/admin/reports');
         if (!list.length) { panel.innerHTML = '<div class="empty">暂无投诉</div>'; return; }
-        panel.innerHTML = list.map(r => `
+        panel.innerHTML = list.map(r => {
+          const isDm = r.target === 'dm';
+          const ev = Array.isArray(r.evidence) ? r.evidence : [];
+          const actionTag = r.action === 'takedown' ? ' · 已下架' : (r.action === 'dm-close' ? ' · 已关闭对话' : '');
+          return `
           <div class="row">
             <div class="row-main">
-              <div class="row-title">${esc(r.workTitle)} <span class="tag ${r.status === '待处理' ? 'warn' : 'ok'}">${esc(r.status)}${r.action === 'takedown' ? ' · 已下架' : ''}</span></div>
+              <div class="row-title">${isDm ? '<span class="tag warn">私信</span> ' : ''}${esc(r.workTitle)} <span class="tag ${r.status === '待处理' ? 'warn' : 'ok'}">${esc(r.status)}${actionTag}</span></div>
               <div class="row-meta">原因：${esc(r.reason)}${r.description ? ' · ' + esc(r.description) : ''}
-                ${r.contact ? ' · 联系方式：' + esc(r.contact) : ''} · ${new Date(r.createdAt).toLocaleString('zh-CN')}</div>
+                ${r.contact ? ' · 联系方式：' + esc(r.contact) : ''} · ${new Date(r.createdAt).toLocaleString('zh-CN')}
+                ${Number(r.count) > 1 ? ' · 已举报 ' + Number(r.count) + ' 次' : ''}</div>
+              ${isDm ? `<div class="row-meta">举报人 @${esc(r.reporterName || '')} · 被举报 @${esc(r.peerName || '')}</div>` : ''}
+              ${ev.length ? `<details style="margin-top:6px">
+                <summary style="cursor:pointer;font-size:12px;color:var(--muted)">证据快照（${ev.length} 条，举报时截取，被举报那条标红）</summary>
+                <div class="row-meta" style="line-height:1.9">
+                  ${ev.map(m => `<div style="display:block${m.hit ? ';color:#a32d2d;font-weight:600' : ''}">${esc(m.name || '')}：${esc(m.text || '')}${m.hit ? ' ← 被举报' : ''}</div>`).join('')}
+                </div>
+              </details>` : ''}
             </div>
             <div class="row-actions">
-              <a class="btn btn-ghost btn-sm" href="/w/${r.workId}" target="_blank">查看作品</a>
-              ${r.status === '待处理' ? `
-                <button class="btn btn-danger btn-sm" data-takedown="${r.id}">下架并告知原因</button>
-                <button class="btn btn-ok btn-sm" data-report="${r.id}">标记已处理</button>` : ''}
+              ${isDm ? '' : `<a class="btn btn-ghost btn-sm" href="/w/${r.workId}" target="_blank">查看作品</a>`}
+              ${r.status === '待处理' ? (isDm
+                ? `<button class="btn btn-danger btn-sm" data-dmclose="${r.id}">关闭这段私信</button>
+                   <button class="btn btn-ok btn-sm" data-report="${r.id}">标记已处理</button>`
+                : `<button class="btn btn-danger btn-sm" data-takedown="${r.id}">下架并告知原因</button>
+                   <button class="btn btn-ok btn-sm" data-report="${r.id}">标记已处理</button>`) : ''}
             </div>
-          </div>`).join('');
+          </div>`;
+        }).join('');
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
 
@@ -6678,6 +6693,21 @@
         try {
           await api(`/api/admin/reports/${btn.dataset.report}/resolve`, { method: 'POST' });
           toast('已标记处理');
+          loadStats(); loadReports();
+        } catch (err) { toast(err.message); }
+        return;
+      }
+      // 私信投诉：没有作品可下架，动作是关闭这段会话（双方都不能再发，记录留到保留期满）
+      const dcl = e.target.closest('[data-dmclose]');
+      if (dcl) {
+        const note = prompt('关闭原因（将通过站内消息告知被举报方，留空则使用投诉原因）：');
+        if (note === null) return;   // 取消
+        try {
+          await api(`/api/admin/reports/${dcl.dataset.dmclose}/dm-close`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note: note.trim() })
+          });
+          toast('已关闭这段私信，并已通知被举报方');
           loadStats(); loadReports();
         } catch (err) { toast(err.message); }
         return;

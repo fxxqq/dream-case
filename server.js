@@ -952,6 +952,7 @@ const NOTICE_CAT_OF = {
   points: 'points',                                            // 灯火增删
   announce: 'system', system: 'system', tag: 'system',         // 系统通知
   'bar-reply': 'msg',                                          // 酒馆回应（和评论 / 私信同栏，靠小标签区分）
+  'follow-new': 'msg',                                         // 关注的作者发新作（同上，靠标签区分）
   'dm-user': 'msg'                                             // 用户之间的私信（合成条目，见 dmNoticeItems）
 };
 function noticeCatOf(kind) { return NOTICE_CAT_OF[kind] || 'msg'; }
@@ -1080,6 +1081,197 @@ function flushLikeNotice(uid, force) {
 // 每 10 分钟扫一遍：攒够 6 小时的分批发出去（发完就清空，不会重复）
 setInterval(() => { likeNoticeState.forEach((_, uid) => flushLikeNotice(uid, false)); }, 600000).unref?.();
 
+// ---------- 关注关系（2026-11-15） ----------
+// 收藏是「作品级」的动作，关注是「人级」的：一位作者常常只有一两件作品，访客喜欢的其实是这个人。
+// 站里之前没有这层关系（作者页只能塞一行外部链接），这里补上最小闭环：
+// 关注 → 他发新作 → 站内信告诉我 → 我回来看。
+//
+// 存储：data/follows.json
+//   { edges: [{ from, to, at }],                              // 一条边 = 一次关注
+//     notices: { '<authorId>|<uid>': { noticeId, at, n } } }   // 新作通知的节流账
+//   · 边单独存一张表，不塞进 users.json：关注是高频动作，不该每次都重写核心用户表；
+//   · 内存里两个索引（我关注了谁 / 谁关注我），启动扫一遍，之后读写都是 O(1)；
+//   · notices 只服务于「同一位作者 24 小时内只打扰一次」，连发多件合并成一条。
+const FOLLOW_MAX_PER_USER = 300;          // 一个人最多关注 300 位作者（站子现在一百多位，够用且能防刷）
+const FOLLOW_RATE_PER_HOUR = 60;          // 关注 / 取关：每小时各 60 次
+const FOLLOW_NOTICE_GAP = 24 * 3600000;   // 同一作者的合并窗口
+const FOLLOW_NOTICE_MAX_FANS = 500;       // 单次最多通知 500 人（纯防意外刷屏，正常远远到不了）
+let followStore = readJSON('follows.json', null);
+if (!followStore || typeof followStore !== 'object') followStore = {};
+if (!Array.isArray(followStore.edges)) followStore.edges = [];
+if (!followStore.notices || typeof followStore.notices !== 'object') followStore.notices = {};
+let followEdges = followStore.edges;
+const followOut = new Map();   // fromId -> Set(toId)
+const followIn = new Map();    // toId   -> Set(fromId)
+function followReindex() {
+  followOut.clear();
+  followIn.clear();
+  followEdges.forEach(e => {
+    if (!e || !e.from || !e.to || e.from === e.to) return;
+    if (!followOut.has(e.from)) followOut.set(e.from, new Set());
+    followOut.get(e.from).add(e.to);
+    if (!followIn.has(e.to)) followIn.set(e.to, new Set());
+    followIn.get(e.to).add(e.from);
+  });
+}
+followReindex();
+function saveFollows() { writeJSON('follows.json', followStore); }
+function isFollowing(fromId, toId) {
+  const s = followOut.get(String(fromId));
+  return !!(s && s.has(String(toId)));
+}
+function followerCount(uid) {
+  const s = followIn.get(String(uid));
+  return s ? s.size : 0;
+}
+function followingIds(uid) {
+  const s = followOut.get(String(uid));
+  return s ? Array.from(s) : [];
+}
+function addFollow(fromId, toId) {
+  fromId = String(fromId); toId = String(toId);
+  if (!fromId || !toId || fromId === toId) return false;
+  if (isFollowing(fromId, toId)) return false;
+  followStore.edges.push({ from: fromId, to: toId, at: Date.now() });
+  followEdges = followStore.edges;
+  if (!followOut.has(fromId)) followOut.set(fromId, new Set());
+  followOut.get(fromId).add(toId);
+  if (!followIn.has(toId)) followIn.set(toId, new Set());
+  followIn.get(toId).add(fromId);
+  saveFollows();
+  return true;
+}
+function removeFollow(fromId, toId) {
+  fromId = String(fromId); toId = String(toId);
+  if (!isFollowing(fromId, toId)) return false;
+  followStore.edges = followStore.edges.filter(e => !(e.from === fromId && e.to === toId));
+  followEdges = followStore.edges;
+  const o = followOut.get(fromId);
+  if (o) { o.delete(toId); if (!o.size) followOut.delete(fromId); }
+  const i = followIn.get(toId);
+  if (i) { i.delete(fromId); if (!i.size) followIn.delete(toId); }
+  delete followStore.notices[toId + '|' + fromId];
+  saveFollows();
+  return true;
+}
+// 注销账号时清边：别人关注他的、他关注别人的都得断，否则粉丝数会挂着一个不存在的人
+function followPurgeUser(uid) {
+  uid = String(uid);
+  if (!followEdges.some(e => e.from === uid || e.to === uid)) return 0;
+  const n = followEdges.filter(e => e.from === uid || e.to === uid).length;
+  followStore.edges = followStore.edges.filter(e => e.from !== uid && e.to !== uid);
+  followEdges = followStore.edges;
+  Object.keys(followStore.notices).forEach(k => { if (k.split('|').includes(uid)) delete followStore.notices[k]; });
+  followReindex();
+  saveFollows();
+  return n;
+}
+// 节流账只留 7 天：过了合并窗口的记录再没用，留着只会让 follows.json 慢慢变胖
+function pruneFollowNotices() {
+  const cut = Date.now() - 7 * 86400000;
+  const box = followStore.notices;
+  Object.keys(box).forEach(k => {
+    if ((Number(box[k] && box[k].at) || 0) < cut) delete box[k];
+  });
+}
+
+// 被关注也是消息：但关注一次就弹一条，取关再关注就能刷屏，所以按作者 24 小时合并一条。
+// 作品被点赞是 6 小时窗，这里给一天：粉丝数本来就不是即时数字，攒一攒说「3 人关注了你」更体面。
+function queueFollowerNotice(authorId, fanId) {
+  const fan = users.find(u => u.id === fanId);
+  if (!fan) return;
+  const key = 'fans|' + authorId;
+  const rec = followStore.notices[key];
+  const now = Date.now();
+  const fanName = displayNameOf(fan.username);
+  if (rec && now - (Number(rec.at) || 0) < FOLLOW_NOTICE_GAP) {
+    const old = notices.find(x => x.id === rec.noticeId && x.userId === authorId);
+    if (old) {
+      rec.n = (Number(rec.n) || 1) + 1;
+      rec.at = now;
+      old.title = `${rec.n} 人关注了你`.slice(0, 60);
+      old.text = `最近的是 @${fanName}。他们会在你发新作品时收到一条提醒。`.slice(0, 300);
+      old.read = false;
+      saveNotices();
+      saveFollows();
+      return;
+    }
+  }
+  const n = addNotice(authorId, {
+    kind: 'follow-new',   // 和「关注的人发新作」共用同一个 kind：消息栏里都挂「关注」这枚标签
+    title: `@${fanName} 关注了你`,
+    text: '他会在你发新作品时收到一条提醒。'
+  });
+  if (n) {
+    followStore.notices[key] = { noticeId: n.id, at: now, n: 1 };
+    pruneFollowNotices();
+    saveFollows();
+  }
+}
+
+// 作品第一次对公众可见：既要告诉百度，也要告诉关注这位作者的人。
+// 只在「新东西上线」的三个时刻调用（投稿 / 预告卡上线 / 审核通过 / 后台代建）——
+// 编辑、重新上架不打扰关注者：那不是新作品，反复通知等于教人关掉通知。
+function announceWorkVisible(w, reason) {
+  baiduPushWork(w, reason);
+  try { notifyFollowersNewWork(w, reason); } catch (e) { console.log('[follow] 新作通知失败：' + e.message); }
+}
+function notifyFollowersNewWork(w, reason) {
+  if (!w || !w.userId) return 0;                    // 匿名 / 无主作品没有作者，也就没有关注者
+  if (!isVisible(w)) return 0;                      // 还在审核 / 还是预告卡：别人点进去看不到，别提前通知
+  const authorId = String(w.userId);
+  const fans = followIn.get(authorId);
+  if (!fans || !fans.size) return 0;
+  const author = users.find(u => u.id === authorId);
+  if (!author) return 0;
+  const shown = displayNameOf(author.username);
+  const title = String(w.title || '新作品').slice(0, 40);
+  const now = Date.now();
+  const fresh = [];
+  let merged = 0;
+  let seen = 0;
+  for (const uid of fans) {
+    if (seen++ >= FOLLOW_NOTICE_MAX_FANS) break;
+    if (!users.some(u => u.id === uid)) continue;   // 关注者已注销
+    const key = authorId + '|' + uid;
+    const rec = followStore.notices[key];
+    if (rec && now - (Number(rec.at) || 0) < FOLLOW_NOTICE_GAP) {
+      // 窗口内已经打扰过一次：改原来那条，不新增（三件连发 = 一条通知）
+      const old = notices.find(x => x.id === rec.noticeId && x.userId === uid);
+      if (old) {
+        if (old.workId === w.id) continue;           // 同一件作品被第二次宣布（投稿→审核通过），不重复计数
+        rec.n = (Number(rec.n) || 1) + 1;
+        rec.at = now;
+        old.text = `${shown} 又发了新作品《${title}》，这段时间的第 ${rec.n} 件。`.slice(0, 300);
+        old.workId = w.id;
+        old.read = false;                            // 重新变未读，铃铛会亮
+        merged++;
+        continue;
+      }
+    }
+    fresh.push([uid, {
+      kind: 'follow-new',
+      key: 'follow-new:' + w.id + ':' + uid,         // 同一件作品只发一次（重试 / 重复可见不会叠加）
+      title: `${shown} 发了新作品`,
+      text: `《${title}》刚发布，去看看 ›`,
+      workId: w.id
+    }]);
+    followStore.notices[key] = { noticeId: '', at: now, n: 1 };
+  }
+  let sent = 0;
+  if (fresh.length) {
+    sent = addNoticeBatch(fresh);
+    // 回填 noticeId（addNoticeBatch 不返回实体）：条数等于关注者数，按 key 反查一次足够
+    fresh.forEach(([uid, data]) => {
+      const n = notices.find(x => x.userId === uid && x.key === data.key);
+      if (n) followStore.notices[authorId + '|' + uid].noticeId = n.id;
+    });
+  }
+  pruneFollowNotices();
+  if (sent || merged) saveFollows();
+  return sent + merged;
+}
+
 // ---------- 用户私信（一对一） ----------
 // 和上面「私信站长」不是同一套：那个是用户 ↔ 站长的客服通道，落在 notices 的 thread 里；
 // 这里是普通用户之间的私聊，单独一份 data/dms.json。
@@ -1102,6 +1294,17 @@ const DM_MAX_THREADS = 5000;           // 全站会话上限（超出从最久�
 const DM_NEW_PER_DAY = 5;              // 每人每天最多主动开 5 个新会话（续聊不受限）
 const DM_MSG_PER_MIN = 20;             // 发消息限流：每分钟 20 条
 const DM_MSG_PER_DAY = 300;            // 每天 300 条
+
+// 会话正文保留期：180 天。到期由 pruneDms() 逐条清掉，用户可见口径写在私信列表底部
+// （/api/dm/threads 下发 retainDays，前端不写死数字）。
+// 口径：私信不是本站主功能，180 天足够覆盖「你上次发的那个链接」；超期再留就不符合最小必要。
+// 被举报的消息不靠这里保命——举报时已快照进 reports.json，按投诉记录单独留存。
+const DM_RETAIN_DAYS = 180;
+const DM_RETAIN_MS = DM_RETAIN_DAYS * 86400000;
+
+// 举报原因（私信场景，「骚扰辱骂」「诈骗欺诈」比公开内容更常见，单独列出来）
+const DM_REPORT_REASONS = ['骚扰辱骂', '违法违规', '诈骗欺诈', '垃圾广告', '涉嫌侵权', '内容不当', '其他'];
+const DM_REPORT_DEDUPE_MS = 86400000;  // 同一人对同一会话 24 小时内只落一条投诉
 
 // 内测开关（2026-11-15 站长定）：私信先只给站长用——其他人看不到入口，接口也一律拒绝。
 // 正式开放不用改代码，加环境变量 DM_BETA=open 即可。
@@ -1152,6 +1355,30 @@ function dmPeerOut(u) {
     path: authorPathOf(u)
   };
 }
+// 举报取证用的名字：报告落库时把 uid 翻成名字，后台看证据不用再查用户表
+function dmUserName(uid) {
+  const u = users.find(x => x.id === uid);
+  if (!u) return '已注销用户';
+  return (u.nickname || u.username || '') + (u.username ? '（@' + u.username + '）' : '');
+}
+// 举报取证：只截被举报那条 + 前后各 2 条（够判断语境，又不用把整段会话搬进后台）。
+// messageId 缺省 = 会话级举报，取对方发来的最后一条当被举报对象。
+function dmEvidenceOf(t, uid, messageId) {
+  const list = Array.isArray(t.messages) ? t.messages : [];
+  let idx = messageId ? list.findIndex(m => m.id === String(messageId)) : -1;
+  if (idx < 0) {
+    for (let i = list.length - 1; i >= 0; i--) { if (list[i].from !== uid) { idx = i; break; } }
+  }
+  if (idx < 0) return [];
+  const hitId = list[idx].id;
+  return list.slice(Math.max(0, idx - 2), idx + 3).map(m => ({
+    at: new Date(m.at).toISOString(),
+    from: m.from,
+    name: dmUserName(m.from),
+    text: String(m.text || '').slice(0, 500),
+    hit: m.id === hitId
+  }));
+}
 // 我这边可见的消息：清空会话之前的旧消息不再回给本人
 function dmVisibleMessages(t, uid) {
   const cleared = Number((t.cleared || {})[uid] || 0);
@@ -1182,6 +1409,7 @@ function dmCanSend(from, to, existing) {
   if (!from || !to) return { ok: false, error: '收信人不存在' };
   if (from.id === to.id) return { ok: false, error: '不能给自己发私信' };
   if (dmBlockedBetween(from, to)) return { ok: false, error: '你们之间已拉黑，不能发私信' };
+  if (existing && existing.closed) return { ok: false, error: '这段私信已被关闭' };
   if (!existing && dmPolicyOf(to) === 'known') {
     return { ok: false, error: '对方设置了只接收聊过的人的私信' };
   }
@@ -1199,7 +1427,8 @@ function dmThreadOut(t, uid) {
     lastAt: last ? new Date(last.at).toISOString() : new Date(t.createdAt || Date.now()).toISOString(),
     lastFrom: last ? last.from : '',
     unread: unread.length,
-    muted: !!(t.muted && t.muted[uid])
+    muted: !!(t.muted && t.muted[uid]),
+    closed: !!t.closed
   };
 }
 function dmMessagesOut(t, uid) {
@@ -1223,9 +1452,31 @@ function dmThreadPayload(t, uid) {
     unread: dmUnreadMessages(t, uid).length,
     muted: !!(t.muted && t.muted[uid]),
     blockedByMe, blockedMe,
-    canSend: !!peer && !blockedByMe && !blockedMe
+    // closed：被举报后由后台关闭的会话。双方都不能再发，历史记录照常读到保留期满
+    closed: !!t.closed,
+    canSend: !!peer && !blockedByMe && !blockedMe && !t.closed
   };
 }
+// 保留期清理：正文超过 180 天的消息逐条丢掉；清完一条不剩、且最后动静也在保留期外的会话连壳删掉。
+// 按「每条消息」算而不是按会话算——活跃会话里的老消息照删，不会因为昨天聊过就多留半年。
+// 举报证据不在这里：它已经快照进 reports.json，跟投诉处理记录一起留。
+function pruneDms(nowTs) {
+  const at = Number(nowTs) || Date.now();
+  const cut = at - DM_RETAIN_MS;
+  let changed = false;
+  for (let i = dmThreads.length - 1; i >= 0; i--) {
+    const t = dmThreads[i];
+    if (!t || typeof t !== 'object') { dmThreads.splice(i, 1); changed = true; continue; }
+    const msgs = Array.isArray(t.messages) ? t.messages : [];
+    const kept = msgs.filter(m => Number(m && m.at || 0) > cut);
+    if (kept.length !== msgs.length) { t.messages = kept; changed = true; }
+    const lastActivity = Number(t.lastAt || t.createdAt || 0);
+    if (!kept.length && lastActivity < cut) { dmThreads.splice(i, 1); changed = true; }
+  }
+  if (changed) saveDms();
+  return changed;
+}
+try { pruneDms(); } catch (e) { /* 启动时清一次，坏数据不该拦住服务起来 */ }
 // 站内消息里的「合成私信条目」：一个会话只出一条，内容取最后一条未读。
 // 用独立的 kind（dm-user）是为了前端能挂「私信」标签并直接打开会话，而不是走评论那套回复框。
 function dmNoticeItems(user) {
@@ -7615,6 +7866,9 @@ app.get('/api/me', (req, res) => {
         // 消息提示偏好：{ announce, cats }——cats 里 false 的板块只进列表不弹窗
         noticePrefs: noticePrefsOut(user),
         worksCount: works.filter(w => w.userId === user.id && !w.deleted).length,
+        // 关注关系（2026-11-15）：个人中心的「关注 N」直接用它，不额外开接口
+        followingCount: followingIds(user.id).length,
+        followerCount: followerCount(user.id),
         // 个性地址：slug 为空表示还在用 /u/<账号id>；slugEligible 决定设置入口是否可点（前端不自己数作品）
         slug: slugOf(user),
         slugPath: authorPathOf(user),
@@ -8470,6 +8724,9 @@ app.post('/api/me/delete', (req, res) => {
   });
   saveShareSoon();
 
+  // 关注关系：别人关注他的、他关注别人的边都要断（不然粉丝数会一直挂着个不存在的人）
+  followPurgeUser(user.id);
+
   // 站内消息：随账号一起清除
   const noticeBefore = notices.length;
   notices = notices.filter(n => n.userId !== user.id);
@@ -8964,7 +9221,9 @@ app.get('/api/dm/threads', (req, res) => {
     threads: list,
     unread: list.reduce((n, x) => n + (x.unread ? 1 : 0), 0),
     policy: dmPolicyOf(user),
-    beta: dmBetaFor(user)
+    beta: dmBetaFor(user),
+    // 保留期由服务端下发，前端只负责显示——改数字不用动两份代码
+    retainDays: DM_RETAIN_DAYS
   });
 });
 
@@ -8984,7 +9243,7 @@ app.get('/api/dm/with/:ref', (req, res) => {
     });
   }
   const t = dmThreadOfPair(user.id, peer.id);
-  if (t) return res.json({ ...dmThreadPayload(t, user.id), reason: '' });
+  if (t) return res.json({ ...dmThreadPayload(t, user.id), reason: t.closed ? '这段私信已被关闭' : '' });
   const chk = dmCanSend(user, peer, null);
   const blockedByMe = Array.isArray(user.blockedUsers) && user.blockedUsers.indexOf(peer.username) !== -1;
   const blockedMe = Array.isArray(peer.blockedUsers) && peer.blockedUsers.indexOf(user.username) !== -1;
@@ -9002,7 +9261,7 @@ app.get('/api/dm/threads/:id', (req, res) => {
   const t = dmThreadByIdFor(String(req.params.id || ''), user.id);
   if (!t) return res.status(404).json({ error: '会话不存在' });
   if (!dmPairAllowed(user, dmPeerUserOf(t, user.id))) return dmBetaDenied(res);
-  res.json({ ...dmThreadPayload(t, user.id), reason: '' });
+  res.json({ ...dmThreadPayload(t, user.id), reason: t.closed ? '这段私信已被关闭' : '' });
 });
 
 // 已读：把「我」的水位推到当前时间（不清消息，对方也看不到我读没读）
@@ -9123,10 +9382,17 @@ app.post('/api/dm/send', async (req, res) => {
       messages: []
     };
     dmThreads.push(t);
-    // 极端情况兜底：全站会话超上限时丢最久没动静的一条（单机会话量到不了这个数）
+    // 极端情况兜底：全站会话超上限时，只丢「已经超过保留期」的最久没动静那条。
+    // 全都还在保留期内就宁可暂时超上限——静默删掉活跃会话比超上限严重得多。
+    const evictCut = now - DM_RETAIN_MS;
     while (dmThreads.length > DM_MAX_THREADS) {
-      let oldest = 0;
-      dmThreads.forEach((x, i) => { if (Number(x.lastAt || x.createdAt || 0) < Number(dmThreads[oldest].lastAt || dmThreads[oldest].createdAt || 0)) oldest = i; });
+      let oldest = -1;
+      const tsOf = i => Number(dmThreads[i].lastAt || dmThreads[i].createdAt || 0);
+      dmThreads.forEach((x, i) => {
+        if (tsOf(i) >= evictCut) return;
+        if (oldest < 0 || tsOf(i) < tsOf(oldest)) oldest = i;
+      });
+      if (oldest < 0) break;
       dmThreads.splice(oldest, 1);
     }
   }
@@ -9149,6 +9415,81 @@ app.post('/api/dm/send', async (req, res) => {
     threadId: t.id,
     peer: dmPeerOut(peer),
     message: { id: msg.id, from: msg.from, mine: true, text: msg.text, at: new Date(msg.at).toISOString() }
+  });
+});
+
+// 举报：私信是全站唯一「没有旁观者」的内容——公开内容站长刷站就能看到，私信只有当事双方知道，
+// 举报是它唯一的出口。所以这里和作品/想法/酒馆举报最大的不同是：必须自带证据快照。
+// 只截被举报那条 + 前后各 2 条，后台处理投诉时看证据即可，不给后台开「读所有人私信」的口子。
+app.post('/api/dm/threads/:id/report', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('report:' + clientIp(req), 10, 3600000)) {
+    return res.status(429).json({ error: '提交过于频繁，请稍后再试' });
+  }
+  const t = dmThreadByIdFor(String(req.params.id || ''), user.id);
+  if (!t) return res.status(404).json({ error: '会话不存在' });
+  const peer = dmPeerUserOf(t, user.id);
+  if (!peer) return res.status(404).json({ error: '对方账号已注销，无需举报' });
+  if (!dmPairAllowed(user, peer)) return dmBetaDenied(res);
+
+  const body = req.body || {};
+  const reason = String(body.reason || '');
+  if (DM_REPORT_REASONS.indexOf(reason) === -1) return res.status(400).json({ error: '请选择举报原因' });
+  const desc = String(body.description || '').trim().slice(0, 500);
+
+  // 同一人对同一会话 24 小时内只落一条：再举一次只累加次数，不然一个人能一键刷爆处理队列
+  const since = Date.now() - DM_REPORT_DEDUPE_MS;
+  const dup = reports.find(r => r && r.target === 'dm' && r.dmThreadId === t.id &&
+    r.reporterId === user.id && Number(r.createdAtMs || Date.parse(r.createdAt) || 0) > since);
+  if (dup) {
+    dup.count = (Number(dup.count) || 1) + 1;
+    dup.lastAt = new Date().toISOString();
+    dup.reason = reason;
+    if (desc) dup.description = desc;
+    saveReports();
+    return res.json({ ok: true, duplicated: true, message: '已收到，这次补充会一并处理' });
+  }
+
+  const messageId = String(body.messageId || '');
+  reports.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    target: 'dm',
+    // workId / workTitle 是后台投诉列表的既有字段名，沿用它后台那一行不用改结构也能显示
+    workId: t.id,
+    workTitle: `【私信】${peer.nickname || peer.username} → ${user.nickname || user.username}`,
+    reason,
+    description: desc,
+    contact: '',
+    status: '待处理',
+    createdAt: new Date().toISOString(),
+    createdAtMs: Date.now(),
+    count: 1,
+    dmThreadId: t.id,
+    reporterId: user.id,
+    reporterName: user.username,
+    peerId: peer.id,
+    peerName: peer.username,
+    messageId,
+    evidence: dmEvidenceOf(t, user.id, messageId)
+  });
+  saveReports();
+
+  // 「同时屏蔽」：举报和止损是两件事，用户勾了就顺手把通道关掉（复用作品拉黑名单，双向生效）
+  let blocked = false;
+  if (body.alsoBlock && peer.username) {
+    user.blockedUsers = Array.isArray(user.blockedUsers) ? user.blockedUsers : [];
+    if (user.blockedUsers.indexOf(peer.username) === -1 && user.username !== peer.username) {
+      user.blockedUsers.push(peer.username);
+      blocked = true;
+      saveUsers();
+    }
+  }
+  res.status(201).json({
+    ok: true,
+    blocked,
+    blockedUsers: user.blockedUsers || [],
+    message: blocked ? '举报已提交，并已屏蔽对方' : '举报已提交，我们会尽快处理'
   });
 });
 
@@ -10910,6 +11251,24 @@ app.get('/api/type-meta', (req, res) => {
   works.filter(w => isVisible(w)).forEach(w => typesOf(w).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
   res.json(workTypes.map(t => ({ name: t.name, icon: t.icon, svg: t.svg || '', count: counts[t.name] || 0 })));
 });
+// 筛选条上的计数（形态 / 分类 / 开源 / 总数）：2026-11-15 首屏优化新增。
+// 原来前端为了这几个数字去拉 /api/works?pageSize=all —— 全站 150 件约 85KB，
+// 这一趟排在 app.js 启动后，跟首屏卡片抢同一条 1.6Mbps 的带宽。改成服务端直接数：一个 200 字节的包。
+// 口径与 /api/works?pageSize=all 完全一致（同一个 publicWorks(req)，含拉黑过滤），
+// 所以筛选条上的数字与列表里的件数仍然对得上。
+app.get('/api/filter-counts', (req, res) => {
+  const list = publicWorks(req);
+  const types = {}, cats = {}, os = { open: 0, closed: 0 };
+  for (const w of list) {
+    typesOf(w).forEach(t => { types[t] = (types[t] || 0) + 1; });
+    const cs = catsOf(w);
+    (cs.length ? cs : (w.category ? [w.category] : [])).forEach(c => { cats[c] = (cats[c] || 0) + 1; });
+    if (w.openSource === true) os.open++; else os.closed++;
+  }
+  res.set('Cache-Control', 'no-cache');
+  res.json({ total: list.length, types, cats, os });
+});
+
 // 可选的图标库（后台「形态管理」用来渲染图标选择条）
 app.get('/api/type-icons', (req, res) => res.json(TYPE_ICON_LIB));
 // 推荐位（工具/资源）
@@ -13840,34 +14199,36 @@ app.post('/api/mascot/jar/collect', (req, res) => {
   res.json({ ok: true, reward: n, points, jar: jarViewOf(rec) });
 });
 
+// 入选理由 = 该作品各项里贡献最大的那一项（乘完权重再比），
+// 一眼能说出「它凭什么在这」，而不是只丢一堆数字；完全没有数据的作品不给编理由（走 new）。
+// /api/featured 与首屏直出共用这一份：两处的角标必须字字一样，卡片接管时看不出换过。
+const FEAT_REASON_PARTS = [
+  ['tippers', 10, 'tip'],   // 灯火人数
+  ['favs', 8, 'fav'],
+  ['likes', 5, 'like'],
+  ['cmts', 3, 'cmt'],
+  ['uv', 2, 'uv']
+];
+function featuredReasonOf(r, agg) {
+  let best = '', bestVal = 0;
+  for (const [field, weight, key] of FEAT_REASON_PARTS) {
+    const v = (r.parts[field] || 0) * weight;
+    if (v > bestVal) { bestVal = v; best = key; }
+  }
+  // 近 7 天刚上架的作品：如果还没人认真表态（只被人点开看过），它就标「最近新上」——
+  // 新作品的看点是「新」，写「人多在看」等于什么都没说；
+  // 已经收到灯火/收藏/点赞/评论的照旧显示那一项，那是真实的认可，不该被「新」盖掉。
+  const born = Date.parse(r.w.createdAt) || 0;
+  if (born >= agg.since && (!best || best === 'uv')) return 'fresh';
+  return best || 'new';
+}
+
 app.get('/api/featured', (req, res) => {
   const user = currentUser(req);
   const agg = weekAgg();   // 近 7 天增量（30s 缓存），与「本周热榜」共用同一份，口径不会跑偏
   // 严格按分数取前 20：不筛门槛、不限作者、不洗牌、不夹手选（口径见 FEATURED_TOP 上方的注释）
   const ranked = featuredRank(agg, user);
-  // 入选理由 = 该作品各项里贡献最大的那一项（乘完权重再比），
-  // 一眼能说出「它凭什么在这」，而不是只丢一堆数字；
-  // 完全没有数据的作品不给编理由（走 new）
-  const REASON_PARTS = [
-    ['tippers', 10, 'tip'],   // 灯火人数
-    ['favs', 8, 'fav'],
-    ['likes', 5, 'like'],
-    ['cmts', 3, 'cmt'],
-    ['uv', 2, 'uv']
-  ];
-  const reasonOf = r => {
-    let best = '', bestVal = 0;
-    for (const [field, weight, key] of REASON_PARTS) {
-      const v = (r.parts[field] || 0) * weight;
-      if (v > bestVal) { bestVal = v; best = key; }
-    }
-    // 近 7 天刚上架的作品：如果还没人认真表态（只被人点开看过），它就标「最近新上」——
-    // 新作品的看点是「新」，写「人多在看」等于什么都没说；
-    // 已经收到灯火/收藏/点赞/评论的照旧显示那一项，那是真实的认可，不该被「新」盖掉。
-    const born = Date.parse(r.w.createdAt) || 0;
-    if (born >= agg.since && (!best || best === 'uv')) return 'fresh';
-    return best || 'new';
-  };
+  const reasonOf = r => featuredReasonOf(r, agg);
   const list = ranked.slice(0, FEATURED_TOP).map(r => ({
     ...publicWork(r.w, user), uv7: r.uv7, pv7: r.pv7,
     // 累计口径给卡片展示用：数字比 7 天窗口厚，避免「12 次打开」看着单薄
@@ -13877,6 +14238,106 @@ app.get('/api/featured', (req, res) => {
   }));
   res.json({ days: FEATURED_DAYS, list });
 });
+
+// ---------- 首屏直出：本周精选卡 + 启动数据（2026-11-15） ----------
+// 首屏第一块真内容就是「本周精选」。原先它要等 app.js（346KB）下载执行完、再发一次
+// /api/featured 回来才开始画——4G 上首屏先空一块骨架一两秒，这就是「首屏不秒开」的主因之一。
+// 现在把前 20 张卡挪到服务端直出：卡片跟着 HTML 一起到，FCP 那一刻首屏就是完整的。
+//
+// 两条铁律：
+//  1. 结构必须与 frontend/app.js 的 featCardHtml 逐字一致（class、属性、文案、角标规则）。
+//     app.js 接管时只绑事件、不重画，版式一改必须两边一起改，否则接管瞬间会闪。
+//  2. 同一份数据再写进 #dm-boot，app.js 读它原地接管，首屏不再多发 /api/featured 与 /api/ads
+//    （广告也要直出：第 1 页的条数取决于「第一格有没有推荐卡」，等接口回来才发取卡请求，
+//     等于把首屏卡在白等一个 RTT 上）。
+const FEAT_REASONS_SSR = {
+  pick: { text: '本周热门', cls: 'is-pick', tip: '综合热度不错的作品之一' },
+  edit: { text: '编辑精选', cls: 'is-pick', tip: '编辑手动收录的作品' },
+  like: { text: '人气最高', cls: 'is-like', tip: '近 7 天获赞最多的作品之一' },
+  fav: { text: '收藏飙升', cls: 'is-fav', tip: '近 7 天被收藏最多的作品之一' },
+  cmt: { text: '话题热议', cls: 'is-cmt', tip: '近 7 天被评论最多的作品之一' },
+  tip: { text: '灯火最亮', cls: 'is-tip', tip: '近 7 天收到灯火支持最多的作品之一' },
+  uv: { text: '本周热看', cls: 'is-uv', tip: '近 7 天打开人数最多的作品之一' },
+  fresh: { text: '最近新上', cls: 'is-new', tip: '近 7 天刚上架的新作品，还没什么人看过' },
+  new: { text: '新晋上榜', cls: 'is-new', tip: '综合热度不错，本周新进入精选' }
+};
+// 图片地址规则同 app.js 的 imgUrl / imgSet（只认站内 /uploads/，档位只有 400/800/1200/1600）
+function ssrImgUrl(u, width) {
+  u = String(u || '');
+  if (u.indexOf('/uploads/') !== 0) return u;
+  return '/t/' + width + '/' + u.slice('/uploads/'.length);
+}
+function ssrImgSet(u) {
+  return ssrImgUrl(u, 400) + ' 400w, ' + ssrImgUrl(u, 800) + ' 800w';
+}
+// 首字母头像底色：与 app.js 的 avaColor 同一套哈希，同一个人两端口径一致
+function ssrAvaColor(key) {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return 'hsl(' + (h % 360) + ', 62%, 48%)';
+}
+function ssrAvaChip(w) {
+  const nm = w.anonymous ? '匿名' : (w.authorName || w.author || '');
+  const ch = (nm || '?').slice(0, 1).toUpperCase();
+  const key = w.anonymous ? '' : (w.author || '');
+  const style = key ? ' style="background:' + ssrAvaColor('u:' + key) + '"' : '';
+  return '<span class="ava-chip" aria-hidden="true"' + style + '>' + seo.esc(ch) + '</span>';
+}
+function ssrFeatReasonHtml(w) {
+  const r = FEAT_REASONS_SSR[w.featReason] || FEAT_REASONS_SSR.new;
+  return '<span class="feat-reason ' + r.cls + '" title="' + seo.esc(r.tip) + '">' + r.text + '</span>';
+}
+function ssrFeatCard(w, i) {
+  const esc = seo.esc;
+  const name = w.anonymous ? '匿名' : (w.authorName || w.author || '');
+  // 一律 lazy：手机上「本周精选」整块是 display:none（见 style.css 的媒体查询），
+  // 不能因为直出就先下 20 张图；lazy 的图在隐藏容器里永远不会进视口，一张都不拉。
+  // 桌面端这 4 张进入视口时立刻加载，再给前 4 张标 high——它们就是首屏第一眼的图。
+  const imgLoad = i < 4 ? ' loading="lazy" fetchpriority="high"' : ' loading="lazy"';
+  return '\n      <div class="featured-card" data-id="' + esc(w.id) + '" role="button" tabindex="0" aria-label="打开作品：' + esc(w.title) + '">'
+    + '<span class="feat-no">' + (i + 1) + '</span>'
+    + '<img src="' + esc(ssrImgUrl(w.thumb, 400)) + '" srcset="' + esc(ssrImgSet(w.thumb)) + '" sizes="(max-width: 640px) 45vw, 240px" alt="' + esc(w.title) + '"' + imgLoad + ' />'
+    + '<div class="featured-body">'
+    + '<div class="featured-title" title="' + esc(w.title) + '">' + esc(w.title) + '</div>'
+    + '<div class="feat-sub">' + ssrFeatReasonHtml(w)
+    + '<span class="feat-author" title="作者 ' + esc(name) + '">' + ssrAvaChip(w) + '<span class="fa-name">' + esc(name) + '</span></span></div>'
+    + (w.introText ? '<div class="featured-intro">' + esc(w.introText) + '</div>' : '')
+    + '<div class="featured-meta" title="累计：详情页被打开 ' + (w.pvAll || 0) + ' 次，共 ' + (w.uvAll || 0) + ' 位访客打开过（同一人只算 1 个，作者本人打开不计）">'
+    + '<span class="fm-i" title="累计被打开的次数：同一个人反复打开也会累加"><span class="ico s-ico">' + Icons.icon('eye') + '</span>' + (w.pvAll || 0) + ' 次打开</span>'
+    + '<span class="fm-i" title="累计有多少人打开过：同一个人只算 1 个，作者本人打开不计"><span class="ico s-ico">' + Icons.icon('person') + '</span>' + (w.uvAll || 0) + ' 人看过</span>'
+    + ((w.favs || 0) > 0 ? '<span class="fm-i" title="被收藏次数"><span class="ico s-ico">' + Icons.icon('star') + '</span>' + w.favs + '</span>' : '')
+    + '</div></div>'
+    + '<span class="feat-arrow"><span class="ico">' + Icons.icon('arrowout') + '</span></span>'
+    + '</div>';
+}
+// 直出用的精简行（够 featCardHtml 画，不含详情/链接等大字段）：20 条约 4KB，gzip 后 1KB 出头
+function featuredBootRows(user) {
+  const agg = weekAgg();
+  return featuredRank(agg, user).slice(0, FEATURED_TOP).map(r => {
+    const pw = publicWork(r.w, user);
+    return {
+      id: pw.id, title: pw.title, thumb: pw.thumb,
+      // 简介：精选卡那一行只放得下一行（CSS line-clamp:1，约 16~18 字），
+      // 直出时按 48 字截断就够（多出来的必然被裁掉），20 张卡能省下近 8KB HTML。
+      // app.js 接管时保留这段 DOM 不重画，所以截断与不截断在屏幕上完全一样。
+      introText: truncateText(pw.introText || '', 48),
+      pvAll: r.pvAll, uvAll: r.uvAll, favs: pw.favs || 0,
+      anonymous: !!pw.anonymous, author: pw.author || '', authorName: pw.authorName || '',
+      createdAt: r.w.createdAt, featReason: featuredReasonOf(r, agg)
+    };
+  });
+}
+// 广告直出载荷：与 /api/ads 同一个收口，前端 applyAdsData 直接吃
+function bootAdPayload() {
+  return {
+    slots: AD_SLOTS, gate: adGateDaily(), priority: promoPriorityMode(),
+    ads: applyPromoPriority(activeAds()).map(publicAd)
+  };
+}
+// 内联 JSON：把 < 转义掉，避免正文里出现 </script> 提前收尾
+function bootJsonOf(obj) {
+  return JSON.stringify(obj).replace(/</g, '\\u003c');
+}
 
 // ---------- 本周增量统计（「本周热榜」专用） ----------
 // 周榜/月榜看的是「谁上架得晚」，本周热榜看的是「这周谁表现好」：
@@ -14104,24 +14565,37 @@ function peakWindowOf(w, by) {
   }
   return best;
 }
-// 「首次进榜」登记：每天第一次有人查高光榜时刷新一次（写 data/peak-board.json）。
-// firstSeen = 首次进入前 PEAK_TOP_N 的日期；掉出榜再回来会重新记新晋，可接受（高光榜几乎只进不出）
-// 名册建立之前就已经在榜上的老面孔：记这个哨兵日期，永不标「新晋」
+// 「首次进榜」登记：每次查高光榜都会刷一遍（防抖 2s 落盘，写盘频率与「每天一次」同级——
+// 名册内容一天内本来就不怎么变）。firstSeen = 首次进入前 PEAK_TOP_N 的日期；
+// 掉出榜再回来会重新记新晋，可接受（高光榜几乎只进不出）。
+// 每次都刷（而不是每天第一次）是为了「当天进榜当天标新晋」：否则上午 10 点挤进前 20、
+// 当天第一次查询却发生在 9 点的作品，要等到明天才被登记，少标一天甚至永远不标。
+// 名册诞生之前就已经在榜上的老面孔：记这个哨兵日期，永不标「新晋」
 const PEAK_BOARD_LEGACY = '2026-10-01';
 let peakBoard = readJSON('peak-board.json', null);
+let peakBoardSaveTimer = null;
 function peakBoardRefresh(topIds) {
   const today = dateKey();
   if (!peakBoard || typeof peakBoard !== 'object' || Array.isArray(peakBoard)) peakBoard = { day: '', entries: {} };
-  if (peakBoard.day === today) return;
   const old = peakBoard.entries || {};
   // 名册第一次成形（文件不存在/被清空后重建）：此刻榜上的作品在名册诞生前就已经在榜，
   // 真实进榜日无法回溯 —— 记哨兵，不记今天。否则整榜前 20 会被一起标成「新晋」
   // （2026-11-08 上线时踩过：首批 20 件全记成 11-08/11-09，接下来 7 天整榜都挂「新晋」）
   const virgin = !Object.keys(old).length;
+  let changed = peakBoard.day !== today;
   const entries = {};
-  topIds.forEach(id => { entries[id] = old[id] || (virgin ? PEAK_BOARD_LEGACY : today); });
+  topIds.forEach(id => {
+    const v = old[id] || (virgin ? PEAK_BOARD_LEGACY : today);
+    entries[id] = v;
+    if (old[id] !== v) changed = true;
+  });
   peakBoard = { day: today, entries };
-  writeJSON('peak-board.json', peakBoard);
+  if (!changed) return;
+  if (peakBoardSaveTimer) return;   // 已有待写的落盘任务，2s 内的连续变化由它一并带走
+  peakBoardSaveTimer = setTimeout(() => {
+    peakBoardSaveTimer = null;
+    try { writeJSON('peak-board.json', peakBoard); } catch (e) { console.error('peak-board 落盘失败：' + e.message); }
+  }, 2000);
 }
 function peakIsNewEntry(id) {
   const seen = peakBoard && peakBoard.entries && peakBoard.entries[id];
@@ -14620,10 +15094,25 @@ app.get('/api/rank', (req, res) => {
       }
       return RANK_BY[by](a, b) || new Date(b.createdAt) - new Date(a.createdAt);
     });
-  // 高光榜：把今天的前 PEAK_TOP_N 登记进「首次进榜」名册（每天只写一次盘），新面孔据此标「新晋」
+  // 高光榜：把当前进前 PEAK_TOP_N 的作品登记进「首次进榜」名册，新面孔据此标「新晋」。
+  // 名册口径固定为综合（hot），不跟随请求的 by —— 换到收藏/点赞榜看，第 20/21 名会互换，
+  // 但「进没进过高光榜前 20」只该有一个答案，不能取决于当天第一个访问者用的是哪个排序。
   // 加了形态/分类筛选时不算：筛出来的前 20 只是子集，拿它登记会把没进过全榜的作品误标「新晋」
   const filtered = !!type || !!cat;
-  if (isPeak && !filtered) peakBoardRefresh(sorted.slice(0, PEAK_TOP_N).map(w => w.id));
+  if (isPeak && !filtered) {
+    // 综合口径的窗口要单独算：上面的 bestOf memo 是按当前 by 的窗口（收藏榜取「收藏最多的 7 天」），
+    // 拿它登记名册等于名册口径也跟着 by 跑；按 by 达标的作品综合窗口也可能不达标，null 的跳过
+    const hotMemo = new Map();
+    const hotWin = w => {
+      if (!hotMemo.has(w.id)) hotMemo.set(w.id, peakWindowOf(w, 'hot'));
+      return hotMemo.get(w.id);
+    };
+    const peakTop = pool.map(w => ({ w, win: hotWin(w) }))
+      .filter(x => x.win)
+      .sort((a, b) => peakCmpBy(b.win, a.win, 'hot') || new Date(b.w.createdAt) - new Date(a.w.createdAt))
+      .slice(0, PEAK_TOP_N).map(x => x.w.id);
+    peakBoardRefresh(peakTop);
+  }
   // 勋章登记：只有「综合榜 + 没加形态/分类筛选」时，第一名才是那一榜的第一名（切到点赞榜不算）
   if (!filtered && by === 'hot') recordChampion(period, sorted);
   const list = sorted.slice(0, limit)
@@ -15052,6 +15541,65 @@ function score(w) { return (w.likes || 0) * 5 + (w.favs || 0) * 8 + commentScore
 // 2026-11-12 扩展：除了作品列表，把「这位创作者值不值得关注」的信号一次算全——
 // 勋章（挂 userId，L1/L2 自动结算、L3 站长授予）、入驻时间（首件作品）、
 // 访客/灯火/评论合计、常写分类、GitHub 头像。都是站内已有的真实数据，不造新概念。
+// ---------- 关注创作者（2026-11-15） ----------
+// 三个入口共用：作者页 / 作品详情作者行 / 个人中心「我关注的」。
+// 地址解析一律走 userByRef（账号 id → 个性地址 → 账号名），所以作者改了个性地址，
+// 别人手里那条旧链接上那颗按钮照样认得人。
+app.post('/api/authors/:ref/follow', (req, res) => {
+  const me = requireUser(req, res);
+  if (!me) return;
+  const target = userByRef(req.params.ref);
+  if (!target) return res.status(404).json({ error: '这位创作者还没入驻' });
+  if (target.id === me.id) return res.status(400).json({ error: '不能关注自己' });
+  if (!rateLimit('follow:' + me.id, FOLLOW_RATE_PER_HOUR, 3600000))
+    return res.status(429).json({ error: '关注 / 取关太频繁了，歇一会儿再试' });
+  const already = isFollowing(me.id, target.id);
+  if (!already) {
+    if (followingIds(me.id).length >= FOLLOW_MAX_PER_USER)
+      return res.status(400).json({ error: `最多关注 ${FOLLOW_MAX_PER_USER} 位创作者，先取关几个吧` });
+    addFollow(me.id, target.id);
+    queueFollowerNotice(target.id, me.id);   // 作者那边收到「有人关注了你」（同人 24h 合并一条）
+  }
+  res.json({ ok: true, following: true, changed: !already, followers: followerCount(target.id) });
+});
+app.delete('/api/authors/:ref/follow', (req, res) => {
+  const me = requireUser(req, res);
+  if (!me) return;
+  const target = userByRef(req.params.ref);
+  if (!target) return res.status(404).json({ error: '这位创作者还没入驻' });
+  if (!rateLimit('unfollow:' + me.id, FOLLOW_RATE_PER_HOUR, 3600000))
+    return res.status(429).json({ error: '关注 / 取关太频繁了，歇一会儿再试' });
+  const changed = removeFollow(me.id, target.id);
+  res.json({ ok: true, following: false, changed, followers: followerCount(target.id) });
+});
+// 我关注的创作者：按「最近更新」排（有新作的自然浮上来），一行给前端足够画卡片的信息。
+// 不做「未读小红点」：那需要给每个人存一份「看到哪了」的水位，为一个小圆点多一份状态不划算；
+// 「有新作」这件事交给站内信（见 notifyFollowersNewWork）。
+app.get('/api/me/following', (req, res) => {
+  const me = requireUser(req, res);
+  if (!me) return;
+  const rows = followingIds(me.id).map(id => {
+    const u = users.find(x => x.id === id);
+    if (!u) return null;                                  // 已注销的账号（清边漏网时兜一下）
+    const list = byNewest(worksOfAuthorName(u.username).filter(w => isVisible(w) && w.anonymous !== true));
+    const times = list.map(w => w.createdAt && Date.parse(w.createdAt)).filter(Boolean);
+    return {
+      id: u.id,
+      name: u.username,
+      displayName: displayNameOf(u.username),
+      path: authorPathOf(u),
+      avatar: avatarUrlOf(u),
+      followers: followerCount(u.id),
+      works: list.length,
+      latest: list[0] ? { id: list[0].id, title: list[0].title, createdAt: list[0].createdAt } : null,
+      since: times.length ? Math.min(...times) : null
+    };
+  }).filter(Boolean)
+    .sort((a, b) => (Date.parse((b.latest && b.latest.createdAt) || 0) || 0) -
+                    (Date.parse((a.latest && a.latest.createdAt) || 0) || 0));
+  res.json({ items: rows, total: rows.length, max: FOLLOW_MAX_PER_USER });
+});
+
 app.get('/api/authors/:name', (req, res) => {
   // 参数兼容两套：新链接传账号 id，老链接传账号名——userByRef 先 id 后名字
   const refUser = userByRef(req.params.name);
@@ -15089,6 +15637,11 @@ app.get('/api/authors/:name', (req, res) => {
     name,
     uid,   // 前端「是不是我自己的主页」按 id 判断（链接已经不认账号名了）
     slug: slugOf(acct),   // 作者现用个性地址（空 = 还在用 /u/<账号id>）；前端据它在 SPA 站内跳转后把地址栏矫正成 canonical
+    // 关注关系（2026-11-15）：粉丝数公开；following / isMe 只对登录访客有意义，
+    // isMe 由前端用来决定「显示关注按钮」还是「显示编辑主页」
+    followers: uid ? followerCount(uid) : 0,
+    following: !!(user && uid && isFollowing(user.id, uid)),
+    isMe: !!(user && uid && user.id === uid),
     displayName: displayNameOf(name),
     tags: userTagsOf(name),
     avatar: avatarUrlOf(acct),
@@ -15233,6 +15786,10 @@ app.get('/api/works/:id', (req, res) => {
   const vid = user ? 'u:' + user.id : 'ip:' + ipKeyOf(req);
   const mineVote = comments.find(c => c.workId === w.id && c.vote && c.vid === vid);
   const out = { ...publicWork(w, user), introHtml: md.render(w.prompt || ''), myVote: mineVote ? mineVote.vote : null };
+  // 关注作者（2026-11-15）：详情页作者名后面那颗按钮要的两个数。
+  // 只在详情接口下发，列表接口不带——500 张卡每人多两个字段，为了一颗按钮不值得。
+  out.authorFollowers = w.userId ? followerCount(w.userId) : 0;
+  out.authorFollowing = !!(user && w.userId && isFollowing(user.id, w.userId));
   // 相关作品：详情弹窗底部的站内导流（同分类优先，不够补同作者）。
   // 只是展示用的小卡，4 件足够，别把弹窗撑成第二个列表页。
   out.related = relatedWorksOf(w, user, 4);
@@ -16886,7 +17443,7 @@ app.post('/api/works', (req, res) => {
     const uploadInstant = payUploadRewardInstant(work);   // 首件即时款：作品已过审且正式上线才发
     const osBonusNow = stage === 'wip' ? 0 : grantOpenSourceBonus(work);
     saveWorks();
-    baiduPushWork(work, 'new-work');
+    announceWorkVisible(work, 'new-work');
     // 草稿转正完成：只删草稿记录，图片文件已经归作品了，一个都不能删
     if (draft) {
       drafts = drafts.filter(x => x.id !== draft.id);
@@ -16979,7 +17536,7 @@ app.post('/api/works/:id/stage', async (req, res) => {
   });
 
   saveWorks();
-  if (next === 'live' && prev !== 'live') baiduPushWork(w, 'stage-live');   // 预告卡上线：这一刻才第一次可访问
+  if (next === 'live' && prev !== 'live') announceWorkVisible(w, 'stage-live');   // 预告卡上线：这一刻才第一次可访问（也是关注者第一次值得被通知）
   res.json({ ok: true, prev, ...publicWork(w, user) });
 });
 
@@ -19256,7 +19813,7 @@ app.post('/api/admin/works/:id/approve', requireAdmin, (req, res) => {
   }
   payUploadRewardInstant(w);   // 审核通过这一刻就是「正式上线」，把压着的首件即时款发掉，不用等 5 分钟巡检
   saveWorks();
-  baiduPushWork(w, 'approve');
+  announceWorkVisible(w, 'approve');
   res.json({ ok: true });
 });
 
@@ -19834,7 +20391,7 @@ app.post('/api/admin/works', requireAdmin, (req, res) => {
     const uploadReward = authorAccount ? planUploadReward(work, authorAccount, 'assign') : null;
     payUploadRewardInstant(work);
     saveWorks();
-    baiduPushWork(work, 'admin-create');
+    announceWorkVisible(work, 'admin-create');
     res.status(201).json({
       ...publicWork(work), status: work.status,
       pubTimeCustom: !!work.pubTimeCustom, createdAtReal: work.createdAtReal || '',   // 手填发布时间留档
@@ -20198,6 +20755,7 @@ app.post('/api/admin/reports/:id/resolve', requireAdmin, (req, res) => {
 app.post('/api/admin/reports/:id/takedown', requireAdmin, (req, res) => {
   const r = reports.find(x => x.id === req.params.id);
   if (!r) return res.status(404).json({ error: '投诉不存在' });
+  if (r.target === 'dm') return res.status(400).json({ error: '私信投诉没有作品可下架，请用「关闭这段私信」' });
   const w = works.find(x => x.id === r.workId);
   if (!w) return res.status(404).json({ error: '作品不存在或已删除' });
   const note = String((req.body && req.body.note) || '').trim().slice(0, 200);
@@ -20220,6 +20778,35 @@ app.post('/api/admin/reports/:id/takedown', requireAdmin, (req, res) => {
     });
   }
   res.json({ ok: true });
+});
+
+// 私信投诉处理：没有作品可下架，动作是「关闭这段会话」——双方都不能再发，历史记录照常读到保留期满。
+// 通知被举报方时不透露举报人是谁（这是私信，泄露举报人等于把人卖了）。
+app.post('/api/admin/reports/:id/dm-close', requireAdmin, (req, res) => {
+  const r = reports.find(x => x.id === req.params.id);
+  if (!r || r.target !== 'dm') return res.status(404).json({ error: '投诉不存在' });
+  const note = String((req.body && req.body.note) || '').trim().slice(0, 200);
+  const reason = note || r.reason;
+  const t = dmThreads.find(x => x.id === r.dmThreadId);
+  if (t) {
+    t.closed = true;
+    t.closedAt = Date.now();
+    t.closedReason = reason;
+    saveDms();
+  }
+  r.status = '已处理';
+  r.action = 'dm-close';
+  r.note = reason;
+  r.handledAt = new Date().toISOString();
+  saveReports();
+  if (r.peerId) {
+    addNotice(r.peerId, {
+      kind: 'system',
+      title: '你的一条私信对话已被关闭',
+      text: `原因：${reason}。这段对话不能再发新消息，之前的记录还在。如对处理有异议，可通过页面底部「意见建议」联系我们。`
+    });
+  }
+  res.json({ ok: true, closed: !!t });
 });
 
 // 意见反馈管理（每条都带完整往来记录，后台直接在里面回复）
@@ -22071,7 +22658,19 @@ function template() {
   return tplCache.html;
 }
 
-function shell(seoHead, bodyBlock, homeBlock = '') {
+// 首屏直出：把服务端画好的精选卡塞进 #featRow、摘掉兜底骨架，再把启动数据写进 #dm-boot。
+// boot 为空（不是首页 / 没有作品 / 渲染出错）时两个占位符都替换成空串，
+// 骨架原样留着，app.js 照旧走 /api/featured 那一套 —— 直出失败只是慢一点，不会白屏。
+function applyHomeBoot(html, boot) {
+  const feat = (boot && boot.featHtml) || '';
+  if (feat) html = html.replace(/<!--FEAT_SK_START-->[\s\S]*?<!--FEAT_SK_END-->/, '');
+  html = html.replace('<!--SSR_FEATURED-->', () => feat);
+  html = html.replace('<!--SSR_BOOT-->', () =>
+    boot && boot.json ? '<script id="dm-boot" type="application/json">' + boot.json + '</script>' : '');
+  return html;
+}
+
+function shell(seoHead, bodyBlock, homeBlock = '', boot = null) {
   const html = template();
   // SEO_HOME 在 #homeView 内部：SPA 切到别的视图时随 homeView 一起隐藏，不会闪现在首屏顶部
   if (!html) return `<!DOCTYPE html><html lang="zh-CN"><head>${seoHead}</head><body>${bodyBlock || homeBlock || ''}</body></html>`;
@@ -22079,6 +22678,7 @@ function shell(seoHead, bodyBlock, homeBlock = '') {
     .replace('<!--SEO_HEAD-->', seoHead)
     .replace('<!--SEO_BODY-->', bodyBlock || '')
     .replace('<!--SEO_HOME-->', homeBlock || '');
+  out = applyHomeBoot(out, boot);
   // 内页正文（bodyBlock 或 homeBlock）自带 <h1> 时，把壳里 hero 的 slogan 从 <h1> 降为 <p class="hero-title">，
   // 保证一页只有一个 H1（首页的 SEO 区块没有自己的 h1，slogan 继续独占首页的 H1，不在此列）。
   // 样式在 style.css 用 .hero .hero-title 与 .hero h1 同规则兜住，视觉零差异。
@@ -22454,7 +23054,28 @@ app.get('/', (req, res) => {
     categories: orderedCategories(),
     types: WORK_TYPES
   });
-  sendHtml(res, shell(headHtml, '', block)); // 同构：真人与爬虫共用一份 SSR，区块落在 #homeView 内，切视图时自动隐藏
+
+  // 首屏直出（2026-11-15）：本周精选卡写进 #featRow、广告位数据一起塞进 #dm-boot。
+  // 只在真正的首页做（/?q= 是搜索落地页，没有精选条，也没必要带走一整份广告数据）。
+  // 精选排名按 15s 缓存（featuredRankAll），20 件作品走一遍 publicWork 约几毫秒，
+  // 对首页 TTFB 基本无感；换来的是首屏第一块内容不用等 JS。
+  let boot = null;
+  if (!q) {
+    try {
+      // 按当前访客算（有登录态 cookie 时用他本人的口径）：他屏蔽过的作品不该在直出里冒出来
+      const rows = featuredBootRows(currentUser(req));
+      if (rows.length) {
+        boot = {
+          featHtml: rows.map(ssrFeatCard).join(''),
+          json: bootJsonOf({ featured: rows, ads: bootAdPayload() })
+        };
+      }
+    } catch (e) {
+      console.warn('[home-boot] 首屏直出失败，回落骨架 + 前端取数:', e.message);
+      boot = null;
+    }
+  }
+  sendHtml(res, shell(headHtml, '', block, boot)); // 同构：真人与爬虫共用一份 SSR，区块落在 #homeView 内，切视图时自动隐藏
 });
 
 app.get('/index.html', (req, res) => res.redirect(301, '/'));
@@ -22776,6 +23397,8 @@ app.get('/u/:name', (req, res) => {
   const shown = displayNameOf(name);   // 页面显示昵称，URL / 作者匹配仍用账号名
   // 档案行下面的外链（无主作品没有账号，自然也没有链接）
   const profileLinks = refUser ? profileLinksOf(refUser) : [];
+  // 粉丝数（2026-11-15）：SSR 这一份只作展示与结构化数据，关注按钮在 SPA 里（需要登录态）
+  const followerN = refUser ? followerCount(refUser.id) : 0;
   // 主页作品隐藏（2026-11-14）：作者把主页上的作品区收起来了，作品本身照旧在首页 / 榜单 / 搜索里。
   // SSR 这一份是给爬虫和首屏用的——到这里的都不是本人，所以直接按「只公开档案」渲染；
   // 这样的一页几乎没有正文，整页 noindex，别让搜索结果里出现一页只有头像和数字的档案。
@@ -22827,11 +23450,11 @@ app.get('/u/:name', (req, res) => {
         name: shown,
         description: `${shown} 在 ${seo.SITE_NAME} 的创作者主页`,
         url: pageUrl,
-        interactionStatistic: {
-          '@type': 'InteractionCounter',
-          interactionType: { '@type': 'LikeAction' },
-          userInteractionCount: totalLikes
-        }
+        interactionStatistic: [
+          // 获赞 + 关注者（2026-11-15）：两个计数器，搜索引擎读懂「这个人有人看」
+          { '@type': 'InteractionCounter', interactionType: { '@type': 'LikeAction' }, userInteractionCount: totalLikes },
+          { '@type': 'InteractionCounter', interactionType: { '@type': 'FollowAction' }, userInteractionCount: followerN }
+        ]
       }
     }, seo.breadcrumbLd(base, [{ name: '首页', href: '/' }, { name: shown }])]
   });
@@ -22850,6 +23473,7 @@ app.get('/u/:name', (req, res) => {
         <p class="author-meta">
           ${since ? `<span class="am-item">${new Date(since).getFullYear()} 年 ${new Date(since).getMonth() + 1} 月入驻</span>` : ''}
           ${catList.length ? `<span class="am-item">常做 ${seo.esc(catList.map(c => c.name).join(' / '))}</span>` : ''}
+          ${followerN ? `<span class="am-item">${followerN} 人关注</span>` : ''}
         </p>
         ${profileLinks.length ? `<p class="author-links">${profileLinks.map(l =>
           `<a class="al-link" href="${seo.esc(l.url)}" target="_blank" rel="nofollow noopener noreferrer">${seo.esc(l.label)}</a>`
@@ -22921,6 +23545,19 @@ app.get('/likes', (req, res) => {
     title: `我的点赞 - ${seo.SITE_NAME}`,
     description: '查看你点赞过的作品：点赞存在账号里，换设备也在。',
     canonical: base + '/likes',
+    noindex: true
+  });
+  sendHtml(res, shell(headHtml, ''));
+});
+
+// 我关注的创作者（独立页面 /following）：登录态内容，SPA 自己渲染列表，不收录。
+// 和 /favs、/likes 一样只发一个 SEO 头 + 空壳：列表数据要登录才有，爬虫看不到东西。
+app.get('/following', (req, res) => {
+  const base = seo.baseUrl(req);
+  const headHtml = seo.head({
+    title: `我关注的创作者 - ${seo.SITE_NAME}`,
+    description: '你关注的创作者：他们发新作品时站内消息会提醒你。',
+    canonical: base + '/following',
     noindex: true
   });
   sendHtml(res, shell(headHtml, ''));
@@ -24763,6 +25400,8 @@ setTimeout(() => { try { probeReviewing(); } catch (e) { /* 忽略 */ } }, 90e3)
 setInterval(() => { try { probeReviewing(); } catch (e) { /* 忽略 */ } }, PROBE_INTERVAL).unref();
 try { sweepWip(); } catch (e) { /* 忽略 */ }
 setInterval(() => { try { sweepWip(); } catch (e) { /* 忽略 */ } }, 6 * 3600e3).unref();
+// 私信正文到期清理（保留期见 DM_RETAIN_DAYS）。启动时已经清过一次，这里每 6 小时兜一次
+setInterval(() => { try { pruneDms(); } catch (e) { /* 忽略 */ } }, 6 * 3600e3).unref();
 
 app.listen(PORT, '0.0.0.0', () => {
   // 所有带缓冲的写盘变量到这里都已初始化，注册退出钩子才安全（见文件顶部 flushPendingWrites）

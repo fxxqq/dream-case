@@ -127,12 +127,51 @@ let detailLeaving = false;
 
 const $ = id => document.getElementById(id);
 const gallery = $('gallery');
+// 首屏直出的启动数据（server.js 的 bootJsonOf 写进 #dm-boot）：本周精选 + 广告位。
+// 有它就让首屏省掉两个请求、少等一个来回；没有（非首页 / 直出失败 / 老缓存）就照旧走接口。
+const BOOT = (() => {
+  try {
+    const el = document.getElementById('dm-boot');
+    return el ? JSON.parse(el.textContent) : null;
+  } catch { return null; }
+})();
 // 卡片网格列数：4 / 5 / 6 由用户选（存本机），窄屏由 CSS 回落到响应式列数
+//
+// 2026-11-15 22:20：屏幕真放不下就不给这个选项。
+// 原来 1440 / 1366 的本子点「6 列」实际还是 5 列（CSS 分档压回去了），点了像没反应；
+// 现在开关里直接只列这块屏幕能渲染的档位（6 列要视口 ≥1500，每张卡才够 226px）。
+// 断点必须跟 style.css「桌面列数分档」一一对应，改那边记得同步这边。
+const COL_BREAK = [[1500, 6], [1260, 5], [1000, 4]];
+function maxGalleryCols() {
+  const vw = window.innerWidth;
+  for (const [min, n] of COL_BREAK) if (vw >= min) return n;
+  return 0;   // <1000：列数由 CSS auto-fill 自己算，没有可选项
+}
+// 实际生效的列数 = 用户选的「最多几张」与屏幕上限取小（选 6 记在本机，屏幕变宽会自己回来）
+function effGalleryCols() {
+  const max = maxGalleryCols();
+  return max ? Math.min(state.cols, max) : state.cols;
+}
 function applyGalleryCols() {
   if (!gallery) return;
-  gallery.classList.toggle('cols-4', state.cols === 4);
-  gallery.classList.toggle('cols-5', state.cols === 5);
-  gallery.classList.toggle('cols-6', state.cols === 6);
+  const n = effGalleryCols();
+  gallery.classList.toggle('cols-4', n === 4);
+  gallery.classList.toggle('cols-5', n === 5);
+  gallery.classList.toggle('cols-6', n === 6);
+}
+// 列数开关的显隐/选中态：只留下真能生效的档位，选中态跟实际列数走
+// （存了 6 列但在 1440 的本子上打开，看到的是 5 列亮着，而不是一个点了没反应的 6）
+function syncColsToggle() {
+  const box = document.getElementById('colsToggle');
+  if (!box) return;
+  const max = maxGalleryCols();
+  const eff = effGalleryCols();
+  box.hidden = max < 5;      // 只有 4 列一种可能时（1000~1259）整块收起，别占位
+  box.querySelectorAll('.ct-btn').forEach(b => {
+    const n = Number(b.dataset.cols);
+    b.hidden = !max || n > max;
+    b.classList.toggle('active', n === eff);
+  });
 }
 // 一页加载「4 行」：每行几列取当前真实栅格（桌面按用户选的 4/5，窄屏按 CSS 自适应回落），
 // 这样首屏正好铺满 4 行，不会出现加载完还剩半行、或者一屏全是骨架的情况。
@@ -1285,6 +1324,7 @@ async function afterAuth(data) {
   // 收藏/点赞独立页正开着的话，登录后把列表补上（未登录进来时是空壳）
   if (location.pathname === '/favs') loadFavPage();
   else if (location.pathname === '/likes') loadLikedPage();
+  else if (location.pathname === '/following') loadFollowPage();
   // 微信等 OAuth 建的临时号：登录成功后主动弹一次「账号与密码」引导完善
   maybeNudgePassSetup();
   // 从投稿进度页带着凭据来的：登录/注册一成功就把那件匿名作品认到名下
@@ -1308,6 +1348,7 @@ async function doLogout() {
   if (location.pathname === '/') loadWorks();
   if (location.pathname === '/favs') loadFavPage();
   else if (location.pathname === '/likes') loadLikedPage();
+  else if (location.pathname === '/following') { $('followList').innerHTML = ''; $('followEmpty').style.display = 'block'; }
   if (detailModal.style.display === 'flex' && state.currentWork) {
     renderDetailFav(state.currentWork.id);
     openWork(state.currentWork.id, false); // 评论区、认领入口等也依赖登录态
@@ -1325,6 +1366,8 @@ async function loadMe() {
           arrive: data.arrive || {},   // 今日到访那 2 盏（given=true 表示这一趟刚发）
           unreadNotices: Number(data.unreadNotices || 0),   // 顶部铃铛未读数
           worksCount: Number(data.worksCount || 0),   // 带上签到状态、积分和作品数，顶部按钮 / 注销弹窗要用
+          followingCount: Number(data.followingCount || 0),   // 我关注了几位创作者（「我的」页那颗数字）
+          followerCount: Number(data.followerCount || 0),     // 有几个人关注我（作者页 / 以后的消息用）
           passSet: data.passSet !== false,            // false = OAuth 建的号（GitHub / Google）还没设过密码
           isSiteOwner: data.isSiteOwner === true,     // 站长标记：编辑弹窗据此隐藏承诺勾选框
           dmBeta: data.dmBeta === true,               // 私信内测：只有拿到这个标记的账号才显示私信入口
@@ -1411,13 +1454,13 @@ const NOTICE_TABS = [
 const NOTICE_CAT_OF_KIND = {
   promo: 'promo', ad: 'ad', points: 'points',
   announce: 'system', system: 'system', tag: 'system',
-  'bar-reply': 'msg', 'dm-user': 'msg'
+  'bar-reply': 'msg', 'dm-user': 'msg', 'follow-new': 'msg'
 };
 // 「消息」这一栏里其实混着几个场子：作品评论 / 提问、站长私信、意见反馈、酒馆回应。
 // 只有酒馆需要单独点明出处——它不是「我的作品有人说话」，点进去也不在作品详情。
 // 不给它开第七栏：480px 的弹窗塞 6 个两字标签已经到底了，手机端连图标都让位了；
 // 一枚小标签足够，未读照样计入「消息」。
-const NOTICE_KIND_TAG = { 'bar-reply': { name: '酒馆', cls: 'bar' }, 'dm-user': { name: '私信', cls: 'msg' } };
+const NOTICE_KIND_TAG = { 'bar-reply': { name: '酒馆', cls: 'bar' }, 'dm-user': { name: '私信', cls: 'msg' }, 'follow-new': { name: '关注', cls: 'follow' } };
 function noticeCatOf(n) {
   return (n && n.cat) || NOTICE_CAT_OF_KIND[(n && n.kind) || ''] || 'msg';
 }
@@ -1880,8 +1923,12 @@ async function openNotices() {
 // 未读数不在这里另算——服务端把「有未读的会话」合成进站内消息（kind=dm-user），
 // 铃铛角标和「消息」栏共用一套口径；这里只负责把对话读干净，读完顺手刷一次铃铛。
 let dmThreadsCache = [];
-let dmCurrent = null;        // { threadId, peer, messages, canSend, muted, blockedByMe, blockedMe, reason }
+let dmCurrent = null;        // { threadId, peer, messages, canSend, muted, blockedByMe, blockedMe, closed, reason }
 let dmPollTimer = null;
+// 举报：dmReportMsgId 有值 = 针对那一条消息（气泡长按/右键），空 = 针对整段对话（「更多」菜单）
+let dmReportMsgId = '';
+let dmReportReason = '';
+const DM_REPORT_REASONS = ['骚扰辱骂', '违法违规', '诈骗欺诈', '垃圾广告', '涉嫌侵权', '内容不当', '其他'];
 
 function dmPeerName(peer) { return (peer && (peer.name || peer.username)) || '对方'; }
 
@@ -1943,10 +1990,11 @@ function dmRenderChat(scrollToEnd) {
   paintAvatar($('dmPeerAvatar'), dmPeerName(peer), peer.avatar);
   $('dmPeerName').textContent = dmPeerName(peer);
   $('dmPeerSub').textContent = dmCurrent.blockedByMe ? '已屏蔽对方'
-    : (dmCurrent.blockedMe ? '对方已屏蔽你' : (dmCurrent.muted ? '消息免打扰' : ''));
+    : (dmCurrent.blockedMe ? '对方已屏蔽你'
+      : (dmCurrent.closed ? '对话已关闭' : (dmCurrent.muted ? '消息免打扰' : '')));
   const msgs = Array.isArray(dmCurrent.messages) ? dmCurrent.messages : [];
   box.innerHTML = msgs.length ? msgs.map(m => `
-    <div class="dm-msg${m.mine ? ' is-mine' : ''}">
+    <div class="dm-msg${m.mine ? ' is-mine' : ''}" data-mid="${escapeHtml(m.id || '')}">
       <div class="dm-bubble">${escapeHtml(m.text)}</div>
       <span class="dm-time">${fmtNoticeTime(m.at)}</span>
     </div>`).join('')
@@ -1956,7 +2004,8 @@ function dmRenderChat(scrollToEnd) {
   sendBtn.disabled = !can;
   if (tip) {
     tip.hidden = false;
-    tip.textContent = can ? 'Enter 发送，Shift + Enter 换行' : (dmCurrent.reason || '暂时不能给对方发私信');
+    tip.textContent = can ? 'Enter 发送，Shift + Enter 换行'
+      : (dmCurrent.closed ? '这段私信已被关闭，只能查看历史记录' : (dmCurrent.reason || '暂时不能给对方发私信'));
     tip.classList.toggle('is-warn', !can);
   }
   // 更多菜单的文字随当前状态变：已经屏蔽过的人不该再显示「屏蔽此人」
@@ -1976,6 +2025,9 @@ async function loadDmThreads(silent) {
     dmThreadsCache = Array.isArray(d.threads) ? d.threads : [];
     dmRenderList();
     dmRenderPolicy(d.policy);
+    // 保留期由服务端下发（DM_RETAIN_DAYS），前端不写死数字
+    const rt = $('dmRetainTip');
+    if (rt && d.retainDays) rt.textContent = `对话记录保留 ${d.retainDays} 天，到期自动清除`;
     return d;
   } catch {
     if (!silent) showToast('私信列表没加载出来', undefined, 'err');
@@ -2038,6 +2090,45 @@ function openDmModal() {
   if (menu) {
     menu.querySelectorAll('[data-dmact]').forEach(btn => {
       btn.onclick = () => dmMenuAction(btn.dataset.dmact);
+    });
+  }
+  // 举报弹窗：常驻元素，只绑一次（每次开私信都重绑会把事件叠起来）
+  const rBtn = $('dmReportBtn');
+  if (rBtn && !rBtn.dataset.dmWired) {
+    rBtn.dataset.dmWired = '1';
+    rBtn.onclick = submitDmReport;
+    const rClose = $('closeDmReport');
+    if (rClose) rClose.onclick = () => hideModal($('dmReportModal'));
+    const rMask = $('dmReportModal');
+    if (rMask) bindMaskClose(rMask, () => hideModal(rMask));
+  }
+  // 消息级举报：手机长按 / 桌面右键收到的气泡。会话级入口在「更多」菜单里，两条路都留着
+  const thread = $('dmThread');
+  if (thread && !thread.dataset.dmReportWired) {
+    thread.dataset.dmReportWired = '1';
+    let timer = null, startX = 0, startY = 0;
+    const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+    thread.addEventListener('pointerdown', e => {
+      const row = e.target.closest('.dm-msg:not(.is-mine)');
+      if (!row || !row.dataset.mid) return;
+      startX = e.clientX; startY = e.clientY;
+      cancel();
+      timer = setTimeout(() => {
+        timer = null;
+        try { if (navigator.vibrate) navigator.vibrate(12); } catch { /* 忽略 */ }
+        openDmReport(row.dataset.mid || '');
+      }, 550);
+    }, { passive: true });
+    thread.addEventListener('pointermove', e => {
+      // 手指在滚列表时轻微抖动不算长按
+      if (timer && (Math.abs(e.clientX - startX) > 8 || Math.abs(e.clientY - startY) > 8)) cancel();
+    }, { passive: true });
+    ['pointerup', 'pointercancel'].forEach(ev => thread.addEventListener(ev, cancel, { passive: true }));
+    thread.addEventListener('contextmenu', e => {
+      const row = e.target.closest('.dm-msg:not(.is-mine)');
+      if (!row) return;
+      e.preventDefault();
+      openDmReport(row.dataset.mid || '');
     });
   }
   const input = $('dmText');
@@ -2198,12 +2289,82 @@ async function dmPollOnce() {
   } catch { /* 轮询失败下一轮再来，不打扰用户 */ }
 }
 
+// 举报弹窗：messageId 有值 = 只举报那一条（气泡长按/右键），空 = 整段对话
+function openDmReport(messageId) {
+  if (!dmCurrent || !dmCurrent.threadId) return;
+  const modal = $('dmReportModal');
+  if (!modal) return;
+  dmReportMsgId = String(messageId || '');
+  dmReportReason = '';
+  $('dmReportTo').textContent = dmReportMsgId
+    ? `对象：${dmPeerName(dmCurrent.peer)} · 针对选中的那条消息`
+    : `对象：${dmPeerName(dmCurrent.peer)} · 针对整段对话`;
+  const box = $('dmReportReasons');
+  box.innerHTML = DM_REPORT_REASONS.map(r =>
+    `<button type="button" class="dm-reason" data-reason="${escapeHtml(r)}">${escapeHtml(r)}</button>`).join('');
+  box.querySelectorAll('[data-reason]').forEach(b => {
+    b.onclick = () => {
+      dmReportReason = b.dataset.reason;
+      box.querySelectorAll('.dm-reason').forEach(x => x.classList.toggle('is-on', x === b));
+    };
+  });
+  $('dmReportDesc').value = '';
+  $('dmReportBlock').checked = true;
+  const btn = $('dmReportBtn');
+  btn.disabled = false;
+  btn.textContent = '提交举报';
+  const menu = $('dmMenu');
+  if (menu) menu.style.display = 'none';
+  showModal(modal);
+}
+
+async function submitDmReport() {
+  if (!dmCurrent || !dmCurrent.threadId) return;
+  if (!dmReportReason) { showToast('先选一个举报原因', undefined, 'err'); return; }
+  const btn = $('dmReportBtn');
+  btn.disabled = true;
+  btn.textContent = '提交中…';
+  try {
+    const r = await fetch('/api/dm/threads/' + encodeURIComponent(dmCurrent.threadId) + '/report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reason: dmReportReason,
+        description: $('dmReportDesc').value.trim(),
+        messageId: dmReportMsgId,
+        alsoBlock: !!$('dmReportBlock').checked
+      })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '举报提交失败');
+    if (Array.isArray(d.blockedUsers)) {
+      state.blockedUsers = d.blockedUsers;
+      if (state.user) state.user.blockedUsers = d.blockedUsers;
+    }
+    if (d.blocked) {
+      dmCurrent.blockedByMe = true;
+      dmCurrent.canSend = false;
+      dmCurrent.reason = '你已屏蔽对方，私信已关闭';
+      dmRenderChat(false);
+      dmRenderList();
+    }
+    hideModal($('dmReportModal'));
+    showToast(d.message || '举报已提交', undefined, 'ok');
+  } catch (e) {
+    showToast(e.message || '举报提交失败', undefined, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '提交举报';
+  }
+}
+
 async function dmMenuAction(act) {
   const menu = $('dmMenu');
   if (menu) menu.style.display = 'none';
   if (!dmCurrent || !dmCurrent.threadId) return;
   const id = dmCurrent.threadId;
   const peer = dmCurrent.peer || {};
+  if (act === 'report') { openDmReport(''); return; }
   if (act === 'mute') {
     const next = !dmCurrent.muted;
     try {
@@ -2919,8 +3080,8 @@ function isLikedNow(w) {
 }
 
 // ---------- 卡片操作：一颗 ✦，hover 散开五件事（2026-11-15 站长要的） ----------
-// 封面上只留一颗按钮；鼠标进卡片（触屏点这颗）时，五个动作沿四分之一圆弧从按钮位置扇出：
-// 点赞 / 收藏 / 分享 / 屏蔽 / 送灯火。收起来时全部缩回那颗按钮里、opacity 归零。
+// 封面上只留一颗按钮；鼠标靠近这颗 ✦（触屏点这颗）时，五个动作沿四分之一圆弧扇出：
+// 分享 / 点赞 / 收藏 / 送灯火 / 屏蔽。收起来时全部缩回那颗按钮里、opacity 归零。
 //
 // 位置不在 JS 里算：每颗只拿一个序号 --i，角度 = 起角 + i × 间隔，全在 CSS 里算；
 // 半径 --r 和直径 --sz 按卡片宽度（cqw）自适应，窄卡自动收小。
@@ -2935,24 +3096,24 @@ function cardActionsHtml(w) {
   const mk = (cls, attrs, ico, tip) =>
     ({ cls, attrs, ico, tip });
   const acts = [];
+  // 顺序：分享 → 点赞 → 收藏 → 送灯火 → 屏蔽（--i 是扇面序号：第一颗从正上方起，沿弧往左铺到最左端）
+  acts.push(mk('ca-share', `data-share-work="${w.id}" aria-label="分享"`, ic('sharecard'), '分享'));
   if (!coming) {
     acts.push(mk('ca-like' + (liked ? ' active' : ''), `data-likework="${w.id}" aria-label="点赞"`, ic('heart'), liked ? '取消赞' : '点赞'));
     acts.push(mk('ca-fav' + (faved ? ' active' : ''), `data-fav="${w.id}" aria-label="收藏"`, ic('fav'), faved ? '已收藏' : '收藏'));
   }
-  acts.push(mk('ca-share', `data-share-work="${w.id}" aria-label="分享"`, ic('sharecard'), '分享'));
   if (!w.owned) {
+    // 送灯火放在屏蔽之前：屏蔽是「最后一下、最不想被误点」的那颗，压在最外端
+    acts.push(mk('ca-lamp', `data-tipwork="${w.id}" aria-label="送灯火"`, ic('lamp'), '送灯火'));
     // 屏蔽：只对自己生效，图标收在扇面里不再常驻封面（免得误触）
     acts.push(mk('ca-block', `data-blockwork="${w.id}" data-bw-title="${escapeHtml(w.title)}" aria-label="屏蔽这个作品"`, ic('block'), '屏蔽'));
-    acts.push(mk('ca-lamp', `data-tipwork="${w.id}" aria-label="送灯火"`, ic('lamp'), '送灯火'));
   }
   const items = acts.map((a, i) =>
     `<button type="button" style="--i:${i}" class="ca-item ${a.cls}" ${a.attrs}><span class="ca-face">${a.ico}</span><span class="ca-tip">${a.tip}</span></button>`
   ).join('');
   return `<div class="card-actions">
         <span class="ca-glow" aria-hidden="true"></span>
-        <span class="ca-ripple" aria-hidden="true"></span>
-        <span class="ca-ripple is-2" aria-hidden="true"></span>
-        <button type="button" class="ca-trigger" aria-label="点赞、收藏、分享、送灯火" aria-expanded="false" title="点赞 · 收藏 · 分享 · 送灯火"><span class="ca-spark">${ic('sparkle')}</span><span class="ca-dot" aria-hidden="true"></span></button>
+        <button type="button" class="ca-trigger" aria-label="分享、点赞、收藏、送灯火、屏蔽" aria-expanded="false" title="分享 · 点赞 · 收藏 · 送灯火 · 屏蔽"><span class="ca-spark">${ic('sparkle')}</span><span class="ca-dot" aria-hidden="true"></span></button>
         ${items}
       </div>`;
 }
@@ -3092,27 +3253,40 @@ function bindCardNode(el) {
     e.preventDefault();
     openWork(el.dataset.id);
   });
-  // 扇面开关：桌面靠 CSS :hover 展开（鼠标压在上面时它本来就是开的，这颗点了也不该留个
-  // 「粘住」的展开态 —— 否则点一下再移开鼠标，扇面会一直挂着），只有触屏才需要它来开合。
+  // 扇面开关：桌面靠 CSS 的 .card-actions:hover 展开（指针进到 ✦ 附近就开），
+  // 点击只是「确认要操作」——把 .is-open 置真，鼠标彻底离开再由 pointerleave 收，
+  // 所以绝不会「粘住」；触屏没有 hover，全靠 click 开合。
   const actions = el.querySelector('.card-actions');
   const trigger = actions && actions.querySelector('.ca-trigger');
   const hoverOpen = !!(window.matchMedia && window.matchMedia('(hover: hover)').matches);
-  if (trigger && !hoverOpen) {
+  if (trigger) {
     trigger.addEventListener('click', e => {
       e.stopPropagation();
       e.preventDefault();
+      // 桌面：指针压着时 CSS 已经摊开了，这里再 toggle 会变成「点一下看不见反应」，只置真
+      if (hoverOpen && actions.classList.contains('is-open')) return;
       const open = !actions.classList.contains('is-open');
       actions.classList.toggle('is-open', open);
       trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
       closeCardActions(actions);
     });
-    // 触屏上点完任何一颗就收起来（不然要点一下别处才收）。
-    // 必须用捕获阶段：每颗自己的 handler 都会 stopPropagation，冒泡阶段收不到。
-    actions.addEventListener('click', e => {
-      if (!e.target.closest || !e.target.closest('.ca-item')) return;
-      actions.classList.remove('is-open');
-      trigger.setAttribute('aria-expanded', 'false');
-    }, true);
+    if (hoverOpen) {
+      // 指针离开整把扇面就收（含 ✦ 周围 9px 热区）。
+      // 不判 activeElement：鼠标点过 ✦ 之后触发器会拿到焦点，那不是键盘用户；
+      // 键盘 Tab 进来的那种情况由 CSS 的 :has(:focus-visible) 自己撑着，这里收不掉它。
+      actions.addEventListener('pointerleave', () => {
+        actions.classList.remove('is-open');
+        trigger.setAttribute('aria-expanded', 'false');
+      });
+    } else {
+      // 触屏上点完任何一颗就收起来（不然要点一下别处才收）。
+      // 必须用捕获阶段：每颗自己的 handler 都会 stopPropagation，冒泡阶段收不到。
+      actions.addEventListener('click', e => {
+        if (!e.target.closest || !e.target.closest('.ca-item')) return;
+        actions.classList.remove('is-open');
+        trigger.setAttribute('aria-expanded', 'false');
+      }, true);
+    }
   }
   el.querySelectorAll('[data-fav]').forEach(btn => {
     btn.addEventListener('click', async e => {
@@ -3442,16 +3616,14 @@ async function loadCategories() {
   if (renderCatPickerFn) renderCatPickerFn(); // 表单里的分类胶囊同步刷新
   // 统计各形态/分类的作品数，筛选下拉选项后面带数字
   try {
-    // 全量拉取统计各分类/形态数量（pageSize=all 表示不分页）
-    const list = (await (await fetch('/api/works?pageSize=all')).json()).items || [];
-    typeCounts = {}; catCounts = {}; osCounts = { open: 0, closed: 0 };
-    list.forEach(w => {
-      const cats = Array.isArray(w.categories) && w.categories.length ? w.categories : (w.category ? [w.category] : []);
-      cats.forEach(c => { catCounts[c] = (catCounts[c] || 0) + 1; }); // 多分类各计一次
-      typesOf(w).forEach(t => { typeCounts[t] = (typeCounts[t] || 0) + 1; });
-      if (w.openSource === true) osCounts.open++; else osCounts.closed++;
-    });
-    totalWorks = list.length;
+    // 服务端直接数好（2026-11-15）：原来这里拉 /api/works?pageSize=all 自己数，
+    // 全站 150 件约 85KB，跟首屏卡片抢带宽、还排在 app.js 启动之后——首屏白等 0.4 秒。
+    // 现在一个 200 字节的包，口径与 /api/works 同一个 publicWorks（数字照样对得上）。
+    const d = await (await fetch('/api/filter-counts')).json();
+    typeCounts = d.types || {};
+    catCounts = d.cats || {};
+    osCounts = d.os && typeof d.os === 'object' ? d.os : { open: 0, closed: 0 };
+    totalWorks = Number(d.total) || 0;
   } catch { /* 统计失败不影响筛选 */ }
   await loadScenes();   // 场景选项与计数（失败就是空数组：筛选条少一项，其余照常）
   renderFilters();
@@ -3665,18 +3837,29 @@ function ensureAds() {
   return adsReady;
 }
 
+// 直出的广告数据只用一次：之后（refresh / 跨标签页）照旧走 /api/ads 校正
+let bootAdsUsed = false;
+function applyAdsData(data) {
+  ADS = Array.isArray(data && data.ads) ? data.ads : [];
+  // 频控次数由后台配置（后台「广告位」页可改），拿不到就用默认值
+  if (data && data.gate && typeof data.gate === 'object') {
+    Object.keys(AD_GATE_DAILY).forEach(k => {
+      const v = Number(data.gate[k]);
+      if (Number.isFinite(v) && v >= 0) AD_GATE_DAILY[k] = v;
+    });
+  }
+}
 async function loadAds() {
-  try {
-    const data = await (await fetch('/api/ads')).json();
-    ADS = Array.isArray(data.ads) ? data.ads : [];
-    // 频控次数由后台配置（后台「广告位」页可改），拿不到就用默认值
-    if (data.gate && typeof data.gate === 'object') {
-      Object.keys(AD_GATE_DAILY).forEach(k => {
-        const v = Number(data.gate[k]);
-        if (Number.isFinite(v) && v >= 0) AD_GATE_DAILY[k] = v;
-      });
-    }
-  } catch { ADS = []; }
+  // 首页直出了广告数据（见 index.html 的 #dm-boot）：首屏不用等这一趟——
+  // 第 1 页取多少张取决于「第一格有没有推荐卡」，等接口回来才发取卡请求＝白等一个 RTT
+  if (!bootAdsUsed && BOOT && BOOT.ads && Array.isArray(BOOT.ads.ads)) {
+    bootAdsUsed = true;
+    applyAdsData(BOOT.ads);
+  } else {
+    try {
+      applyAdsData(await (await fetch('/api/ads')).json());
+    } catch { ADS = []; }
+  }
   renderAllAdSlots();
   mountListPromo();   // 第一格宣传卡跟着广告数据一起刷新
 }
@@ -4540,7 +4723,56 @@ function featCardHtml(w, i) {
       </div>`;
 }
 
+// 精选卡的点击 / 键盘交互：整批渲染和「接管服务端直出的卡」共用这一份
+function bindFeatCards(row) {
+  row.querySelectorAll('.featured-card').forEach(el => {
+    if (el._featBound) return;   // 接管时别重复绑（重复绑会一次点出两次 openWork）
+    el._featBound = 1;
+    el.addEventListener('click', () => {
+      // 在简介上拖选了文字就别当点击处理：否则复制一句文案顺手把详情弹窗打开了
+      const sel = window.getSelection ? String(window.getSelection()) : '';
+      if (sel && sel.trim()) return;
+      openWork(el.dataset.id);
+    });
+    // 卡片是 div（不是链接），键盘用户 Tab 得到、回车/空格也得打得开
+    el.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      openWork(el.dataset.id);
+    });
+  });
+}
+
+// 首屏直出接管（2026-11-15）：HTML 里已经有服务端画好的本周精选卡，数据也从 #dm-boot 带来了。
+// 这里只补事件、不重画——重画会多一次 20 张卡的 DOM 替换，首屏最不该抖的就是这一块。
+// 校验不过（DOM 与数据对不上 / 不是同一批）就返回 false，走原来的接口渲染，宁慢不乱。
+let bootFeatUsed = false;
+let bootFeatSkipFetch = false;   // 接管后放过一次刷新请求（见 loadFeatured）
+function adoptSsrFeatured() {
+  const row = $('featRow');
+  const list = BOOT && Array.isArray(BOOT.featured) ? BOOT.featured : null;
+  if (!row || !list || !list.length) return false;
+  const cards = row.querySelectorAll('.featured-card');
+  if (cards.length !== list.length) return false;
+  const ids = list.map(w => w.id).join(',');
+  if (Array.from(cards, el => el.dataset.id).join(',') !== ids) return false;
+  featuredSig = ids;
+  $('featuredSection').hidden = false;
+  bindFeatCards(row);
+  setupFeatInfo();
+  setupFeatCarousel();
+  updateFeatNav();
+  bootFeatUsed = true;
+  bootFeatSkipFetch = true;
+  return true;
+}
+
 async function loadFeatured() {
+  // 首屏：服务端直出的那 20 张卡已经画好了，先接管，别为首屏再跑一趟接口
+  if (!bootFeatUsed && adoptSsrFeatured()) return;
+  // 首屏刚接管完，pageshow / focus 会立刻再触发一次刷新——那份数据就是这次请求现算的，
+  // 没必要在同一秒里再拉一遍（17KB）。只放过这一次，之后照旧走接口校正。
+  if (bootFeatSkipFetch) { bootFeatSkipFetch = false; return; }
   try {
     const data = await (await fetch('/api/featured', { cache: 'no-store' })).json();
     const list = Array.isArray(data.list) ? data.list : [];
@@ -4557,20 +4789,7 @@ async function loadFeatured() {
     section.hidden = false;
     const keepLeft = row.scrollLeft;   // 原地替换内容时保留轮播位置，不把用户拉回第一张
     row.innerHTML = list.map(featCardHtml).join('');
-    row.querySelectorAll('.featured-card').forEach(el => {
-      el.addEventListener('click', () => {
-        // 在简介上拖选了文字就别当点击处理：否则复制一句文案顺手把详情弹窗打开了
-        const sel = window.getSelection ? String(window.getSelection()) : '';
-        if (sel && sel.trim()) return;
-        openWork(el.dataset.id);
-      });
-      // 卡片是 div（不是链接），键盘用户 Tab 得到、回车/空格也得打得开
-      el.addEventListener('keydown', e => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        e.preventDefault();
-        openWork(el.dataset.id);
-      });
-    });
+    bindFeatCards(row);
     setupFeatInfo();
     setupFeatCarousel();
     row.scrollLeft = keepLeft;
@@ -5561,23 +5780,24 @@ function renderFiltersPC() {
   const catOpts = totalWorks > 0
     ? CATEGORIES.filter(c => c === '全部' || (catCounts[c] || 0) > 0 || c === state.category)
     : CATEGORIES;
-  // 场景排在最前：逛的人先想「我现在要干嘛」（上班/学习/过日子/做内容…），
-  // 再想「要网页还是 App」。形态是创作者的口径，退到第二位。
+  // 筛选条顺序（2026-11-15 站长定）：排序 → 形态 → 场景 → 分类 → 开源 → 时间。
+  // 场景原先排第一，站长认为场景归类不准（由分类/关键词自动命中，容易错），
+  // 不适合占最显眼的第一位，挪到形态后面；形态是创作者自己填的，更可信。
   // 没有配置或一条作品都没归进场景时整项不渲染，不留一个只有「全部场景」的空下拉。
   const sceneOpts = ['全部'].concat(SCENES.map(s => s.name));
   const conf = [
-    ...(SCENES.length ? [{
-      kind: 'scene', icon: 'sparkle', label: '场景',
-      value: state.scene === '全部' ? '全部场景' : sceneNameOf(state.scene),
-      active: state.scene !== '全部',
-      opts: sceneOpts
-    }] : []),
     {
       kind: 'type', icon: 'shapes', label: '形态',
       value: state.type === '全部' ? '全部形态' : `${TYPE_ICONS[state.type] || ''} ${state.type}`,
       active: state.type !== '全部',
       opts: typeOpts
     },
+    ...(SCENES.length ? [{
+      kind: 'scene', icon: 'sparkle', label: '场景',
+      value: state.scene === '全部' ? '全部场景' : sceneNameOf(state.scene),
+      active: state.scene !== '全部',
+      opts: sceneOpts
+    }] : []),
     {
       kind: 'category', icon: 'folder', label: '分类',
       value: state.category, active: state.category !== '全部',
@@ -5674,7 +5894,13 @@ function renderFiltersH5() {
     : CATEGORIES;
   const asOpts = list => list.map(v => ({ value: v, label: v }));
   const conf = [
-    // 场景排第一：手机屏幕上「我现在想干嘛」比「什么形态」更像逛的人会先点的那个
+    // 手机 tab 顺序（2026-11-15 站长定）：形态 → 场景 → 分类 → 开源 → 时间 → 排序，
+    // 与 PC 筛选条同一口径：场景是自动归类的、可能不准，排在形态之后。
+    {
+      kind: 'type', current: () => state.type, active: () => state.type !== '全部',
+      text: () => state.type === '全部' ? '形态' : state.type,
+      options: () => asOpts(typeOpts), apply: v => { state.type = v; wanderBreakoutLatest(); }
+    },
     // （没有配置/没作品时整项不渲染，别留一个只有「全部场景」的空面板）
     ...(SCENES.length ? [{
       kind: 'scene', current: () => state.scene, active: () => state.scene !== '全部',
@@ -5685,11 +5911,6 @@ function renderFiltersH5() {
         .concat(SCENES.map(s => ({ value: s.key, label: s.name }))),
       apply: v => { state.scene = v; wanderBreakoutLatest(); }
     }] : []),
-    {
-      kind: 'type', current: () => state.type, active: () => state.type !== '全部',
-      text: () => state.type === '全部' ? '形态' : state.type,
-      options: () => asOpts(typeOpts), apply: v => { state.type = v; wanderBreakoutLatest(); }
-    },
     {
       kind: 'category', current: () => state.category, active: () => state.category !== '全部',
       text: () => state.category === '全部' ? '分类' : state.category,
@@ -5757,7 +5978,7 @@ function navigate(path) {
 // 原先从其他页跳首页再滚到列表区的 scrollWorksHeadSoon 不再有使用场景，函数已删。
 
 function closeAllViews() {
-  ['homeView', 'rankView', 'wishView', 'miniView', 'guideView', 'howtoView', 'authorView', 'promoteView', 'discoverView', 'meView', 'settingsView', 'favView', 'likeView'].forEach(id => { $(id).style.display = 'none'; });
+  ['homeView', 'rankView', 'wishView', 'miniView', 'guideView', 'howtoView', 'authorView', 'promoteView', 'discoverView', 'meView', 'settingsView', 'favView', 'likeView', 'followView'].forEach(id => { $(id).style.display = 'none'; });
   hideModal(detailModal);
   hideModal(statsModal);   // 灯火/数据面板是弹层：路由切走（比如点了榜单行去作者主页）必须一起收，别盖在新页面上
   closeQrZoom();   // 详情被关掉时二维码放大层一起收，别留一张盖住全屏的图
@@ -5777,7 +5998,7 @@ function updateNavActive() {
   // 移动端底部 Tab 高亮：橱窗=首页/作品详情/作者页，其余按路径精确匹配
   const p = location.pathname;
   const tabKey = p === '/discover' ? 'discover'
-    : p === '/me' ? 'me'
+    : p === '/me' || p === '/following' ? 'me'
     : onRank ? 'rank'
     : (p === '/' || p.startsWith('/w/') || p.startsWith('/u/')) ? 'home'
     : (onWish || onGuide || onMini || onColumn) ? ''   // 酒馆/指南/小程序专栏/精选专栏不占 Tab，全部不亮
@@ -6117,6 +6338,8 @@ function renderMePage() {
   const unread = Number(state.user.unreadNotices || 0);
   const works = Number(state.user.worksCount || 0);
   const favs = (state.favs || []).length;
+  // 关注数（2026-11-15）：由 /api/me 下发，前端不自己数——多端登录时以服务端为准
+  const following = Number(state.user.followingCount || 0);
   const name = state.user.nickname || state.user.username;
   // 「账号名」小标签只给微信/OAuth 自动建的临时号：上面那串是系统给的，需要一句话解释。
   // PC 正常注册的账号（账号名注册时就定了）名字就是自己起的，再标「账号名」是重复信息
@@ -6140,6 +6363,8 @@ function renderMePage() {
         <a class="me-stat" href="/u/${encodeURIComponent(state.user.slug || state.user.id || state.user.username)}" data-nav><b>${works}</b><span>我的作品</span></a>
         <i class="me-stat-sep"></i>
         <button type="button" class="me-stat" id="meStatFavs"><b>${favs}</b><span>我的收藏</span></button>
+        <i class="me-stat-sep"></i>
+        <button type="button" class="me-stat" id="meFollowing" title="我关注的创作者：他们发新作会在站内消息里提醒你"><b>${following}</b><span>关注 ›</span></button>
         <i class="me-stat-sep"></i>
         <button type="button" class="me-stat" id="mePoints" title="灯光明细：每笔从哪来、花到哪去"><b>${pts}</b><span>灯火 ›</span></button>
       </div>
@@ -6190,6 +6415,9 @@ function renderMePage() {
   const goFavs = () => toggleFavorites();
   $('meFav').onclick = goFavs;
   $('meStatFavs').onclick = goFavs;
+  // 关注数那颗数字：直接进「我关注的创作者」页（未登录时那一页自己会弹登录）
+  const meFollowingBtn = $('meFollowing');
+  if (meFollowingBtn) meFollowingBtn.onclick = () => navigate('/following');
   $('meStats').onclick = () => openStats('data');
   $('mePoints').onclick = () => openStats('points');
   $('meNotices').onclick = openNotices;
@@ -6989,15 +7217,16 @@ function route() {
   }
   // 我的收藏 / 我的点赞：独立页面（2026-11-12 从首页「只看收藏/点赞」过滤态收编成专属路由，
   // 首页不再承载收藏与点赞操作）。都是登录态内容，未登录直接空列表 + 弹登录。
-  if (path === '/favs' || path === '/likes') {
+  if (path === '/favs' || path === '/likes' || path === '/following') {
     const isFav = path === '/favs';
-    $(isFav ? 'favView' : 'likeView').style.display = 'block';
-    setTitle(isFav ? '我的收藏' : '我的点赞');
+    const isFollow = path === '/following';
+    $(isFav ? 'favView' : (isFollow ? 'followView' : 'likeView')).style.display = 'block';
+    setTitle(isFav ? '我的收藏' : (isFollow ? '我关注的创作者' : '我的点赞'));
     if (!state.user) {
       openAuth('login');
-      showToast(isFav ? '登录后可查看你的收藏' : '登录后可查看你点赞的作品');
+      showToast(isFav ? '登录后可查看你的收藏' : (isFollow ? '登录后可查看你关注的创作者' : '登录后可查看你点赞的作品'));
     }
-    if (isFav) loadFavPage(); else loadLikedPage();
+    if (isFav) loadFavPage(); else if (isFollow) loadFollowPage(); else loadLikedPage();
     updateNavActive();
     return;
   }
@@ -7765,6 +7994,17 @@ async function loadAuthor(name) {
         if (!state.user) { openAuth('login'); return; }
         if (typeof openAuthorTipPanelHook === 'function') openAuthorTipPanelHook(data.uid, shown);
       };
+    }
+    // 关注（2026-11-15）：别人的主页 + 作者绑了账号才显示。粉丝数挂在按钮上，
+    // 所以「12 人关注」这类社会证明不用再占一行——没粉丝时按钮只写「关注」，不写 0。
+    const followBtn = $('authorFollowBtn');
+    if (followBtn) {
+      const canFollow = !isMe && !!data.uid && !(state.user && state.user.id === data.uid);
+      followBtn.style.display = canFollow ? 'inline-flex' : 'none';
+      if (canFollow) {
+        paintFollowBtn(followBtn, data.following, data.followers);
+        followBtn.onclick = () => toggleFollow(data.slug || data.uid || name, followBtn);
+      }
     }
     // 别人的主页 + 作者绑定了账号：给「私信」入口（站内一对一，不暴露任何外部联系方式）
     // 内测期间只对站长显示（state.user.dmBeta 由服务端下发）
@@ -9176,6 +9416,17 @@ async function openWork(id, push = true, opts = {}) {
       const canDm = !w.owned && !!w.authorId && !!(state.user && state.user.dmBeta);
       dmBtn.style.display = canDm ? '' : 'none';
       if (canDm) dmBtn.onclick = () => openDmWith(w.authorId, dname(w));
+    }
+
+    // 关注作者（2026-11-15）：和作者页同一个接口，按钮贴在作者名后面（下面那排动作胶囊已经 7 个了）
+    const followEl = $('detailFollow');
+    if (followEl) {
+      const canFollow = !w.owned && !!w.authorId && !(state.user && state.user.id === w.authorId);
+      followEl.style.display = canFollow ? 'inline-flex' : 'none';
+      if (canFollow) {
+        paintFollowBtn(followEl, w.authorFollowing === true, w.authorFollowers || 0);
+        followEl.onclick = () => toggleFollow(w.authorId, followEl);
+      }
     }
 
     // 自己的作品：数据区下方显示高亮管理条（编辑 / 下架 / 删除）；别人的作品：登录后可屏蔽，有账号的作者可拉黑
@@ -17381,6 +17632,108 @@ async function unblockWork(id, btn) {
 // ---------- 顶部交互 ----------
 // 我的收藏：独立页面 /favs（2026-11-12 从首页「只看收藏」过滤态收编成专属路由）。
 // 收藏跟着账号走，未登录先登录。
+// ---------- 关注创作者（2026-11-15） ----------
+// 一颗按钮在三个地方出现：作者页 / 作品详情作者行 / 「我关注的」列表。
+// 口径：按钮只表达「我和这位作者的关系」，粉丝数一律用服务端回传的 followers 校准——
+// 前端自己加减，两个标签页同时操作就会算错，而且只有服务端知道这期间有没有别人关注/取关。
+function paintFollowBtn(btn, following, followers) {
+  if (!btn) return;
+  const n = Number(followers) || 0;
+  btn.classList.toggle('is-on', !!following);
+  btn.setAttribute('aria-pressed', following ? 'true' : 'false');
+  btn.title = following ? '已关注：他发新作品会在站内消息里提醒你，再点一下取消' : '关注后，他发新作品会在站内消息里提醒你';
+  btn.innerHTML = following
+    ? `<i class="ico" data-ico="check"></i> 已关注${n ? `<span class="fb-num">${fmtStatNum(n)}</span>` : ''}`
+    : `<i class="ico" data-ico="plus"></i> 关注${n ? `<span class="fb-num">${fmtStatNum(n)}</span>` : ''}`;
+  try { if (window.Icons && Icons.hydrate) Icons.hydrate(btn); } catch { /* 图标脚本没加载就裸文字 */ }
+}
+// 关注 / 取关：动作由按钮当前状态决定，界面以服务端返回的 following/followers 为准
+async function toggleFollow(ref, btn) {
+  if (!state.user) {
+    openAuth('login');
+    showToast('登录后才能关注创作者');
+    return null;
+  }
+  if (btn && btn.dataset.busy === '1') return null;
+  const on = btn ? btn.classList.contains('is-on') : false;
+  if (btn) btn.dataset.busy = '1';
+  try {
+    const r = await fetch('/api/authors/' + encodeURIComponent(ref) + '/follow', {
+      method: on ? 'DELETE' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      showToast(d.error || '操作失败，稍后再试');
+      return null;
+    }
+    paintFollowBtn(btn, d.following, d.followers);
+    // 个人中心那颗数字跟着动；只在真的变了的时候动（重复关注同一个人的 changed 是 false）
+    if (d.changed && state.user && typeof state.user.followingCount === 'number') {
+      state.user.followingCount = Math.max(0, state.user.followingCount + (d.following ? 1 : -1));
+    }
+    showToast(d.following ? '已关注，他发新作品会通知你' : '已取消关注');
+    return d;
+  } catch (e) {
+    showToast('网络不稳，稍后再试');
+    return null;
+  } finally {
+    if (btn) delete btn.dataset.busy;
+  }
+}
+
+// /following 页：一行一位作者（头像 / 名字 / 粉丝数 / 最近一件作品 / 已关注按钮）。
+// 按「最近更新」排——没有动态流算法，就用排序表达「谁还在更新」，比随机排列有用得多。
+async function loadFollowPage() {
+  const box = $('followList'), empty = $('followEmpty');
+  if (!box || !empty) return;
+  if (!state.user) {
+    box.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  box.innerHTML = dmLoadHtml('正在整理你关注的人…');
+  empty.style.display = 'none';
+  try {
+    const d = await (await fetch('/api/me/following', { cache: 'no-store' })).json();
+    const items = Array.isArray(d.items) ? d.items : [];
+    if (!items.length) {
+      box.innerHTML = '';
+      empty.style.display = 'block';
+      return;
+    }
+    box.innerHTML = items.map(it => `
+      <div class="fl-row">
+        ${avaHtml(it.displayName, it.avatar, 'fl-ava', false, it.name)}
+        <a class="fl-main" href="${escapeHtml(it.path)}" data-nav>
+          <span class="fl-name">@${escapeHtml(it.displayName)}${it.followers ? `<span class="fl-fans">${fmtStatNum(it.followers)} 人关注</span>` : ''}</span>
+          <span class="fl-latest">${it.latest
+            ? `最近：《${escapeHtml(it.latest.title)}》· ${fmtNoticeTime(it.latest.createdAt)}`
+            : '还没有公开作品'}</span>
+        </a>
+        <button type="button" class="fl-follow is-on" data-ref="${escapeHtml(it.name)}">已关注</button>
+      </div>`).join('');
+    box.querySelectorAll('.fl-follow').forEach(b => {
+      b.onclick = async () => {
+        const r = await toggleFollow(b.dataset.ref, b);
+        if (!r) return;
+        if (!r.following) {
+          const row = b.closest('.fl-row');
+          if (row) row.remove();
+          if (!box.children.length) empty.style.display = 'block';
+        } else {
+          b.textContent = '已关注';
+        }
+      };
+    });
+  } catch (e) {
+    box.innerHTML = '';
+    empty.style.display = 'block';
+    showToast('没拉到你关注的列表，稍后再试');
+  }
+}
+
 function toggleFavorites() {
   if (!state.user) {
     openAuth('login');
@@ -17838,23 +18191,28 @@ function setupFindBot() {
     closeFindBot();
     if (href) navigate(href);
   });
-  // 入口：搜索下拉底部。框里已经有词就直接问，省一次输入
-  const ask = $('sgAsk');
-  if (ask) ask.addEventListener('click', () => {
-    const seed = ($('searchInput') && $('searchInput').value.trim()) || '';
-    openFindBot(seed);
-    if (seed.length >= 2) fbAsk(seed);
-  });
-  // 入口：首页 hero 那颗「说不清叫什么？问找找」。搜索框在桌面是给「知道名字」的人用的，
-  // 不知道叫什么的人第一眼看到的是 hero，得在那儿给他一条路。
-  const heroFind = $('heroFindBtn');
-  if (heroFind) heroFind.addEventListener('click', () => openFindBot(''));
+  // 入口（搜索下拉底部 #sgAsk / 首页 hero #heroFindBtn）不在这里绑：
+  // 已改成脚本加载时就挂上的 document 事件委托（见下方「找找入口委托」）。
+  // 原因：曾有环境里下拉能展开、点「找找」却没反应——setupHeader 是一条直线，
+  // 中途任何一段抛错，排在后面的绑定全部连坐失灵。入口改委托后，前面报错也连坐不到它。
   document.addEventListener('keydown', e => {
     if (!findBotState.open || e.key !== 'Escape') return;
     e.stopPropagation();
     closeFindBot();
   }, true);
 }
+
+// 找找入口委托（2026-11-15）：脚本加载到这就挂上，不等 setupHeader / 路由。
+// openFindBot 有 open 幂等闸、fbAsk 有 busy 闸，就算别处也绑过一份也不会重复开/重复问。
+document.addEventListener('click', e => {
+  if (e.target.closest('#sgAsk')) {
+    const seed = ($('searchInput') && $('searchInput').value.trim()) || '';
+    openFindBot(seed);
+    if (seed.length >= 2) fbAsk(seed);
+    return;
+  }
+  if (e.target.closest('#heroFindBtn')) openFindBot('');
+});
 
 function setupHeader() {
   // 首页 hero 的三个动作词：提交作品开投稿弹窗（跟右上角「＋ 提交作品」同一个入口）；
@@ -17868,16 +18226,19 @@ function setupHeader() {
     else openAuth('login');
   };
 
-  let timer;
-  $('searchInput').addEventListener('input', e => {
-    clearTimeout(timer);
-    const val = e.target.value.trim();
-    timer = setTimeout(() => applySearch(val), 320);
+  // 头部各段初始化互相独立：一段报错只废它自己，不连坐后面的绑定
+  // （找找入口已另行委托，见上方「找找入口委托」，这里挂的只是弹层内部的关闭/发送等）
+  try {
+    let timer;
+    $('searchInput').addEventListener('input', e => {
+      clearTimeout(timer);
+      const val = e.target.value.trim();
+      timer = setTimeout(() => applySearch(val), 320);
+    });
+  } catch (err) { console.error('[setupHeader] 搜索输入框', err); }
+  [setupSearchSuggest, setupHeroHot, setupFindBot].forEach(fn => {
+    try { fn(); } catch (err) { console.error('[setupHeader] ' + fn.name, err); }
   });
-
-  setupSearchSuggest();
-  setupHeroHot();
-  setupFindBot();
 
   // PC：最新 / 最热 排序切换（H5 由筛选栏的「最新」tab 承担，这个按钮在 H5 上不显示）
   // 点一下就把排序记在本机：下次打开首页还是这个排序，不用每次重新点
@@ -17907,29 +18268,32 @@ function setupHeader() {
     };
   });
 
-  // 每行显示 4 / 5 个（选择存 localStorage；列数变了页大小也变，要按新页大小从头拉，
+  // 每行显示 4 / 5 / 6 个（选择存 localStorage；列数变了页大小也变，要按新页大小从头拉，
   // 否则已加载的分页偏移会重复或漏项）
   applyGalleryCols();
+  syncColsToggle();
   document.querySelectorAll('#colsToggle .ct-btn').forEach(btn => {
-    btn.classList.toggle('active', Number(btn.dataset.cols) === state.cols);
     btn.onclick = () => {
       const n = Number(btn.dataset.cols);
       if (n === state.cols) return;
       state.cols = n;
       localStorage.setItem('dm_cols', String(n));
-      document.querySelectorAll('#colsToggle .ct-btn').forEach(b =>
-        b.classList.toggle('active', b === btn));
       applyGalleryCols();
+      syncColsToggle();
       if (location.pathname === '/') loadWorks();
     };
   });
 
   // 窗口跨断点时实际列数会变（桌面 4/5 列 ↔ 平板 3 列 ↔ 手机 2 列），页大小跟着变，
   // 同样需要重载首页；只比较列数，滚动时地址栏伸缩引起的 resize 不会误触发。
+  // 跨 1500 / 1260 断点还要重挂装列数类、重排开关（6 列可能变得可选 / 不可选），
+  // 而类一变 --page-max 跟着变，所以必须先同步再量真实列数。
   let lastCols = galleryCols(), resizeTimer = null;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
+      applyGalleryCols();
+      syncColsToggle();
       const now = galleryCols();
       if (now === lastCols) return;
       lastCols = now;

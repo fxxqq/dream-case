@@ -9,7 +9,7 @@
  *  - /api、/admin、跨域请求：完全不拦截
  * 发版时把 VERSION 常量 +1，旧缓存会在 activate 阶段自动清理。
  */
-const VERSION = 'v92';   // v92: 首页本周精选改回纯分数榜（严格前 20，不洗牌/不手选/不限作者）
+const VERSION = 'v95';   // v95: 找找入口改 document 委托 + 头部初始化互不连坐（修「下拉能开、点找找没反应」一类绑定失灵）
 const SHELL_CACHE = `shell-${VERSION}`;
 const STATIC_CACHE = `static-${VERSION}`;
 const IMG_CACHE = `img-${VERSION}`;
