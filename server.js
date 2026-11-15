@@ -13577,27 +13577,18 @@ app.get('/api/works', (req, res) => {
   res.json({ items, total, page, pageSize, hasMore: page * pageSize < total, suggest });
 });
 
-// 本周精选：按「近 7 天综合分」取前 20 件（2026-11-10 改口径）
+// 本周精选：纯算法，按「近 7 天综合分」严格取前 20 件（2026-11-15 站长定口径）
 //   分数 = 窗口获赞×5 ＋ 收藏×8 ＋ 评论×3 ＋ 灯火人数×10 ＋ 窗口访客×2，
-//   与「本周热榜」共用同一套权重（weekHotScore），两处不会再出现「精选和热榜不是一套算法」。
-//   顺序（2026-11-10 晚站长拍板）：每天洗一次牌、当天固定——
-//     同一天所有访客看到同一副排法（种子=当天日期），跨天自动换新排法；
-//     洗牌是确定性的（mulberry32），不是每次刷新都抖，卡片左上角的序号只是展示位、不再对应分数名次。
-//   2026-11-15 补的几条选人约束（站长：这块功能优化一下）：
-//     ① 门槛：窗口分为 0 的作品不进精选——没有互动就没有「凭什么在这」，卡片理由只能编「最近新上」；
-//        有分的不足 FEATURED_MIN 件时（新站 / 假期淡季）退回按分数顺序补位，不让区块空掉。
-//     ② 同一作者最多 FEATURED_PER_AUTHOR 件：150 件作品里一个高产作者挂 5 件在首屏，
-//        精选就变成个人作品集了。先按上限挑，挑不满再放宽回填，不会因此少放。
-//     ③ 洗牌只洗前 FEATURED_SHUFFLE_TOP 名，第 16 名往后按分数顺序接上：
-//        首屏一屏才放 3 张半，前 4 张要也从全部里随机，垫底作品就有机会占住最贵的位置。
-//   管理员精选（后台勾选）照旧不计分数、固定压轴（不参与洗牌）。
-//   新作品不额外插入：首页「最新」列表已经把新作品顶在最前，精选只负责按数据选，避免重复曝光
-//   卡片上的数据是累计口径（pvAll/uvAll），近 7 天的窗口数据只用于选谁进来，不对外展示
+//   与「本周热榜」共用同一套权重（weekHotScore），全站只有这一套算法。
+//   「严格」的意思：这条链路上不留任何调解空间——
+//     · 后台手选的作品不再插队、不再压轴（「设为精选」现在只留徽标，不占这 20 个名额）；
+//     · 不再按作者去重：同一作者多件都够分就都上 —— 这就是分数榜，不是作品集策划；
+//     · 不再每天洗牌：第 1 名就是最高分，卡片左上角的序号 = 名次，刷新不跳；
+//     · 不再设「窗口分 > 0」的门槛：分数为 0 的作品只在全站不足 20 件时才可能补进榜尾。
+//   并列时依次比窗口访客 → 累计浏览 → id，任何时刻只有一种排法。
+//   卡片上的数据是累计口径（pvAll/uvAll），窗口分只用于排名，不对外展示
 const FEATURED_TOP = 20;
 const FEATURED_DAYS = 7;              // 与 WEEKHOT_DAYS 同口径，改一处要一起看
-const FEATURED_MIN = 10;              // 有分作品少于这个数就退回全池补位（宁可少放，也别让区块空掉）
-const FEATURED_PER_AUTHOR = 2;        // 同一作者最多几件；挑不满时会自动放宽，不会因此少放
-const FEATURED_SHUFFLE_TOP = 15;      // 每天洗牌的上限段：第 16 名往后按分数顺序
 
 // 固定种子伪随机（mulberry32）：同一种子产生的序列稳定，「继续随机」的发牌顺序靠它复现
 function mulberry32(seed) {
@@ -13610,33 +13601,41 @@ function mulberry32(seed) {
   };
 }
 
-// 精选选人：先按「同一作者最多 FEATURED_PER_AUTHOR 件」挑一遍，挑不满就逐级放宽（3、4、5…）
-//   作者键：认领过按账号（userId），没认领按署名，都没有就按作品 id 单独算（匿名/无主各算一个人）。
-//   逐级放宽而不是一次放开：池子被少数高产作者占满时，也能尽量把名额摊开，而不是让一个人吃掉剩下的一半。
-//   base 已按分数降序，每一轮都从头按这个顺序挑，所以返回来天然是有序的，不用再排。
-function featuredAuthorKey(w) {
-  if (w.userId) return 'u:' + w.userId;
-  if (w.author) return 'a:' + w.author;
-  return 'w:' + w.id;
+// 精选候选：所有公开作品按近 7 天综合分降序，取前 FEATURED_TOP 件。
+//   API 与 SEO 首屏预载共用这一份，免得两处各算一遍、预载的图和真展示的图对不上。
+//   排名本体按 15s 缓存：500 件作品时一次全量算要 0.1~0.3s，而首页 HTML 的预载
+//   和 /api/featured 都会调它，页面渲染再来一遍不值得。本周精选本来就是周榜，
+//   15 秒的时差看不出来；屏蔽过滤按人做，不进缓存。
+let featuredCache = { at: 0, rows: null };
+function featuredRankAll(agg) {
+  if (featuredCache.rows && Date.now() - featuredCache.at < 15000) return featuredCache.rows;
+  const rows = works.filter(w => isVisible(w))
+    .map(w => {
+      const p = weekHotParts(w, agg);
+      const vr = workVisits[w.id] || {};
+      return {
+        w, uv7: p.uv, pv7: p.pv, parts: p,
+        score: p.score,   // 窗口获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 窗口访客×2
+        pvAll: vr.pv || 0,
+        uvAll: Object.keys(vr.uv || {}).length
+      };
+    })
+    // 顺序即排名：分数高的在前；同分看窗口访客，再同看累计浏览，最后按 id 定死，
+    // 保证同一份数据任何时刻只有一种排法（不再靠洗牌制造变化）
+    .sort((a, b) =>
+      b.score - a.score || b.uv7 - a.uv7 || b.pvAll - a.pvAll || String(a.w.id).localeCompare(String(b.w.id)));
+  featuredCache = { at: Date.now(), rows };
+  return rows;
 }
-function pickFeatured(base, limit) {
-  let out = [];
-  if (limit <= 0) return out;
-  for (let cap = FEATURED_PER_AUTHOR; cap <= limit; cap++) {
-    out = [];
-    const perAuthor = new Map();
-    for (const r of base) {
-      if (out.length >= limit) break;
-      const k = featuredAuthorKey(r.w);
-      const n = perAuthor.get(k) || 0;
-      if (n >= cap) continue;
-      perAuthor.set(k, n + 1);
-      out.push(r);
-    }
-    if (out.length >= limit) break;   // 挑满了就不用再放宽
-  }
-  return out;
+// 按人剔掉他自己屏蔽过的作品（匿名访客传 null 即可）。屏蔽是「我的列表」口径，
+// 不该进全站缓存，所以单独一层。
+function featuredRank(agg, user) {
+  const rows = featuredRankAll(agg);
+  const set = blockedIds(user), authors = blockedAuthorSet(user);
+  if (!set.size && !authors.size) return rows;
+  return rows.filter(r => !set.has(r.w.id) && !authors.has(r.w.author));
 }
+
 // 「随便逛逛」取卡（spec §3.3/§3.4）：mode=pool 分层随机；mode=random 洗牌发牌。
 // 逻辑实现在上方 expo 区块（discoverPick / discoverRandom），这里只做闸门和参数收口
 app.get('/api/discover', (req, res) => {
@@ -13844,20 +13843,11 @@ app.post('/api/mascot/jar/collect', (req, res) => {
 app.get('/api/featured', (req, res) => {
   const user = currentUser(req);
   const agg = weekAgg();   // 近 7 天增量（30s 缓存），与「本周热榜」共用同一份，口径不会跑偏
-  const rows = publicWorks(req).map(w => {
-    const p = weekHotParts(w, agg);
-    return {
-      w, uv7: p.uv, pv7: p.pv, parts: p,
-      score: p.score,   // 窗口获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 窗口访客×2
-      pvAll: (workVisits[w.id] && workVisits[w.id].pv) || 0
-    };
-  });
-  // 顺序即排名：分数高的在前；同分时看窗口访客，再同就看累计浏览（补位时也能有稳定次序）
-  const ranked = rows.sort((a, b) =>
-    b.score - a.score || b.uv7 - a.uv7 || b.pvAll - a.pvAll || String(a.w.id).localeCompare(String(b.w.id)));
+  // 严格按分数取前 20：不筛门槛、不限作者、不洗牌、不夹手选（口径见 FEATURED_TOP 上方的注释）
+  const ranked = featuredRank(agg, user);
   // 入选理由 = 该作品各项里贡献最大的那一项（乘完权重再比），
   // 一眼能说出「它凭什么在这」，而不是只丢一堆数字；
-  // 完全没有数据的作品不给编理由（走 new），管理员手选的走 edit
+  // 完全没有数据的作品不给编理由（走 new）
   const REASON_PARTS = [
     ['tippers', 10, 'tip'],   // 灯火人数
     ['favs', 8, 'fav'],
@@ -13865,10 +13855,7 @@ app.get('/api/featured', (req, res) => {
     ['cmts', 3, 'cmt'],
     ['uv', 2, 'uv']
   ];
-  const adminSet = new Set(rows.filter(r => isFeaturedActive(r.w)).map(r => r.w.id));
   const reasonOf = r => {
-    // 站长手选的作品固定「编辑精选」，不参与下面的自动理由（否则新上架的手选件会被标成「最近新上」）
-    if (adminSet.has(r.w.id)) return 'edit';
     let best = '', bestVal = 0;
     for (const [field, weight, key] of REASON_PARTS) {
       const v = (r.parts[field] || 0) * weight;
@@ -13879,42 +13866,15 @@ app.get('/api/featured', (req, res) => {
     // 已经收到灯火/收藏/点赞/评论的照旧显示那一项，那是真实的认可，不该被「新」盖掉。
     const born = Date.parse(r.w.createdAt) || 0;
     if (born >= agg.since && (!best || best === 'uv')) return 'fresh';
-    if (best) return best;
-    return 'new';
+    return best || 'new';
   };
-  const adminPicks = ranked.filter(r => adminSet.has(r.w.id));
-  const normal = ranked.filter(r => !adminSet.has(r.w.id));
-  // 门槛：近 7 天窗口分为 0 的不进精选（没有互动，卡片理由只能编「最近新上」，等于稀释「精选」）；
-  // 有分的不够 FEATURED_MIN 件时退回全池，按分数顺序补位，避免新站 / 淡季把区块放空。
-  const scored = normal.filter(r => r.score > 0);
-  const base = scored.length >= FEATURED_MIN ? scored : normal;
-  // 挑人：同作者最多 FEATURED_PER_AUTHOR 件，挑不满会自动放宽回填
-  const deck = pickFeatured(base, Math.max(0, FEATURED_TOP - adminPicks.length));
-  // 每天一洗：种子=当天日期，同一天内顺序固定、跨天换一副排法（Fisher-Yates，确定性可复现）。
-  // 只洗最前面这一段（FEATURED_SHUFFLE_TOP）：首屏就那么几张，让垫底作品挤进来等于把精选变随机列表；
-  // 后面按分数递减，往下滑仍然越滑越弱，顺序也说得通。
-  const head = deck.slice(0, FEATURED_SHUFFLE_TOP);
-  if (head.length > 1) {
-    const rng = mulberry32(strSeed32('feat-shuffle|' + dateKey()));
-    for (let i = head.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [head[i], head[j]] = [head[j], head[i]];
-    }
-  }
-  // 洗好的自动入选打头，管理员精选不计分数、固定压轴
-  const list = [...head, ...deck.slice(FEATURED_SHUFFLE_TOP), ...adminPicks]
-    .slice(0, FEATURED_TOP)
-    .map(r => {
-      const vr = workVisits[r.w.id] || {};
-      return {
-        ...publicWork(r.w, user), uv7: r.uv7, pv7: r.pv7,
-        // 累计口径给卡片展示用：数字比 7 天窗口厚，避免「12 次打开」看着单薄
-        pvAll: r.pvAll, uvAll: Object.keys(vr.uv || {}).length,
-        adminPick: adminSet.has(r.w.id),
-        // featScore 前端不显示，留着是给「这件为什么没上」的排查当依据（口径写在规则气泡里，不算秘密）
-        featScore: r.score, featReason: reasonOf(r)
-      };
-    });
+  const list = ranked.slice(0, FEATURED_TOP).map(r => ({
+    ...publicWork(r.w, user), uv7: r.uv7, pv7: r.pv7,
+    // 累计口径给卡片展示用：数字比 7 天窗口厚，避免「12 次打开」看着单薄
+    pvAll: r.pvAll, uvAll: r.uvAll,
+    // featScore 前端不显示，留着是给「这件为什么没上」的排查当依据（口径写在规则气泡里，不算秘密）
+    featScore: r.score, featReason: reasonOf(r)
+  }));
   res.json({ days: FEATURED_DAYS, list });
 });
 
@@ -22478,9 +22438,9 @@ app.get('/', (req, res) => {
   // HTML 一到就开拉，跟 API 请求并行，首屏图片能提前半个 RTT 露出来。
   // 只在非搜索页做：/?q= 是搜索落地页，没有精选条。
   if (!q) {
-    const preImgs = pool.filter(isFeaturedActive).slice(0, 4)
-      .map(w => {
-        const u = String(w.thumb || w.image || '');
+    const preImgs = featuredRank(weekAgg(), null).slice(0, 4)
+      .map(r => {
+        const u = String(r.w.thumb || r.w.image || '');
         return u.indexOf('/uploads/') === 0
           ? `<link rel="preload" as="image" href="${seo.esc(seo.absolute(base, '/t/400/' + u.slice('/uploads/'.length)))}" />`
           : '';

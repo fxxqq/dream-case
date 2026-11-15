@@ -4498,7 +4498,8 @@ function imgFullKey(e) {
 }
 // 精选入选理由：告诉用户「它为什么被选进来」，而不是只丢一堆数据。
 // 后端按 分数 = 获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 访客×2 逐项算，
-// 哪个乘完权重最大就给哪个徽章（tip/fav/like/cmt/uv）；全零走 new，手选无数据走 edit
+// 哪个乘完权重最大就给哪个徽章（tip/fav/like/cmt/uv）；全零走 new。
+// （edit「编辑精选」已停用：后台手选不再进这 20 个名额，这一格留给老缓存兜底）
 const FEAT_REASONS = {
   pick: { text: '本周热门', cls: 'is-pick', tip: '综合热度不错的作品之一' },
   edit: { text: '编辑精选', cls: 'is-pick', tip: '编辑手动收录的作品' },
@@ -4520,9 +4521,8 @@ function featAuthorHtml(w) {
   return `<span class="feat-author" title="作者 ${escapeHtml(name)}">${avaChip(w)}<span class="fa-name">${escapeHtml(name)}</span></span>`;
 }
 
-// 「本周精选」一行最多 20 个：按近 7 天综合分选出（这几天没人互动过的不入选），
-// 顺序每天洗一次牌（服务端按日期做种子，当天固定），只有最前面一段参与洗牌，后面的按分数递减；
-// `.feat-no` 只是展示序号（1~20），不再对应分数名次。
+// 「本周精选」一行最多 20 个：按近 7 天综合分严格降序取前 20（2026-11-15 改回纯算法），
+// `.feat-no` 的序号 = 名次，第 1 张就是最高分；不设互动门槛、不按作者去重、不洗牌、不夹手选。
 // 卡上的数据是累计口径（打开次数 / 看过人数都是全历史），近 7 天数据只用于选谁进来；
 // 精选卡版式：首页「本周精选」和发现页共用（点击开详情由调用方绑定）
 function featCardHtml(w, i) {
@@ -7239,7 +7239,7 @@ function paintAuthorFindStrip() {
   if (!rows.length) { box.style.display = 'none'; return; }
   const open = box.dataset.open === '1';
   box.innerHTML = `
-    <div class="afs-head">
+    <div class="afs-head" title="点这里，用「找找」按访客的问法翻翻你的作品">
       <span class="afs-ico" aria-hidden="true">${ic('search', 16)}</span>
       <div class="afs-txt">
         <b>让「找找」一句话就能翻出你的作品</b>
@@ -7254,6 +7254,13 @@ function paintAuthorFindStrip() {
         <button type="button" class="afs-btn is-mini" data-afs-go="${w.id}" data-afs-focus="${gaps[0].key}">补全</button>
       </div>`).join('')}</div>` : ''}`;
   box.style.display = '';
+  // 点提示条头部（图标 + 标题）直接弹出找找聊天框：这条条讲的就是找找，
+  // 顺着点一下就能用访客视角试翻，不用先去补全。「去补全 / 收起」按钮照旧走自己的逻辑
+  const head = box.querySelector('.afs-head');
+  if (head) head.onclick = (e) => {
+    if (e.target.closest('.afs-btn')) return;
+    if (typeof openFindBot === 'function') openFindBot('');
+  };
   const tg = $('afsToggle');
   if (tg) tg.onclick = () => { box.dataset.open = open ? '0' : '1'; paintAuthorFindStrip(); };
   box.querySelectorAll('[data-afs-go]').forEach(btn => {

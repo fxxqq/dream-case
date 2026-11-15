@@ -9,7 +9,7 @@
  *  - /api、/admin、跨域请求：完全不拦截
  * 发版时把 VERSION 常量 +1，旧缓存会在 activate 阶段自动清理。
  */
-const VERSION = 'v91';   // v91: 搜索支持拼音（全拼/声母）+ 相关度打分重写（search-rank.js）
+const VERSION = 'v92';   // v92: 首页本周精选改回纯分数榜（严格前 20，不洗牌/不手选/不限作者）
 const SHELL_CACHE = `shell-${VERSION}`;
 const STATIC_CACHE = `static-${VERSION}`;
 const IMG_CACHE = `img-${VERSION}`;

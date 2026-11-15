@@ -4012,9 +4012,13 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
    只提醒不拦发布，「补全」直达编辑器并聚焦缺的那一栏，保存后就地重算 */
 .author-find-strip {
   background: #f7f7ff; border: 1px dashed #c9c9ee; border-radius: 14px;
-  padding: 12px 14px;
+  padding: 15px 18px;
 }
 .afs-head { display: flex; align-items: flex-start; gap: 10px; }
+/* 补全条头部可点（弹找找聊天框）：悬停给一点反馈，别让「能点」全靠猜。
+   「已隐藏」条共用 .afs-head 但不可点，指针只挂在补全条这一侧 */
+.author-find-strip .afs-head { cursor: pointer; }
+.author-find-strip .afs-head:hover .afs-txt b { color: var(--primary-dark); }
 .afs-ico {
   width: 34px; height: 34px; border-radius: 10px; flex: none;
   background: #eeeefc; color: var(--primary);
@@ -4047,7 +4051,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   background: #fff4e5; border: 1px solid #f0d9b5; border-radius: 999px; padding: 2px 8px;
 }
 @media (max-width: 640px) {
-  .author-find-strip { padding: 11px 12px; }
+  .author-find-strip { padding: 13px 14px; }
   .afs-chips { display: none; }   /* 手机上一行放不下标题+胶囊+按钮：缺什么点进去编辑器会直接送到那一栏 */
 }
 /* 主页作品隐藏（2026-11-14）：本人看到的「已隐藏」条换成暖色，跟「找找」补全条一眼分开；
