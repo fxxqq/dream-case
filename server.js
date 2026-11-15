@@ -15404,6 +15404,10 @@ app.get('/api/today', (req, res) => {
 // 月榜第一期＝建站那个自然月，所以站点没满一个月时它还在筹备（右栏显示筹备卡＋当前领跑）。
 const JOURNAL_TOP_N = 20;        // 一期收录前 20 名（详情弹窗滑两屏看完）
 const JOURNAL_LIST_MAX = 12;     // 期刊架一次最多回多少期往期
+// 第 1 期真正起算日：建站日 10-30 傍晚上线的，落在周一 10-26 那一周；对外口径是 10-31 上线，
+// 所以首期窗口从 10-31 00:00 裁起（10-30 那几件内测作品不进任何一期）。后续期次仍是自然周，
+// 只有第 1 期的起点被裁短。要改首期起点，只改这一行。
+const JOURNAL_FIRST_FROM = '2026-10-31';
 let journals = readJSON('journals.json', { week: {}, month: {} });
 if (!journals || typeof journals !== 'object' || Array.isArray(journals)) journals = { week: {}, month: {} };
 ['week', 'month'].forEach(t => { if (!journals[t] || typeof journals[t] !== 'object' || Array.isArray(journals[t])) journals[t] = {}; });
@@ -15445,6 +15449,16 @@ function journalSpan(type, offset) {
   }
   const start = addDays(weekStart(now), -(offset || 0) * 7);
   return { start, end: addDays(start, 7) };
+}
+
+// 真实窗口：第 1 期（建站那期）的 start 被 JOURNAL_FIRST_FROM 裁短，其余期次原样返回。
+// 所有对外算区间 / 算期号的地方都走这个，别直接用 journalSpan。
+function journalSpanOf(type, offset) {
+  const span = journalSpan(type, offset);
+  const first = journalFirstStart(type);
+  if (span.end.getTime() <= first.getTime()) return null;   // 整段都在第 1 期之前：这一期不存在
+  if (span.start.getTime() >= first.getTime()) return span;
+  return { start: new Date(first), end: span.end };
 }
 
 // 期号：第 1 期 = 建站那一周 / 那个月（建站周通常只有几天，标注「建站周」由前端做）
@@ -15560,7 +15574,7 @@ function journalCard(e) {
 
 // 算一期。offset=0 为进行中的本期（status=live），历史期为 closed。
 function journalBuild(type, offset) {
-  const { start, end } = journalSpan(type, offset);
+  const { start, end } = journalSpanOf(type, offset) || journalSpan(type, offset);
   const fromMs = start.getTime(), toMs = end.getTime();
   const closed = toMs <= Date.now();
   const agg = journalAgg(fromMs, toMs);
@@ -15635,7 +15649,10 @@ function journalLive(type) {
 // 系列的第一期从哪开始：建站那一周 / 那个月（之前的期不存在，期号也不占位）
 function journalFirstStart(type) {
   const birth = new Date(siteBirthMs());
-  return type === 'month' ? monthStart(birth) : weekStart(birth);
+  if (type === 'month') return monthStart(birth);
+  const wk = weekStart(birth);
+  const from = dayStart(new Date(JOURNAL_FIRST_FROM + 'T00:00:00'));   // 本地时区 0 点，和 weekStart 同口径
+  return from.getTime() > wk.getTime() ? from : wk;
 }
 
 // 期刊架：右栏要的那一份——本期（进行中）+ 往期摘要（从新到旧）
@@ -15647,7 +15664,8 @@ app.get('/api/journals', (req, res) => {
   const live = journalLive(type);
   const issues = [];
   for (let off = 1; off <= 260 && issues.length < limit; off++) {
-    const span = journalSpan(type, off);
+    const span = journalSpanOf(type, off);
+    if (!span) break;
     if (span.start.getTime() < firstStart.getTime()) break;
     if (span.end.getTime() > Date.now()) continue;
     const issue = journalCut(type, span);
@@ -15659,7 +15677,7 @@ app.get('/api/journals', (req, res) => {
     });
   }
   // 首期出刊日：第 1 期＝建站那一周 / 那个月，刊期结束的次日 0 点就是它上架的时间
-  const firstSpan = journalSpan(type, Math.max(0, live.no - 1));
+  const firstSpan = journalSpanOf(type, Math.max(0, live.no - 1));
   res.json({
     type,
     birth: dateKey(new Date(siteBirthMs())),
@@ -15683,16 +15701,17 @@ app.get('/api/journal', (req, res) => {
   res.set('Cache-Control', 'no-store');
   const firstStart = journalFirstStart(type);
   for (let off = 0; off <= 260; off++) {
-    const span = journalSpan(type, off);
+    const span = journalSpanOf(type, off);
+    if (!span) break;
     if (span.start.getTime() < firstStart.getTime()) break;
     if (journalNo(type, span.start) !== no) continue;
     const issue = span.end.getTime() > Date.now() ? journalBuild(type, off) : journalCut(type, span);
-    const newer = off > 0 ? journalSpan(type, off - 1) : null;
-    const older = journalSpan(type, off + 1);
+    const newer = off > 0 ? journalSpanOf(type, off - 1) : null;
+    const older = journalSpanOf(type, off + 1);
     res.json({
       ...issue,
       next: newer ? { no: issue.no + 1, from: dateKey(newer.start), to: dateKey(addDays(newer.end, -1)) } : null,
-      prev: older.start.getTime() >= firstStart.getTime()
+      prev: (older && older.start.getTime() >= firstStart.getTime())
         ? { no: Math.max(1, issue.no - 1), from: dateKey(older.start), to: dateKey(addDays(older.end, -1)) }
         : null
     });
