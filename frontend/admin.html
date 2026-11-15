@@ -8000,6 +8000,10 @@
       const ad = pmAdOf(o);
       const paused = pmPausedOf(o);
       const live = pmIsLive(o);
+      // 站长代投：不计费、没有额度进度，只看到期时间。
+      // 必须写在 packTag 之前：const 在暂时性死区里，写在下面对 packTag 就是
+      // 「Cannot access 'comp' before initialization」，整个「用户推广」页直接加载失败（2026-11-15 修）。
+      const comp = o.comp === true;
       const isClickPack = !o.viewsBought && !!o.clicksBought && o.comp !== true;
       // 计费方式标签（2026-11-15）：这单按点击还是按曝光扣额度，一行一个标，不用对着数字猜
       const packTag = comp ? '' : `<span class="tag${isClickPack ? ' warn' : ''}" title="${esc(
@@ -8007,7 +8011,6 @@
           ? '点击包：按点击计费，被点一次扣一次灯火，曝光只计数不扣额度'
           : '曝光包：按曝光计费，卡片被看到扣灯火，点击只计数不扣额度'
       )}">${isClickPack ? '点击包' : '曝光包'}</span>`;
-      const comp = o.comp === true;   // 站长代投：不计费、没有额度进度，只看到期时间
       // 代投单的展示优先级（只影响同一个位里挑谁）：老单没有这个字段＝跟随右上角的全局投放权重
       const prioTag = !comp ? '' : `<span class="tag${o.prio === 'owner' ? ' warn' : ''}" title="${esc({
         owner: '优先这条：压过买家单先展示（买家单不扣额度、天数照走）',
