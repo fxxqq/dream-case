@@ -1,89 +1,90 @@
-# Dream Case · 造梦橱窗
+# 造梦橱窗 · Dream Case
 
-> Every idea built with care deserves to be seen.
+> 每一个认真做出的想法，都值得被看见。
 
-![Node.js](https://img.shields.io/badge/node.js-18%2B-339933) ![Express](https://img.shields.io/badge/express-4-black) ![Frontend](https://img.shields.io/badge/frontend-zero%20build-f7df1e) ![License](https://img.shields.io/badge/license-MIT-blue)
+English version: [README.en.md](README.en.md) · 线上示例: <https://idea.v5pc.com> · License: MIT
 
-**简体中文说明：[README.zh-CN.md](README.zh-CN.md)** · Live demo: <https://idea.v5pc.com> · License: MIT
+![Node.js](https://img.shields.io/badge/node.js-18%2B-339933) ![Express](https://img.shields.io/badge/express-4-black) ![零构建](https://img.shields.io/badge/%E5%89%8D%E7%AB%AF-%E9%9B%B6%E6%9E%84%E5%BB%BA-f7df1e) ![License](https://img.shields.io/badge/license-MIT-blue)
 
-An open-source showcase and discovery platform for AI-built products: websites, WeChat mini programs, mobile apps, agents, desktop tools and browser extensions. Visitors browse, like, bookmark, comment and tip. Authors earn **Lanterns** (灯火, the in-site points currency) from their work and spend them to give their own submissions more exposure.
+一个面向 AI 作品的展示与发现平台：网站、小程序、App、智能体、桌面应用、浏览器扩展，都可以提交。访客浏览、点赞、收藏、评论、打赏；作者靠作品挣「灯火」，再用灯火给自己的作品换个推荐位。
 
-**Tech stack:** Node.js 20 + Express 4 (single-file backend) · vanilla JavaScript + CSS frontend, no framework and no build step · JSON file storage with local uploads · PM2 + Nginx.
+**技术栈：** Node.js 20 + Express 4（单文件后端）· 原生 JavaScript + CSS 前端，无框架、无构建步骤 · JSON 文件存储 + 本地图片目录 · PM2 + Nginx 部署。
 
-## Screenshots
+## 截图
 
-![Home page](docs/home.png)
+![首页](docs/home.png)
 
-![Leaderboard](docs/rank.png)
+![榜单页](docs/rank.png)
 
-![Work detail](docs/detail.png)
+![作品详情](docs/detail.png)
 
-The interface is currently Chinese-only; the screenshots above come from the live site.
+界面目前只有中文，截图取自线上站。
 
-## More than a portfolio template
+## 这不是又一个作品集模板
 
-Most open-source "showcase" projects stop at CRUD plus a card grid. This one ships the mechanism that keeps a small community moving on its own:
+市面上「作品展示站」的开源实现很多，大多是增删改查加个卡片流。这个项目的差异在于：**它内置了一整套让社区自己转起来的机制**，而不只是展示。
 
-- **Lantern economy** — points can be earned in dozens of ways: daily check-in, referral visits / sign-ups / QR scans, open-sourcing a work, automatic rewards when a linked GitHub repo gains stars, uploading a work, installing the PWA, watching a rewarded video, receiving tips, and more. Every earning path has its own abuse quota, and the full ledger is visible to the user.
-- **Promoted slots (author self-promotion)** — authors redeem Lanterns for exposure on the home page, the leaderboard and work pages. Slots are billed on impressions and clicks, exclusive slots have a queue, and buying the top home slot for a freshly published work triggers a confirmation step because that work already occupies the first position.
-- **Ad placements** — the site owner sells text / image placements from the admin panel. These are deliberately separate from author-promoted slots and are always labeled **Ad**, never "Promoted", so commercial ads and community self-promotion cannot be confused.
-- **Dream Tavern** (`/bar`, 造梦酒馆) — people describe a product they wish existed, creators pick it up and build it, closing the loop from demand to work.
-- **Two clients, one backend** — a responsive web app (PC + mobile, installable as a PWA) plus a native WeChat mini program. The mini program is maintained separately and is **not included in this repository**; it talks to the same API.
+- **灯火经济**：站内积分「灯火」有 20 种来源 —— 签到、分享链接带来访问 / 注册 / 扫码、邀请、开源作品奖励、GitHub star 涨值自动奖励、上传作品、PWA 安装、看激励视频、收到打赏……每一种都有独立的风控配额，防止刷分；流水对用户完全透明。
+- **作者自助推荐位**：作者用灯火兑换首页、榜单页、作品详情页的曝光位，展示 / 点击双计费。独占位带排队机制；刚发布的作品本来就在第一位，再去买首页黄金位会触发二次确认拦截。
+- **广告位**：站长在后台投放文字 / 图片广告，与作者自荐的推荐位相互独立，且始终标注为「广告」而非「推荐」，商业广告与社区自荐不会混在一起。
+- **造梦酒馆**（`/bar`）：用户说出想要的作品，社区创作者认领实现 —— 补齐「需求 → 作品」的闭环。
+- **双端一套后端**：Web（PC + H5 响应式，可装成 PWA）+ 微信原生小程序，共用同一个 API。小程序在独立目录维护，**不在本仓库内**。
 
-## Features
+## 功能总览
 
-**Content & discovery**
-- Filter the feed by category / format / open-source status, keyword search, newest or hottest sorting, card and list views
-- Featured carousel, pinned works, upcoming (WIP) cards
-- Leaderboards: weekly / monthly / all-time, ranked by overall heat, likes or bookmarks
-- Trending searches from real queries plus a cold-start seed list that can be switched off in one line
-- A site-wide chronicle timeline
+**内容与发现**
+- 首页作品流：分类 / 形态 / 是否开源三级筛选、关键词搜索、最新 / 最热排序、卡片与列表两种视图
+- 精选轮播、置顶作品、即将上线预告卡（WIP）
+- 榜单：周榜 / 月榜 / 总榜，综合热度、点赞、收藏多维排序
+- 热搜榜：真实搜索词 + 可一键关闭的冷启动种子词
+- 造梦编年史：全站大事记时间线
 
-**Lanterns**
-- 7-day rising daily check-in; three-stage referral attribution (visit → sign-up → QR scan) with a 7-day window
-- Rewards for open-source works, GitHub star growth, uploads, PWA installs, QR scans of shared cards
-- Tipping between authors, and "light a lantern for this work" where a visitor watches an ad and the platform pays the author (the visitor spends nothing)
-- Full points ledger and in-site notifications for sensitive operations
+**灯火（积分）体系**
+- 每日签到（7 天循环递增）、分享归因奖励（点击 → 注册 → 扫码三级归因，7 天归因窗口）
+- 开源作品奖励、GitHub star 涨值自动发奖、上传作品奖励、PWA 安装奖励、分享卡片扫码奖励
+- 作者间打赏；观众「看广告替作品点灯」，平台代送，观众不花自己的灯火
+- 灯火流水全部可查，敏感操作有站内通知
 
-**Anti-abuse**
-- In-memory sliding-window rate limiting; per-IP / per-visitor / per-work quotas
-- Referral caps per IP and per day, daily sign-up circuit breaker, attribution expiry
-- Ad billing caps per visitor per ad per day using a rolling 24-hour window (crossing midnight does not reset it)
-- Sensitive-word filtering, reserved account names, impersonation protection, anonymous submissions queued for review
-- Optional AI pre-review (Zhipu GLM) and WeChat `msgSecCheck`
+**风控与反刷**
+- 内存滑动窗口限流；单 IP / 单访客 / 单作品多维配额
+- 分享归因：同 IP 对同一分享者每日访问与注册上限、单日邀请注册熔断、归因有效期
+- 广告计费防刷：同访客同广告每日曝光 / 点击分别限额，滚动 24 小时窗口，跨零点刷无效
+- 敏感词过滤、账号名保留词与冒充防护、匿名投稿进审核队列
+- 可选接入 AI 初审（智谱 GLM）+ 微信内容安全 `msgSecCheck`
 
-**SEO & distribution**
-- Server-rendered HTML with JSON-LD for `/w/:id`, `/u/:name`, `/rank` and `/bar`
-- Auto-generated `sitemap.xml`, `robots.txt`, RSS `feed.xml` and `llms.txt`
-- Auto-composed share cards plus attributed mini-program QR short links at `/go/:code`
+**SEO 与分发**
+- 作品页 `/w/:id`、作者主页 `/u/:name`、榜单页 `/rank`、酒馆 `/bar` 均由服务端直出 HTML，带 JSON-LD 结构化数据
+- 自动生成 `sitemap.xml`、`robots.txt`、RSS `feed.xml`、`llms.txt`
+- 分享卡片自动合成图 + 带归因参数的小程序码短链 `/go/:code`
 
-**Accounts**
-- Username + password, GitHub OAuth, Google OAuth, WeChat mini-program login (each entry appears only when configured)
-- Claim a work, bind a WeChat account (one-time reward, protected against multi-account farming), mute works and authors
+**账号**
+- 用户名密码 + GitHub OAuth + Google OAuth + 微信小程序登录（配置了才显示对应入口）
+- 认领作品、绑定微信（有一次性奖励，防多号刷取）、屏蔽作品与作者
 
-**Admin panel** (`/admin`)
-- Works, users, comments, reports, claims, ads, promoted-slot orders, gift codes
-- PV / UV, traffic composition (referring domain, device, landing page), outbound channel stats, search-term analysis
-- A dashboard that separates organic traffic from experience events (open / download / scan intent)
+**后台 `/admin`**
+- 作品 / 用户 / 评论 / 投诉 / 认领 / 广告 / 推荐位订单 / 兑换码管理
+- PV / UV / 流量构成（来源域名、设备、落地页）、外宣渠道统计、搜索词分析
+- 数据看板区分自然流量与体验动作埋点（访问 / 下载 / 扫码意图）
 
-## Stack and trade-offs
+## 技术栈与取舍
 
-| Layer | Choice |
+| 层 | 选型 |
 | --- | --- |
-| Runtime | Node.js 18+ (20 recommended) |
-| Web | Express 4, a single `server.js` organized by `// ---------- section ----------` comments |
-| Frontend | Plain JavaScript + CSS, **no framework, no build step** |
-| Storage | JSON files (atomic writes + in-memory cache), images in local `uploads/` |
-| Uploads | multer |
-| Deploy | PM2 behind an Nginx reverse proxy |
+| 运行时 | Node.js 18+（推荐 20） |
+| Web | Express 4，单文件 `server.js`（约 1.2 万行，按 `// ---------- 分区名 ----------` 注释导航） |
+| 前端 | 原生 JavaScript + CSS，**无框架、无构建步骤** |
+| 小程序 | 微信原生开发，在独立目录维护（不在本仓库） |
+| 存储 | JSON 文件（原子写入 + 内存缓存），图片存本地 `uploads/` |
+| 依赖 | `multer`（上传）、`sharp`（图片处理）、`qrcode`（小程序码）、`ip2region-ts`（IP 归属地） |
+| 部署 | PM2 跑在 Nginx 反向代理后面 |
 
-Why:
+为什么这么选：
 
-- **Zero build** — clone, `npm install`, run. Edit a frontend file and refresh; there is no toolchain beyond `node_modules`.
-- **JSON storage** — plenty for a single small site, and a backup is one archive. All data files load into memory at startup; writes go to a temp file followed by an atomic rename. It is **not** designed for multiple instances or horizontal scaling.
-- **Single-file backend** — business areas are separated by section comments; search the comment to jump. See [ARCHITECTURE.md](ARCHITECTURE.md) (Chinese) for the map and the data-file reference.
+- **零构建**：clone 下来 `npm install` 直接跑，改前端刷新即生效，没有 `node_modules` 之外的任何工具链。
+- **JSON 存储**：单机小站每天几十万次写入完全够用，备份就是打包一个目录。所有数据文件在启动时载入内存，写入走临时文件 + `rename` 原子落盘。**它不适合多实例或横向扩容** —— 数据在进程内存里，起第二个进程就会互相覆盖。
+- **单文件后端**：所有业务按分区注释切段，编辑器里搜注释就能跳转。分区地图和数据文件说明见 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
-## Quick start
+## 快速开始
 
 ```bash
 git clone git@github.com:fxxqq/dream-case.git
@@ -92,80 +93,83 @@ npm install
 npm start
 ```
 
-Open <http://127.0.0.1:3000>; the admin panel is at <http://127.0.0.1:3000/admin>. The default port is `3000`, override it with `PORT=8080 npm start` (on Windows: `set PORT=8080 && npm start`).
+打开 <http://127.0.0.1:3000>，管理后台在 <http://127.0.0.1:3000/admin>。默认端口 `3000`，用 `PORT=8080 npm start` 改（Windows：`set PORT=8080 && npm start`）。
 
-On first boot the app creates `data/` and `uploads/`. If it finds legacy works without accounts, it seeds demo author accounts with the password `123456` — change or remove them before exposing the site. **The admin panel is disabled entirely until an admin key is configured**, so there is no empty-password fallback.
+首次启动会自动创建 `data/` 与 `uploads/` 目录。如果检测到没有归属账号的历史作品，会生成一批演示作者账号，**初始密码 `123456`** —— 站点对外之前请改掉或删掉它们。
 
-## Configuration
+后台口令未配置时 `/admin` 整体禁用，不存在空口令放行的可能（见下节）。
 
-The admin key is never hard-coded. It is read in this order:
+## 配置
 
-1. Environment variable `ADMIN_KEY`
-2. `data/admin-key.txt` (handy locally; `data/` is gitignored)
+后台口令**不写在代码里**，按以下优先级读取：
 
-OAuth credentials follow the same pattern: environment variables first, then `data/oauth.json`; providers without credentials are hidden from the login UI.
+1. 环境变量 `ADMIN_KEY`
+2. 文件 `data/admin-key.txt`（推荐本地使用，`data/` 已被 `.gitignore` 排除）
 
-| Variable | Default | Purpose |
+OAuth 密钥同理：优先环境变量，其次 `data/oauth.json`；都没配置时对应登录入口自动隐藏。
+
+| 环境变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `PORT` | `3000` | HTTP port |
-| `ADMIN_KEY` | empty | Admin key; empty disables `/admin` |
-| `SITE_ORIGIN` | auto-detected | Full origin such as `https://idea.example.com`, used for sitemap, RSS and share links |
-| `REVIEW_MODE` | off | Set to `1` to queue every submission for review |
-| `DATA_DIR` | `./data` | Runtime JSON data directory |
-| `UPLOAD_DIR` | `./uploads` | Uploaded images directory |
-| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | empty | GitHub login |
-| `GITHUB_STAR_TOKEN` | empty | Token used to watch star growth for rewards |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | empty | Google login |
-| `WECHAT_APPID` / `WECHAT_APP_SECRET` | empty | WeChat mini-program login |
-| `ZHIPU_API_KEY` / `ZHIPU_MODEL` | empty | Optional AI pre-review |
+| `PORT` | `3000` | 服务端口 |
+| `ADMIN_KEY` | 空 | 后台管理口令，为空则后台不可用 |
+| `SITE_ORIGIN` | 自动识别 | 站点完整域名（如 `https://idea.example.com`），用于 sitemap、RSS 和分享链接。旧变量名 `SITE_URL` 仍兼容，推荐用 `SITE_ORIGIN` |
+| `REVIEW_MODE` | 关闭 | 设为 `1` 时所有投稿都需审核 |
+| `DATA_DIR` | `./data` | 运行时 JSON 数据目录 |
+| `UPLOAD_DIR` | `./uploads` | 上传图片目录 |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | 空 | GitHub 登录 |
+| `GITHUB_STAR_TOKEN` | 空 | 用于监听 GitHub star 涨值发奖的 token |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | 空 | Google 登录 |
+| `WECHAT_APPID` / `WECHAT_APP_SECRET` | 空 | 小程序登录 |
+| `ZHIPU_API_KEY` / `ZHIPU_MODEL` | 空 | 可选，AI 投稿初审 |
 
-One caveat: [deploy.example.sh](deploy.example.sh) still exports a legacy variable named `SITE_URL`, which the server no longer reads. Rename it to `SITE_ORIGIN` if you deploy with that template.
-
-## Project layout
+## 目录结构
 
 ```
 .
-├── server.js            # Backend: REST API, auth, rate limits, Lantern ledger, anti-abuse, SSR
-├── seo.js               # Server-rendered fragments: work / author / leaderboard / sitemap
+├── server.js            # 后端：REST API、鉴权、限流、灯火账本、风控、SEO 直出
+├── seo.js               # 服务端渲染片段：作品页 / 作者页 / 榜单页 / sitemap
 ├── frontend/
-│   ├── index.html       # SPA shell
-│   ├── app.js           # Routing, feed, modals, submissions, session, Lanterns
-│   ├── sharecard.js     # Canvas-composed share cards
+│   ├── index.html       # 站点主页面（SPA 壳）
+│   ├── app.js           # 前端逻辑：路由、列表、弹窗、投稿、登录态、灯火
+│   ├── sharecard.js     # 分享卡片图合成（Canvas）
 │   ├── style.css
-│   └── admin.html       # Admin panel
-├── docs/                # README screenshots
-├── deploy.example.sh    # Deploy script template (copy to deploy.sh and fill in)
-├── nginx-example.conf   # Nginx reverse-proxy example
-├── DEPLOY.md            # Deployment & operations guide (Chinese)
-├── ARCHITECTURE.md      # Architecture & data-file reference (Chinese)
-├── data/                # Runtime data (gitignored)
-└── uploads/             # User-uploaded images (gitignored)
+│   └── admin.html       # 管理后台
+├── docs/                # README 截图
+├── deploy.example.sh    # 部署脚本模板（复制为 deploy.sh 后填配置）
+├── nginx-example.conf   # Nginx 反向代理示例
+├── DEPLOY.md            # 部署与运维说明
+├── ARCHITECTURE.md      # 架构与数据文件说明
+├── data/                # 运行时数据（不入库）
+└── uploads/             # 用户上传的图片（不入库）
 ```
 
-## Deployment
+## 部署
 
 ```bash
-cp deploy.example.sh deploy.sh   # fill in server IP, admin key, domain
-bash deploy.sh                   # pack → upload → remote npm install → PM2 restart
-bash deploy.sh restart           # restart only
+cp deploy.example.sh deploy.sh   # 填入服务器 IP、后台口令、域名
+bash deploy.sh                   # 打包 → 上传 → 远程安装依赖并重启 PM2
+bash deploy.sh restart           # 只重启服务
 ```
 
-`data/` and `uploads/` on the server are never overwritten, so upgrading the code does not touch existing data. See [DEPLOY.md](DEPLOY.md) (Chinese) and [nginx-example.conf](nginx-example.conf).
+服务器上 `data/` 与 `uploads/` 不会被覆盖，升级代码不影响已有数据。详细步骤见 [DEPLOY.md](DEPLOY.md)，Nginx 配置见 [nginx-example.conf](nginx-example.conf)。
 
-## Backups
+## 数据备份
 
-Everything lives in `data/*.json` and `uploads/`:
+所有业务数据都在 `data/*.json` 与 `uploads/` 两个目录里，定期打包即可：
 
 ```bash
 tar czf backup-$(date +%F).tar.gz data uploads
 ```
 
-## Notes for forks
+## 关于维护
 
-This is a personal project built for one live site, and several business constants (Lantern amounts, promoted-slot prices, abuse quotas) are tuned for it — expect to adjust them. The UI strings and most code comments are in Chinese; start with `frontend/index.html`, `frontend/app.js` and `seo.js` if you want to translate.
+这是个个人项目，为 idea.v5pc.com 服务，不少业务参数（灯火数值、推荐位定价、风控配额）是按自己站的情况调的，Fork 后大概率要改。界面文案和大部分代码注释是中文，想改造的话从 `frontend/index.html`、`frontend/app.js`、`seo.js` 入手最快。
 
-Issues and PRs are welcome, and bug reports with reproduction steps and expected behavior get fixed faster. The WeChat mini program and the site's production data are not part of this repository.
+- 项目在持续维护：bug 会修，体验会调，issue 和 PR 都会看。
+- 提问题时写清复现步骤和预期结果，能省掉不少来回。
+- 微信小程序和线上站的生产数据不在本仓库里。
+- 想怎么改就怎么 Fork，MIT 没有附加条款，只需保留版权声明。
 
 ## License
 
-[MIT](LICENSE) © 2026 frank — no extra conditions, just keep the copyright notice.
+[MIT](LICENSE) © 2026 frank
