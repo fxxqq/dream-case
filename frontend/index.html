@@ -226,7 +226,7 @@
                 <circle cx="10" cy="14" r="1.05" fill="currentColor"/>
               </svg>
             </button>
-            <span class="feat-info-pop" role="tooltip">按近 7 天数据打分选出最高的 20 件：获赞 ×5 ＋ 收藏 ×8 ＋ 评论 ×3 ＋ 灯火人数 ×10 ＋ 访客 ×2（同一人只算 1 个访客、作者本人不计）· 顺序随机、当天固定 · 卡上的打开/看过是累计数据</span>
+            <span class="feat-info-pop" role="tooltip">按近 7 天数据打分选出最高的 20 件：获赞 ×5 ＋ 收藏 ×8 ＋ 评论 ×3 ＋ 灯火人数 ×10 ＋ 访客 ×2（同一人只算 1 个访客、作者本人不计）· 这 7 天没人互动过的不入选、同一作者最多 2 件 · 前 15 件顺序随机、当天固定，后面按分数递减 · 卡上的打开/看过是累计数据</span>
           </span>
           <div class="featured-nav">
             <button class="fn-btn" id="featPrev" aria-label="向左滑动" disabled>‹</button>
@@ -282,6 +282,8 @@
         <span class="list-head-left">
           <span id="listTitle">全部作品</span>
           <span class="list-count" id="workCount">加载中…</span>
+          <!-- 拼音搜索的落点提示：搜 jz 时这里显示「你是不是想搜「记账」」，点一下换成中文词重搜 -->
+          <button class="list-dym" id="searchDidYouMean" type="button" hidden></button>
           <!-- 排序说明 ⓘ 2026-11-11（二次挪）：贴着「还有 X 件没逛过」计数放，语义对口；常驻显示，
                不再只在池模式出现（id=countInfo，悬停/点按弹说明）。 -->
           <span class="feat-info count-info" id="countInfo">
@@ -292,7 +294,7 @@
                 <circle cx="10" cy="14" r="1.05" fill="currentColor"/>
               </svg>
             </button>
-            <span class="feat-info-pop" role="tooltip"><b class="rt">随便逛逛 · 排序规则</b>· <b>越少人看过的越优先</b>：还没被看过的作品先出现，新老作品雨露均沾，每件都有被看到的机会。<br>· <b>这样才算「看过」</b>：往下滚动之后，卡片一半以上进入屏幕、停留半秒；刷新后没往下拉、或快速划过的都不算。<br>· <b>看过的不再推给你</b>：名单只记在你自己的浏览器里，不影响其他访客看到它。<br>· <b>看遍全站之后</b>：会用「重温」随机补齐，也可以点「随便翻翻」全站乱序翻页，或随时切回「最新 / 最热」。<br>· 一旦使用筛选或搜索，会自动切回「最新」排序。<br>· <b>想从头再看一遍</b>：点<button class="feat-info-link" id="resetSeenLink" type="button">清空已看</button>，所有作品会重新推荐给你（浏览 / 访客统计不受影响）。</span>
+            <span class="feat-info-pop" role="tooltip"><b class="rt">随便逛逛 · 排序规则</b>· <b>机会均等</b>：在你还没看过的作品里完全随机抽，新老作品概率一样，每件都有被看到的机会（站方手动加权的作品会略有倾斜）。<br>· <b>这样才算「看过」</b>：往下滚动之后，卡片一半以上进入屏幕、停留半秒；刷新后没往下拉、或快速划过的都不算。<br>· <b>看过的不再推给你</b>：名单只记在你自己的浏览器里，不影响其他访客看到它。<br>· <b>看遍全站之后</b>：会用「重温」随机补齐，也可以点「随便翻翻」全站乱序翻页，或随时切回「最新 / 最热」。<br>· 一旦使用筛选或搜索，会自动切回「最新」排序。<br>· <b>想从头再看一遍</b>：点<button class="feat-info-link" id="resetSeenLink" type="button">清空已看</button>，所有作品会重新推荐给你（浏览 / 访客统计不受影响）。</span>
           </span>
         </span>
         <div class="head-controls">
@@ -423,11 +425,26 @@
       <p class="rank-legend pc-only"><i class="ico" data-ico="bolt"></i> <span id="rankLegendText">综合分 = 获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 访客×2</span><button type="button" class="rank-rules-btn" id="rankRulesBtn"><i class="ico" data-ico="rules"></i> 榜单规则</button></p>
       <div class="rank-list pc-only" id="rankList"></div>
       </div>
-      <!-- 右栏：先放推荐位（与页头那条同用 rank 槽位；data-ad-maxcols=5 + data-ad-stack → 窄栏竖排最多 5 条，
-           2026-11-12 站长拍板：PC 右栏一次展示 5 条，H5 / 小程序仍沿用以前的条数策略）。
-           以后有合适的新模块（公告 / 活动 / 专题 …）直接加在这条推荐位下面 -->
+      <!-- 右栏：推荐位（与页头那条同用 rank 槽位；data-ad-maxcols=5 + data-ad-stack → 窄栏竖排最多 5 条）+ 星梦期刊（周榜/月榜按期存档）。
+           2026-11-12 站长拍板：PC 右栏一次展示 5 条，H5 / 小程序仍沿用以前的条数策略。
+           推荐位放在期刊上面：右栏开口第一眼先看到推荐（2026-11-15 站长要求「推荐放上面」），期刊跟在后面。
+           以后还有合适的新模块（公告 / 活动 / 专题 …）继续往 .rank-side 里排，行内容由 app.js 渲染 -->
       <aside class="rank-side">
         <div class="ad-slot" data-ad-slot="rank" data-ad-maxcols="5" data-ad-stack="1"></div>
+        <section class="jrn" id="journalRack" hidden>
+          <div class="jrn-head">
+            <span class="jrn-mark"><i class="ico" data-ico="journal"></i></span>
+            <div class="jrn-brand">
+              <b class="jrn-name">星梦期刊</b>
+              <span class="jrn-sub">每周一期 · 每月一刊</span>
+            </div>
+            <div class="jrn-tabs" id="journalTabs">
+              <button type="button" class="jrn-tab on" data-jtype="week">周榜</button>
+              <button type="button" class="jrn-tab" data-jtype="month">月榜</button>
+            </div>
+          </div>
+          <div class="jrn-body" id="journalBody"></div>
+        </section>
       </aside>
       </div>
     </section>
@@ -670,6 +687,8 @@
               <button type="button" class="author-nick-btn" id="authorSlugBtn" style="display:none" title="把作者页链接换成好记的地址"><i class="ico" data-ico="link"></i> 个性地址</button>
               <!-- 别人的主页才显示：给作者直送灯火（不挂具体作品，全额转作者账上；每天对同一位作者限 50 盏 / 5 笔） -->
               <button type="button" class="author-nick-btn" id="authorTipBtn" style="display:none" title="用你的灯火支持这位作者"><i class="ico" data-ico="lamp"></i> 送灯火</button>
+              <!-- 别人的主页才显示：一对一发私信（不经过站长，对方在「私信」里直接看到） -->
+              <button type="button" class="author-nick-btn" id="authorDmBtn" style="display:none" title="给这位作者发私信"><i class="ico" data-ico="chat"></i> 私信</button>
             </div>
             <!-- 入驻时间 + 常写分类：一句话交代「这位是谁」 -->
             <p class="author-meta" id="authorMeta"></p>
@@ -692,8 +711,8 @@
           <button type="button" class="au-act" data-auact="wallet" title="灯火账本：签到、分享、看广告攒的，投放花掉的，都在这里">
             <span class="au-act-ico"><i class="ico" data-ico="coin"></i></span>我的灯火
           </button>
-          <button type="button" class="au-act" data-auact="mini" title="扫码在微信里打开造梦橱窗小程序">
-            <span class="au-act-ico"><i class="ico" data-ico="mobile"></i></span>我的小程序
+          <button type="button" class="au-act" data-auact="mini" title="扫码在微信里打开自己的造梦橱窗小程序">
+            <span class="au-act-ico"><i class="ico" data-ico="mobile"></i></span>扫码看我的小程序
           </button>
           <button type="button" class="au-act" data-auact="more" title="消息、勋章、邀请、屏蔽管理、账号设置都收在这里">
             <span class="au-act-ico"><i class="ico" data-ico="all"></i></span>全部功能
@@ -1156,6 +1175,7 @@
             <span class="ql-caret" aria-hidden="true"></span>
           </button>
           <p class="ql-lead">五个短句，详情页会排成「一眼看懂」卡：搜索摘要和 AI 回答优先摘这一段，比写长介绍的收益更直接。</p>
+          <p class="ql-lead">站内也一样：「找找」靠<b>一句话定位</b>和<b>作品介绍</b>对上访客的问题，缺了这两栏就只剩标题能撞——填了，别人随口一问就能翻到你的作品。</p>
           <p class="ql-lead ql-ai-row">
             <button type="button" class="ai-write-btn" id="qlAiBtn"><i class="ico" data-ico="bolt"></i> AI 补这四项</button>
             从上面的作品介绍里提炼「解决什么 / 适合谁 / 上手几步 / 和同类比」；原文没依据的会留空，生成后自己核对再保存
@@ -1164,6 +1184,13 @@
             <label>一句话定位 <span class="ql-count" data-for="qlPositioning">0/60</span></label>
             <input type="text" name="positioning" id="qlPositioning" maxlength="60"
                    placeholder="它是什么 + 给谁 + 有什么用，如：独立开发者的作品发布清单，一次填完同步到 8 个平台" />
+            <!-- 定位句是最费脑的一栏，也是「找找」最依赖的一栏：直接从上面的作品介绍里提炼。
+                 介绍太短时不发请求，在这里给出口（去写两句介绍），别让作者点了没反应。 -->
+            <p class="ai-pos-row">
+              <button type="button" class="ai-write-btn" id="aiPosBtn"><i class="ico" data-ico="bolt"></i> AI 写一句</button>
+              <span class="ai-pos-hint" id="aiPosHint">从上面的作品介绍里提炼，生成后自己改</span>
+              <button type="button" class="ai-pos-go" id="aiPosGoIntro" hidden>去写两句介绍</button>
+            </p>
             <label>解决什么问题 <span class="ql-count" data-for="qlProblem">0/120</span></label>
             <textarea name="problem" id="qlProblem" rows="2" maxlength="120"
                       placeholder="如：做出来的东西散在相册和朋友圈，过两周自己都找不到"></textarea>
@@ -1443,9 +1470,53 @@
       <div class="notice-list" id="noticeList"></div>
       <div class="notice-foot">
         <span class="notice-hint">通知与站长回信都在这里</span>
+        <button type="button" class="btn-ghost" id="noticeInbox">私信</button>
         <button type="button" class="btn-ghost" id="noticeDm">给站长留言</button>
+        <button type="button" class="btn-ghost" id="noticeMuteCat" hidden></button>
         <button type="button" class="btn-ghost" id="noticeReadAll">全部标记已读</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 用户私信：左边会话列表、右边聊天（手机端单栏切换）。
+       和「给站长留言」不是同一套：那个是用户 ↔ 站长的客服通道，走站内消息；
+       这里是用户之间的一对一私聊，数据单独存 data/dms.json。 -->
+  <div class="modal-mask" id="dmMask" style="display:none">
+    <div class="modal modal-dm" id="dmModal">
+      <section class="dm-pane dm-list-pane" id="dmListPane">
+        <header class="dm-list-head">
+          <h2>私信</h2>
+          <button class="close-btn" id="closeDm" title="关闭">✕</button>
+        </header>
+        <div class="dm-list" id="dmList"></div>
+        <footer class="dm-list-foot">
+          <button type="button" class="dm-policy" id="dmPolicyBtn" role="switch" aria-checked="false" title="打开后，只有你聊过的人能给你发新私信">
+            <span>只接收聊过的人</span><span class="ud-switch"><i></i></span>
+          </button>
+        </footer>
+      </section>
+      <section class="dm-pane dm-chat-pane" id="dmChatPane">
+        <header class="dm-chat-head">
+          <button type="button" class="dm-back" id="dmBack" title="返回会话列表">‹</button>
+          <div class="dm-peer-avatar" id="dmPeerAvatar">A</div>
+          <div class="dm-peer-meta">
+            <b id="dmPeerName"></b>
+            <i id="dmPeerSub"></i>
+          </div>
+          <button type="button" class="dm-more" id="dmMore" title="更多操作">⋯</button>
+          <div class="dm-menu" id="dmMenu" style="display:none">
+            <button type="button" data-dmact="mute">消息免打扰</button>
+            <button type="button" data-dmact="clear">清空对话</button>
+            <button type="button" data-dmact="block">屏蔽此人</button>
+          </div>
+        </header>
+        <div class="dm-thread" id="dmThread"></div>
+        <div class="dm-compose">
+          <textarea id="dmText" rows="2" maxlength="500" placeholder="写点什么…"></textarea>
+          <button class="btn-primary" id="dmSend">发送</button>
+        </div>
+        <p class="dm-compose-tip" id="dmComposeTip">Enter 发送，Shift + Enter 换行</p>
+      </section>
     </div>
   </div>
 
@@ -1763,6 +1834,8 @@
           <button class="btn-like btn-cmt" id="detailCmt" title="跳到评论区：说点什么，或向作者提问"><i class="ico" data-ico="chat"></i><span class="sr-label">评论</span><span id="detailCmtNum">0</span></button>
           <!-- 送灯火是唯一带「暖意」的动作，保留可见文字按钮，不并进图标堆 -->
           <button class="btn-tip" id="detailTip" title="用灯火支持作者或这件作品"><i class="ico b-ico" data-ico="lamp"></i> <span class="tip-word">送灯火</span></button>
+          <!-- 私信作者：图标胶囊（文字只给读屏），和点赞/收藏同一排，不抢「送灯火」的主位 -->
+          <button class="btn-like btn-dm" id="detailDm" title="给作者发私信"><i class="ico" data-ico="chat"></i><span class="sr-label">私信</span></button>
           <button class="btn-share" id="shareCardBtn" title="生成一张带二维码的分享图，发朋友圈/小红书都行"><i class="ico b-ico" data-ico="sharecard"></i><span class="sr-label">分享卡片</span></button>
           <button class="btn-share btn-pack" id="promoKitBtn" title="按平台生成投稿文案，复制就能去外站投"><i class="ico b-ico" data-ico="megaphone"></i> 外宣包</button>
           <button class="btn-link btn-code" id="detailRedeem" style="display:none"><i class="ico b-ico" data-ico="gift"></i> 兑换码</button>
@@ -1937,6 +2010,18 @@
     </div>
   </div>
 
+  <!-- 消息提示设置：按板块屏蔽弹窗提示（屏蔽 ≠ 拒收，消息照常进铃铛列表，只是不弹 toast），行由 app.js 渲染 -->
+  <div class="modal-mask" id="noticePrefsMask" style="display:none">
+    <div class="modal blocked-modal">
+      <div class="modal-head">
+        <h2>消息提示</h2>
+        <button class="close-btn" id="closeNoticePrefs" title="关闭">✕</button>
+      </div>
+      <p class="blocked-hint">关掉某个板块后，它的消息仍会进铃铛列表（标「已屏蔽」、未读照算），只是不再弹窗打扰，随时可以再打开。也可以在铃铛弹窗里切到某一栏，点底部的「屏蔽本栏提示」。</p>
+      <div class="npref-list" id="noticePrefList"></div>
+    </div>
+  </div>
+
   <!-- 榜单规则：把图例里放不下的完整口径收进弹窗 -->
   <div class="modal-mask" id="rankRulesModal" style="display:none">
     <div class="modal rank-rules-modal">
@@ -1963,7 +2048,20 @@
         <p>列表按所选维度降序排列，当前维度的数字会加粗显示。周期决定哪些作品能上榜：周榜＝近 7 天上架、月榜＝近 30 天上架、总榜＝全部作品；综合分、点赞、收藏、灯火、打赏人数用的是上架以来的累计数，访问次数与访问人数按所选周期统计（访客分也用同一周期的访客人数）。想看全站所有作品的长期热度，选「总榜」。</p>
         <h3><i class="ico" data-ico="bolt"></i> 高光榜</h3>
         <p><b>高光榜 = 每件作品上架以来最亮的连续 7 天</b>：把作品每一天的「获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 当天访客×2」按天累加，找出总分最高的那段日子（不足 7 天按实际天数算，发布当天就能参与）。这是荣誉榜不是竞技榜——老作品的最好一周永久留档，不会每周清零；每行会标注这段「高光区间」是哪几天。上榜有门槛：窗口内访客 ≥ 10；访客按人去重（一台设备或一个账号算一人），一个人反复刷新也还是 1 个，刷不出榜位。新进入前 20 的作品 7 天内标「新晋」。注：点赞/灯火自 2026-11-07 起才有时间戳，之前的窗口这两项不计，分数略偏低，随时间自动变得更准。</p>
+        <h3><i class="ico" data-ico="journal"></i> 星梦期刊</h3>
+        <p>榜单每分钟都在变，期刊把「那一期」固定下来：<b>周榜期刊每周一出一期，月榜期刊每月 1 日出刊</b>。一期收录的是这一期内上架的新作品，按这一期内的互动增量计分（权重与综合分相同）。<b>截稿即定稿</b>：已经出刊的那一期，之后有人取消点赞、访客继续涨，都不会再改写名次——它是存照，不是实时榜。榜单页右栏的期刊架可以往前翻每一期；月榜第一期是建站那个自然月，所以站点没满一个月时它还在筹备。</p>
       </div>
+    </div>
+  </div>
+
+  <!-- 星梦期刊：单期详情（刊头 / 封面 / 本期榜单 / 本期数据），内容由 app.js 渲染 -->
+  <div class="modal-mask" id="journalModal" style="display:none">
+    <div class="modal journal-modal">
+      <div class="modal-head journal-head">
+        <h2 id="journalHeadTitle"><i class="ico" data-ico="journal"></i> 星梦期刊</h2>
+        <button class="close-btn" id="closeJournal" title="关闭">✕</button>
+      </div>
+      <div class="journal-sheet" id="journalSheet"></div>
     </div>
   </div>
 

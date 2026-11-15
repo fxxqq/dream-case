@@ -58,6 +58,22 @@ html[data-page="promote"] #promoteView,
 html[data-page="discover"] #discoverView,
 html[data-page="me"] #meView { display: block !important; }
 
+/* 作者页首屏直达右栏预显示（2026-11-15 修闪动）：
+   直接打开 /u/xxx 时，authorView 由上面规则显示，但 authorSide 和 authorSideSkel
+   在 HTML 里是 display:none（loadAuthor 才会打开），authorBody 也没有 has-side。
+   结果首帧画成整页宽，等 route()→loadAuthor() 同步设右栏+has-side 后又收窄成两栏，
+   整页横向闪一下。这里在 CSS 层先把右栏、骨架占位撑出来，并模拟 has-side 的分栏，
+   让首帧就是两栏，route() 接手时无布局跳变。 */
+/* creatorCard 和 authorMedalsCard 在 loadAuthor 里先藏、数据回来才按需显——
+   首屏直达时也先藏，只露骨架占位，避免「作品数据卡先出来再消失」闪一下（全屏宽生效） */
+html[data-page="author"] #creatorCard { display: none !important; }
+
+@media (min-width: 901px) {
+  html[data-page="author"] #authorBody { grid-template-columns: minmax(0, 1fr) 272px; }
+  html[data-page="author"] #authorSide { display: block !important; }
+  html[data-page="author"] #authorSideSkel { display: block !important; }
+}
+
 /* 榜单数据回来前别留一片空白（列表插入内容后 :empty 自动失效） */
 #rankList:empty::before {
   content: '榜单加载中…';
@@ -558,7 +574,9 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
   object-fit: cover; object-position: center top;
   display: block; background: #eceef5;
 }
-.card-img-wrap { position: relative; }
+/* 封面容器裁掉溢出的装饰（扇面底光比封面大一圈，不裁就会淌到标题区）。
+   角标全部在框内定位，裁了不影响任何徽标 */
+.card-img-wrap { position: relative; overflow: hidden; }
 
 /* ---------- 橱窗效果（2026-11-12 站长要的：首页每张卡都像摆进橱窗）----------
    封面不再是一张「贴上去的图」，而是隔了一层玻璃的展品。三层全部是装饰层，
@@ -2588,6 +2606,20 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   user-select: none;
 }
 .featured-card:hover { transform: translateY(-3px); box-shadow: 0 10px 26px rgba(60,60,120,.14); }
+/* 键盘可达：卡片是 div，浏览器不给默认焦点样式，Tab 到它必须看得见在哪 */
+.featured-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.featured-card:focus-visible:hover { transform: none; }
+/* 精选加载失败时的重试入口：替掉骨架卡，别让首屏一直转圈；高度和卡片对齐，替换时不跳 */
+.feat-retry {
+  flex: 0 0 auto; min-height: 121px; padding: 14px 18px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--border); border-radius: 14px;
+  background: #fafafe; color: var(--muted);
+  font-size: 13px; font-family: inherit; cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.feat-retry:hover:not(:disabled) { color: var(--text); border-color: var(--primary); }
+.feat-retry:disabled { cursor: default; opacity: .6; }
 .featured-card img {
   width: 56px; height: 56px; border-radius: 12px; object-fit: cover;
   flex-shrink: 0; background: #eceef8;
@@ -5856,9 +5888,9 @@ a.board-row:hover:not(.is-me) { background: #f5f3ff; }
   background: #f8f7ff; border: 1px solid #e3e0fa; color: var(--muted);
 }
 .redeem-modepick b { color: var(--primary); font-weight: 600; }
-/* 第 3 步 · 投放期限：只有两个「首页第一格」独占位才有这排（1-7 天，默认最长）。
+/* 第 3 步 · 投放期限：只有两个「首页第一格」独占位才有这排（1-14 天，默认最长）。
    天数不改价格，只决定这单最多挂多久；到期没投完的按原价退回。
-   一排 7 个在 PC 上刚好，手机上 4 列换两行，别挤成一条看不清的线。 */
+   一排 7 个、14 天正好两行，手机上 4 列换行，别挤成一条看不清的线。 */
 .redeem-days { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); }
 .rd-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
 .rd-head b { font-size: 12.5px; }
@@ -6855,6 +6887,171 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .reply-input textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(91,91,214,.12); background: #fff; }
 .reply-input .btn-primary { flex: none; height: 42px; padding: 0 22px; border-radius: 12px; }
 
+/* ---------- 用户私信弹窗（一对一） ----------
+   桌面：左边会话列表（268px）+ 右边聊天；手机：单栏切换（.modal-dm.is-chat 时藏列表）。
+   弹窗自己吃满高度、内部各自滚动，不再用 .modal 的 24px 内边距和整页滚动。
+   z-index 抬到 130：从作品详情（z100）/ 送灯火面板（z120）里点「私信」进来时，
+   必须盖在打开中的那层弹窗上面（DOM 顺序在 detailModal 之前，同级 z 会被压住）。 */
+#dmMask { z-index: 130; }
+.modal-dm {
+  width: min(780px, 94vw); max-width: 780px;
+  height: min(580px, 84vh); max-height: 84vh;
+  padding: 0; overflow: hidden;
+  display: grid; grid-template-columns: 268px minmax(0, 1fr);
+}
+.dm-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.dm-list-pane { background: #fafafd; border-right: 1px solid var(--border); }
+.dm-list-head {
+  flex: none; display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 16px 12px;
+}
+.dm-list-head h2 { margin: 0; font-size: 16px; color: var(--text); }
+.dm-list-head .close-btn { position: static; background: none; box-shadow: none; color: var(--muted); }
+.dm-list-head .close-btn:hover { color: var(--text); }
+.dm-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 8px; }
+.dm-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 10px; border: none; border-radius: 10px; background: none;
+  font-family: inherit; text-align: left; cursor: pointer;
+  transition: background .15s;
+}
+.dm-item:hover { background: #f1f2f9; }
+.dm-item.is-on { background: #eef0ff; }
+.dm-ava {
+  flex: none; width: 38px; height: 38px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+  font-size: 15px; font-weight: 700; line-height: 1;
+}
+.dm-ava img, .dm-peer-avatar img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; display: block;
+}
+.dm-item-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.dm-item-top { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; }
+.dm-item-top b {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 13.5px; font-weight: 600; color: var(--text);
+}
+.dm-item-top i { flex: none; font-size: 10.5px; font-style: normal; color: var(--muted); }
+.dm-item-sub {
+  font-size: 12px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dm-item.has-unread .dm-item-sub { color: #4a4f5e; }
+.dm-badge {
+  flex: none; min-width: 17px; height: 17px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px; background: var(--danger); color: #fff;
+  font-size: 10px; font-weight: 700; line-height: 1;
+}
+.dm-list-foot { flex: none; padding: 10px 16px; border-top: 1px solid var(--border); }
+.dm-policy {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; padding: 2px 0; border: none; background: none;
+  font-family: inherit; font-size: 12px; color: var(--muted); cursor: pointer; text-align: left;
+}
+.dm-policy:hover { color: var(--text); }
+.dm-policy.is-on { color: var(--primary); }
+
+/* 聊天栏 */
+.dm-chat-pane { background: #fff; }
+.dm-chat-head {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: 11px 16px; border-bottom: 1px solid var(--border); position: relative;
+}
+.dm-back {
+  display: none; flex: none; width: 30px; height: 30px; margin-left: -6px;
+  align-items: center; justify-content: center;
+  border: none; border-radius: 8px; background: none; cursor: pointer;
+  font-size: 22px; line-height: 1; color: var(--muted);
+}
+.dm-back:hover { background: #f4f4fb; color: var(--text); }
+.dm-peer-avatar {
+  flex: none; width: 34px; height: 34px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+  font-size: 14px; font-weight: 700; line-height: 1;
+}
+.dm-peer-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.dm-peer-meta b {
+  font-size: 14px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dm-peer-meta i { font-size: 11px; font-style: normal; color: var(--muted); }
+.dm-more {
+  flex: none; width: 30px; height: 30px; border: none; border-radius: 8px;
+  background: none; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1;
+}
+.dm-more:hover { background: #f4f4fb; color: var(--text); }
+.dm-menu {
+  position: absolute; right: 14px; top: 50px; z-index: 8;
+  min-width: 146px; padding: 4px;
+  background: #fff; border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(30, 30, 60, .14);
+}
+.dm-menu button {
+  display: block; width: 100%; padding: 8px 10px;
+  border: none; border-radius: 7px; background: none;
+  font-family: inherit; font-size: 13px; color: var(--text); text-align: left; cursor: pointer;
+}
+.dm-menu button:hover { background: #f4f4fb; }
+.dm-thread {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 16px; background: #f7f7fd;
+}
+.dm-msg { display: flex; flex-direction: column; align-items: flex-start; max-width: 78%; }
+.dm-msg.is-mine { align-self: flex-end; align-items: flex-end; }
+.dm-bubble {
+  padding: 9px 13px; border-radius: 14px 14px 14px 4px;
+  background: #fff; border: 1px solid var(--border); color: var(--text);
+  font-size: 13.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+  box-shadow: 0 1px 2px rgba(30, 30, 60, .04);
+}
+.dm-msg.is-mine .dm-bubble {
+  background: linear-gradient(135deg, #6a63ff, #5b5bd6);
+  border-color: transparent; color: #fff; border-radius: 14px 14px 4px 14px;
+}
+.dm-time { margin-top: 3px; font-size: 10.5px; color: var(--muted); }
+.dm-thread-empty {
+  margin: auto; padding: 24px 12px; text-align: center;
+  font-size: 13px; line-height: 1.7; color: var(--muted);
+}
+.dm-thread-empty .ico { display: block; margin: 0 auto 10px; opacity: .5; }
+.dm-thread-empty p { margin: 0; }
+.dm-thread-empty i { font-style: normal; font-size: 12px; color: #b45309; }
+.dm-loading { margin: auto; font-size: 13px; color: var(--muted); }
+.dm-compose {
+  flex: none; display: flex; align-items: flex-end; gap: 10px;
+  padding: 12px 16px 6px; border-top: 1px solid var(--border);
+}
+.dm-compose textarea {
+  flex: 1; min-width: 0; max-height: 120px; resize: none;
+  padding: 10px 13px; font-size: 13.5px; line-height: 1.6; font-family: inherit;
+  border: 1px solid var(--border); border-radius: 12px; background: #fafafe;
+  transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.dm-compose textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(91, 91, 214, .12); background: #fff; }
+.dm-compose textarea:disabled { background: #f4f4f8; color: var(--muted); cursor: not-allowed; }
+.dm-compose .btn-primary { flex: none; height: 40px; padding: 0 20px; border-radius: 12px; }
+.dm-compose-tip { flex: none; margin: 0; padding: 0 16px 10px; font-size: 11px; color: var(--muted); text-align: right; }
+.dm-compose-tip.is-warn { color: #b45309; text-align: left; }
+/* 私信空态：复用铃铛的空态骨架，但列表区自己没有上下留白时补一点 */
+.dm-empty { margin: auto; padding: 30px 12px; }
+/* 作品详情里的「私信」图标胶囊：和点赞/收藏同规格，不抢送灯火的主位 */
+.detail-actions .btn-dm { min-width: 50px; padding: 0 10px; }
+
+@media (max-width: 720px) {
+  .modal-dm { grid-template-columns: 1fr; width: 100%; height: min(92vh, 680px); max-height: 92vh; }
+  .dm-list-pane { border-right: none; }
+  .modal-dm:not(.is-chat) .dm-chat-pane { display: none; }
+  .modal-dm.is-chat .dm-list-pane { display: none; }
+  .dm-back { display: inline-flex; }
+  .dm-list-head h2 { font-size: 17px; }
+}
+
+
 /* 数据看板里的签到卡 */
 .checkin-card {
   border: 1px solid #e4e1ff; border-radius: 14px;
@@ -7418,7 +7615,7 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .ud-ok { margin-left: 6px; padding: 1px 6px; border-radius: 999px; font-size: 11px; font-weight: 500; color: var(--primary); background: #eeeefc; }
 .ud-ok.is-muted { color: #8a8f99; background: #f1f2f6; }   /* 系统消息提示：已屏蔽（灰）vs 正常（紫） */
 /* 系统消息提示：switch 开关（开＝紫＝正常弹提示 / 关＝灰＝已屏蔽，消息仍进铃铛只停弹窗），
-   视觉仅作状态展示，点击热区还是整行按钮（toggleNoticeMute 绑在 ud-item 上） */
+   视觉仅作状态展示，点击热区还是整行按钮（toggleNoticeCatMute 绑在整行按钮上） */
 .ud-switch {
   flex: none; margin-left: auto; position: relative;   /* 右对齐，和一级菜单的 ▸ 箭头同侧 */
   width: 30px; height: 17px; border-radius: 999px;
@@ -7439,6 +7636,27 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .remember-row input[type="checkbox"] {
   width: 16px; height: 16px; margin: 0; accent-color: var(--primary); cursor: pointer; flex: none;
 }
+
+/* 消息提示设置弹窗：按板块开关提示（复用 ud-switch 的开关视觉与 ud-ok 的状态胶囊配色） */
+.npref-list { display: flex; flex-direction: column; gap: 8px; }
+.npref-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px;
+  background: #fafafe; cursor: pointer; font: inherit;
+}
+.npref-row:hover { border-color: var(--primary); }
+.npref-row:disabled { opacity: .6; cursor: default; }
+.npref-ico {
+  flex: none; width: 30px; height: 30px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  background: #eeeefc; color: var(--primary);
+}
+.npref-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.npref-main b { font-size: 14px; color: var(--text); }
+.npref-main i { font-style: normal; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.npref-state { flex: none; margin-left: auto; padding: 1px 6px; border-radius: 999px; font-size: 11px; font-weight: 500; color: var(--primary); background: #eeeefc; }
+.npref-state.is-muted { color: #8a8f99; background: #f1f2f6; }   /* 已屏蔽（灰）vs 提示中（紫） */
+.npref-row .ud-switch { margin-left: 0; }                        /* 开关跟着状态胶囊走，不抢右对齐 */
 
 .form-hint { font-size: 12px; color: var(--muted); background: #f7f7fb; border-radius: 8px; padding: 8px 10px; margin-bottom: 14px; }
 /* 源码仓库地址填了不认识的站点：同一条提示就地变红，别等提交才报错 */
@@ -7668,7 +7886,7 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .rank-top { margin: 26px 0 10px; }
 .rank-top .ad-slot { margin: 0; }
 
-/* ---------- PC 榜单两栏（2026-11-12）：左排行榜，右栏先放推荐位 ----------
+/* ---------- PC 榜单两栏（2026-11-12）：左排行榜，右栏期刊架 + 推荐位 ----------
    ≥1100px 才分栏：右栏 300px 吸顶跟随，推荐位竖排两条（与酒馆右栏同口径的 maxCols=2）；
    1100 以下不分栏，推荐位照旧在页头下方通栏（.rank-top）。
    以后右栏要加新模块（公告 / 活动 / 专题 …），直接往 .rank-side 里排即可。 */
@@ -7688,6 +7906,182 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
     margin-top: 26px;   /* 接住原页头推荐位的上边距节奏（.rank-top 26px 0 10px） */
   }
   .rank-side .ad-slot { margin: 0; }
+}
+
+/* ---------- 星梦期刊：榜单右栏的「期刊架」（2026-11-15） ----------
+   右栏 300px，推荐位开口在前、期刊架跟在后面（2026-11-15 站长调整）：刊头（刊标 + 名字 + 周榜/月榜分段）→
+   本期封面卡 → 往期书脊 → 出刊说明。手机上 .rank-side 整栏不显示（H5 榜单没有右栏）。 */
+.jrn {
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 13px 13px 9px; margin-bottom: 14px;
+}
+.jrn[hidden] { display: none; }
+.jrn-head { display: flex; align-items: center; gap: 9px; }
+.jrn-mark {
+  width: 30px; height: 30px; flex-shrink: 0; border-radius: 9px; background: #f1f1fd;
+  display: flex; align-items: center; justify-content: center; color: var(--primary);
+}
+.jrn-mark svg { width: 17px; height: 17px; display: block; }
+.jrn-brand { flex: 1; min-width: 0; line-height: 1.25; }
+.jrn-name { display: block; font-size: 14.5px; font-weight: 700; letter-spacing: .2px; }
+.jrn-sub {
+  display: block; font-size: 11px; color: var(--muted); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.jrn-tabs { display: inline-flex; flex-shrink: 0; background: #f3f3fa; border-radius: 999px; padding: 2px; }
+.jrn-tab {
+  border: 0; background: transparent; font-family: inherit; font-size: 12px; color: var(--muted);
+  padding: 4px 9px; border-radius: 999px; cursor: pointer; line-height: 1.3;
+}
+.jrn-tab.on { background: #fff; color: var(--primary); font-weight: 600; box-shadow: 0 1px 3px rgba(31,35,48,.12); }
+
+.jrn-body { margin-top: 11px; }
+/* 本期：整张卡可点，翻到这一期的整本 */
+.jrn-live {
+  display: block; width: 100%; text-align: left; font-family: inherit; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 12px; padding: 10px 11px 9px;
+  background: linear-gradient(180deg, #fafaff, #fff); transition: border-color .15s;
+}
+.jrn-live:hover { border-color: var(--primary); }
+.jrn-live-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.jrn-live-tag { font-size: 12px; font-weight: 600; color: var(--primary); }
+.jrn-live-left { font-style: normal; font-size: 11px; color: var(--muted); }
+.jrn-live-row { display: flex; align-items: center; gap: 9px; margin-top: 9px; }
+.jrn-live-row img { width: 46px; height: 34px; border-radius: 7px; object-fit: cover; flex-shrink: 0; background: #f2f2fa; }
+.jrn-live-txt { min-width: 0; }
+.jrn-live-txt b {
+  display: block; font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.jrn-live-txt em { display: block; font-style: normal; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.jrn-live-empty { display: block; font-size: 12px; color: var(--muted); margin-top: 9px; }
+.jrn-live-foot { display: block; font-size: 11px; color: var(--muted); margin-top: 8px; }
+
+/* 往期：一条一期，像期刊架上的书脊 */
+.jrn-past { margin-top: 12px; }
+.jrn-past-head { font-size: 11.5px; color: var(--muted); letter-spacing: .4px; margin-bottom: 4px; }
+.jrn-item {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; font-family: inherit;
+  background: transparent; border: 0; border-top: 1px solid #f0f1f7; padding: 8px 2px; cursor: pointer;
+}
+.jrn-past-head + .jrn-item { border-top: 0; }
+.jrn-item:hover .jrn-item-main b { color: var(--primary); }
+.jrn-item img, .jrn-item-noimg { width: 42px; height: 31px; border-radius: 6px; flex-shrink: 0; object-fit: cover; background: #f3f3fa; }
+.jrn-item-noimg { display: flex; align-items: center; justify-content: center; font-size: 10px; color: #b0b3c6; }
+.jrn-item-main { flex: 1; min-width: 0; }
+.jrn-item-main b {
+  display: block; font-size: 12.5px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.jrn-item-main b i { font-style: normal; font-weight: 400; font-size: 11px; color: var(--muted); margin-left: 6px; }
+.jrn-item-main em {
+  display: block; font-style: normal; font-size: 11.5px; color: var(--muted); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.jrn-item-score { flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--primary); }
+
+/* 月榜首期筹备中 */
+.jrn-pending { border: 1px dashed #dcdcf1; border-radius: 12px; padding: 11px; background: #fbfbff; }
+.jrn-pending-tag {
+  display: inline-block; font-size: 11px; font-weight: 600; color: var(--primary);
+  background: #f0f0fe; border-radius: 999px; padding: 2px 8px;
+}
+.jrn-pending-line { font-size: 12px; color: var(--muted); line-height: 1.7; margin-top: 8px; }
+.jrn-pending-line b { color: var(--text); font-weight: 600; }
+.jrn-bar { height: 5px; border-radius: 999px; background: #ececf8; overflow: hidden; margin: 9px 0 6px; }
+.jrn-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #9a9ae8, var(--primary)); }
+.jrn-pending-meta { font-size: 11px; color: var(--muted); }
+.jrn-lead {
+  display: block; width: 100%; text-align: left; margin-top: 9px; font-family: inherit; font-size: 12px;
+  color: var(--primary); background: #fff; border: 1px solid #e3e3f6; border-radius: 9px;
+  padding: 7px 9px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.jrn-lead:hover { border-color: var(--primary); }
+
+.jrn-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 10px; padding-top: 8px; border-top: 1px solid #f0f1f7; font-size: 11px; color: var(--muted);
+}
+.jrn-help { border: 0; background: transparent; font-family: inherit; font-size: 11px; color: var(--muted); cursor: pointer; padding: 0; }
+.jrn-help:hover { color: var(--primary); }
+.jrn-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 14px 2px; }
+
+/* ---------- 星梦期刊 · 单期详情（杂志式的一页） ---------- */
+.modal.journal-modal { max-width: 660px; padding: 24px 24px 22px; }
+.journal-modal .modal-head { margin-bottom: 18px; }
+.journal-modal .modal-head h2 { display: flex; align-items: center; gap: 7px; font-size: 15px; }
+.journal-modal .modal-head h2 svg { width: 16px; height: 16px; display: block; color: var(--primary); }
+.journal-sheet { min-height: 120px; }
+.jrn-issue-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.jrn-issue-kind { font-size: 12px; letter-spacing: 1.4px; color: var(--primary); font-weight: 600; }
+.jrn-issue-badge {
+  font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px;
+}
+.jrn-issue-badge.is-live { color: #b25b00; background: #fff6ea; border-color: #ffe0b8; }
+.jrn-issue-no { font-size: 30px; font-weight: 700; letter-spacing: 1px; line-height: 1.25; margin-top: 6px; }
+.jrn-issue-date { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.jrn-cover {
+  position: relative; margin: 14px 0 12px; border-radius: 14px; overflow: hidden;
+  aspect-ratio: 16 / 9; background: linear-gradient(135deg, #6d6de0, #b9a6f0);
+}
+.jrn-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.jrn-cover-shade {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(18,16,40,.82), rgba(18,16,40,.18) 46%, rgba(18,16,40,0) 72%);
+}
+.jrn-cover-text { position: absolute; left: 18px; right: 18px; bottom: 15px; color: #fff; }
+.jrn-cover-label { font-size: 11px; letter-spacing: 2px; opacity: .82; }
+.jrn-cover-text h3 {
+  font-size: 21px; line-height: 1.3; margin: 5px 0 4px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.jrn-cover-text p { font-size: 12.5px; opacity: .88; }
+.jrn-cover.is-empty { aspect-ratio: auto; padding: 26px 0; background: linear-gradient(135deg, #eef0fb, #f7f5fd); }
+.jrn-cover.is-empty .jrn-cover-text { position: static; color: var(--text); text-align: center; padding: 8px 18px; }
+.jrn-cover.is-empty .jrn-cover-label { color: var(--primary); opacity: 1; }
+.jrn-cover.is-empty h3 { font-size: 16px; }
+.jrn-cover.is-empty p { color: var(--muted); opacity: 1; }
+
+.jrn-lede { font-size: 13.5px; line-height: 1.8; color: var(--text); }
+.jrn-figures {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; margin: 14px 0 16px;
+  background: var(--border); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+}
+.jrn-figures > div { background: #fff; padding: 10px 4px; text-align: center; }
+.jrn-figures b { display: block; font-size: 17px; font-weight: 700; color: var(--primary); }
+.jrn-figures span { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+.jrn-board { list-style: none; }
+.jrn-row {
+  display: flex; align-items: center; gap: 11px; padding: 9px 2px; border-top: 1px solid #f0f1f7; cursor: pointer;
+}
+.jrn-row:first-child { border-top: 0; }
+.jrn-row:hover { background: #fafaff; }
+.jrn-row-no { width: 20px; flex-shrink: 0; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted); }
+.jrn-row-no.is-top { color: var(--primary); }
+.jrn-row img { width: 56px; height: 42px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: #f2f2fa; }
+.jrn-row-main { flex: 1; min-width: 0; }
+.jrn-row-main b {
+  display: block; font-size: 13.5px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.jrn-row-main em { display: block; font-style: normal; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.jrn-row-score { flex-shrink: 0; text-align: right; }
+.jrn-row-score b { display: block; font-size: 15px; color: var(--primary); }
+.jrn-row-score i { display: block; font-style: normal; font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+
+.jrn-sheet-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 16px; padding-top: 13px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted);
+}
+.jrn-sheet-foot .btn-ghost { font-size: 12.5px; padding: 7px 12px; flex-shrink: 0; }
+.jrn-note { font-size: 11.5px; line-height: 1.75; color: var(--muted); margin-top: 12px; }
+@media (max-width: 560px) {
+  .modal.journal-modal { padding: 20px 18px 18px; }
+  .jrn-issue-no { font-size: 25px; }
+  .jrn-figures { grid-template-columns: repeat(3, 1fr); }
+  .jrn-cover-text h3 { font-size: 18px; }
+  .jrn-row-score i { display: none; }
 }
 
 @media (max-width: 640px) {
@@ -9667,6 +10061,22 @@ html.dm-quiet *::after {
 .ql-count { float: right; font-size: 11px; font-weight: 400; color: var(--muted); }
 .ql-count.is-full { color: var(--danger); }
 
+/* 一句话定位的「AI 写一句」：紧贴输入框，语汇跟介绍栏的 .ai-write-row 一致，
+   但更紧凑 —— 它是五栏里的一栏，不该抢走整块的注意力 */
+.ai-pos-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 2px; min-height: 24px; }
+.ai-pos-row .ai-write-btn { padding: 3px 10px; font-size: 12px; }
+.ai-pos-hint { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.ai-pos-hint.is-busy { color: var(--primary); }
+.ai-pos-hint.is-ok { color: var(--primary-dark); }
+.ai-pos-hint.is-err { color: var(--danger); }
+/* 「去写两句介绍」：介绍太短时的出口，用链接样式，别做成第二个主按钮 */
+.ai-pos-go {
+  border: 0; background: none; padding: 0; font: inherit; font-size: 12px; font-weight: 600;
+  color: var(--primary); cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.ai-pos-go:hover { color: var(--primary-dark); }
+.ai-pos-go[hidden] { display: none; }
+
 /* ---------- 首页「随便逛逛」：分层随机推荐（docs/discover-spec-v1.md） ---------- */
 .wander-section { margin-top: 18px; }
 .wander-grid { margin-top: 4px; }
@@ -10732,3 +11142,261 @@ html.dm-quiet .jar-fly-star { display: none; }
 .br-stat-btn b { font-weight: 600; }
 .br-stat-btn:hover { color: var(--primary); }
 .br-stat-like.is-on { color: var(--primary); }
+
+/* 「你是不是想搜」（拼音搜索的落点提示，2026-11-15）：跟着列表标题走，别抢标题的视觉 */
+.list-dym { border: 0; background: none; color: var(--primary); font: inherit; font-size: 13px; padding: 0; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.list-dym[hidden] { display: none; }
+.list-dym:hover { text-decoration: underline; }
+
+/* ==========================================================================
+   卡片操作扇面（2026-11-15 站长要的）
+   --------------------------------------------------------------------------
+   原来封面右下角并排三颗圆钮（收藏/分享/屏蔽），谁的卡片都挂着三个点，封面像控制面板。
+   现在只留一颗 ✦：鼠标进卡片（触屏点这颗）时，五颗动作沿四分之一圆弧从按钮位置扇出。
+     点赞 → 收藏 → 分享 → 屏蔽 → 送灯火，序号越大角度越大，收起来全缩回那颗里。
+
+   角度、半径都不写死在 JS：JS 只给序号 --i，角度 = --a0 + i × --da。
+   间隔是固定弦长（22° @ 90px ≈ 34px），所以 5 颗正好铺满 88° 的四分之一弧，
+   只有 3 颗时收成 44° 的一小把 —— 颗距恒定，不会缩成一排孤零零的球。
+   位移用「转出去再转回来」：
+     rotate(-a) translateY(-r) rotate(a)
+   外层转方向，里层把图标转正，所以扇面里的图标始终是正的，气泡也是正的。
+
+   层级：触发那颗压在卡片链接（z-index:2）之上，不然点它等于点开详情。
+   静音模式（html.dm-quiet）会连过渡一起停掉 —— 直接展开/收起，功能不受影响。
+   ========================================================================== */
+/* 卡片自己当容器：扇面的直径和半径按卡片实际宽度缩放（cqw = 卡片宽度的 1%）。
+   4/5/6 列、手机 45vw 小卡全部同一套公式算，不再按断点各写一份，也不会窄卡片被扇面顶出封面。
+   只给带扇面的卡挂容器（推荐卡也复用 .card，那边不需要、也别动它的定位上下文）。 */
+.card:has(.card-actions) { container-type: inline-size; }
+.card-actions {
+  /* 先写死一份兜底：不认识 cqw / container-type 的老浏览器读不懂下一行，会留着这两个值 */
+  --sz: 29px;                         /* 按钮直径 */
+  --r: 90px;                          /* 扇出半径 */
+  --sz: clamp(22px, 13.4cqw, 29px);   /* 按钮直径：按卡片宽度缩（26px 宽的窄卡也不会小到点不准） */
+  --r: clamp(58px, 42cqw, 90px);      /* 扇出半径（90px 时弦长 ≈ 34px，颗与颗之间留 5px） */
+  --a0: 8deg;              /* 第一颗的起角：0deg = 正上方，往左为正 */
+  --da: 22deg;             /* 相邻两颗的夹角（固定弦长，颗距不随数量变） */
+  position: absolute; right: 10px; bottom: 20px; z-index: 4;
+  width: var(--sz); height: var(--sz);
+}
+
+/* 扇面底光：从按钮位置往左上晕开的一团柔光，把白玻璃按钮托起来，
+   同时把封面压暗一点点（不压暗的话白扣子落在浅色截图上会糊成一片） */
+.card-actions .ca-glow {
+  position: absolute; left: 50%; top: 50%; z-index: 0;
+  width: calc(var(--r) * 2.2); height: calc(var(--r) * 2.2);
+  margin: calc(var(--r) * -1.1) 0 0 calc(var(--r) * -1.1);
+  border-radius: 50%; pointer-events: none;
+  /* 两团都用长尾渐变（0 → 0 在 68%），中间不留硬边圆环：
+     半径比扇面大一圈，光要像「从角落透出来」，不能像贴了个圆片 */
+  background:
+    radial-gradient(circle at 50% 50%, rgba(22, 16, 58, .24) 0%, rgba(22, 16, 58, .08) 30%, rgba(22, 16, 58, 0) 68%),
+    radial-gradient(circle at 50% 50%, rgba(126, 116, 240, .19) 0%, rgba(126, 116, 240, .06) 36%, rgba(126, 116, 240, 0) 66%);
+  opacity: 0; transform: scale(.55);
+  transition: opacity .34s ease, transform .55s cubic-bezier(.2, 1.05, .35, 1);
+}
+
+/* 两道扩散光环：展开瞬间从按钮上荡开，收起时直接归零 */
+.card-actions .ca-ripple {
+  position: absolute; inset: 0; z-index: 1; border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, .92);
+  box-shadow: 0 0 12px rgba(150, 140, 255, .55);
+  opacity: 0; pointer-events: none;
+}
+
+/* ---------- 五颗动作 ---------- */
+.card-actions .ca-item {
+  position: absolute; inset: 0; z-index: 2;
+  width: var(--sz); height: var(--sz);
+  padding: 0; border: 0; background: none;
+  display: block; cursor: pointer;
+  --ang: calc(var(--a0) + var(--i, 0) * var(--da, 0deg));
+  transform: rotate(calc(var(--ang) * -.5)) translateY(0) scale(.3);
+  opacity: 0; visibility: hidden;
+  transition: transform .3s cubic-bezier(.4, 0, .7, .25),
+              opacity .16s ease,
+              visibility 0s linear .3s;
+}
+
+/* 玻璃扣子：内层单独做视觉，外层只管位置 —— hover 放大不会跟扇面的定位 transform 打架 */
+.card-actions .ca-face {
+  position: absolute; inset: 0; border-radius: 50%;
+  display: grid; place-items: center;
+  background: linear-gradient(150deg, rgba(255, 255, 255, .97), rgba(255, 255, 255, .82));
+  box-shadow: 0 5px 16px rgba(24, 18, 66, .26), 0 0 0 1px rgba(28, 22, 70, .07),
+              inset 0 1px 0 rgba(255, 255, 255, .95);
+  -webkit-backdrop-filter: blur(10px) saturate(1.5);
+  backdrop-filter: blur(10px) saturate(1.5);
+  transition: transform .26s cubic-bezier(.2, 1.4, .4, 1), background .22s ease,
+              color .22s ease, box-shadow .26s ease;
+}
+.card-actions .ca-face svg { width: 15px; height: 15px; display: block; }
+.card-actions .ca-item:hover .ca-face { transform: scale(1.14); }
+/* 悬浮那颗连气泡一起抬到最上层：扇面里相邻两颗只隔 34px，气泡必然压到隔壁一点，
+   压在下面就会一半被盖住 —— 气泡本身 pointer-events:none，挡住的那颗照样点得到 */
+.card-actions .ca-item:hover { z-index: 5; }
+.card-actions .ca-item:active .ca-face { transform: scale(.96); }
+
+/* 悬停气泡：贴在扣子左边，跟扇面一起转正（内层已抵消旋转，所以它永远是水平的） */
+.card-actions .ca-tip {
+  position: absolute; top: 50%; right: calc(100% + 8px);
+  padding: 5px 9px; border-radius: 999px; white-space: nowrap;
+  font-size: 11.5px; font-weight: 600; line-height: 1; letter-spacing: .02em;
+  color: #fff; background: rgba(24, 20, 52, .8);
+  box-shadow: 0 6px 18px rgba(18, 12, 48, .28);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  opacity: 0; pointer-events: none;
+  transform: translateY(-50%) translateX(5px);
+  transition: opacity .16s ease, transform .24s cubic-bezier(.2, 1.3, .4, 1);
+}
+.card-actions .ca-item:hover .ca-tip { opacity: 1; transform: translateY(-50%) translateX(0); }
+
+/* 每颗自己的语气色：默认灰，hover 亮成各自的色，已赞/已收藏常亮 */
+.card-actions .ca-like .ca-face { color: #6f7390; }
+.card-actions .ca-fav:not(.active) .ca-face svg { filter: grayscale(1); opacity: .48; }
+.card-actions .ca-share .ca-face,
+.card-actions .ca-block .ca-face { color: #767b9c; }
+
+.card-actions .ca-like:hover .ca-face {
+  background: linear-gradient(145deg, #ff97a4, #ef4f66);
+  color: #fff; box-shadow: 0 8px 22px rgba(229, 72, 77, .45);
+}
+.card-actions .ca-fav:hover .ca-face {
+  background: linear-gradient(145deg, #ffe9b0, #f6b73c);
+  box-shadow: 0 8px 22px rgba(240, 165, 0, .42);
+}
+.card-actions .ca-share:hover .ca-face {
+  background: linear-gradient(145deg, #7c7cf0, #4a4ac4);
+  color: #fff; box-shadow: 0 8px 22px rgba(91, 91, 214, .45);
+}
+.card-actions .ca-block:hover .ca-face {
+  background: linear-gradient(145deg, #8e93b3, #4f5468);
+  color: #fff; box-shadow: 0 8px 22px rgba(50, 54, 74, .42);
+}
+.card-actions .ca-lamp:hover .ca-face {
+  background: linear-gradient(145deg, #ffcf7a, #f0913f);
+  box-shadow: 0 8px 22px rgba(240, 145, 63, .45);
+}
+
+/* 已点赞 / 已收藏：不靠 hover 也能一眼看见 */
+.card-actions .ca-like.active .ca-face {
+  background: linear-gradient(150deg, #fff, #ffe7ea);
+  color: var(--danger);
+  box-shadow: 0 6px 18px rgba(229, 72, 77, .3), inset 0 0 0 1px rgba(229, 72, 77, .22);
+}
+.card-actions .ca-fav.active .ca-face {
+  background: linear-gradient(150deg, #fff, #fff3d8);
+  box-shadow: 0 6px 18px rgba(240, 165, 0, .3), inset 0 0 0 1px rgba(240, 165, 0, .22);
+}
+
+/* ---------- 触发那颗 ✦ ---------- */
+.card-actions .ca-trigger {
+  position: absolute; inset: 0; z-index: 3;
+  width: 100%; height: 100%; padding: 0; border: 0; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer;
+  background: linear-gradient(150deg, rgba(255, 255, 255, .97), rgba(255, 255, 255, .84));
+  box-shadow: 0 5px 16px rgba(24, 18, 66, .24), 0 0 0 1px rgba(28, 22, 70, .07),
+              inset 0 1px 0 rgba(255, 255, 255, .95);
+  -webkit-backdrop-filter: blur(10px) saturate(1.5);
+  backdrop-filter: blur(10px) saturate(1.5);
+  transition: background .3s ease, box-shadow .3s ease, transform .4s cubic-bezier(.2, 1.2, .4, 1);
+}
+.card-actions .ca-spark { display: block; line-height: 0; }
+.card-actions .ca-trigger svg {
+  width: 16px; height: 16px; display: block;
+  transition: transform .55s cubic-bezier(.2, 1.2, .4, 1);
+}
+/* 已互动小红点：点赞或收藏过就在 ✦ 角上点一颗（不支持 :has 的老浏览器就是没有，不影响功能） */
+.card-actions .ca-dot {
+  position: absolute; top: -1px; right: -1px; width: 8px; height: 8px; border-radius: 50%;
+  background: linear-gradient(145deg, #ff8b98, #e5484d); border: 1.5px solid #fff;
+  opacity: 0; transform: scale(.3);
+  transition: opacity .2s ease, transform .32s cubic-bezier(.2, 1.4, .4, 1);
+}
+.card-actions:has(.ca-item.active) .ca-dot { opacity: 1; transform: scale(1); }
+
+/* ---------- 展开态 ----------
+   桌面：鼠标进卡片就摊开（不用去瞄那颗 30px 的扣子）；
+   触屏：点一下 ✦ 摊开（.is-open），点别处收起；
+   键盘：Tab 进扇面（:has(:focus-visible)）也摊开，五颗能逐个走。
+   这里刻意不用 :focus-within —— 鼠标点一下触发器也会留下焦点，扇面就会「粘住」不放。
+   transform 只在这里写两遍（显式展开 / hover 展开），因为媒体查询没法混进同一个选择器列表；
+   触屏端刻意不认 .card:hover —— 手机点完卡片会留着 hover 态，扇面会一直挂在那儿。 */
+.card-actions.is-open .ca-item,
+.card-actions:has(:focus-visible) .ca-item {
+  transform: rotate(calc(var(--ang) * -1)) translateY(calc(var(--r) * -1)) rotate(var(--ang)) scale(1);
+  opacity: 1; visibility: visible;
+  transition: transform .46s cubic-bezier(.16, 1.42, .34, 1) calc(var(--i, 0) * 34ms),
+              opacity .18s ease calc(var(--i, 0) * 34ms),
+              visibility 0s linear calc(var(--i, 0) * 34ms);
+}
+.card-actions.is-open .ca-glow,
+.card-actions:has(:focus-visible) .ca-glow { opacity: 1; transform: scale(1); }
+.card-actions.is-open .ca-trigger,
+.card-actions:has(:focus-visible) .ca-trigger {
+  background: linear-gradient(150deg, #fff, #f5f4ff);
+  box-shadow: 0 0 0 4px rgba(91, 91, 214, .13), 0 8px 22px rgba(91, 91, 214, .34),
+              inset 0 1px 0 rgba(255, 255, 255, .95);
+  transform: scale(.87);
+}
+.card-actions.is-open .ca-trigger svg,
+.card-actions:has(:focus-visible) .ca-trigger svg { transform: rotate(-90deg) scale(1.08); }
+.card-actions.is-open .ca-ripple,
+.card-actions:has(:focus-visible) .ca-ripple { animation: caRipple .8s cubic-bezier(.22, .72, .3, 1) both; }
+.card-actions.is-open .ca-ripple.is-2,
+.card-actions:has(:focus-visible) .ca-ripple.is-2 { animation-delay: .09s; }
+
+@media (hover: hover) {
+  .card:hover .card-actions .ca-item {
+    transform: rotate(calc(var(--ang) * -1)) translateY(calc(var(--r) * -1)) rotate(var(--ang)) scale(1);
+    opacity: 1; visibility: visible;
+    transition: transform .46s cubic-bezier(.16, 1.42, .34, 1) calc(var(--i, 0) * 34ms),
+                opacity .18s ease calc(var(--i, 0) * 34ms),
+                visibility 0s linear calc(var(--i, 0) * 34ms);
+  }
+  .card:hover .card-actions .ca-glow { opacity: 1; transform: scale(1); }
+  .card:hover .card-actions .ca-trigger {
+    background: linear-gradient(150deg, #fff, #f5f4ff);
+    box-shadow: 0 0 0 4px rgba(91, 91, 214, .13), 0 8px 22px rgba(91, 91, 214, .34),
+                inset 0 1px 0 rgba(255, 255, 255, .95);
+    transform: scale(.87);
+  }
+  .card:hover .card-actions .ca-trigger svg { transform: rotate(-90deg) scale(1.08); }
+  .card:hover .card-actions .ca-ripple { animation: caRipple .8s cubic-bezier(.22, .72, .3, 1) both; }
+  .card:hover .card-actions .ca-ripple.is-2 { animation-delay: .09s; }
+}
+
+/* 涟漪：从按钮位置向外荡开两圈，半径约等于扇面半径就散尽（不散尽会显脏） */
+@keyframes caRipple {
+  0%   { transform: scale(.6); opacity: .95; }
+  70%  { opacity: .35; }
+  100% { transform: scale(5.6); opacity: 0; }
+}
+
+/* 手机端只补两处小的：贴边近一点、图标再小一档
+   （直径/半径已经被 clamp + cqw 按卡片宽度算好了，这里不用再改） */
+@media (max-width: 640px) {
+  .card-actions { bottom: 16px; right: 8px; }
+  .card-actions .ca-face svg { width: 13px; height: 13px; }
+  .card-actions .ca-trigger svg { width: 14px; height: 14px; }
+}
+
+/* 减少动效：动画和位移全关，只剩「瞬间出现」——功能一个不少 */
+@media (prefers-reduced-motion: reduce) {
+  .card-actions .ca-item,
+  .card-actions.is-open .ca-item,
+  .card-actions:has(:focus-visible) .ca-item,
+  .card:hover .card-actions .ca-item {
+    transition: none;
+  }
+  .card-actions .ca-glow,
+  .card-actions .ca-trigger svg,
+  .card-actions .ca-tip,
+  .card-actions .ca-face,
+  .card-actions .ca-dot { transition: none; }
+  .card-actions.is-open .ca-ripple,
+  .card-actions:has(:focus-visible) .ca-ripple,
+  .card:hover .card-actions .ca-ripple { animation: none; }
+}
+

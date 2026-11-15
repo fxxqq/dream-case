@@ -59,3 +59,7 @@ _iconpreview/
 
 # deploy-patch.sh 的临时工作目录（线上副本 + 待发版本）
 .deploy-patch.tmp.*
+
+# 本地助手工作区（会话记忆与临时截图），不入库
+.workbuddy/
+.workbuddy-ai/

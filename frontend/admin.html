@@ -69,6 +69,13 @@
     .tr-col .ps-bar { min-width:18px; }
     /* 「友链」徽标挂在数字右侧 */
     .ps-tag { flex:none; font-size:10px; line-height:1.7; padding:0 6px; border-radius:99px; background:#e7f8ec; color:var(--ok); }
+    /* 来源明细：每个来源域名下展开「从那个站的哪个页面跳进来」的具体链接 */
+    .ps-subs { margin:0 0 6px; padding:2px 0 2px 16px; border-left:2px solid #ececf6; display:flex; flex-direction:column; gap:3px; }
+    .ps-sub { display:flex; align-items:center; gap:8px; font-size:11.5px; line-height:1.4; }
+    .ps-sub a { color:#6a6a80; text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:72%; }
+    .ps-sub a:hover { color:var(--primary); text-decoration:underline; }
+    .ps-sub b { margin-left:auto; flex:none; font-weight:600; color:#9a9ab0; font-size:11px; font-variant-numeric:tabular-nums; }
+    .ps-sub span { color:#9a9ab0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     /* 外链点击 · 作品榜：标题/次数一行、条形一行、类型与时间一行，窄列里也不挤成一团 */
     .ol-wrow { padding:8px 0; border-top:1px dashed #eef0f7; }
     .ol-wrow:first-of-type { border-top:none; }
@@ -378,6 +385,11 @@
        flex:1 + min-width:140px，勾选框得单独收回来，不然会被拉成一条长条 */
     .form-inline label.chk-inline { display:flex; align-items:center; gap:6px; font-size:12.5px; color:#4b4f5b; cursor:pointer; white-space:nowrap; }
     .form-inline label.chk-inline input[type=checkbox] { flex:0 0 auto; width:15px; height:15px; min-width:0; padding:0; margin:0; border-radius:4px; background:none; accent-color:#5b5bd6; cursor:pointer; }
+    /* 作品列表「只看匿名」：勾上后整条变成主色，一眼看出「现在看的是筛过的列表」 */
+    .form-inline label.work-anon { padding:4px 10px 4px 8px; border:1px solid var(--border); border-radius:999px; background:#fff; }
+    .form-inline label.work-anon:hover { border-color:var(--primary); }
+    .form-inline label.work-anon.on { border-color:var(--primary); background:#f1f1fd; color:var(--primary); }
+    .form-inline label.work-anon b { font-weight:600; font-variant-numeric:tabular-nums; }
 
     /* 可折叠说明：默认只露一个圆圈感叹号，点开展开全文（用户管理页那段长说明用） */
     .hint-fold { padding:0 18px; }
@@ -417,6 +429,49 @@
     .field textarea { resize:vertical; }
     .field input[type="file"] { padding:8px; font-size:13px; }
     .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+    /* ---------- 作品介绍：Markdown 编辑器（写 / 预览）+ AI 帮写 ----------
+       与前台投稿同一套语汇，站长在后台改稿不用重新学一遍交互。
+       预览用 /md.js（详情页同一份渲染器），所见即所得、不发额外请求。 */
+    .md-editor { border:1px solid var(--border); border-radius:10px; overflow:hidden; background:#fff; }
+    .md-tabs { display:flex; align-items:center; gap:4px; padding:5px 8px; background:#f7f7fb; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+    .md-tab { border:0; background:none; cursor:pointer; font-size:12px; color:var(--muted); padding:3px 10px; border-radius:999px; font-family:inherit; line-height:1.6; }
+    .md-tab:hover { color:var(--text); }
+    .md-tab.active { background:#fff; color:var(--primary); font-weight:600; box-shadow:0 1px 2px rgba(20,20,60,.08); }
+    .md-tabs-hint { margin-left:auto; font-size:11px; color:var(--muted); line-height:1.5; text-align:right; }
+    .md-editor textarea { border:0 !important; border-radius:0 !important; width:100%; resize:vertical; }
+    .md-editor textarea:focus { outline:none; box-shadow:none; }
+    .md-preview { padding:12px 14px; font-size:13px; line-height:1.75; color:#3d4152; min-height:96px; max-height:300px; overflow-y:auto; }
+    .md-preview > :first-child { margin-top:0; }
+    .md-preview > :last-child { margin-bottom:0; }
+    .md-preview p { margin:0 0 8px; }
+    .md-preview ul, .md-preview ol { margin:0 0 8px; padding-left:20px; }
+    .md-preview h3, .md-preview h4, .md-preview h5 { margin:10px 0 6px; font-size:14px; }
+    .md-preview code { background:#f2f2f8; padding:1px 4px; border-radius:4px; font-size:12px; }
+    .md-preview blockquote { margin:0 0 8px; padding:2px 0 2px 10px; border-left:3px solid #e2e2fa; color:var(--muted); }
+    .md-preview a { color:var(--primary); }
+    .md-preview hr { border:0; border-top:1px solid var(--border); margin:10px 0; }
+    .md-preview .md-empty { color:var(--muted); margin:0; }
+
+    /* AI 按钮：浅紫实底 + 主色描边，一眼看出是可点的辅助动作，不抢保存按钮 */
+    .ai-write-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:8px 0 0; }
+    .ai-write-btn { display:inline-flex; align-items:center; gap:4px; flex:none; padding:5px 12px; border:1px solid var(--primary); border-radius:999px; background:#eeeefc; color:var(--primary); font:inherit; font-size:12.5px; font-weight:600; line-height:1.5; cursor:pointer; transition:background .15s, border-color .15s; }
+    .ai-write-btn:hover { background:#e2e2fa; }
+    .ai-write-btn[disabled] { opacity:.55; cursor:default; }
+    .ai-write-note { font-size:12px; color:var(--muted); line-height:1.6; }
+
+    /* 搜索关键词：胶囊 + 一个「边打边加」的输入框，看起来像同一个输入框 */
+    .kw-editor { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:7px 9px; border:1px solid var(--border); border-radius:10px; background:#fafafe; }
+    .kw-editor:focus-within { border-color:var(--primary); }
+    .kw-editor input[type="text"] { flex:1 1 130px; min-width:110px; width:auto; border:none !important; background:transparent !important; padding:3px 2px !important; margin:0; font-size:13.5px; border-radius:0; }
+    .kw-editor input[type="text"]:focus { outline:none; }
+    .kw-chips { display:contents; }
+    .kw-chip { display:inline-flex; align-items:center; gap:2px; font-size:12.5px; line-height:1.5; color:#4a4aaa; background:#eeeefc; border:1px solid #e2e2fa; border-radius:999px; padding:2px 4px 2px 9px; max-width:100%; }
+    .kw-chip b { font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .kw-chip button { appearance:none; border:none; background:transparent; cursor:pointer; color:#9a9ad8; font-size:13px; line-height:1; padding:2px 3px; border-radius:999px; }
+    .kw-chip button:hover { color:#e2534c; background:rgba(226,83,76,.10); }
+    .kw-regen { appearance:none; border:none; background:transparent; cursor:pointer; font:inherit; color:var(--primary); padding:0 5px 0 0; }
+    .kw-regen[disabled] { color:var(--muted); cursor:default; }
 
     /* 送灯火弹窗：余额行（只读，跟着数量实时算「操作后余额」） */
     .pt-bal { padding:10px 12px; border:1px dashed var(--border); border-radius:10px; background:#fbfbfd; font-size:14px; color:var(--text); line-height:1.5; }
@@ -878,6 +933,24 @@
     #refreshBtn.busy .refresh-ico { animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ===== 权限配置（2026-11-15）：站长给名单管理员按模块授权 ===== */
+    .perm-presets { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; }
+    .perm-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .perm-item {
+      display:flex; gap:9px; align-items:flex-start; padding:10px 12px;
+      border:1px solid var(--border); border-radius:10px; background:#fff; cursor:pointer;
+      transition:border-color .15s, background .15s;
+    }
+    .perm-item:hover { border-color:#c7c9f5; }
+    .perm-item.on { border-color:#5b5bd6; background:#f4f4ff; }
+    .perm-item input { margin-top:2px; flex:none; }
+    .perm-item b { display:block; font-size:13px; font-weight:600; }
+    .perm-item small { display:block; margin-top:2px; color:var(--muted); font-size:11.5px; line-height:1.55; }
+    .perm-chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:6px; }
+    .perm-chip { font-size:11px; line-height:1.7; padding:1px 8px; border-radius:999px; background:#eef0ff; color:#4b4bc4; white-space:nowrap; }
+    .perm-chip.off { background:#f1f2f7; color:#9aa0b4; }
+    @media (max-width:700px) { .perm-grid { grid-template-columns:1fr; } }
+
     /* ===== 移动端适配（≤700px）：行内容独占一行、按钮换到下一行，别把标题挤成竖排 ===== */
     @media (max-width: 700px) {
       .wrap { padding:0 10px 40px; }
@@ -1012,6 +1085,7 @@
           <button class="tab" data-tab="redeem">推荐效果</button>
           <span class="side-group">配置</span>
           <button class="tab" data-tab="categories">分类管理</button>
+          <button class="tab" data-tab="scenes">场景归类</button>
           <button class="tab" data-tab="types">形态管理</button>
           <button class="tab" data-tab="tools">推荐位</button>
           <button class="tab" data-tab="ads">广告位</button>
@@ -1121,6 +1195,24 @@
             <option value="rejected">已拒绝</option>
           </select>
         </div>
+        <!-- 展示阶段：与前台投稿同一个口径（上面那个「状态」只管站内审核，这里管作品走到哪一步）。
+             以前后台代建只能建成「已上线」，站长帮人挂预告、或在审核中的作品都得让作者自己去前台改。 -->
+        <div class="field" id="adminStageField">
+          <label>作品当前阶段 *</label>
+          <div class="os-picker" id="adminStagePicker">
+            <label class="os-opt"><input type="radio" name="stage" value="live" checked /><span>已经上线</span></label>
+            <label class="os-opt"><input type="radio" name="stage" value="reviewing" /><span>等平台上架审核</span></label>
+            <label class="os-opt"><input type="radio" name="stage" value="wip" /><span>还在做</span></label>
+          </div>
+          <p class="cat-hint" id="adminStageHint">已上线：正常进主列表。</p>
+          <div id="adminWipFields" style="display:none; margin-top:10px">
+            <label>完成度 <b id="adminProgressVal" style="color:var(--primary)">40%</b></label>
+            <input type="range" id="adminProgressRange" name="progress" min="0" max="100" step="5" value="40" />
+            <label>预计上线时间（选填）</label>
+            <input type="date" name="eta" id="adminEtaInput" />
+            <p class="cat-hint">还在做的作品不用填链接和二维码，但要写清做到哪一步（作品介绍里至少 8 个字）。每人最多同时挂 2 张预告卡，上线后会自动通知催更的人。</p>
+          </div>
+        </div>
         <!-- 认领暗号：建作品时就顺手设上，省得建完回列表点「认领暗号」。
              只对「开放认领、还没有归属」的作品生效（署名并绑上账号的作品用不上）。
              认领成功后服务端会把暗号删掉（用完即废）。 -->
@@ -1162,16 +1254,56 @@
         </div>
         <div class="field">
           <label>作品介绍 / 使用说明</label>
-          <textarea name="prompt" rows="3" maxlength="3000"
-                    placeholder="介绍一下：做什么用的、怎么体验、有什么亮点"></textarea>
+          <div class="md-editor" id="adminMdEditor">
+            <div class="md-tabs">
+              <button type="button" class="md-tab active" data-md-tab="edit">写</button>
+              <button type="button" class="md-tab" data-md-tab="preview">预览</button>
+              <span class="md-tabs-hint">支持 Markdown：**加粗**、*斜体*、`代码`、- 列表、&gt; 引用、[文字](链接)、# 小标题</span>
+            </div>
+            <textarea name="prompt" rows="4" maxlength="3000"
+                      placeholder="介绍一下：做什么用的、怎么体验、有什么亮点（支持 Markdown，切到「预览」看效果）"></textarea>
+            <div class="md-preview" id="adminMdPreview" hidden></div>
+          </div>
+          <p class="ai-write-row">
+            <button type="button" class="ai-write-btn" id="adminAiIntro"><span aria-hidden="true">✦</span> AI 帮写</button>
+            <span class="ai-write-note">按标题和分类先生成一段草稿，<b>只填进上面的框，不会替你保存</b> —— 生成后随便改</span>
+          </p>
+        </div>
+        <!-- 「一眼看懂」五件套：与前台投稿同一组字段名，详情页速览卡、搜索摘要和 JSON-LD 都吃这一组。
+             服务端（applyContentFields）早就在收，只是后台表单一直没给入口 —— 代建的作品只能空着。 -->
+        <div class="field" id="adminQuickLook">
+          <label>一眼看懂（选填，五项都空也能保存）</label>
+          <p class="ai-write-row">
+            <button type="button" class="ai-write-btn" id="adminQlAi"><span aria-hidden="true">✦</span> AI 补这四项</button>
+            <span class="ai-write-note">从上面的作品介绍里提炼「解决什么 / 适合谁 / 上手几步 / 和同类比」；<b>已有内容的不覆盖</b>，原文没依据的留空</span>
+          </p>
+          <input name="positioning" maxlength="60" placeholder="一句话定位：它是什么 + 给谁 + 有什么用" autocomplete="off" style="margin-top:8px" />
+          <p class="ai-write-row">
+            <button type="button" class="ai-write-btn" id="adminAiPos"><span aria-hidden="true">✦</span> AI 写一句</button>
+            <span class="ai-write-note" id="adminAiPosHint">从上面的作品介绍里提炼，生成后自己改</span>
+          </p>
+          <textarea name="problem" rows="2" maxlength="120" placeholder="解决什么问题" style="margin-top:8px"></textarea>
+          <input name="audience" maxlength="80" placeholder="适合谁" autocomplete="off" style="margin-top:8px" />
+          <textarea name="steps" rows="3" maxlength="240" placeholder="上手几步（一行一步，最多 5 行，如：打开首页点投稿）" style="margin-top:8px"></textarea>
+          <textarea name="diff" rows="2" maxlength="120" placeholder="和同类比：凭什么用你这个" style="margin-top:8px"></textarea>
+          <p class="cat-hint">详情页会把这五项排成一张速览卡；搜索摘要和 AI 回答优先摘这一段。缺了不影响发布，只是少一次被搜到、被引用的机会。</p>
         </div>
         <!-- 搜索关键词：作者投稿时在前台配的那组词（详情页胶囊、搜索和「找找」都按它命中）。
              老作品没存过 = 留空走自动配词；存过（哪怕是清空）就按作者的意思原样回填，
-             清空保存 = 作者刻意不要关键词，服务端不再自动补。 -->
+             清空保存 = 作者刻意不要关键词，服务端不再自动补。
+             胶囊只改显示层：#workKeywords 仍是「顿号分隔」的文本，草稿 / 提交 / 脏检查照旧读它。 -->
         <div class="field">
-          <label>搜索关键词（选填，逗号 / 顿号分隔，最多 6 个，每个 ≤12 字）</label>
-          <input name="keywordsText" id="workKeywords" maxlength="120" placeholder="别人会搜的口语词 / 别名，如：待办、番茄钟、清单" autocomplete="off" />
-          <p class="cat-hint">搜索和首页「找找」都按这些词配对作品：多写别名更容易被翻到；<b>别填分类名和形态名</b>（会被检索忽略）。留空 = 按标题自动配。</p>
+          <label>搜索关键词（选填，最多 6 个，每个 ≤12 字）</label>
+          <div class="kw-editor" id="adminKwEditor">
+            <div class="kw-chips" id="adminKwChips"></div>
+            <input type="text" id="adminKwInput" maxlength="12" autocomplete="off"
+                   placeholder="输入关键词后回车，如：待办、番茄钟" />
+          </div>
+          <input type="hidden" name="keywordsText" id="workKeywords" />
+          <p class="cat-hint">
+            <button type="button" class="kw-regen" id="adminKwRegen">自动生成</button>
+            按标题和分类配几个词；搜索和首页「找找」都按这些词配对作品：多写别名更容易被翻到。<b>别填分类名和形态名</b>（会被检索忽略）。留空 = 按标题自动配。
+          </p>
         </div>
         <div class="field" id="adminSiteField">
           <label>官网（选填，作品的主页 / 官方网站）</label>
@@ -1341,8 +1473,8 @@
         <div id="pmCompResults" style="margin-top:8px;display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto"></div>
       </div>
       <div class="field">
-        <label>推荐位 *</label>
-        <select id="pmCompSlot"></select>
+        <label>推荐位 * <em class="paste-tip">可多选，一次挂到多个位</em></label>
+        <div class="os-picker" id="pmCompSlots"></div>
       </div>
       <div class="field">
         <label>展示优先级 * <em class="paste-tip">和作者花钱买的单投到同一个位时，谁先上</em></label>
@@ -1543,6 +1675,20 @@
   </div>
 
   <!-- 设为精选：选择展示时长（默认 3 天） -->
+  <!-- AI 帮写介绍的结果：原文还在时让站长选「替换」还是「追加」，直接关掉就不动原文 -->
+  <div class="modal-mask" id="adminAiIntroMask">
+    <div class="modal" style="max-width:520px">
+      <h2>AI 帮写好了，怎么放？</h2>
+      <div class="hint" style="margin-bottom:12px">下面这段只填进编辑器，<b>保存还是要你自己点</b>。预览用的是详情页同一份渲染器。</div>
+      <div class="md-preview" id="adminAiIntroPreview" style="border:1px solid var(--border);border-radius:10px;background:#fafafe;max-height:220px"></div>
+      <div class="modal-foot" style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+        <button type="button" class="btn btn-ghost" id="adminAiIntroCancel">取消</button>
+        <button type="button" class="btn btn-ghost" id="adminAiIntroAppend">追加在原文后面</button>
+        <button type="button" class="btn btn-primary" id="adminAiIntroReplace">替换原文</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-mask" id="featModal">
     <div class="modal" style="max-width:420px">
       <h2>设为精选</h2>
@@ -1565,7 +1711,7 @@
   <div class="modal-mask" id="dscManualMask">
     <div class="modal" style="max-width:520px">
       <h2>手动加权 / 不推荐</h2>
-      <div class="hint" style="margin-bottom:14px">加权只在同一梯队内部生效，不能跨梯队插队，到期自动失效；档位选 0 = 撤销。「不推荐」是从「随便逛逛」彻底移出（推广、导流件用它），不影响首页列表、榜单和搜索。</div>
+      <div class="hint" style="margin-bottom:14px">加权在「等概率随机」的基础上生效：正档提高被抽中的概率、负档降低，到期自动失效；档位选 0 = 撤销。「不推荐」是从「随便逛逛」彻底移出（推广、导流件用它），不影响首页列表、榜单和搜索。</div>
       <div class="field">
         <label>作品</label>
         <input id="dscQ" maxlength="80" placeholder="搜标题 / 作者 / ID，点下面候选精确选中" autocomplete="off" />
@@ -1606,8 +1752,36 @@
     </div>
   </div>
 
+  <!-- 权限配置弹层（站长专用）：三种用法共用一个壳——添加管理员 / 通过申请 / 改已有管理员 -->
+  <div class="modal-mask" id="permMask">
+    <div class="modal" style="max-width:660px">
+      <h2 id="permTitle">分配管理员权限</h2>
+      <div class="hint" style="padding:0 0 14px;line-height:1.7">
+        勾上的模块，这个管理员才看得到左侧菜单、调得动对应的后台接口；没勾的一律返回「没有该模块的权限」。
+        <b>「管理员管理」只属于站长</b>，不在可分配范围内。改完对方刷新后台即生效，不用重启服务。
+      </div>
+      <div class="field" id="permNameWrap" style="display:none">
+        <label>站内用户名</label>
+        <input id="permName" placeholder="必须是已注册的站内账号" autocomplete="off" />
+      </div>
+      <div class="perm-presets">
+        <button type="button" class="btn btn-ghost btn-sm" data-perm-preset="all">全选</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-perm-preset="none">全不选</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-perm-preset="review">审核助手</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-perm-preset="content">内容运营</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-perm-preset="readonly">只看数据</button>
+      </div>
+      <div class="perm-grid" id="permGrid"></div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" id="permCancel">取消</button>
+        <button type="button" class="btn btn-primary" id="permSave">保存权限</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/vendor/echarts.min.js"></script>
   <script src="/icons.js"></script>
+  <script src="/md.js"></script>
   <script>
     // 口令不再存在浏览器里：登录时用口令换一张 HttpOnly cookie（脚本读不到），
     // 之后所有请求靠 cookie 鉴权，URL 里不会再出现 key（旧做法会把口令写进 nginx 日志）
@@ -1622,13 +1796,22 @@
     const $ = id => document.getElementById(id);
     const panel = $('panel');
     let lastStats = null;   // loadStats 的最新一份，搜索词 tab 直接复用，不重复打接口
+    // 当前管理员身份 + 权限（/api/admin/session 的结果）。null = 还没拿到，此时不做菜单裁剪。
+    let ADMIN_ME = null;
 
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
     const api = (path, opts = {}) => {
       // 鉴权走 HttpOnly cookie（浏览器自动带），URL 里不再拼 key
       return fetch(path, opts).then(async r => {
         const data = await r.json().catch(() => ({}));
-        if (!r.ok) { const err = new Error(data.error || '请求失败'); err.status = r.status; throw err; }
+        if (!r.ok) {
+          const err = new Error(data.error || '请求失败');
+          // 「没有这个模块的权限」不是登录失效：状态码抹成 0，
+          // 免得各 tab 里 `e.status === 401 || 403 → backToLogin` 把管理员直接踢回登录框
+          err.permDenied = !!data.permDenied;
+          err.status = data.permDenied ? 0 : r.status;
+          throw err;
+        }
         return data;
       });
     };
@@ -1764,19 +1947,25 @@
       fetch('/api/admin/session', { method: 'DELETE' }).catch(() => {}).finally(() => location.reload());
     };
 
+    let entered = false;
     function enter() {
       $('loginBox').style.display = 'none';
       $('adminBox').style.display = 'block';
       $('logoutBtn').style.display = 'inline-block';
       $('refreshBtn').classList.add('show');
       $('pvBanner').style.display = '';
-      // 顶部显示当前管理员（站长口令进来显示「站长」；名单管理员显示用户名）
+      if (entered) { loadStats(); renderTab(currentTab); return; }
+      entered = true;
+      // 进后台先问一次「我是谁、我能碰哪些模块」：左侧菜单按它裁，顶部按它写。
+      // 万一拿不到（网络抖动）就当没有权限信息、不裁剪；服务端该拦的照样拦，不会因此提权。
       api('/api/admin/session').then(s => {
-        const el = $('adminWho');
-        if (s && s.name) { el.textContent = '当前管理员：' + s.name; el.style.display = ''; }
-      }).catch(() => { /* 不影响进入 */ });
-      loadStats();
-      renderTab(currentTab);
+        ADMIN_ME = (s && s.ok) ? s : null;
+      }).catch(() => { ADMIN_ME = null; }).finally(() => {
+        paintWho();
+        const switched = applyPermNav();
+        loadStats();
+        if (!switched) renderTab(currentTab);
+      });
       // 角标要能自己醒：每 60 秒拉一次待办数（有人申请管理员 / 投稿 / 回信，不用手动刷新才知道）。
       // 401 会走 backToLogin 退回登录框，轮询里 adminBox 隐藏了就不再拉。
       if (!window.__statsTimer) {
@@ -1785,6 +1974,52 @@
           loadStats().catch(() => {});
         }, 60000);
       }
+    }
+
+    // ---- 权限裁剪（2026-11-15）----
+    // tab 有没有权限：ADMIN_ME 还没回来 / 不是管理员 → 一律放行（前端只管体验，服务端才是闸门）
+    function tabAllowed(tab) {
+      if (!ADMIN_ME || !ADMIN_ME.ok) return true;
+      if (ADMIN_ME.isOwner) return true;
+      const mods = Array.isArray(ADMIN_ME.modules) ? ADMIN_ME.modules : [];
+      const mod = mods.find(m => Array.isArray(m.tabs) && m.tabs.includes(tab));
+      if (!mod) return true;      // 没登记归属的 tab 不拦，别把功能藏没了
+      return (ADMIN_ME.perms || []).includes(mod.key);
+    }
+    // 按权限重排左侧菜单：没权限的 tab 不显示；整组都空了，组标题也一起藏。
+    // 返回 true 表示当前 tab 被换掉了（调用方就不用再重复渲染一次）。
+    function applyPermNav() {
+      const tabs = [...document.querySelectorAll('#tabs .tab')];
+      tabs.forEach(b => { b.style.display = tabAllowed(b.dataset.tab) ? '' : 'none'; });
+      document.querySelectorAll('#tabs .side-group').forEach(g => {
+        let n = g.nextElementSibling, any = false;
+        while (n && !n.classList.contains('side-group')) {
+          if (n.classList.contains('tab') && n.style.display !== 'none') { any = true; break; }
+          n = n.nextElementSibling;
+        }
+        g.style.display = any ? '' : 'none';
+      });
+      if (tabAllowed(currentTab)) return false;
+      const first = tabs.find(b => b.style.display !== 'none');
+      if (!first) {
+        panel.innerHTML = '<div class="empty">你还没有任何模块的权限，找站长在「管理员 → 配置权限」里开一下。</div>';
+        return true;
+      }
+      selectTab(first.dataset.tab);
+      return true;
+    }
+    // 顶部「当前管理员」：站长标全部权限，名单管理员标拿到几个模块
+    function paintWho() {
+      const el = $('adminWho');
+      if (!el) return;
+      if (!ADMIN_ME) { el.style.display = 'none'; return; }
+      const mods = Array.isArray(ADMIN_ME.modules) ? ADMIN_ME.modules : [];
+      const assignable = mods.filter(m => !m.ownerOnly);
+      const mine = (ADMIN_ME.perms || []).filter(k => assignable.some(m => m.key === k));
+      el.textContent = ADMIN_ME.isOwner
+        ? (ADMIN_ME.name === '站长' ? '当前管理员：站长（全部权限）' : `当前管理员：${ADMIN_ME.name}（站长 · 全部权限）`)
+        : `当前管理员：${ADMIN_ME.name}（${mine.length}/${assignable.length} 个模块）`;
+      el.style.display = '';
     }
 
     // 登录态失效了（比如服务端改过 ADMIN_KEY）→ 退回登录框，顺手清掉旧 cookie
@@ -1889,10 +2124,27 @@
           ${num(c1, c7, c30, cAll)}${tag || ''}
         </div>`;
       };
-      const refsHtml = refs.length
+      // 来源明细链接：服务端按 host 归好组（与来源榜同名），每条是「对方站内具体页面 → 累计次数」。
+      // 每个域名最多展开 6 条；明细数据 2026-11-15 起才记录，之前的日子聚合不出链接，只会少不会错。
+      const refPages = Array.isArray(t.refPages) ? t.refPages : [];
+      const pagesByHost = {};
+      refPages.forEach(p => {
+        const h = p.host || '(其他链接)';
+        (pagesByHost[h] = pagesByHost[h] || []).push(p);
+      });
+      const subRows = host => {
+        const list = pagesByHost[host] || [];
+        if (!list.length) return '';
+        return '<div class="ps-subs">' + list.slice(0, 6).map(p => p.url
+          ? `<div class="ps-sub"><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" title="打开来路页面（新窗口）&#10;${esc(p.name)}">${esc(p.name)}</a><b title="累计从这个页面打开的次数">${p.cAll || 0}</b></div>`
+          : `<div class="ps-sub"><span title="单日明细链接过多时溢出合并，不指向具体页面">${esc(p.name)}</span><b>${p.cAll || 0}</b></div>`
+        ).join('') + '</div>';
+      };
+      const refsBody = refs.length
         ? refs.map(x => row(x.name, x.c1 || 0, x.c7 != null ? x.c7 : (x.count || 0), x.c30, x.cAll || x.count || 0,
-            x.friend ? '<span class="ps-tag" title="这个域名在后台友情链接列表里">友链</span>' : '', false, x.url)).join('')
+            x.friend ? '<span class="ps-tag" title="这个域名在后台友情链接列表里">友链</span>' : '', false, x.url) + subRows(x.name)).join('')
         : '<div class="sk-empty">还没有站外来路</div>';
+      const refsHtml = refsBody + subRows('(其他链接)');   // 溢出桶没有归属域名，单独挂在来源列末尾
       const landHtml = land.length
         ? land.map(x => row(x.label ? '作品 · ' + x.label : x.path, x.c1 || 0, x.c7 != null ? x.c7 : (x.count || 0), x.c30, x.cAll || x.count || 0, '', false)).join('')
         : '<div class="sk-empty">还没有落地页数据</div>';
@@ -1904,10 +2156,10 @@
       const legend = '<i class="tr-legend">昨天 / 7 天 / 30 天 / 累计</i>';
       panel.innerHTML = `
         <div class="promo-src">
-          <h4>流量构成<span class="tr-desc">${span}网页访问（昨天 / 7 天 / 30 天 / 累计）<b>${w1.visits || 0}</b> / <b>${visits}</b> / <b>${w30.visits || 0}</b> / <b>${wAll.visits || 0}</b> 次（不含小程序）。下面三列都是<b>打开次数</b>：同一人反复打开会重复累计，<b>不是去重后的人数（UV）</b>；排除名单与单日刷量过多的身份不计入；标「友链」的是页脚友情链接域名；外宣链接没有 referrer 会算「直接打开」。</span></h4>
+          <h4>流量构成<span class="tr-desc">${span}网页访问（昨天 / 7 天 / 30 天 / 累计）<b>${w1.visits || 0}</b> / <b>${visits}</b> / <b>${w30.visits || 0}</b> / <b>${wAll.visits || 0}</b> 次（不含小程序）。下面三列都是<b>打开次数</b>：同一人反复打开会重复累计，<b>不是去重后的人数（UV）</b>；排除名单与单日刷量过多的身份不计入；标「友链」的是页脚友情链接域名；外宣链接没有 referrer 会算「直接打开」。来源域名下缩进列出<b>具体来路页面</b>（2026-11-15 起记录）。</span></h4>
           <div class="tr-grid">
             <div class="tr-col">
-              <h5 title="每次打开页面记一次，同一人反复打开会重复累计（PV 口径），不是去重人数">来源（打开次数）${legend}</h5>
+              <h5 title="每次打开页面记一次，同一人反复打开会重复累计（PV 口径），不是去重人数；域名下方缩进显示具体来路页面">来源（打开次数）${legend}</h5>
               ${refsHtml}
             </div>
             <div class="tr-col">
@@ -2167,19 +2419,26 @@
     }
 
     // ---- Tab 切换 ----
-    $('tabs').onclick = e => {
-      const btn = e.target.closest('.tab');
-      if (!btn) return;
-      const t = btn.dataset.tab;
-      if (!t) return;
+    function selectTab(t) {
+      const btn = document.querySelector(`#tabs .tab[data-tab="${t}"]`);
+      if (btn && btn.style.display === 'none') return;   // 没权限的 tab 不给进
       currentTab = t;
       try { localStorage.setItem('adminTab', t); } catch { /* ignore */ }
       document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === t));
       markTabSeen(t);   // 进了这页＝看过，红点撤掉，基线推到当前数量
       renderTab(t);
+    }
+    $('tabs').onclick = e => {
+      const btn = e.target.closest('.tab');
+      if (!btn || !btn.dataset.tab) return;
+      selectTab(btn.dataset.tab);
     };
 
     function renderTab(tab) {
+      if (!tabAllowed(tab)) {
+        panel.innerHTML = '<div class="empty">你没有这个模块的权限。需要的话，找站长在「管理员 → 配置权限」里开一下。</div>';
+        return;
+      }
       if (repliesTimer) { clearInterval(repliesTimer); repliesTimer = null; }
       if (lhPoll) { clearInterval(lhPoll); lhPoll = null; }
       markTabSeen(tab);
@@ -2202,6 +2461,7 @@
       if (tab === 'ideas') return loadIdeasAdmin();
       if (tab === 'badges') return loadBadgesAdmin();
       if (tab === 'categories') return loadCategories();
+      if (tab === 'scenes') return loadScenesAdmin();
       if (tab === 'types') return loadTypes();
       if (tab === 'tools') return loadTools();
       if (tab === 'ads') return loadAds();
@@ -2475,33 +2735,62 @@
       } catch (e) { toast(e.message); }
     }
 
-    // ---- 管理员名单管理（2026-11-12 多管理员改版）----
-    // 名单存 data/admins.json（deploy 排除 data，线上那份由后台这里维护，改完即生效不用重启）
+    // ---- 管理员名单 + 权限分配（2026-11-12 多管理员 / 2026-11-15 权限分级）----
+    // 名单存 data/admins.json（deploy 排除 data，线上那份由后台这里维护，改完即生效不用重启）。
+    // 这一页只有站长能进：加人、审批、按模块配权限都在这里。名单管理员碰不到（接口层也拦着）。
+    let lastAdminModules = [];   // 上一次拿到的模块定义，弹层用它画勾选项
+    let permCtx = null;          // 权限弹层当前的上下文 { mode, username, perms }
+    const adminPost = body => api('/api/admin/admins', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+
     async function loadAdminsTab() {
+      if (ADMIN_ME && ADMIN_ME.ok && !ADMIN_ME.isOwner) {
+        panel.innerHTML = '<div class="empty">管理员名单与权限只有站长能管理。</div>';
+        return;
+      }
       try {
         const d = await api('/api/admin/admins');
         const admins = Array.isArray(d.admins) ? d.admins : [];
         const apps = Array.isArray(d.applications) ? d.applications : [];
         const audit = Array.isArray(d.audit) ? d.audit : [];
+        const mods = Array.isArray(d.modules) && d.modules.length ? d.modules : ((ADMIN_ME && ADMIN_ME.modules) || []);
+        lastAdminModules = mods;
+        const assignable = mods.filter(m => !m.ownerOnly);   // 「管理员管理」是站长专属，不参与分配
+        const defPerms = Array.isArray(d.defaultPerms) && d.defaultPerms.length ? d.defaultPerms : ['works', 'content', 'review'];
+        // 老名单没有 perms 字段 = 2026-11-12 那版「不分级」的全权限，展示也照实说全部
+        const permsOf = a => (Array.isArray(a.perms) ? a.perms : assignable.map(m => m.key));
+        const chips = a => {
+          const has = permsOf(a);
+          if (!has.length) return '<div class="perm-chips"><span class="perm-chip off">没有任何模块权限</span></div>';
+          if (assignable.length && has.length >= assignable.length) return '<div class="perm-chips"><span class="perm-chip">全部模块</span></div>';
+          return '<div class="perm-chips">'
+            + assignable.filter(m => has.includes(m.key)).map(m => `<span class="perm-chip">${esc(m.label)}</span>`).join('')
+            + '</div>';
+        };
         const fmt = s => { const t = Date.parse(s || ''); return t ? new Date(t).toLocaleString('zh-CN', { hour12: false }) : '—'; };
         panel.innerHTML = `
           <div class="hint" style="padding-top:16px;line-height:1.7">
             管理员用<strong>站内账号 + 站内账号密码</strong>登录后台，密码和前台登录是同一套（不单独设）。名单改完即生效，不用重启。
-            你自己随时可用上面的「站长口令登录」备用入口进来。权限目前不分级——名单里的账号和站长看到的是同一个后台，<b>所以只加你信得过的人</b>；每一步写操作都记在下方「最近后台操作」里，出事能倒查。
+            你自己随时可用上面的「站长口令登录」备用入口进来。
+            <b>权限按模块授予</b>：勾上的模块，对方才看得到对应的左侧菜单、调得动对应接口；没勾的一律拒绝。
+            每一步写操作都记在下方「最近后台操作」里，出事能倒查。
           </div>
           <h4>管理员名单（${admins.length} 人）</h4>
-          <div style="display:flex;gap:8px;margin-bottom:12px">
+          <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
             <input id="adminAddName" placeholder="站内用户名" style="max-width:220px" />
-            <button class="btn btn-primary btn-sm" id="adminAddBtn">直接添加</button>
+            <button class="btn btn-primary btn-sm" id="adminAddBtn">添加并分配权限</button>
             <span style="font-size:12px;color:#6b7280;align-self:center">也可以只等下面别人来申请</span>
           </div>
           ${admins.length ? admins.map(a => `
             <div class="row">
               <div class="row-main">
                 <div class="row-title">@${esc(a.username)} <span class="tag">${esc(a.role || 'admin')}</span></div>
-                <div class="row-meta">加入于 ${esc(fmt(a.addedAt))}</div>
+                <div class="row-meta">加入于 ${esc(fmt(a.addedAt))}${a.permsAt ? ' · 权限改于 ' + esc(fmt(a.permsAt)) : ''}</div>
+                ${chips(a)}
               </div>
               <div class="row-actions">
+                <button class="btn btn-primary btn-sm" data-perm="${esc(a.username)}">配置权限</button>
                 <button class="btn btn-ghost btn-sm" data-remove="${esc(a.username)}">移出名单</button>
               </div>
             </div>`).join('') : '<div class="empty">名单是空的：目前只有站长口令能进后台</div>'}
@@ -2513,7 +2802,7 @@
                 <div class="row-meta">${esc(fmt(a.at))}${a.note ? ' · 留言：' + esc(a.note) : ''}</div>
               </div>
               <div class="row-actions">
-                <button class="btn btn-primary btn-sm" data-approve="${esc(a.username)}">通过</button>
+                <button class="btn btn-primary btn-sm" data-approve="${esc(a.username)}">通过并分配权限</button>
                 <button class="btn btn-ghost btn-sm" data-reject="${esc(a.username)}">拒绝</button>
               </div>
             </div>`).join('') : '<div class="empty">还没有收到申请</div>'}
@@ -2529,29 +2818,27 @@
             </div>`;
           }).join('') : '<div class="empty">还没有记录</div>'}
         `;
-        const post = body => api('/api/admin/admins', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        $('adminAddBtn').onclick = async () => {
-          const name = $('adminAddName').value.trim();
+        $('adminAddBtn').onclick = () => {
+          const name = ($('adminAddName').value || '').trim();
           if (!name) return toast('先填用户名');
-          try { await post({ action: 'add', username: name }); toast('已加入名单'); loadAdminsTab(); }
-          catch (e) { toast(e.message || '操作失败'); }
+          openPermModal({ mode: 'add', username: name, perms: defPerms.slice() });
         };
+        panel.querySelectorAll('[data-perm]').forEach(b => b.onclick = () => {
+          const name = b.dataset.perm;
+          const a = admins.find(x => String(x.username || '').toLowerCase() === String(name).toLowerCase());
+          openPermModal({ mode: 'edit', username: name, perms: a ? permsOf(a).slice() : [] });
+        });
         panel.querySelectorAll('[data-remove]').forEach(b => b.onclick = async () => {
           if (!confirm('把 @' + b.dataset.remove + ' 移出管理员名单？TA 的后台票据会立刻失效。')) return;
-          try { await post({ action: 'remove', username: b.dataset.remove }); toast('已移出'); loadAdminsTab(); }
+          try { await adminPost({ action: 'remove', username: b.dataset.remove }); toast('已移出'); loadAdminsTab(); }
           catch (e) { toast(e.message || '操作失败'); }
         });
-        panel.querySelectorAll('[data-approve]').forEach(b => b.onclick = async () => {
-          try { await post({ action: 'approve', username: b.dataset.approve }); toast('已通过，对方会收到站内消息'); loadAdminsTab(); loadStats(); }
-          catch (e) { toast(e.message || '操作失败'); }
+        panel.querySelectorAll('[data-approve]').forEach(b => b.onclick = () => {
+          openPermModal({ mode: 'approve', username: b.dataset.approve, perms: defPerms.slice() });
         });
         panel.querySelectorAll('[data-reject]').forEach(b => b.onclick = async () => {
           if (!confirm('拒绝 @' + b.dataset.reject + ' 的管理员申请？')) return;
-          try { await post({ action: 'reject', username: b.dataset.reject }); toast('已拒绝'); loadAdminsTab(); loadStats(); }
+          try { await adminPost({ action: 'reject', username: b.dataset.reject }); toast('已拒绝'); loadAdminsTab(); loadStats(); }
           catch (e) { toast(e.message || '操作失败'); }
         });
       } catch (e) {
@@ -2559,6 +2846,83 @@
         else panel.innerHTML = '<div class="empty">加载失败：' + esc(e.message) + '</div>';
       }
     }
+
+    // ---- 权限弹层：三种用法共用一个壳（添加 / 通过申请 / 改已有管理员）----
+    function openPermModal(ctx) {
+      permCtx = ctx;
+      const mods = (lastAdminModules.length ? lastAdminModules : ((ADMIN_ME && ADMIN_ME.modules) || []))
+        .filter(m => !m.ownerOnly);
+      const has = Array.isArray(ctx.perms) ? ctx.perms : [];
+      $('permTitle').textContent = ctx.mode === 'add' ? '添加管理员并分配权限'
+        : ctx.mode === 'approve' ? '通过申请并分配权限'
+        : '配置 @' + ctx.username + ' 的权限';
+      $('permNameWrap').style.display = ctx.mode === 'add' ? '' : 'none';
+      $('permName').value = ctx.mode === 'add' ? (ctx.username || '') : '';
+      $('permGrid').innerHTML = mods.map(m => `
+        <label class="perm-item${has.includes(m.key) ? ' on' : ''}" data-key="${esc(m.key)}">
+          <input type="checkbox"${has.includes(m.key) ? ' checked' : ''} />
+          <span><b>${esc(m.label)}</b><small>${esc(m.desc || '')}</small></span>
+        </label>`).join('') || '<div class="empty">模块定义没加载出来，刷新页面再试</div>';
+      $('permMask').style.display = 'flex';
+    }
+    function permCheckedKeys() {
+      return [...$('permGrid').querySelectorAll('.perm-item')]
+        .filter(it => { const b = it.querySelector('input'); return b && b.checked; })
+        .map(it => it.dataset.key);
+    }
+    function applyPermPreset(p) {
+      const items = [...$('permGrid').querySelectorAll('.perm-item')];
+      const all = items.map(it => it.dataset.key);
+      const set = p === 'all' ? all
+        : p === 'none' ? []
+        : p === 'review' ? ['works', 'review']
+        : p === 'content' ? ['content', 'review']
+        : ['data'];
+      items.forEach(it => {
+        const on = set.includes(it.dataset.key);
+        it.querySelector('input').checked = on;
+        it.classList.toggle('on', on);
+      });
+    }
+    // 勾选框与卡片高亮联动（点卡片任意处都能勾）
+    $('permGrid').addEventListener('change', e => {
+      const box = e.target.closest('input[type="checkbox"]');
+      if (!box) return;
+      const item = box.closest('.perm-item');
+      if (item) item.classList.toggle('on', box.checked);
+    });
+    document.querySelectorAll('[data-perm-preset]').forEach(b => {
+      b.onclick = () => applyPermPreset(b.dataset.permPreset);
+    });
+    $('permCancel').onclick = () => { $('permMask').style.display = 'none'; permCtx = null; };
+    $('permSave').onclick = async () => {
+      if (!permCtx) return;
+      const perms = permCheckedKeys();
+      const btn = $('permSave');
+      btn.disabled = true;
+      try {
+        if (permCtx.mode === 'add') {
+          const name = ($('permName').value || '').trim();
+          if (!name) { toast('先填站内用户名'); return; }
+          await adminPost({ action: 'add', username: name, perms });
+          toast('已加入名单，权限按你勾的生效');
+        } else if (permCtx.mode === 'approve') {
+          await adminPost({ action: 'approve', username: permCtx.username, perms });
+          toast('已通过，对方会收到站内消息');
+        } else {
+          await adminPost({ action: 'perms', username: permCtx.username, perms });
+          toast('权限已更新，对方刷新后台即生效');
+        }
+        $('permMask').style.display = 'none';
+        permCtx = null;
+        loadAdminsTab();
+        loadStats();
+      } catch (e) {
+        toast(e.message || '保存失败');
+      } finally {
+        btn.disabled = false;
+      }
+    };
 
     async function loadDeploy() {
       try {
@@ -2912,6 +3276,11 @@
 
       const orderHtml = o => {
         const isClickPack = !o.viewsBought && !!o.clicksBought;
+        const packTag = `<span class="tag${isClickPack ? ' warn' : ''}" title="${esc(
+          isClickPack
+            ? '点击包：按点击计费，被点一次扣一次灯火，曝光只计数不扣额度'
+            : '曝光包：按曝光计费，卡片被看到扣灯火，点击只计数不扣额度'
+        )}">${isClickPack ? '点击包' : '曝光包'}</span>`;
         const done = isClickPack ? o.clickUsed : o.used;
         const total = isClickPack ? o.clicksBought : o.viewsBought;
         const donePct = total ? Math.min(100, Math.round(done / total * 100)) : 0;
@@ -2924,6 +3293,7 @@
             <div class="row-title">${esc(o.workTitle)}
               <span class="tag">${esc(o.slotName)}</span>
               ${o.platform === 'mini' ? '<span class="tag">小程序</span>' : ''}
+              ${packTag}
               <span class="tag ${stCls}">${esc(o.statusText)}</span>
               ${o.extLink ? '<span class="tag warn" title="点击跳作品登记的官网 / 下载页，不走站内详情">外链</span>' : ''}
             </div>
@@ -3100,7 +3470,7 @@
         <div class="bh-row">
           <span class="bh-who" title="${esc(x.q)}">${esc(x.q)}</span>
           <span class="ps-bar"><i style="width:${Math.min(100, Math.max(2, x.ctr || 0))}%"></i></span>
-          <span class="bh-num"><b>${x.n}</b> 搜 · 点开 ${x.clicked} · 转化 ${x.ctr}%${x.zero ? ` · <b class="sk-zero">${x.zero} 次无结果</b>` : ''}</span>
+          <span class="bh-num"><b>${x.n}</b> 搜 · ${x.people || 0} 人 · 点开 ${x.clicked} · 转化 ${x.ctr}%${x.zero ? ` · <b class="sk-zero">${x.zero} 次无结果</b>` : ''}</span>
         </div>`).join('') : '<div class="sk-empty">这段时间还没有搜索流水。</div>';
 
       const srcMax = Math.max(...sources.map(x => x.n || 0), 1);
@@ -3141,7 +3511,7 @@
           ${dailyRows}
         </div>
         <div class="bh-grid">
-          <div class="bh-card"><h5>搜索 → 点开<em>同人 30 分钟内 · 近似归因</em></h5>${searchRows}</div>
+          <div class="bh-card"><h5>搜索 → 点开<em>同人 30 分钟内 · 近似归因 · 人数为时间窗内去重</em></h5>${searchRows}</div>
           <div class="bh-card"><h5>详情从哪点进来</h5>${srcRows}</div>
         </div>
         <div class="bh-grid">
@@ -3403,6 +3773,7 @@
 
     let curStatus = '全部';   // 当前作品列表的筛选状态（原地改行时判断是否该移出列表）
     let workQuery = '';       // 作品列表搜索词（全部作品 / 待审核 / 已下架 共用一个框，服务端按它过滤后再分页）
+    let workAnonOnly = false; // 「只看匿名」：匿名投稿（无归属）＋ 匿名发布（前台只显示「匿名」）都算
     let workSearchTimer = null;
 
     // 单行 HTML：loadWorks 与原地补丁共用，保证两种渲染完全一致
@@ -3434,6 +3805,8 @@
               <div class="row-title">${rowTitleHtml(w)}
                 <span class="tag">${esc((w.types && w.types.length ? w.types : [w.type || '网站']).join(' / '))}</span>
                 ${w.status === 'pending' ? '<span class="tag warn">待审核</span>' : ''}
+                ${w.stage === 'wip' ? `<span class="tag warn" title="还在做：进首页「即将上线」预告卡，不进主列表；站长可在编辑器里改阶段">预告${typeof w.progress === 'number' ? ' · ' + w.progress + '%' : ''}</span>` : ''}
+                ${w.stage === 'reviewing' ? '<span class="tag warn" title="等平台上架审核：展示成灰卡，链接和码先不给点">等平台审核</span>' : ''}
                 ${w.anon ? '<span class="tag">匿名投稿</span>' : ''}
                 ${w.anonymous ? '<span class="tag">匿名发布</span>' : ''}
                 ${w.status === 'rejected' ? `<span class="tag bad">${w.juryRemoved ? '众判下架' : '管理员下架'}</span>` : ''}
@@ -3491,6 +3864,8 @@
 
     // 只替换这一行（或直接移除），不重渲染整个列表 → 页面不跳动、滚动位置不变
     const isOfflineRow = x => (x.status || 'approved') === 'rejected' || !!x.hidden;
+    // 「只看匿名」的行内口径：与服务端 isAnonWork 一致——匿名投稿（anon，无归属）＋ 匿名发布（anonymous）
+    const isAnonRow = x => !!(x && (x.anon || x.anonymous));
     // 搜索中原地改了标题 / 作者，可能就不再命中关键词了 —— 这时也要把这行移出列表。
     // 走不到昵称（后台列表没带），只可能少移一行，不会多移，下次搜索仍能搜到。
     function workMatchesQuery(w, q) {
@@ -3506,6 +3881,7 @@
       if (!el) return;
       const stay = w && (curStatus === '全部'
         || (curStatus === 'offline' ? isOfflineRow(w) : w.status === curStatus))
+        && (!workAnonOnly || isAnonRow(w))
         && workMatchesQuery(w, workQuery);
       if (!stay) { el.style.transition = 'opacity .2s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 200); return; }
       const tmp = document.createElement('div');
@@ -3526,11 +3902,16 @@
       try {
         const r = await api('/api/admin/works?status=' + encodeURIComponent(status)
           + '&pageSize=' + ADMIN_PAGE_SIZE + '&page=' + curPage
-          + (q ? '&q=' + encodeURIComponent(q) : ''));
-        // 兼容：接口不带 pageSize 时返回数组；现在带了，返回 { items, total, totalAll, page, pageSize, pages, q }
+          + (q ? '&q=' + encodeURIComponent(q) : '')
+          + (workAnonOnly ? '&anon=1' : ''));
+        // 兼容：接口不带 pageSize 时返回数组；现在带了，返回 { items, total, totalAll, anonTotal, page, pageSize, pages, q }
         const list = Array.isArray(r) ? r : (r.items || []);
         const total = Array.isArray(r) ? list.length : (r.total || list.length);
         const totalAll = Array.isArray(r) ? list.length : (r.totalAll || total);
+        // 匿名件数：没勾筛选时显示在勾选项后面（「只看匿名 23」），让管理员一眼知道有多少；
+        // 老接口 / 数组返回没有这个字段时退回本地数一遍当前页，最多显示得少一点，不会报错
+        const anonTotal = Array.isArray(r) ? list.filter(isAnonRow).length
+          : (typeof r.anonTotal === 'number' ? r.anonTotal : list.filter(isAnonRow).length);
         const pages = Array.isArray(r) ? 1 : Math.max(1, r.pages || 1);
         list.forEach(w => { WORK_CACHE[w.id] = w; });
         // 命中数贴在搜索框右边：列表翻到下面、列表头滚出屏幕时也知道搜到几件
@@ -3543,22 +3924,39 @@
           </span>` : '';
         const countTxt = q
           ? `匹配 ${total} 件${totalAll > total ? ` · 全部 ${totalAll} 件` : ''}`
-          : `共 ${total} 件`;
+          : (workAnonOnly ? `只看匿名 ${total} 件` : `共 ${total} 件`);
+        // 「只看匿名」勾选项：跟着列表头一起重绘（状态存在 workAnonOnly，切 tab / 搜索都保留）。
+        // 用原生 checkbox 而不是胶囊按钮：跟「用户管理 → 只看有作品的」同一个交互，管理员不用学第二套。
+        // 件数只在没勾时显示（「只看匿名 23」= 这个列表里有多少匿名作品）；勾上后件数已经写在左边的计数里，别重复。
+        const anonChk = `<label class="chk-inline work-anon${workAnonOnly ? ' on' : ''}" title="勾上只列匿名作品：匿名投稿（提交时没账号、作品无归属）和匿名发布（作者选择不显示名字）都算">
+            <input type="checkbox" id="workAnonOnly"${workAnonOnly ? ' checked' : ''} /> 只看匿名${!workAnonOnly && anonTotal ? ` <b>${anonTotal}</b>` : ''}
+          </label>`;
         const head = `<div class="form-inline" style="border-bottom:1px solid var(--border)">
             <button class="btn btn-primary" id="newWorkBtn">＋ 新建作品</button>
             <span style="color:var(--muted);font-size:12px">${countTxt}${!q && status === 'offline' ? ' · 点「查看」核对内容后「恢复上架」，作品会立刻回到首页和榜单（浏览/点赞/灯火数据都保留）' : ''}</span>
+            ${anonChk}
             ${nav}
           </div>`;
         if (!list.length) {
           const empty = q
-            ? `没有匹配「${esc(q)}」的作品，换个词试试，或者点搜索框右边的「清空」`
-            : (status === 'offline' ? '没有被下架的作品' : '暂无作品');
+            ? `没有匹配「${esc(q)}」的作品，换个词试试，或者点搜索框右边的「清空」${workAnonOnly ? '；也可能是勾着「只看匿名」——取消勾选再搜' : ''}`
+            : (workAnonOnly
+              ? '这个列表里没有匿名作品，取消「只看匿名」就能看到全部'
+              : (status === 'offline' ? '没有被下架的作品' : '暂无作品'));
           panel.innerHTML = head + `<div class="empty">${empty}</div>`;
           return;
         }
         panel.innerHTML = head + list.map(rowHtml).join('');
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
+
+    // 「只看匿名」勾选：勾选项跟着列表头每次重绘都会换一个新的 DOM，所以事件委托挂在 panel 上（重绘不丢监听）。
+    // 换筛选条件一律回第 1 页，否则会停在超出范围的空页。
+    panel.addEventListener('change', e => {
+      if (!e.target || e.target.id !== 'workAnonOnly') return;
+      workAnonOnly = !!e.target.checked;
+      loadWorks(curStatus, 1);
+    });
 
     // ---- 下架 / 拒绝待审：原因必填，下架的同时把原话站内通知给作者 ----
     // 以前这两个动作是直连接口的：落库原因永远是「管理员手动下架」，作者不点进「我的作品」就不知道发生了什么。
@@ -4543,6 +4941,347 @@
     }
     document.querySelectorAll('#anonPicker input').forEach(r => r.addEventListener('change', syncAnonAuthorState));
 
+    // 展示阶段：wip（还在做）才露出完成度 / 预计上线时间，其余阶段这两栏收起。
+    // 与前台投稿表单的 applyStageFields 是同一套口径，文案也保持一致。
+    function applyAdminStageFields() {
+      const stage = getFormRadio('stage') || 'live';
+      const box = $('adminWipFields');
+      if (box) box.style.display = stage === 'wip' ? 'block' : 'none';
+      const range = $('adminProgressRange');
+      const val = $('adminProgressVal');
+      if (range && val) val.textContent = (range.value || '0') + '%';
+      const hint = $('adminStageHint');
+      if (hint) {
+        hint.textContent = stage === 'wip'
+          ? '预告卡：进「即将上线」，不进主列表，收催更；上线后一键转正，催更的人会收到站内消息。'
+          : stage === 'reviewing'
+            ? '在应用商店 / 小程序平台审核中：展示成灰卡，链接和码先不给点，通过后回来改成「已经上线」。'
+            : '已上线：正常进主列表。改成上线必须有可点的入口（Web 要链接，小程序要码）。';
+      }
+    }
+    document.querySelectorAll('#adminStagePicker input').forEach(r => r.addEventListener('change', applyAdminStageFields));
+    if ($('adminProgressRange')) $('adminProgressRange').addEventListener('input', applyAdminStageFields);
+
+    // 「一眼看懂」五件套：服务端存 steps 是数组，表单里是一行一步
+    function adminQuickLookValues() {
+      return {
+        positioning: (workForm.positioning ? workForm.positioning.value : '').trim(),
+        problem: (workForm.problem ? workForm.problem.value : '').trim(),
+        audience: (workForm.audience ? workForm.audience.value : '').trim(),
+        steps: (workForm.steps ? workForm.steps.value : '').trim(),
+        diff: (workForm.diff ? workForm.diff.value : '').trim()
+      };
+    }
+    function adminSetQuickLook(src) {
+      const s = src || {};
+      const set = (k, v) => { if (workForm[k]) workForm[k].value = v == null ? '' : String(v); };
+      set('positioning', s.positioning);
+      set('problem', s.problem);
+      set('audience', s.audience);
+      set('steps', Array.isArray(s.steps) ? s.steps.join('\n') : s.steps);
+      set('diff', s.diff);
+    }
+
+    // ---- 作品介绍：Markdown 预览（写 / 预览 双 Tab，与前台投稿同一套）----
+    // 渲染器直接用详情页那份 /md.js：后台看到的排版就是访客看到的排版，不用再引一份依赖。
+    let adminMdShowWrite = () => {};
+    (function setupAdminMd() {
+      const box = $('adminMdEditor');
+      if (!box) return;
+      const ta = box.querySelector('textarea[name="prompt"]');
+      const pv = $('adminMdPreview');
+      const tabs = Array.from(box.querySelectorAll('.md-tab'));
+      if (!ta || !pv || !tabs.length) return;
+      const paint = () => {
+        const src = (ta.value || '').trim();
+        if (!src) { pv.innerHTML = '<p class="md-empty">还没有内容，切回「写」开始输入</p>'; return; }
+        pv.innerHTML = window.MiniMd ? MiniMd.render(src) : esc(src).replace(/\n/g, '<br>');
+      };
+      const show = preview => {
+        tabs.forEach(b => b.classList.toggle('active', (b.dataset.mdTab === 'preview') === preview));
+        ta.style.display = preview ? 'none' : '';
+        pv.hidden = !preview;
+        if (preview) paint();
+      };
+      tabs.forEach(b => b.addEventListener('click', () => show(b.dataset.mdTab === 'preview')));
+      adminMdShowWrite = () => show(false);
+    })();
+
+    // ---- 搜索关键词：胶囊编辑器 ----
+    // 只改显示层：#workKeywords 里仍然是「顿号分隔」的文本，草稿保存 / 提交 / 脏检查那几处老代码照旧读它。
+    const ADMIN_KW_MAX = 6;
+    const ADMIN_KW_LEN = 12;
+    let adminKwList = [];
+    let adminKwTouched = false;   // 站长动过手（增删）→ 不再自动补词
+    let adminKwSig = '';          // 上次自动补词时的「标题|分类」签名，避免每敲一个字都请求
+    function adminKwPaint() {
+      const chips = $('adminKwChips');
+      const hidden = $('workKeywords');
+      if (hidden) hidden.value = adminKwList.join('、');
+      if (chips) {
+        chips.innerHTML = adminKwList.map((k, i) =>
+          `<span class="kw-chip"><b>${esc(k)}</b><button type="button" data-kw="${i}" aria-label="删除关键词">✕</button></span>`
+        ).join('');
+      }
+    }
+    function adminKwSet(list) {
+      adminKwList = (list || []).map(x => String(x == null ? '' : x).trim()).filter(Boolean).slice(0, ADMIN_KW_MAX);
+      adminKwPaint();
+    }
+    // 文本 → 胶囊：草稿和编辑回填都走这里，兼容逗号 / 顿号 / 空格混着写的旧值
+    function adminKwFromText(text) {
+      adminKwSet(String(text || '').split(/[,，、\s]+/));
+    }
+    // 改完关键字顺手走一遍表单的 input 事件：草稿自动保存和「改过没有」的比对都挂在它上面
+    function adminKwTouchedNow() {
+      adminKwTouched = true;
+      adminKwPaint();
+      workForm.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    function adminKwAdd(word) {
+      const k = String(word || '').replace(/[<>]/g, '').trim().slice(0, ADMIN_KW_LEN);
+      if (!k) return false;
+      if (adminKwList.some(x => x.toLowerCase() === k.toLowerCase())) return false;
+      if (adminKwList.length >= ADMIN_KW_MAX) { toast(`最多 ${ADMIN_KW_MAX} 个关键词`); return false; }
+      adminKwList.push(k);
+      adminKwPaint();
+      return true;
+    }
+    function adminKwCommitInput() {
+      const inp = $('adminKwInput');
+      const raw = (inp && inp.value || '').trim();
+      if (!raw) return false;
+      let changed = false;
+      raw.split(/[,，、\s]+/).filter(Boolean).forEach(w => { if (adminKwAdd(w)) changed = true; });
+      if (inp) inp.value = '';
+      return changed;
+    }
+    (function bindAdminKw() {
+      const chips = $('adminKwChips');
+      const inp = $('adminKwInput');
+      const regen = $('adminKwRegen');
+      if (chips) chips.addEventListener('click', e => {
+        const btn = e.target.closest('button[data-kw]');
+        if (!btn) return;
+        adminKwList.splice(Number(btn.dataset.kw), 1);
+        adminKwTouchedNow();
+      });
+      if (inp) {
+        inp.addEventListener('keydown', e => {
+          if (e.key === 'Enter' || e.key === ',' || e.key === '，' || e.key === '、') {
+            e.preventDefault();
+            if (adminKwCommitInput()) adminKwTouchedNow();
+          } else if (e.key === 'Backspace' && !inp.value && adminKwList.length) {
+            // 空输入框里退格 = 删掉最后一个胶囊（标签输入的常规手感）
+            adminKwList.pop();
+            adminKwTouchedNow();
+          }
+        });
+        inp.addEventListener('blur', () => { if (adminKwCommitInput()) adminKwTouchedNow(); });
+      }
+      if (regen) regen.addEventListener('click', () => adminSuggestKw(true));
+      // 标题失焦时悄悄配一次：只在还没配过、站长也没手动改过时生效
+      ['wname', 'wtag'].forEach(k => {
+        if (workForm[k]) workForm[k].addEventListener('blur', () => {
+          if (!adminKwTouched && !adminKwList.length) adminSuggestKw(false);
+        });
+      });
+    })();
+    // 关键词建议：服务端纯规则生成（见 keywords.js），不花 AI 额度
+    async function adminSuggestKw(force) {
+      const title = adminWorkTitle();
+      const promptText = (workForm.prompt && workForm.prompt.value || '').trim();
+      const cats = adminSelectedCats();
+      const sig = title + '|' + cats.join('/');
+      if (!title && !promptText && !cats.length) {
+        if (force) toast('先填作品名字或分类，才有依据配词');
+        return;
+      }
+      if (!force && (sig === adminKwSig || adminKwTouched || adminKwList.length)) return;
+      adminKwSig = sig;
+      const btn = $('adminKwRegen');
+      const label = btn ? btn.textContent : '';
+      if (force && btn) { btn.disabled = true; btn.textContent = '生成中…'; }
+      try {
+        const r = await fetch('/api/work/keywords', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title, prompt: promptText,
+            positioning: (workForm.positioning && workForm.positioning.value || '').trim(),
+            categories: cats, types: adminSelectedTypes()
+          })
+        });
+        if (!r.ok) return;
+        const d = await r.json();
+        const list = Array.isArray(d.keywords) ? d.keywords : [];
+        if (!list.length) { if (force) toast('没配出合适的词，手动写两个吧'); return; }
+        if (!force && (adminKwTouched || adminKwList.length)) return;   // 请求回来前站长已经自己动手了，别覆盖
+        adminKwSet(list);
+        if (force) adminKwTouched = false;
+        workForm.dispatchEvent(new Event('input', { bubbles: true }));
+        if (force) toast(`已按标题和分类配了 ${list.length} 个关键词，可改可删`);
+      } catch { /* 生成失败就留空，服务端提交时还会再配一次 */ }
+      finally { if (force && btn) { btn.disabled = false; btn.textContent = label; } }
+    }
+
+    // ---- AI 帮写（介绍 / 定位句 / 一眼看懂四项）----
+    // 三条底线与前台上传表单一致：只回填到输入框、不提交不写库；已有内容不被静默覆盖；
+    // 介绍太短不发请求（没依据时模型只会编，不如把出口指回介绍栏）。
+    const ADMIN_AI_MIN_INTRO = 30;
+    const adminAiPicked = () => ({
+      title: adminWorkTitle(),
+      intro: (workForm.prompt && workForm.prompt.value || '').trim(),
+      cats: adminSelectedCats(),
+      types: adminSelectedTypes(),
+      link: ((adminCollectLinks().Web || (workForm.site && workForm.site.value) || '') + '').trim()
+    });
+    async function adminAiPost(path, body) {
+      const r = await fetch(path, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || '生成失败，先手动填吧');
+      return d;
+    }
+    const adminBtnBusy = (btn, text) => {
+      const label = btn.innerHTML;
+      btn.disabled = true;
+      btn.textContent = text;
+      return () => { btn.disabled = false; btn.innerHTML = label; };
+    };
+
+    let adminAiIntroDraft = '';
+    const adminAiIntroBtn = $('adminAiIntro');
+    if (adminAiIntroBtn) adminAiIntroBtn.onclick = async () => {
+      const info = adminAiPicked();
+      if (info.title.length < 2) { toast('先填作品名字，AI 才知道写什么'); workForm.wname.focus(); return; }
+      const ta = workForm.prompt;
+      const restore = adminBtnBusy(adminAiIntroBtn, '生成中…');
+      try {
+        const d = await adminAiPost('/api/ai/intro', {
+          title: info.title, categories: info.cats, types: info.types, link: info.link
+        });
+        const text = String(d.text || '').trim();
+        if (!text) { toast('没生成出内容，先手动写一句吧'); return; }
+        if (info.intro) {
+          // 原文还在：不直接动编辑器，弹选择框让站长决定「替换」还是「追加」
+          adminAiIntroDraft = text;
+          const pv = $('adminAiIntroPreview');
+          if (pv) pv.innerHTML = window.MiniMd ? MiniMd.render(text) : esc(text).replace(/\n/g, '<br>');
+          showModal($('adminAiIntroMask'));
+        } else {
+          ta.value = text;
+          ta.dispatchEvent(new Event('input', { bubbles: true }));   // 草稿自动保存跟着走
+          adminMdShowWrite();
+          toast('草稿已填入，改完记得点保存');
+          ta.focus();
+        }
+      } catch (err) { toast(err.message || '网络异常，先手动写一句吧'); }
+      finally { restore(); }
+    };
+    (function bindAdminAiIntroPick() {
+      const mask = $('adminAiIntroMask');
+      if (!mask) return;
+      const apply = mode => {
+        hideModal(mask);
+        const ta = workForm.prompt;
+        if (!ta) return;
+        if (mode === 'replace') ta.value = adminAiIntroDraft;
+        else {
+          const cur = (ta.value || '').trim();
+          ta.value = (cur ? cur + '\n\n' : '') + adminAiIntroDraft;
+        }
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        adminMdShowWrite();
+        toast(mode === 'replace' ? '已替换原文，改完记得点保存' : '草稿已追加在下面，改完记得点保存');
+        ta.focus();
+      };
+      $('adminAiIntroReplace').onclick = () => apply('replace');
+      $('adminAiIntroAppend').onclick = () => apply('append');
+      $('adminAiIntroCancel').onclick = () => hideModal(mask);
+      bindMaskClose(mask, () => hideModal(mask));
+    })();
+
+    // 「一句话定位」的 AI 写一句：已有定位句时不静默覆盖 —— 第一次点只提醒，再点一次才换
+    const adminAiPosBtn = $('adminAiPos');
+    if (adminAiPosBtn) {
+      const hint = $('adminAiPosHint');
+      const DEFAULT_POS_HINT = '从上面的作品介绍里提炼，生成后自己改';
+      const setPosHint = txt => { if (hint) hint.textContent = txt || DEFAULT_POS_HINT; };
+      if (workForm.positioning) workForm.positioning.addEventListener('input', () => { adminAiPosBtn.dataset.arm = ''; });
+      adminAiPosBtn.onclick = async () => {
+        const info = adminAiPicked();
+        const pos = workForm.positioning;
+        if (!pos) return;
+        if (info.title.length < 2) { toast('先填作品名字，AI 才知道写什么'); workForm.wname.focus(); return; }
+        if (info.intro.length < ADMIN_AI_MIN_INTRO) {
+          setPosHint('定位句得从作品介绍里提炼 —— 先在上面写两句「它是什么、怎么用」');
+          toast('先写两句作品介绍，AI 才有依据；不然它只会编');
+          workForm.prompt.focus();
+          return;
+        }
+        if (pos.value.trim() && adminAiPosBtn.dataset.arm !== '1') {
+          adminAiPosBtn.dataset.arm = '1';
+          setPosHint('这会替换你写的这一句 —— 想换就再点一次「AI 写一句」');
+          return;
+        }
+        const restore = adminBtnBusy(adminAiPosBtn, '生成中…');
+        try {
+          const d = await adminAiPost('/api/ai/positioning', {
+            title: info.title, prompt: info.intro, category: info.cats[0] || '', types: info.types
+          });
+          pos.value = String(d.text || '');
+          pos.dispatchEvent(new Event('input', { bubbles: true }));
+          adminAiPosBtn.dataset.arm = '';
+          setPosHint('AI 草稿已填入 —— 核对一下，改完保存');
+          toast('定位句已填入，改完再保存');
+        } catch (err) { setPosHint(err.message || '生成失败，先手动写一句吧'); toast(err.message || '网络异常，先手动写一句吧'); }
+        finally { restore(); }
+      };
+    }
+
+    // 「AI 补这四项」：只补空位，站长手写过的一律不动；原文没依据的项留空
+    const adminQlAiBtn = $('adminQlAi');
+    if (adminQlAiBtn) adminQlAiBtn.onclick = async () => {
+      const info = adminAiPicked();
+      if (info.title.length < 2) { toast('先填作品名字，AI 才知道写什么'); workForm.wname.focus(); return; }
+      if (info.intro.length < ADMIN_AI_MIN_INTRO) {
+        toast('先在「作品介绍」里写两三句（做什么、怎么用），AI 才有依据；介绍太短它只会编');
+        workForm.prompt.focus();
+        return;
+      }
+      const restore = adminBtnBusy(adminQlAiBtn, '生成中…');
+      try {
+        const d = await adminAiPost('/api/ai/quicklook', {
+          title: info.title, prompt: info.intro,
+          positioning: (workForm.positioning && workForm.positioning.value || '').trim(),
+          category: info.cats[0] || '', types: info.types
+        });
+        if (d.empty) { toast(d.error || '原文信息太少，AI 提炼不出有依据的内容'); return; }
+        const filled = [], kept = [], blank = [];
+        const put = (key, name, val) => {
+          const el = workForm[key];
+          if (!el) return;
+          if ((el.value || '').trim()) { kept.push(name); return; }   // 站长写过的不动
+          if (!val) { blank.push(name); return; }
+          el.value = val;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          filled.push(name);
+        };
+        put('problem', '解决什么', d.problem);
+        put('audience', '适合谁', d.audience);
+        put('steps', '上手几步', Array.isArray(d.steps) ? d.steps.join('\n') : '');
+        put('diff', '和同类比', d.diff);
+        const tail = blank.length ? `；原文没依据：${blank.join('、')}` : '';
+        if (filled.length) {
+          $('adminQuickLook').scrollIntoView({ block: 'center', behavior: 'smooth' });
+          toast(`已补 ${filled.length} 项（${filled.join('、')}）${kept.length ? `，${kept.join('、')} 原有内容没动` : ''}${tail}。保存前请核对`);
+        } else if (kept.length) toast(`这四项都已有内容，AI 没有覆盖${tail}`);
+        else toast(`AI 没能提炼出有依据的内容${tail}，建议手动补两句介绍`);
+      } catch (err) { toast(err.message || '网络异常，先手动填吧'); }
+      finally { restore(); }
+    };
+
     // 暗号认领额外奖励：必须先在上一栏填暗号，这笔灯火才有入口发放。
     // 没暗号时把这一栏灰掉并禁用输入（disabled 的字段不会进 FormData，等于没设），
     // 但已填过的数值保留在框里——站长可能只是先把暗号临时删掉看看。
@@ -4589,6 +5328,9 @@
       if (workForm.wname) workForm.wname.maxLength = 20;
       if (workForm.wtag) workForm.wtag.maxLength = 20;
       existingCover = ''; existingQr = ''; originalImages = []; galItems = []; qrCleared = false;
+      // 关键词胶囊和介绍编辑器不在 form.reset() 的管辖范围（胶囊是 DOM、Tab 是类名），单独收一下
+      adminKwSet([]); adminKwTouched = false; adminKwSig = '';
+      adminMdShowWrite();
       setPasteTarget('images');
       resetAiFill();   // 极速填写区收起并清空，避免上一条作品的原文留在框里
       const w = id ? WORK_CACHE[id] : null;
@@ -4606,6 +5348,13 @@
       setFormRadio('anonymous', w ? (w.anonymous === true ? '1' : '0') : '1');
       syncAnonAuthorState();
       $('repoField').style.display = getFormRadio('openSource') === '1' ? 'block' : 'none';
+      // 展示阶段 + 「一眼看懂」五件套：新建走默认值（已上线 / 全部留空），编辑按作品现状回填
+      // （publicWork 里 stage / progress / eta / positioning... 都已经下发，不用另外请求）
+      setFormRadio('stage', w ? (w.stage || 'live') : 'live');
+      if ($('adminProgressRange')) $('adminProgressRange').value = (w && typeof w.progress === 'number') ? w.progress : 40;
+      if ($('adminEtaInput')) $('adminEtaInput').value = (w && w.eta) ? w.eta : '';
+      adminSetQuickLook(w || null);
+      applyAdminStageFields();
       // 一键收回：仅当该作品已发放且未收回、且归属了账号时显示
       const canRecall = !!(w && w.osBonusAt && !w.osBonusRecalled && w.userId);
       $('osRecallRow').style.display = canRecall ? 'flex' : 'none';
@@ -4625,7 +5374,8 @@
         workForm.repo.value = w.repo || '';
         workForm.claimCode.value = w.claimCode || '';   // 认领暗号回填（明文只有后台能看到）
         // 搜索关键词回填：用存档 keywordsRaw（作者存过的原始词），没存过就留空（前台继续自动配词）
-        if ($('workKeywords')) $('workKeywords').value = Array.isArray(w.keywordsRaw) ? w.keywordsRaw.join('、') : '';
+        adminKwFromText(Array.isArray(w.keywordsRaw) ? w.keywordsRaw.join('、') : '');
+        adminKwTouched = adminKwList.length > 0;   // 已有词就别再自动补，免得多出几个作者没写的
         // 暗号认领额外奖励回填（只在设了暗号的作品上生效，没值就是空）
         workForm.claimBonusPoints.value = (w.claimBonus && w.claimBonus.points) || '';
         workForm.claimBonusReason.value = (w.claimBonus && w.claimBonus.reason) || '';
@@ -4669,6 +5419,8 @@
       if (workForm.claimCode && workForm.claimCode.value.trim()) return true;   // 只填了暗号也算填过东西
       if ($('workKeywords') && $('workKeywords').value.trim()) return true;   // 关键词填过也算
       if ($('pubTimeInput').value) return true;
+      if (getFormRadio('stage') !== 'live') return true;   // 只把作品改成「还在做」也算填过东西
+      if (Object.values(adminQuickLookValues()).some(v => v)) return true;
       if (Object.keys(adminCollectLinks()).length) return true;
       if ((workForm.qrcode && workForm.qrcode.files.length) || galItems.length) return true;
       return false;
@@ -4715,6 +5467,12 @@
           claimBonusReason: workForm.claimBonusReason ? workForm.claimBonusReason.value : '',
           prompt: workForm.prompt.value, site: workForm.site.value,
           keywordsText: ($('workKeywords') ? $('workKeywords').value : ''),
+          // 阶段 / 完成度 / 预计上线 + 一眼看懂五件套：后台草稿也要存全，
+          // 不然关掉弹窗再打开，前台填过的这块白填
+          stage: getFormRadio('stage') || 'live',
+          progress: $('adminProgressRange') ? $('adminProgressRange').value : '',
+          eta: $('adminEtaInput') ? $('adminEtaInput').value : '',
+          quick: adminQuickLookValues(),
           pubTime: $('pubTimeInput').value, t: Date.now()
         }));
       } catch {}
@@ -4752,7 +5510,13 @@
         adminRenderLinkInputs();
         workForm.prompt.value = d.prompt || '';
         workForm.site.value = d.site || '';
-        if ($('workKeywords')) $('workKeywords').value = d.keywordsText || '';
+        // 阶段 / 完成度 / 预计上线 + 一眼看懂五件套（老草稿没有这些键 → 走默认值）
+        setFormRadio('stage', ['live', 'reviewing', 'wip'].includes(d.stage) ? d.stage : 'live');
+        if ($('adminProgressRange')) $('adminProgressRange').value = d.progress || 40;
+        if ($('adminEtaInput')) $('adminEtaInput').value = d.eta || '';
+        adminSetQuickLook(d.quick || null);
+        applyAdminStageFields();
+        adminKwFromText(d.keywordsText || '');
         $('pubTimeInput').value = d.pubTime || '';
         return true;
       } catch { return false; }
@@ -4915,14 +5679,26 @@
       const oldText = btn.textContent;
       try {
         // 形态必填校验：只有网站需要链接，小程序需要二维码
+        // 「还在做」（wip）的预告卡本来就没有入口，与前台投稿同一口径：只要求一句进度说明
+        const stageNow = getFormRadio('stage') || 'live';
         const pickedTypes = [...document.querySelectorAll('#adminTypePicker input:checked')].map(i => i.value);
         const pickedLinks = adminCollectLinks();
-        if (pickedTypes.includes('Web') && !(pickedLinks.Web || '').trim()) {
-          throw new Error('形态含「Web」，请填写网站地址');
-        }
-        if (pickedTypes.includes('小程序')) {
-          const hasQr = workForm.qrcode.files.length > 0 || (existingQr && !qrCleared);
-          if (!hasQr) throw new Error('形态含「小程序」，请上传小程序码 / 二维码');
+        if (stageNow === 'wip') {
+          if ((workForm.prompt.value || '').trim().length < 8) {
+            throw new Error('预告卡要写一句进度说明（至少 8 个字）：做到哪一步了');
+          }
+        } else {
+          if (pickedTypes.includes('Web') && !(pickedLinks.Web || '').trim()) {
+            throw new Error('形态含「Web」，请填写网站地址');
+          }
+          if (pickedTypes.includes('小程序')) {
+            const hasQr = workForm.qrcode.files.length > 0 || (existingQr && !qrCleared);
+            if (!hasQr) {
+              throw new Error(qrCleared
+                ? '「小程序」形态必须有一张码：上传新的把旧的换掉；确实不要二维码，就先把形态里的「小程序」去掉'
+                : '形态含「小程序」，请上传小程序码 / 二维码');
+            }
+          }
         }
         // 源码仓库：标了开源就必须填，而且必须是开源代码托管站的页面（老数据没改动则放行）
         const repoVal = (workForm.repo.value || '').trim();
@@ -4956,6 +5732,16 @@
         const pubTimeVal = String(fd.get('pubTime') || '').trim();
         fd.delete('pubTime');
         if (pubTimeVal) fd.set('customCreatedAt', pubTimeVal);
+        // 展示阶段：完成度 / 预计上线只在「还在做」时有意义，其余阶段一律不传
+        // （否则改回「已上线」时会把上一次的 40% 之类留着，详情页会多出一行没用的进度）
+        fd.set('stage', stageNow);
+        if (stageNow === 'wip') {
+          fd.set('progress', String($('adminProgressRange') ? $('adminProgressRange').value : ''));
+          fd.set('eta', ($('adminEtaInput') && $('adminEtaInput').value) || '');
+        } else {
+          fd.delete('progress');
+          fd.delete('eta');
+        }
         // 形态按「主形态在前」的次序传（FormData 收集勾选框只能拿到 DOM 顺序，跟主次无关）；
         // 与前台投稿一致走 JSON 字符串，服务端 normalizeTypes 认数组也认 JSON。
         fd.delete('types');
@@ -6063,6 +6849,81 @@
       }
     });
 
+    // ---- 场景归类（AI + 人工纠偏）----
+    // 优先级：人工纠偏 > AI 归类 > 分类/关键词规则。AI 走智谱 glm-4-flash，服务端 aiSceneKeysOf。
+    let SCENE_STATE = { aiReady: false, scenes: [], works: [] };
+    const sceneSrcTag = src => src === 'manual'
+      ? '<span class="tag" style="background:#e8f5e9;color:#2e7d32">人工</span>'
+      : src === 'ai'
+      ? '<span class="tag" style="background:#e3f2fd;color:#1565c0">AI</span>'
+      : '<span class="tag">规则</span>';
+    async function loadScenesAdmin() {
+      panel.innerHTML = '<div class="empty">加载中…</div>';
+      try {
+        const data = await api('/api/admin/scenes/audit');
+        SCENE_STATE = data;
+        panel.innerHTML = `
+          <div class="form-inline">
+            <button class="btn btn-primary" id="sceneRebatchBtn" ${data.aiReady ? '' : 'disabled'}>AI 重新归类全部作品</button>
+            <span class="hint">${data.aiReady
+              ? '把存量作品全部交给 AI 重新归一遍（人工纠偏过和已下架的不动），约每秒 4 件'
+              : '未配置智谱 key（data/zhipu-key.txt），AI 归类不可用，目前全靠规则'}</span>
+          </div>
+          <div class="hint">每件作品可属于多个场景，点场景胶囊即可切换归属（点了立即保存）。优先级：人工纠偏 &gt; AI &gt; 分类/关键词规则。共 ${data.works.length} 件。</div>
+          <div id="sceneList">` + data.works.map(w => `
+            <div class="row">
+              <div class="row-main">
+                <div class="row-title">${esc(w.title)} <span class="scene-src">${sceneSrcTag(w.source)}</span></div>
+                <div class="row-actions" style="margin-top:6px" data-wid="${esc(w.id)}">
+                  ${data.scenes.map(s => {
+                    const on = w.scenes.includes(s.key);
+                    return `<button class="btn btn-sm ${on ? 'btn-primary' : 'btn-ghost'}" data-sid="${esc(s.key)}" data-wid="${esc(w.id)}">${esc(s.name)}</button>`;
+                  }).join('')}
+                </div>
+              </div>
+            </div>`).join('') + `</div>`;
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+    panel.addEventListener('click', async e => {
+      if (e.target.id === 'sceneRebatchBtn') {
+        const btn = e.target;
+        btn.disabled = true;
+        toast(`AI 归类中（${SCENE_STATE.works.length} 件），别关页面…`);
+        try {
+          const r = await api('/api/admin/scenes/rebatch', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+          });
+          toast(`完成：AI 归了 ${r.updated} 件，${r.kept} 件保留原归类`);
+          loadScenesAdmin();
+        } catch (err) { toast(err.message); btn.disabled = false; }
+        return;
+      }
+      const sid = e.target.dataset && e.target.dataset.sid;
+      const wid = e.target.dataset && e.target.dataset.wid;
+      if (!sid || !wid) return;
+      const w = SCENE_STATE.works.find(x => x.id === wid);
+      if (!w) return;
+      const next = w.scenes.includes(sid) ? w.scenes.filter(k => k !== sid) : w.scenes.concat(sid);
+      try {
+        await api('/api/admin/works/' + encodeURIComponent(wid) + '/scenes', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scenes: next })
+        });
+        w.scenes = next; w.source = 'manual';
+        const box = panel.querySelector(`div[data-wid="${CSS.escape(wid)}"]`);
+        if (box) {
+          box.querySelectorAll('button[data-sid]').forEach(b => {
+            const on = next.includes(b.dataset.sid);
+            b.classList.toggle('btn-primary', on);
+            b.classList.toggle('btn-ghost', !on);
+          });
+          const tag = box.closest('.row') && box.closest('.row').querySelector('.scene-src');
+          if (tag) tag.innerHTML = sceneSrcTag('manual');
+        }
+        toast('已保存');
+      } catch (err) { toast(err.message); }
+    });
+
     // ---- 友情链接 ----
     let FRIEND_EDIT = null;   // 正在编辑的友链（用旧链接当 key）：点「编辑」后这一行原地变成两个输入框
     async function loadFriends() {
@@ -7110,6 +7971,12 @@
       const paused = pmPausedOf(o);
       const live = pmIsLive(o);
       const isClickPack = !o.viewsBought && !!o.clicksBought && o.comp !== true;
+      // 计费方式标签（2026-11-15）：这单按点击还是按曝光扣额度，一行一个标，不用对着数字猜
+      const packTag = comp ? '' : `<span class="tag${isClickPack ? ' warn' : ''}" title="${esc(
+        isClickPack
+          ? '点击包：按点击计费，被点一次扣一次灯火，曝光只计数不扣额度'
+          : '曝光包：按曝光计费，卡片被看到扣灯火，点击只计数不扣额度'
+      )}">${isClickPack ? '点击包' : '曝光包'}</span>`;
       const comp = o.comp === true;   // 站长代投：不计费、没有额度进度，只看到期时间
       // 代投单的展示优先级（只影响同一个位里挑谁）：老单没有这个字段＝跟随右上角的全局投放权重
       const prioTag = !comp ? '' : `<span class="tag${o.prio === 'owner' ? ' warn' : ''}" title="${esc({
@@ -7133,6 +8000,7 @@
           <div class="row-title">${esc(o.workTitle)}
             <span class="tag">${esc(o.slotName)}</span>
             ${o.platform === 'mini' ? '<span class="tag">小程序</span>' : ''}
+            ${packTag}
             <span class="tag ${stCls}">${esc(stTxt)}</span>
             ${comp ? '<span class="tag ok" title="站长代投：不消耗作者灯火，不进消耗统计">站长代投</span>' : ''}
             ${prioTag}
@@ -7304,7 +8172,10 @@
       pmCompItems = [];
       $('pmCompQ').value = '';
       const slots = pmSlotsCfg.length ? pmSlotsCfg : pmSlots;
-      $('pmCompSlot').innerHTML = slots.map(s => `<option value="${esc(s.key)}">${esc(s.name || s.key)}</option>`).join('');
+      // 推荐位改成可多选的选项组（checkbox 胶囊）：一次代投可以同时挂到多个位，
+      // 保存时逐个位各发一单。默认勾第一个，和原来单选下拉的默认行为一致。
+      $('pmCompSlots').innerHTML = slots.map((s, i) => `
+        <label class="os-opt"><input type="checkbox" name="pmCompSlotChk" value="${esc(s.key)}"${i === 0 ? ' checked' : ''} /><span>${esc(s.name || s.key)}</span></label>`).join('');
       $('pmCompDays').value = 7;
       // 展示优先级每次打开都回默认「让位买家单」：站长最常挂的是合作曝光，不该默认抢买家的流量
       const defPrio = $('pmCompPrio').querySelector('input[value="user"]');
@@ -7322,20 +8193,39 @@
       if (!pmCompWork) return toast('先在搜索结果里点选一件作品');
       const days = Math.round(Number($('pmCompDays').value));
       if (!(days >= 1) || days > 30) return toast('天数填 1-30 之间的整数');
+      // 多选：勾了几个位就逐个位各发一单（服务端一单只收一个位），单个位失败不影响其它位
+      const slots = Array.from($('pmCompSlots').querySelectorAll('input[name="pmCompSlotChk"]:checked')).map(el => el.value);
+      if (!slots.length) return toast('至少勾一个推荐位');
       const btn = $('pmCompSave');
       btn.disabled = true;
+      const okNames = [], queuedNames = [], failMsgs = [];
       try {
-        const r = await api('/api/admin/redemptions/comp', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ workId: pmCompWork.id, slot: $('pmCompSlot').value, days, prio: compPrioValue() })
-        });
-        $('pmCompMask').style.display = 'none';
-        notifyAds();
-        const prioTxt = r.prio === 'owner' ? '（优先这条）' : r.prio === 'tie' ? '（齐平随机）' : '（让位买家单）';
-        toast(r.queued
-          ? `已排队：位置被占用，轮到后开始投 ${days} 天${prioTxt}`
-          : `已挂上 ${prioTxt}：最多展示 ${days} 天，到期自动下线`);
-        await loadPromos();
+        for (const slot of slots) {
+          const name = ($('pmCompSlots').querySelector(`input[value="${slot}"] + span`) || {}).textContent || slot;
+          try {
+            const r = await api('/api/admin/redemptions/comp', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ workId: pmCompWork.id, slot, days, prio: compPrioValue() })
+            });
+            (r && r.queued ? queuedNames : okNames).push(name);
+          } catch (err) {
+            failMsgs.push(`${name}：${err.message}`);
+          }
+        }
+        if (okNames.length || queuedNames.length) {
+          $('pmCompMask').style.display = 'none';
+          notifyAds();
+          await loadPromos();
+        }
+        if (failMsgs.length) {
+          toast(`${okNames.length + queuedNames.length ? `已提交 ${okNames.length + queuedNames.length} 个位，但 ` : ''}失败：${failMsgs.join('；')}`);
+        } else {
+          const prioTxt = compPrioValue() === 'owner' ? '（优先这条）' : compPrioValue() === 'tie' ? '（齐平随机）' : '（让位买家单）';
+          const daysTxt = `最多展示 ${days} 天，到期自动下线`;
+          if (queuedNames.length && okNames.length) toast(`已挂上 ${okNames.join('、')}${prioTxt}；${queuedNames.join('、')} 排队中（位置被占用，轮到后开始投）`);
+          else if (queuedNames.length) toast(`已排队：位置被占用，轮到后开始投 ${days} 天${prioTxt}`);
+          else toast(okNames.length === 1 ? `已挂上 ${prioTxt}：${daysTxt}` : `已挂上 ${okNames.length} 个位 ${prioTxt}：${daysTxt}`);
+        }
       } catch (err) { toast(err.message); }
       finally { btn.disabled = false; }
     };
@@ -8072,9 +8962,9 @@
           <label style="display:flex;align-items:center;gap:6px"><input type="radio" name="bcCat" value="system" checked /> 系统通知</label>
           <label style="display:flex;align-items:center;gap:6px"><input type="radio" name="bcCat" value="promo" /> 营销推广</label>
           <label style="display:flex;align-items:center;gap:6px"><input type="radio" name="bcCat" value="ad" /> 投放 / 广告位</label>
-          <span class="hint" style="margin:0">营销可被「系统消息提示」开关静音；「投放」栏是推荐位 / 广告位的规则与调价，必达</span>
+          <span class="hint" style="margin:0">用户可按板块屏蔽提示（账号设置 → 消息提示）：屏蔽后消息照样进铃铛、只是不再弹窗</span>
         </div>
-        <div class="hint">每人一条，计入对方消息列表（最多保留 50 条）。发送后不可撤回，发之前先确认文案。<br />重复发送同一条文案会自动去重：已收过的人不会再进铃铛，游客公告条也只更新原公告不重复挂；改了文案才算新公告。<br />消息按分栏归档：「系统通知」与「营销推广」用户在「账号设置 → 系统消息提示」里屏蔽后照样进铃铛、只是不再弹窗；「投放」栏属于推荐位 / 广告位的规则与调价，必达。</div>
+        <div class="hint">每人一条，计入对方消息列表（最多保留 50 条）。发送后不可撤回，发之前先确认文案。<br />重复发送同一条文案会自动去重：已收过的人不会再进铃铛，游客公告条也只更新原公告不重复挂；改了文案才算新公告。<br />消息按分栏归档：五个板块（系统 / 投放 / 灯火 / 消息 / 营销）用户都能在「账号设置 → 消息提示」里单独屏蔽提示——消息照样进铃铛（标「已屏蔽」）、只是不再弹窗；也可在铃铛弹窗切到某一栏后点底部「屏蔽本栏提示」。</div>
         <div class="hint" style="margin-top:14px"><b>游客公告条</b>：未登录的访客没有铃铛收不到站内消息；勾选「游客也可见」会把同一条文案挂到站内页面顶部的公告条上，游客也能看到（访客自己点 ✕ 关掉后不再弹）。已挂出的公告可在下方下架。</div>
         <div id="gnList" style="margin-top:8px"></div>`;
       async function refreshCount() {
@@ -8241,11 +9131,11 @@
       if (!ov) return;
       const cfg = ov.cfg || {}, totals = ov.totals || {}, buckets = ov.buckets || {};
       const distRows = [
-        ['0', '还没被推过——雨露均沾的观察重点，这一格应该随时间变小'],
+        ['0', '还没被任何人看到——观察重点，这一格应该随时间变小'],
         ['1-5', '刚起步'],
         ['6-10', '正常轮转'],
         ['11-29', '曝光较多'],
-        ['30+', '已过降级线（取卡时排池尾垫底，本人没看过照样推、不打重温角标）']
+        ['30+', '曝光人数较多（2026-11-15 起不影响取卡，只作看板观察）']
       ].map(([k, d]) => `<div class="row">
         <div class="row-main">
           <div class="row-title">${k} 人 <span class="tag ${(k === '0' ? (buckets[k] ? 'warn' : 'ok') : (buckets[k] ? 'ok' : ''))}">${buckets[k] || 0} 件</span></div>
@@ -8266,7 +9156,8 @@
         <div class="hint" style="padding:16px 18px;line-height:1.75">
           首页「随便逛逛」的曝光统计。<strong>n = 被多少个不同的人看到</strong>，同一个人反复看只算 1，刷不上去；
           点击单独记账，不改曝光数、不消耗名额。<br />
-          阶段 1 只攒数据，首页还没渲染这个模块；下面的开关和 k 在阶段 2 取卡上线后才生效（方案：docs/discover-spec-v1.md）。
+          取卡口径（2026-11-15 修订）：在访客没看过的作品里<b>等概率纯随机</b>，不再按曝光人数分桶；
+          下面的 k 只作用于「手动加权」档位（修订说明见 docs/discover-spec-v1.md 顶部）。
         </div>
         <div class="form-inline" style="align-items:center;border-bottom:1px solid var(--border)">
           <b style="font-size:14px">模块开关</b>
@@ -8275,7 +9166,7 @@
           <input id="dscK" type="number" step="0.05" min="0" max="${cfg.kMax || 0.6}" value="${cfg.k ?? 0.3}" style="width:80px" />
           <button class="btn btn-primary btn-sm" id="dscSave">保存</button>
           <span class="tag ${cfg.envEnabled ? 'ok' : 'warn'}">env DISCOVER_ENABLED ${cfg.envEnabled ? 'on' : 'off'}</span>
-          <span style="color:var(--muted);font-size:12px">k=0 纯随机；0.3 → 单件被抽中概率 ±15%；env 关掉时整段不渲染</span>
+          <span style="color:var(--muted);font-size:12px">k 只放大手动加权：0 = 完全纯随机（手动加权也不生效）；0.3 → +2 档概率约 1.6 倍、−2 档约 0.4 倍；env 关掉时整段不渲染</span>
         </div>
         <div class="form-inline" style="border-bottom:1px solid var(--border);flex-wrap:wrap">
           <span class="tag">在架作品 ${totals.works ?? 0}</span>
@@ -8314,7 +9205,7 @@
         <div id="dscBlockedList"></div>
         <div class="form-inline" style="border-top:1px solid var(--border)">
           <b style="font-size:14px">手动加权</b>
-          <span style="color:var(--muted);font-size:12px">只在同一梯队内部生效，不能跨梯队插队；到期自动失效</span>
+          <span style="color:var(--muted);font-size:12px">在等概率随机的基础上提高/降低被抽中的机会；到期自动失效</span>
           <button class="btn btn-primary btn-sm" id="dscManualBtn" style="align-self:center;margin-left:auto">+ 手动加权</button>
         </div>`;
 

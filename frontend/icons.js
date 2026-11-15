@@ -153,6 +153,9 @@
     all: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.4 8.2c-2 0-3.5 1.6-3.5 3.7s1.5 3.7 3.5 3.7c1.4 0 2.5-.8 3-2 .5 1.2 1.6 2 3 2 2 0 3.5-1.6 3.5-3.7s-1.5-3.7-3.5-3.7c-1.4 0-2.5.8-3 2-.5-1.2-1.6-2-3-2z"/></svg>',
     fire: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c1.6 3-1.6 4.6-1.6 7.1A1.6 1.6 0 0 0 12 11.6c.9 0 1.6-.7 1.6-1.5 2 1.1 3.2 2.9 3.2 5.2a4.8 4.8 0 0 1-9.6 0c0-2.3 1.4-3.8 2.6-5C10.4 8.5 11.2 6.1 12 3z"/></svg>',
 
+    /* 星梦期刊（摊开的书：左右两页 + 书脊；右栏期刊架与期刊弹窗共用） */
+    journal: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6.9C10.2 5.5 8.1 4.9 5.2 4.9c-.8 0-1.5.06-2 .17V19.1c.5-.11 1.2-.17 2-.17 2.9 0 5 .6 6.8 2 1.8-1.4 3.9-2 6.8-2 .8 0 1.5.06 2 .17V5.07c-.5-.11-1.2-.17-2-.17-2.9 0-5 .6-6.8 2z"/><path d="M12 6.9V21"/></svg>',
+
     /* 个人下拉菜单（线性跟字色走，hover 随文字变主色） */
     home: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.9 3.1 10.5a1.05 1.05 0 0 0 1.36 1.6l.74-.63v7.23A1.9 1.9 0 0 0 7.1 20.6h3.4v-5.2h3v5.2h3.4a1.9 1.9 0 0 0 1.9-1.9v-7.23l.74.63a1.05 1.05 0 0 0 1.36-1.6z"/></svg>',
     promo: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 4.5v15L8.5 15H4.5a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h4L18 4.5z"/><path d="M8.5 15l1.5 4.5h2L11 14.6"/><path d="M20.5 9.5a4.2 4.2 0 0 1 0 5"/></svg>',

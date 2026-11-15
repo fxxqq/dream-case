@@ -27,6 +27,8 @@ const ic = (name, size) => (window.Icons ? Icons.icon(name, size) : '');
 // 也就是全站其实一直没走缩图、都在直出原图。要切回缩图得先确认两件事再动：
 // ① 线上 /t/ 对 jpg/png/webp 各档都稳；② 数据里把绝对地址归一成 /uploads/…（或这里先剥域名）。
 function imgUrl(u, width) {
+  // width 只能取服务端支持的档位（server.js THUMB_SIZES：400/800/1200/1600），
+  // 传别的档位 /t/ 路由会 404 —— 期刊架用 200/120 裂过一回（2026-11-15）。
   u = String(u || '');
   if (u.indexOf('/uploads/') !== 0) return u;
   return '/t/' + width + '/' + u.slice('/uploads/'.length);
@@ -80,7 +82,7 @@ function syncSortToggle() {
 }
 
 const state = {
-  sort: readSavedSort(),   // 默认随便逛逛：分层随机推荐（docs/discover-spec-v1.md）；点过最新/最热则按记忆来
+  sort: readSavedSort(),   // 默认随便逛逛：随机推荐（docs/discover-spec-v1.md）；点过最新/最热则按记忆来
   type: '全部',
   category: '全部',
   scene: '全部',      // 场景筛选：全部 / work / study / life / create / relax / family（key 由 /api/scene-meta 下发）
@@ -797,6 +799,9 @@ let editWorkFn = null; // setupUploadForm 内部注入
 // 「一眼看懂」折叠块的对外句柄：setupUploadForm 里注入实现，编辑器之外（重置/回填）也能用。
 // 用空实现兜底，保证在任何调用顺序下都不会因为「还没初始化」而炸掉。
 const qlUI = { setOpen: () => {}, paint: () => {} };
+// 「一句话定位」的 AI 写一句：同样在 setupUploadForm 里注入。编辑器外面（补全条带进来时）
+// 要能重置提示、也能直接触发一次生成，所以留一份句柄，别让逻辑只活在按钮的 onclick 里。
+const posUI = { reset: () => {}, gen: async () => {} };
 // 站长账号编辑任意作品：详情里「灯火解锁」作品的 link / 二维码是空的，直接拿它回填会把它们存丢。
 // 点入口时单独要一份未锁定的编辑数据（?edit=1 只对站长账号生效），再交给同一套编辑器。
 async function openAdminEdit(w) {
@@ -843,6 +848,7 @@ let applyTypeFieldsFn = () => {}; // setupUploadForm 内部注入：按形态切
 let updateRepoFieldFn = () => {}; // setupUploadForm 内部注入：开源时显示/必填源码仓库
 let resetTipPanel = () => {}; // setupDetailActions 内部注入：换作品时重置打赏面板（openWork 调用）
 let openAuthorTipPanelHook = null; // setupDetailActions 内部注入：作者页直送灯火面板（loadAuthor 调用；null = 还没初始化完）
+let openWorkTipPanelHook = null;   // setupDetailActions 内部注入：卡片上直接给作品送灯火（不打开详情弹窗）
 
 // ---------- 登录态快照：消除刷新时右上角登录区「从空到满」的闪动 ----------
 // loadMe 要等 /api/me 一个来回，期间 #authBox 是空的，刷新时「签到 / 灯火 / 铃铛 / 头像」
@@ -874,7 +880,7 @@ function restoreMeSnapshot() {
       points: s.points || 0, checkin: s.checkin || {},
       unreadNotices: Number(s.unreadNotices || 0),
       passSet: s.passSet !== false,
-      noticePrefs: { announce: true }
+      noticePrefs: { announce: true, cats: {} }   // 只是视觉占位，loadMe 回来会覆盖成服务端真值
     };
     state.providers = s.providers || {};
     renderAuthBox();   // 只为视觉占位：blocked/favs 等仍为空，接口回来后由 loadMe 校准
@@ -897,6 +903,7 @@ function renderAuthBox() {
         <button class="user-chip" id="userMenuBtn" title="个人菜单">${ic('user')} <span class="uc-name">${escapeHtml(state.user.nickname || state.user.username)}</span><span class="um-caret">▾</span></button>
         <div class="user-dropdown" id="userDropdown">
           <a class="ud-item" href="/u/${encodeURIComponent(state.user.slug || state.user.id || state.user.username)}" data-nav>${ic('home', 15)} 我的主页</a>
+          ${state.user.dmBeta ? `<button class="ud-item" id="dmBtn">${ic('chat', 15)} 私信</button>` : ''}
           <div class="ud-sep"></div>
           <button class="ud-item" id="statsBtn">${ic('bars', 15)} 作品数据</button>
           <button class="ud-item" id="pointsBtn">${ic('lamp', 15)} 灯光明细<span class="ud-pts">${pts}</span></button>
@@ -927,6 +934,7 @@ function renderAuthBox() {
     // 收藏 / 点赞入口（2026-11-14）：头像下拉里那两颗已撤——作者主页现在有「收藏 / 喜欢」
     // 两个 tab（/favs、/likes 独立页保留，「我的」tiles 入口也在），下拉不再重复挂一份
     $('statsBtn').onclick = () => openStats('data');
+    if ($('dmBtn')) $('dmBtn').onclick = () => openInbox();
     // 灯光明细：PC 端原来只能从「我的」页（手机端）或分享成绩里的余额卡绕进去，
     // 顶栏的灯火数字反而点不出底账，这里给一个直达入口
     $('pointsBtn').onclick = () => openStats('points');
@@ -1223,7 +1231,7 @@ async function afterAuth(data) {
     // 登录响应里可能没有头像（走 afterAuth 的接口不止 /api/me），缺了就当首字母，
     // 下一次 loadMe 会补上真实值
     avatar: data.avatar || '', avatarSrc: data.avatarSrc || '', avatarSrcLabel: data.avatarSrcLabel || '',
-    noticePrefs: data.noticePrefs || { announce: true },   // 系统消息提示开关（登录/注册响应里带回来）
+    noticePrefs: data.noticePrefs || { announce: true, cats: {} },   // 消息提示偏好（登录/注册响应里带回来）
     // 登录响应（/api/login、微信扫码轮询）必须带 passSet / 别名：这里不走 loadMe，
     // 缺了 passSet 会把没设过密码的 OAuth 临时号误判成已设密码，弹窗里冒出「当前密码」
     passSet: data.passSet !== false,
@@ -1319,6 +1327,7 @@ async function loadMe() {
           worksCount: Number(data.worksCount || 0),   // 带上签到状态、积分和作品数，顶部按钮 / 注销弹窗要用
           passSet: data.passSet !== false,            // false = OAuth 建的号（GitHub / Google）还没设过密码
           isSiteOwner: data.isSiteOwner === true,     // 站长标记：编辑弹窗据此隐藏承诺勾选框
+          dmBeta: data.dmBeta === true,               // 私信内测：只有拿到这个标记的账号才显示私信入口
           isAdmin: data.isAdmin === true,             // 管理员标记（站长或名单管理员）：头像下拉据此显隐「管理后台」入口
           alias: data.alias || '',                    // 登录别名（自己起的好记登录名）
           aliasNextAt: Number(data.aliasNextAt || 0),
@@ -1332,7 +1341,7 @@ async function loadMe() {
           slugEligible: data.slugEligible === true,
           links: Array.isArray(data.links) ? data.links : [],   // 我的链接（GitHub/知乎/…），作者主页档案行下面那排
           hideWorks: data.hideWorks === true,   // 主页作品隐藏：别人打开 /u/xxx 只看得到档案
-          noticePrefs: data.noticePrefs || { announce: true },   // 系统消息提示开关（屏蔽后仍收消息、不弹窗）
+          noticePrefs: data.noticePrefs || { announce: true, cats: {} },   // 消息提示偏好（屏蔽后仍收消息、不弹窗）
           wechat: data.wechat || null,
           github: data.github || null,
           google: data.google || null }
@@ -1402,13 +1411,13 @@ const NOTICE_TABS = [
 const NOTICE_CAT_OF_KIND = {
   promo: 'promo', ad: 'ad', points: 'points',
   announce: 'system', system: 'system', tag: 'system',
-  'bar-reply': 'msg'
+  'bar-reply': 'msg', 'dm-user': 'msg'
 };
 // 「消息」这一栏里其实混着几个场子：作品评论 / 提问、站长私信、意见反馈、酒馆回应。
 // 只有酒馆需要单独点明出处——它不是「我的作品有人说话」，点进去也不在作品详情。
 // 不给它开第七栏：480px 的弹窗塞 6 个两字标签已经到底了，手机端连图标都让位了；
 // 一枚小标签足够，未读照样计入「消息」。
-const NOTICE_KIND_TAG = { 'bar-reply': { name: '酒馆', cls: 'bar' } };
+const NOTICE_KIND_TAG = { 'bar-reply': { name: '酒馆', cls: 'bar' }, 'dm-user': { name: '私信', cls: 'msg' } };
 function noticeCatOf(n) {
   return (n && n.cat) || NOTICE_CAT_OF_KIND[(n && n.kind) || ''] || 'msg';
 }
@@ -1448,6 +1457,16 @@ function renderNoticeTabs() {
   });
   const readAll = $('noticeReadAll');
   if (readAll) readAll.textContent = noticeCat === 'all' ? '全部标记已读' : '标记本栏已读';
+  // 「屏蔽本栏提示」只在具体分栏里出现（「全部」没有单一板块可屏蔽）
+  const muteBtn = $('noticeMuteCat');
+  if (muteBtn) {
+    if (noticeCat === 'all') { muteBtn.hidden = true; }
+    else {
+      muteBtn.hidden = false;
+      muteBtn.textContent = noticeCatMuted(noticeCat) ? '恢复本栏提示' : '屏蔽本栏提示';
+      muteBtn.classList.toggle('is-muted', noticeCatMuted(noticeCat));
+    }
+  }
 }
 
 function renderNoticeBadge(n) {
@@ -1463,25 +1482,75 @@ function renderNoticeBadge(n) {
   }
 }
 
-// 系统消息（站方公告）是否屏蔽了提示：屏蔽 ≠ 拒收，消息照样进铃铛，只是不弹窗
-function noticeMuted() {
-  return !!(state.user && state.user.noticePrefs && state.user.noticePrefs.announce === false);
+// 某个板块的提示是否被屏蔽了：屏蔽 ≠ 拒收，消息照常进铃铛列表（标「已屏蔽」），只是不弹窗。
+// 服务端 cats 下发的是全量五项；老数据没有 cats 时按旧口径兜底（announce=false → 系统+营销静音）
+function noticeCatMuted(cat) {
+  const p = (state.user && state.user.noticePrefs) || {};
+  if (p.cats && typeof p.cats === 'object' && cat in p.cats) return p.cats[cat] === false;
+  if (p.announce === false) return cat === 'system' || cat === 'promo';
+  return false;
 }
-
-async function toggleNoticeMute() {
-  if (!state.user) { openAuth('login'); return; }
-  const nextMuted = !noticeMuted();          // 这次要变成「屏蔽」还是「恢复正常」
+function noticeMutedCount() {
+  return ['promo', 'system', 'ad', 'points', 'msg'].filter(noticeCatMuted).length;
+}
+// 切一个板块的提示开关；返回这次切换后的屏蔽状态（供调用方刷新 UI）
+async function toggleNoticeCatMute(cat) {
+  if (!state.user) { openAuth('login'); return false; }
+  const nextMuted = !noticeCatMuted(cat);    // 这次要变成「屏蔽」还是「恢复正常」
   try {
     const r = await fetch('/api/me/notices/prefs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ announce: !nextMuted })
+      body: JSON.stringify({ cat, muted: nextMuted })
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || '设置失败');
-    state.user.noticePrefs = d.noticePrefs || { announce: !nextMuted };
-    renderAuthBox();
-    showToast(nextMuted ? '已屏蔽系统消息提示，消息仍会进铃铛列表' : '已恢复系统消息提示');
-  } catch (e) { showToast(e.message || '设置失败', undefined, 'err'); }
+    if (d.noticePrefs) state.user.noticePrefs = d.noticePrefs;
+    const name = (NOTICE_TABS.find(t => t.key === cat) || {}).name || '该板块';
+    showToast(nextMuted ? `已屏蔽「${name}」提示，消息仍会进铃铛列表` : `已恢复「${name}」提示`);
+  } catch (e) { showToast(e.message || '设置失败', undefined, 'err'); return noticeCatMuted(cat); }
+  return nextMuted;
+}
+
+// 「消息提示」设置弹窗（账号设置页入口）：五个板块逐个开关。
+// 每行一句话说清这栏装什么——用户得知道关掉会错过什么再动手，尤其是投放（退款进展）和消息（有人回你）。
+const NOTICE_PREF_DESC = {
+  system: '规则调整、上线公告',
+  ad: '推荐位上线 / 排队 / 投完，退款等关键进展也在这栏',
+  points: '签到、投稿、分享的灯火变动',
+  msg: '评论、站长回信、酒馆回应——有人跟你说话',
+  promo: '站内活动、上新、优惠'
+};
+function openNoticePrefsModal() {
+  if (!state.user) { openAuth('login'); return; }
+  const mask = $('noticePrefsMask');
+  const list = $('noticePrefList');
+  const render = () => {
+    // 和铃铛弹窗同一个顺序：系统 / 投放 / 灯火 / 消息 / 营销
+    list.innerHTML = ['system', 'ad', 'points', 'msg', 'promo'].map(cat => {
+      const t = NOTICE_TABS.find(x => x.key === cat) || {};
+      const muted = noticeCatMuted(cat);
+      return `
+      <button type="button" class="npref-row" data-cat="${cat}" role="switch" aria-checked="${!muted}">
+        <span class="npref-ico"><i class="ico" data-ico="${t.icon || 'bell'}" data-ico-size="16"></i></span>
+        <span class="npref-main"><b>${t.name}</b><i>${NOTICE_PREF_DESC[cat] || ''}</i></span>
+        <span class="npref-state${muted ? ' is-muted' : ''}">${muted ? '已屏蔽' : '提示中'}</span>
+        <span class="ud-switch${muted ? '' : ' is-on'}"><i></i></span>
+      </button>`;
+    }).join('');
+    try { if (window.Icons && Icons.hydrate) Icons.hydrate(list); } catch { /* 图标脚本没加载就先裸占位 */ }
+    list.querySelectorAll('.npref-row').forEach(btn => {
+      btn.onclick = async () => {
+        btn.disabled = true;
+        await toggleNoticeCatMute(btn.dataset.cat);
+        render();
+        if (state.user && location.pathname === '/settings') renderSettingsPage();
+      };
+    });
+  };
+  render();
+  $('closeNoticePrefs').onclick = () => hideModal(mask);
+  bindMaskClose(mask, () => hideModal(mask));
+  showModal(mask);
 }
 
 async function loadNotices(silent) {
@@ -1543,6 +1612,8 @@ function renderNoticeList() {
   }
   box.innerHTML = items.map(n => {
     const goto = n.workId || n.link || '';
+    const dmThread = n.dmThreadId || '';
+    const clickable = !!(goto || dmThread);
     // 可对话的通知：精选 / 管理员回复 / 意见反馈的回复 / 自己发起的私信站长
     const hasThread = n.kind === 'featured' || n.kind === 'reply' || n.kind === 'feedback' || n.kind === 'dm';
     // 「全部」里给每条补一个分区小标签：营销 / 系统 / 灯火混在一起时，得一眼看出这条是谁发的
@@ -1552,9 +1623,9 @@ function renderNoticeList() {
       : (noticeCat === 'all' && (NOTICE_TABS.find(t => t.key === noticeCatOf(n)) || {}).name);
     const catCls = own ? own.cls : noticeCatOf(n);
     return `
-    <div class="notice-item${n.read ? '' : ' is-unread'}${Number(n.delta || 0) > 0 ? ' is-plus' : (Number(n.delta || 0) < 0 ? ' is-minus' : '')}${goto ? ' is-link' : ''}${hasThread ? ' has-thread' : ''}"${n.workId ? ` data-goto="${escapeHtml(n.workId)}"` : (n.link ? ` data-link="${escapeHtml(n.link)}"` : '')}>
+    <div class="notice-item${n.read ? '' : ' is-unread'}${Number(n.delta || 0) > 0 ? ' is-plus' : (Number(n.delta || 0) < 0 ? ' is-minus' : '')}${clickable ? ' is-link' : ''}${hasThread ? ' has-thread' : ''}"${n.workId ? ` data-goto="${escapeHtml(n.workId)}"` : (n.link ? ` data-link="${escapeHtml(n.link)}"` : '')}${dmThread ? ` data-dm="${escapeHtml(dmThread)}"` : ''}>
       <div class="notice-top">
-        <span class="notice-title">${catName ? `<span class="nc-tag nc-${catCls}">${catName}</span>` : ''}${escapeHtml(n.title || '消息')}${goto ? ' <span class="notice-go">查看 ›</span>' : ''}</span>
+        <span class="notice-title">${catName ? `<span class="nc-tag nc-${catCls}">${catName}</span>` : ''}${escapeHtml(n.title || '消息')}${clickable ? ' <span class="notice-go">查看 ›</span>' : ''}</span>
         ${n.muted ? '<span class="notice-mute">已屏蔽</span>' : ''}
         <span class="notice-time">${fmtNoticeTime(n.createdAt)}</span>
       </div>
@@ -1562,6 +1633,13 @@ function renderNoticeList() {
       ${hasThread ? `<button type="button" class="notice-reply-btn" data-reply="${escapeHtml(n.threadId)}">${n.kind === 'dm' ? '查看对话' : '回复'}</button>` : ''}
     </div>`;
   }).join('');
+  // 私信合成条目：点开就是那段对话（不是作品详情），关消息面板顺手把这一栏结算成已读
+  box.querySelectorAll('.notice-item[data-dm]').forEach(el => {
+    el.onclick = () => {
+      closeNoticePanel();
+      openInbox(el.dataset.dm);
+    };
+  });
   // 带 workId 的消息（评论 / 提问 / 回复通知）点了直接打开对应作品详情
   box.querySelectorAll('.notice-item[data-goto]').forEach(el => {
     el.onclick = () => {
@@ -1758,6 +1836,13 @@ async function openNotices() {
   const mask = $('noticeMask');
   $('closeNotice').onclick = closeNoticePanel;
   if ($('noticeDm')) $('noticeDm').onclick = () => openDmToOwner();
+  // 私信入口：和「给站长留言」并排，但打开的是用户之间的会话列表（不是站内消息）。
+  // 内测期间只有站长看得到这颗按钮，其他人连位置都不留。
+  if ($('noticeInbox')) {
+    const beta = !!(state.user && state.user.dmBeta);
+    $('noticeInbox').style.display = beta ? '' : 'none';
+    $('noticeInbox').onclick = () => { closeNoticePanel(); openInbox(); };
+  }
   // 分栏切换：只切列表，不结算已读（已读统一在关窗时结）
   const tabs = $('noticeTabs');
   if (tabs) {
@@ -1772,6 +1857,15 @@ async function openNotices() {
     });
   }
   $('noticeReadAll').onclick = () => markNoticeRead(noticeCat);
+  // 屏蔽 / 恢复当前分栏的弹窗提示（消息本身照常收）；切完静默刷新，列表里的「已屏蔽」标记立刻跟上
+  const muteBtn = $('noticeMuteCat');
+  if (muteBtn) muteBtn.onclick = async () => {
+    if (noticeCat === 'all') return;
+    await toggleNoticeCatMute(noticeCat);
+    await loadNotices();
+    renderNoticeTabs();
+    renderNoticeList();
+  };
   bindMaskClose(mask, closeNoticePanel);
   showModal(mask);
   renderNoticeTabs();
@@ -1779,6 +1873,385 @@ async function openNotices() {
   const d = await loadNotices();
   renderNoticeTabs();
   renderNoticeList();
+}
+
+// ---------- 用户私信（一对一） ----------
+// 一个弹窗两栏：左边会话列表、右边聊天；手机端用 .modal-dm.is-chat 单栏切换。
+// 未读数不在这里另算——服务端把「有未读的会话」合成进站内消息（kind=dm-user），
+// 铃铛角标和「消息」栏共用一套口径；这里只负责把对话读干净，读完顺手刷一次铃铛。
+let dmThreadsCache = [];
+let dmCurrent = null;        // { threadId, peer, messages, canSend, muted, blockedByMe, blockedMe, reason }
+let dmPollTimer = null;
+
+function dmPeerName(peer) { return (peer && (peer.name || peer.username)) || '对方'; }
+
+function dmRenderList() {
+  const box = $('dmList');
+  if (!box) return;
+  if (!dmThreadsCache.length) {
+    box.innerHTML = `
+      <div class="notice-empty dm-empty">
+        <div class="ne-art"><i class="ico" data-ico="chat" data-ico-size="24"></i><i class="ico ne-spark" data-ico="sparkle" data-ico-size="12"></i></div>
+        <div class="ne-title">还没有私信</div>
+        <div class="ne-text">在作者主页或作品页点「私信」，就能和作者一对一聊</div>
+      </div>`;
+    try { if (window.Icons && Icons.hydrate) Icons.hydrate(box); } catch { /* 图标没加载就先裸占位 */ }
+    return;
+  }
+  box.innerHTML = dmThreadsCache.map(t => {
+    const p = t.peer || {};
+    const on = dmCurrent && dmCurrent.threadId === t.id;
+    return `<button type="button" class="dm-item${on ? ' is-on' : ''}${t.unread ? ' has-unread' : ''}" data-dmthread="${escapeHtml(t.id)}">
+      ${avaHtml(p.name || p.username, p.avatar, 'dm-ava', false, p.id || p.username)}
+      <span class="dm-item-main">
+        <span class="dm-item-top"><b>${escapeHtml(dmPeerName(p))}</b><i>${fmtNoticeTime(t.lastAt)}</i></span>
+        <span class="dm-item-sub">${escapeHtml(t.lastText || '')}</span>
+      </span>
+      ${t.unread ? `<span class="dm-badge">${t.unread > 99 ? '99+' : t.unread}</span>` : ''}
+    </button>`;
+  }).join('');
+  box.querySelectorAll('[data-dmthread]').forEach(el => {
+    el.onclick = () => openDmThread(el.dataset.dmthread);
+  });
+}
+
+// 手机端：进对话时藏列表；桌面端两栏并排，class 只是给窄屏用
+function dmSetPane(chat) {
+  const modal = $('dmModal');
+  if (modal) modal.classList.toggle('is-chat', !!chat);
+}
+
+function dmRenderChat(scrollToEnd) {
+  const box = $('dmThread');
+  const input = $('dmText');
+  const sendBtn = $('dmSend');
+  const tip = $('dmComposeTip');
+  if (!box) return;
+  if (!dmCurrent) {
+    box.innerHTML = '<div class="dm-thread-empty"><i class="ico" data-ico="chat" data-ico-size="26"></i><p>选一段对话开始聊</p></div>';
+    try { if (window.Icons && Icons.hydrate) Icons.hydrate(box); } catch { /* 同上 */ }
+    $('dmPeerName').textContent = '私信';
+    $('dmPeerSub').textContent = '';
+    $('dmPeerAvatar').textContent = '·';
+    $('dmPeerAvatar').style.background = '#eef0f8';
+    $('dmPeerAvatar').style.color = '#8a8f99';
+    input.disabled = true; sendBtn.disabled = true;
+    if (tip) { tip.hidden = true; }
+    return;
+  }
+  const peer = dmCurrent.peer || {};
+  paintAvatar($('dmPeerAvatar'), dmPeerName(peer), peer.avatar);
+  $('dmPeerName').textContent = dmPeerName(peer);
+  $('dmPeerSub').textContent = dmCurrent.blockedByMe ? '已屏蔽对方'
+    : (dmCurrent.blockedMe ? '对方已屏蔽你' : (dmCurrent.muted ? '消息免打扰' : ''));
+  const msgs = Array.isArray(dmCurrent.messages) ? dmCurrent.messages : [];
+  box.innerHTML = msgs.length ? msgs.map(m => `
+    <div class="dm-msg${m.mine ? ' is-mine' : ''}">
+      <div class="dm-bubble">${escapeHtml(m.text)}</div>
+      <span class="dm-time">${fmtNoticeTime(m.at)}</span>
+    </div>`).join('')
+    : `<div class="dm-thread-empty"><p>还没有聊过，写下第一条吧${dmCurrent.canSend === false && dmCurrent.reason ? `<br><i>${escapeHtml(dmCurrent.reason)}</i>` : ''}</p></div>`;
+  const can = dmCurrent.canSend !== false;
+  input.disabled = !can;
+  sendBtn.disabled = !can;
+  if (tip) {
+    tip.hidden = false;
+    tip.textContent = can ? 'Enter 发送，Shift + Enter 换行' : (dmCurrent.reason || '暂时不能给对方发私信');
+    tip.classList.toggle('is-warn', !can);
+  }
+  // 更多菜单的文字随当前状态变：已经屏蔽过的人不该再显示「屏蔽此人」
+  const menu = $('dmMenu');
+  if (menu) {
+    const muteBtn = menu.querySelector('[data-dmact="mute"]');
+    const blockBtn = menu.querySelector('[data-dmact="block"]');
+    if (muteBtn) muteBtn.textContent = dmCurrent.muted ? '取消消息免打扰' : '消息免打扰';
+    if (blockBtn) blockBtn.textContent = dmCurrent.blockedByMe ? '取消屏蔽' : '屏蔽此人';
+  }
+  if (scrollToEnd) box.scrollTop = box.scrollHeight;
+}
+
+async function loadDmThreads(silent) {
+  try {
+    const d = await (await fetch('/api/dm/threads', { cache: 'no-store' })).json();
+    dmThreadsCache = Array.isArray(d.threads) ? d.threads : [];
+    dmRenderList();
+    dmRenderPolicy(d.policy);
+    return d;
+  } catch {
+    if (!silent) showToast('私信列表没加载出来', undefined, 'err');
+    return null;
+  }
+}
+
+function dmRenderPolicy(policy) {
+  const btn = $('dmPolicyBtn');
+  if (!btn) return;
+  const known = policy === 'known';
+  btn.setAttribute('aria-checked', known ? 'true' : 'false');
+  btn.classList.toggle('is-on', known);
+}
+
+async function toggleDmPolicy() {
+  const btn = $('dmPolicyBtn');
+  if (!btn) return;
+  const next = btn.getAttribute('aria-checked') !== 'true';
+  btn.disabled = true;
+  try {
+    const r = await fetch('/api/dm/policy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ policy: next ? 'known' : 'all' })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '设置失败');
+    dmRenderPolicy(d.policy);
+    showToast(next ? '已改为「只接收聊过的人」的私信' : '所有人都能给你发私信了');
+  } catch (e) { showToast(e.message || '设置失败', undefined, 'err'); }
+  finally { btn.disabled = false; }
+}
+
+// 弹窗骨架：只挂事件 + 打开遮罩，不拉数据（openInbox / openDmWith 各自决定先拉什么）
+function openDmModal() {
+  const mask = $('dmMask');
+  if (!mask) return;
+  // 内测：非站长只能回话（站长找上来的那条），「只接收聊过的人」这种面向广播的开关不给他
+  const foot = document.querySelector('.dm-list-foot');
+  if (foot) foot.style.display = (state.user && state.user.dmBeta) ? '' : 'none';
+  $('closeDm').onclick = closeInbox;
+  $('dmBack').onclick = () => { dmCurrent = null; dmSetPane(false); dmRenderChat(false); dmRenderList(); };
+  $('dmSend').onclick = sendDm;
+  $('dmPolicyBtn').onclick = toggleDmPolicy;
+  const more = $('dmMore');
+  if (more) more.onclick = e => {
+    e.stopPropagation();
+    const menu = $('dmMenu');
+    if (menu) menu.style.display = menu.style.display === 'none' ? '' : 'none';
+  };
+  // 点空白处收起「更多」菜单：只绑一次，和用户菜单同一套做法
+  if (!document.__dmMenuOutside) {
+    document.__dmMenuOutside = true;
+    document.addEventListener('click', e => {
+      const menu = $('dmMenu');
+      if (menu && menu.style.display !== 'none' && !menu.contains(e.target) && e.target !== $('dmMore')) menu.style.display = 'none';
+    });
+  }
+  const menu = $('dmMenu');
+  if (menu) {
+    menu.querySelectorAll('[data-dmact]').forEach(btn => {
+      btn.onclick = () => dmMenuAction(btn.dataset.dmact);
+    });
+  }
+  const input = $('dmText');
+  if (input && !input.dataset.dmWired) {
+    input.dataset.dmWired = '1';
+    input.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;   // 中文输入法选词时不要误发
+      e.preventDefault();
+      sendDm();
+    });
+  }
+  bindMaskClose(mask, closeInbox);
+  showModal(mask);
+}
+
+function closeInbox() {
+  stopDmPoll();
+  dmCurrent = null;
+  const mask = $('dmMask');
+  if (mask) hideModal(mask);
+  const menu = $('dmMenu');
+  if (menu) menu.style.display = 'none';
+  // 关窗顺手对齐一次铃铛：私信合成条目应该已经随已读消失了
+  if (state.user) loadNotices(true);
+}
+
+async function openInbox(threadId) {
+  if (!state.user) { openAuth('login'); return; }
+  // 内测：没开到私信的账号打不开列表。带 threadId 的放行——那是从铃铛里的私信条目点进来的，
+  // 说明站长主动找过他，服务端也只认这一条会话。
+  if (!threadId && !state.user.dmBeta) { showToast('私信正在内测，暂时只对站长开放'); return; }
+  openDmModal();
+  dmSetPane(!!threadId);
+  if (!threadId) dmRenderChat(false);
+  await loadDmThreads();
+  if (threadId) await openDmThread(threadId);
+  startDmPoll();
+}
+
+async function openDmThread(id) {
+  if (!state.user) { openAuth('login'); return; }
+  dmSetPane(true);
+  try {
+    const r = await fetch('/api/dm/threads/' + encodeURIComponent(id), { cache: 'no-store' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '会话打不开');
+    dmCurrent = { ...d, threadId: id };
+    dmRenderChat(true);
+    dmRenderList();
+    // 打开即已读：把水位推到当前时间，未读角标 / 铃铛一起收掉
+    await fetch('/api/dm/threads/' + encodeURIComponent(id) + '/read', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    }).catch(() => {});
+    const t = dmThreadsCache.find(x => x.id === id);
+    if (t) t.unread = 0;
+    dmRenderList();
+    loadNotices(true);
+  } catch (e) {
+    showToast(e.message || '会话打不开', undefined, 'err');
+  }
+}
+
+// 从作者主页 / 作品页进来：ref 可以是用户 id、账号名或个性地址
+async function openDmWith(ref, name) {
+  if (!state.user) { openAuth('login'); return; }
+  if (!state.user.dmBeta) { showToast('私信正在内测，暂时只对站长开放'); return; }
+  if (!ref) { showToast('这位作者还没有绑定账号，收不到私信', undefined, 'err'); return; }
+  openDmModal();
+  dmSetPane(true);
+  dmCurrent = null;
+  $('dmPeerName').textContent = name || '私信';
+  $('dmThread').innerHTML = '<div class="dm-loading">正在打开…</div>';
+  try {
+    const r = await fetch('/api/dm/with/' + encodeURIComponent(ref), { cache: 'no-store' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '打不开私信');
+    dmCurrent = { ...d, threadId: d.threadId || null };
+    dmRenderChat(true);
+    if (d.threadId) {
+      await fetch('/api/dm/threads/' + encodeURIComponent(d.threadId) + '/read', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      }).catch(() => {});
+      loadNotices(true);
+    }
+    await loadDmThreads(true);
+    dmRenderList();
+    setTimeout(() => { const el = $('dmText'); if (el && !el.disabled) el.focus(); }, 80);
+  } catch (e) {
+    showToast(e.message || '打不开私信', undefined, 'err');
+    dmSetPane(false);
+    dmRenderChat(false);
+  }
+  startDmPoll();
+}
+
+async function sendDm() {
+  if (!dmCurrent || !state.user) return;
+  const input = $('dmText');
+  const btn = $('dmSend');
+  const text = (input.value || '').trim();
+  if (!text) return;
+  if (text.length > 500) { showToast('最多 500 字', undefined, 'err'); return; }
+  btn.disabled = true;
+  btn.textContent = '发送中…';
+  try {
+    const payload = dmCurrent.threadId
+      ? { threadId: dmCurrent.threadId, text }
+      : { to: dmCurrent.peer && dmCurrent.peer.id, text };
+    const r = await fetch('/api/dm/send', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '发送失败');
+    dmCurrent.threadId = d.threadId;
+    dmCurrent.messages = (dmCurrent.messages || []).concat(d.message);
+    if (d.peer) dmCurrent.peer = d.peer;
+    input.value = '';
+    dmRenderChat(true);
+    await loadDmThreads(true);
+    dmRenderList();
+  } catch (e) {
+    showToast(e.message || '发送失败', undefined, 'err');
+  } finally {
+    btn.textContent = '发送';
+    btn.disabled = !dmCurrent || dmCurrent.canSend === false;
+  }
+}
+
+function stopDmPoll() {
+  if (dmPollTimer) { clearInterval(dmPollTimer); dmPollTimer = null; }
+}
+function startDmPoll() {
+  stopDmPoll();
+  // 私信要「像聊天」：弹窗开着时 6 秒对一次；关掉就停，不在后台空转
+  dmPollTimer = setInterval(dmPollOnce, 6000);
+}
+async function dmPollOnce() {
+  const mask = $('dmMask');
+  if (!state.user || !mask || mask.style.display === 'none') { stopDmPoll(); return; }
+  if (document.hidden) return;
+  if (!dmCurrent || !dmCurrent.threadId) { await loadDmThreads(true); return; }
+  try {
+    const r = await fetch('/api/dm/threads/' + encodeURIComponent(dmCurrent.threadId), { cache: 'no-store' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d) return;
+    const before = (dmCurrent.messages || []).length;
+    dmCurrent = { ...d, threadId: dmCurrent.threadId };
+    // 只有条数变了才重绘：否则每 6 秒把正在读的对话滚回底部
+    if ((d.messages || []).length !== before) {
+      dmRenderChat(true);
+      await fetch('/api/dm/threads/' + encodeURIComponent(dmCurrent.threadId) + '/read', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      }).catch(() => {});
+      await loadDmThreads(true);
+      loadNotices(true);
+    }
+  } catch { /* 轮询失败下一轮再来，不打扰用户 */ }
+}
+
+async function dmMenuAction(act) {
+  const menu = $('dmMenu');
+  if (menu) menu.style.display = 'none';
+  if (!dmCurrent || !dmCurrent.threadId) return;
+  const id = dmCurrent.threadId;
+  const peer = dmCurrent.peer || {};
+  if (act === 'mute') {
+    const next = !dmCurrent.muted;
+    try {
+      const r = await fetch('/api/dm/threads/' + encodeURIComponent(id) + '/mute', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ muted: next })
+      });
+      if (!r.ok) throw new Error('设置失败');
+      dmCurrent.muted = next;
+      const t = dmThreadsCache.find(x => x.id === id);
+      if (t) t.muted = next;
+      dmRenderChat(false);
+      showToast(next ? '这段对话已免打扰' : '已恢复提示');
+    } catch (e) { showToast(e.message || '设置失败', undefined, 'err'); }
+    return;
+  }
+  if (act === 'clear') {
+    if (!confirm('清空这段对话？只清你这边，对方那边的记录还在。')) return;
+    try {
+      await fetch('/api/dm/threads/' + encodeURIComponent(id) + '/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      dmCurrent = null;
+      dmSetPane(false);
+      dmRenderChat(false);
+      await loadDmThreads(true);
+      loadNotices(true);
+      showToast('已清空这段对话');
+    } catch { showToast('清空失败', undefined, 'err'); }
+    return;
+  }
+  if (act === 'block') {
+    if (!peer.username) return;
+    const unblock = !!dmCurrent.blockedByMe;
+    if (!unblock && !confirm(`屏蔽 @${peer.username}？屏蔽后对方的作品不再出现在你的列表里，也不能再互发私信。`)) return;
+    try {
+      const r = await fetch('/api/users/' + encodeURIComponent(peer.username) + '/block', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: !unblock })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || '操作失败');
+      if (state.user) state.user.blockedUsers = d.blockedUsers || [];
+      state.blockedUsers = d.blockedUsers || [];
+      dmCurrent.blockedByMe = !unblock;
+      dmCurrent.canSend = unblock;
+      if (!unblock) dmCurrent.reason = '你已屏蔽对方，私信已关闭';
+      dmRenderChat(false);
+      dmRenderList();
+      showToast(unblock ? '已取消屏蔽' : '已屏蔽，私信通道已关闭');
+    } catch (e) { showToast(e.message || '操作失败', undefined, 'err'); }
+  }
 }
 
 // 我的认领申请（用于详情里显示「审核中 / 已认领」状态）
@@ -2445,6 +2918,45 @@ function isLikedNow(w) {
   try { return localStorage.getItem('liked:' + w.id) === '1'; } catch { return false; }
 }
 
+// ---------- 卡片操作：一颗 ✦，hover 散开五件事（2026-11-15 站长要的） ----------
+// 封面上只留一颗按钮；鼠标进卡片（触屏点这颗）时，五个动作沿四分之一圆弧从按钮位置扇出：
+// 点赞 / 收藏 / 分享 / 屏蔽 / 送灯火。收起来时全部缩回那颗按钮里、opacity 归零。
+//
+// 位置不在 JS 里算：每颗只拿一个序号 --i，角度 = 起角 + i × 间隔，全在 CSS 里算；
+// 半径 --r 和直径 --sz 按卡片宽度（cqw）自适应，窄卡自动收小。
+// 动作数量是会变的（自己的作品没有屏蔽/送灯火，预告中、审核中的作品没有赞/收藏），
+// 所以用的是「固定弦长」而不是「固定弧长」：几颗就铺几档，5 颗正好铺满四分之一弧，
+// 3 颗就收成一小把 —— 颗距始终一样，不会出现「少两颗就散成三颗孤零零的球」。
+function cardActionsHtml(w) {
+  const coming = isComing(w);
+  const liked = isLikedNow(w);
+  const faved = isFav(w.id);
+  // 只给 aria-label，不给 title：每颗自己带 .ca-tip 气泡，原生 tooltip 会跟它打架
+  const mk = (cls, attrs, ico, tip) =>
+    ({ cls, attrs, ico, tip });
+  const acts = [];
+  if (!coming) {
+    acts.push(mk('ca-like' + (liked ? ' active' : ''), `data-likework="${w.id}" aria-label="点赞"`, ic('heart'), liked ? '取消赞' : '点赞'));
+    acts.push(mk('ca-fav' + (faved ? ' active' : ''), `data-fav="${w.id}" aria-label="收藏"`, ic('fav'), faved ? '已收藏' : '收藏'));
+  }
+  acts.push(mk('ca-share', `data-share-work="${w.id}" aria-label="分享"`, ic('sharecard'), '分享'));
+  if (!w.owned) {
+    // 屏蔽：只对自己生效，图标收在扇面里不再常驻封面（免得误触）
+    acts.push(mk('ca-block', `data-blockwork="${w.id}" data-bw-title="${escapeHtml(w.title)}" aria-label="屏蔽这个作品"`, ic('block'), '屏蔽'));
+    acts.push(mk('ca-lamp', `data-tipwork="${w.id}" aria-label="送灯火"`, ic('lamp'), '送灯火'));
+  }
+  const items = acts.map((a, i) =>
+    `<button type="button" style="--i:${i}" class="ca-item ${a.cls}" ${a.attrs}><span class="ca-face">${a.ico}</span><span class="ca-tip">${a.tip}</span></button>`
+  ).join('');
+  return `<div class="card-actions">
+        <span class="ca-glow" aria-hidden="true"></span>
+        <span class="ca-ripple" aria-hidden="true"></span>
+        <span class="ca-ripple is-2" aria-hidden="true"></span>
+        <button type="button" class="ca-trigger" aria-label="点赞、收藏、分享、送灯火" aria-expanded="false" title="点赞 · 收藏 · 分享 · 送灯火"><span class="ca-spark">${ic('sparkle')}</span><span class="ca-dot" aria-hidden="true"></span></button>
+        ${items}
+      </div>`;
+}
+
 function cardHtml(w, opts = {}) {
   const types = typesOf(w);
   const cc = w.commentCount || 0;
@@ -2463,11 +2975,7 @@ function cardHtml(w, opts = {}) {
         ${w.pinned ? '<span class="pin-badge">置顶</span>' : ''}
         ${stageBadgeHtml(w, 'card-stage')}
         ${paidBadgeHtml(w, 'img-paid')}
-        ${isComing(w) ? '' : (opts.likeBtn
-          ? `<button class="fav-star card-like${isLikedNow(w) ? ' active' : ''}" data-likework="${w.id}" title="${isLikedNow(w) ? '再点一次取消点赞' : '给这件作品点个赞'}">${ic('heart')}</button>`
-          : `<button class="fav-star ${isFav(w.id) ? 'active' : ''}" data-fav="${w.id}" title="收藏">${ic('fav')}</button>`)}
-        ${isComing(w) ? '' : `<button class="fav-star card-share" data-share-work="${w.id}" title="分享：生成带二维码的分享图，发朋友圈/小红书都行">${ic('sharecard')}</button>`}
-        ${w.owned ? '' : `<button class="fav-star card-block" data-blockwork="${w.id}" data-bw-title="${escapeHtml(w.title)}" title="不再看这个作品（只对你生效）" aria-label="不再看这个作品">${ic('block')}</button>`}
+        ${cardActionsHtml(w)}
       </div>
       <div class="card-body">
         ${ownTools && w.hidden ? '<div class="self-hidden-note" title="你自主下架的作品：只有你自己能看到，点下方「上架」恢复公开">已下架 · 仅自己可见</div>' : ''}
@@ -2557,17 +3065,55 @@ function revealCards(container) {
 // 单张卡片的交互（点开详情 / 收藏 / 分享 / 屏蔽）。
 // 整批渲染（bindCards）和「编辑保存后就地换掉一张卡」（patchWorkInList）共用这一份，
 // 换卡片时只绑新节点，别再把整批重绑一遍——重复绑会让收藏按钮一次点出两次请求，等于点了又取消
+// 扇面同一时间只开一个：触屏上点了别处就收起来，别让上一张卡的按钮悬在封面上
+function closeCardActions(keep) {
+  document.querySelectorAll('.card-actions.is-open').forEach(x => {
+    if (x === keep) return;
+    x.classList.remove('is-open');
+    const t = x.querySelector('.ca-trigger');
+    if (t) t.setAttribute('aria-expanded', 'false');
+  });
+}
+document.addEventListener('click', e => {
+  if (e.target.closest && e.target.closest('.card-actions')) return;
+  closeCardActions(null);
+}, true);
+
 function bindCardNode(el) {
   if (!el) return;
   if (el.classList.contains('promo-card') || el.classList.contains('promo-row')) return;   // 推荐卡自己管点击
   el.addEventListener('click', e => {
     if (e.target.dataset.fav || e.target.dataset.shareWork || e.target.closest('[data-likework]')) return;
+    // 扇面里的每颗按钮（含触发器）都归 .card-actions 管，不能再让卡片顺手把详情打开
+    if (e.target.closest('.card-actions')) return;
     // 卡片里有一层真实链接（卡片底部 <a class="card-link">）：
     // Ctrl/⌘/Shift 点击交给浏览器在新标签打开完整页面，普通点击仍用弹窗
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     openWork(el.dataset.id);
   });
+  // 扇面开关：桌面靠 CSS :hover 展开（鼠标压在上面时它本来就是开的，这颗点了也不该留个
+  // 「粘住」的展开态 —— 否则点一下再移开鼠标，扇面会一直挂着），只有触屏才需要它来开合。
+  const actions = el.querySelector('.card-actions');
+  const trigger = actions && actions.querySelector('.ca-trigger');
+  const hoverOpen = !!(window.matchMedia && window.matchMedia('(hover: hover)').matches);
+  if (trigger && !hoverOpen) {
+    trigger.addEventListener('click', e => {
+      e.stopPropagation();
+      e.preventDefault();
+      const open = !actions.classList.contains('is-open');
+      actions.classList.toggle('is-open', open);
+      trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      closeCardActions(actions);
+    });
+    // 触屏上点完任何一颗就收起来（不然要点一下别处才收）。
+    // 必须用捕获阶段：每颗自己的 handler 都会 stopPropagation，冒泡阶段收不到。
+    actions.addEventListener('click', e => {
+      if (!e.target.closest || !e.target.closest('.ca-item')) return;
+      actions.classList.remove('is-open');
+      trigger.setAttribute('aria-expanded', 'false');
+    }, true);
+  }
   el.querySelectorAll('[data-fav]').forEach(btn => {
     btn.addEventListener('click', async e => {
       e.stopPropagation();
@@ -2597,7 +3143,9 @@ function bindCardNode(el) {
         if (data.self) { showToast('不能给自己的作品点赞', undefined, 'err'); return; }
         const now = data.liked === true;
         btn.classList.toggle('active', now);
-        btn.title = now ? '再点一次取消点赞' : '给这件作品点个赞';
+        // 扇面里的气泡文案跟着翻转（原来改的是 title，现在按钮不带原生 tooltip 了）
+        const tipEl = btn.querySelector('.ca-tip');
+        if (tipEl) tipEl.textContent = now ? '取消赞' : '点赞';
         // 匿名访客把已赞态记在本机；登录用户由服务端按账号记（与详情弹窗同一口径）
         try {
           if (now) localStorage.setItem('liked:' + id, '1');
@@ -2643,6 +3191,17 @@ function bindCardNode(el) {
       e.stopPropagation();
       e.preventDefault();
       askBlockWork(btn.dataset.blockwork, btn.dataset.bwTitle || '', btn);
+    });
+  });
+  // 送灯火：卡片上直接送（2026-11-15）。面板里的文案（转给作者 / 记在作品上）要 `claimed`
+  // 这类只有详情接口才给的字段，所以先按 id 拉一份完整作品，再交给详情那套面板 —— 不打开详情弹窗。
+  el.querySelectorAll('[data-tipwork]').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (!state.user) { openAuth('login'); return; }
+      if (!openWorkTipPanelHook) { showToast('页面还没准备好，刷新一下再试', undefined, 'err'); return; }
+      openWorkTipPanelHook(btn.dataset.tipwork);
     });
   });
   // ---------- 我的主页卡片操作行（编辑 / 上架·下架 / 推荐 / 小程序详情页） ----------
@@ -3961,13 +4520,14 @@ function featAuthorHtml(w) {
   return `<span class="feat-author" title="作者 ${escapeHtml(name)}">${avaChip(w)}<span class="fa-name">${escapeHtml(name)}</span></span>`;
 }
 
-// 「本周精选」一行最多 20 个：按近 7 天综合分选出，顺序每天洗一次牌（服务端按日期做种子，当天固定）；
+// 「本周精选」一行最多 20 个：按近 7 天综合分选出（这几天没人互动过的不入选），
+// 顺序每天洗一次牌（服务端按日期做种子，当天固定），只有最前面一段参与洗牌，后面的按分数递减；
 // `.feat-no` 只是展示序号（1~20），不再对应分数名次。
 // 卡上的数据是累计口径（打开次数 / 看过人数都是全历史），近 7 天数据只用于选谁进来；
 // 精选卡版式：首页「本周精选」和发现页共用（点击开详情由调用方绑定）
 function featCardHtml(w, i) {
   return `
-      <div class="featured-card" data-id="${w.id}">
+      <div class="featured-card" data-id="${w.id}" role="button" tabindex="0" aria-label="打开作品：${escapeHtml(w.title)}">
         <span class="feat-no">${i + 1}</span>
         <img src="${imgUrl(w.thumb, 400)}" srcset="${imgSet(w.thumb)}" sizes="(max-width: 640px) 45vw, 240px" alt="${escapeHtml(w.title)}" loading="lazy" />
         <div class="featured-body">
@@ -3997,18 +4557,35 @@ async function loadFeatured() {
     section.hidden = false;
     const keepLeft = row.scrollLeft;   // 原地替换内容时保留轮播位置，不把用户拉回第一张
     row.innerHTML = list.map(featCardHtml).join('');
-    row.querySelectorAll('.featured-card').forEach(el =>
+    row.querySelectorAll('.featured-card').forEach(el => {
       el.addEventListener('click', () => {
         // 在简介上拖选了文字就别当点击处理：否则复制一句文案顺手把详情弹窗打开了
         const sel = window.getSelection ? String(window.getSelection()) : '';
         if (sel && sel.trim()) return;
         openWork(el.dataset.id);
-      }));
+      });
+      // 卡片是 div（不是链接），键盘用户 Tab 得到、回车/空格也得打得开
+      el.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        openWork(el.dataset.id);
+      });
+    });
     setupFeatInfo();
     setupFeatCarousel();
     row.scrollLeft = keepLeft;
     updateFeatNav();
-  } catch { /* ignore */ }
+  } catch {
+    // 首次加载失败：骨架卡会一直转下去，首屏看着像卡死。换一行可点的重试，别自动重试刷接口。
+    if (!featuredSig) {
+      const row = $('featRow');
+      if (row && row.querySelector('.feat-sk')) {
+        row.innerHTML = '<button type="button" class="feat-retry" id="featRetry">精选没加载出来，点这里再试一次</button>';
+        const btn = $('featRetry');
+        if (btn) btn.onclick = () => { btn.disabled = true; loadFeatured(); };
+      }
+    }
+  }
 }
 
 // 规则说明（ⓘ）：桌面端悬停即弹（CSS），触屏/键盘走点按开关；点空白处或 Esc 关闭
@@ -4050,7 +4627,7 @@ function setupInfoPop(wrapId, btnId) {
 }
 function setupFeatInfo() {
   setupInfoPop('featInfo', 'featInfoBtn');      // 本周精选规则
-  setupInfoPop('countInfo', 'countInfoBtn');    // 全部作品排序说明（新老作品雨露均沾）
+  setupInfoPop('countInfo', 'countInfoBtn');    // 全部作品排序说明（等概率随机，见 index.html countInfo 气泡）
   setupInfoPop('titleInfo', 'titleInfoBtn');    // 投稿表单「作品名字」旁的标题写法提示（触屏/键盘走点按，桌面 hover 即弹）
   const rl = $('resetSeenLink');
   if (rl) rl.onclick = wanderResetSeen;         // 气泡里给的「反悔」入口，跟池空状态共用一段逻辑
@@ -4083,6 +4660,15 @@ function setupFeatCarousel() {
       if (Math.abs(dx) > 6) { row.classList.add('dragging'); row.scrollLeft = down.l - dx; }
     });
     window.addEventListener('pointerup', () => { down = null; row.classList.remove('dragging'); });
+  }
+  // 键盘左右键：焦点在任意一张卡上时按 ←/→ 翻两格，和箭头按钮同一个步长
+  if (!row._keyInit) {
+    row._keyInit = 1;
+    row.addEventListener('keydown', e => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      row.scrollBy({ left: (e.key === 'ArrowRight' ? 1 : -1) * step(), behavior: 'smooth' });
+    });
   }
 }
 function updateFeatNav() {
@@ -4178,7 +4764,7 @@ function upcomingCardHtml(w) {
     </div>`;
 }
 
-// ---------- 首页「随便逛逛」：分层随机推荐（docs/discover-spec-v1.md） ----------
+// ---------- 首页「随便逛逛」：随机推荐（docs/discover-spec-v1.md） ----------
 // 接口 404（后台关了）→ 整段不渲染；state=empty → 空状态三出口；partial → 补齐卡打「重温」。
 // 曝光口径：可视区 ≥50% 持续 500ms 才算，同作品 5 分钟只报一次，300ms 合并批量上报。
 // 首屏闸门：刷新出来就摆在屏幕里的卡先不记「看过」，用户往下滚了才按同一口径补记——
@@ -4353,8 +4939,8 @@ function bindWanderClicks() {
   wanderClickBound = true;
   $('gallery').addEventListener('click', e => {
     if (state.sort !== 'wander') return;
-    // 与 bindCards 同一套豁免：收藏/分享/屏蔽按钮不是「点进详情」（图标无 dataset，按类名找）
-    if (e.target.closest && e.target.closest('.fav-star')) return;
+    // 与 bindCards 同一套豁免：扇面里任何一颗按钮（收藏/分享/屏蔽/送灯火）都不是「点进详情」
+    if (e.target.closest && e.target.closest('.card-actions')) return;
     const el = e.target.closest('.card, .work-row');
     if (el && el.dataset.id) trackExpoClick(el.dataset.id);
   }, true);
@@ -4508,6 +5094,7 @@ async function loadWanderIntoGallery(reset = true, force = true) {
     if (reset) mountWanderPromo();   // 首屏最前面插首页第一格推荐卡（只插一张，其余全是正常作品）
     if (reset) easeGalleryShrink(ghBefore);   // 新一批比旧一批矮时把「缩上来」变成缓动，不抖
     $('listTitle').textContent = state.q ? `搜索「${state.q}」` : '全部作品';
+    renderSearchDidYouMean(null);   // 随便逛逛不带关键词，别留着上一次搜索的「你是不是想搜」
     // 排序说明 ⓘ 2026-11-11（二次挪）：常驻挂在「全部作品」计数行（HTML 里随 workCount），
     // 不再按池模式显隐——它解释的排序规则在最新/最热下也成立（一键筛选/搜索会切回最新）。
     // hasMore：left 是「没看过的总数」，屏上已有的没看过卡（含本批）都算已经发给他了——
@@ -4835,6 +5422,10 @@ async function loadWorks(reset = true) {
     $('listTitle').textContent = state.q
       ? `搜索「${state.q}」`
       : (state.scene === '全部' ? catLabel : `${sceneNameOf(state.scene)} · ${catLabel}`);
+    // 「你是不是想搜」的落点：搜 jz 也能出结果，但用户心里想的是「记账」；打错字（记帐）同理。
+    // 服务端只在「全靠拼音/同音白字才命中」时给 suggest（搜 ai 命中 AI 写作助手不会提示），
+    // 点一下就是换成那个词重搜 —— 比让人从一堆结果里猜哪个是想要的省事。
+    renderSearchDidYouMean(data.suggest);
     state.hasMore = !!data.hasMore;
     $('loadMore').style.display = state.hasMore ? 'inline-block' : 'none';
     if (reset) mountListPromo();   // 只在第一页插第一格宣传，加载更多不重复插
@@ -5416,6 +6007,7 @@ function renderSettingsPage() {
   const ghOn = !!(state.providers && state.providers.github);
   const gOn = !!(state.providers && state.providers.google);
   const nBlocked = (state.blocked || []).length + (state.blockedUsers || []).length;
+  const nMutedCats = noticeMutedCount();
   // 登录名只对「自动建的临时号」和早就设过的号开放；网页版正常注册的账号只改密码
   const canSetAlias = u.passSet === false || u.tempAcct === true || !!u.alias;
   body.innerHTML = `
@@ -5442,10 +6034,11 @@ function renderSettingsPage() {
       <span class="st-main"><b>${canSetAlias ? '账号与密码' : '登录密码'}</b><i>${canSetAlias ? '登录名（别名）和密码都在这里改' : '账号名 @' + escapeHtml(u.username || '') + ' 注册时就定了，这里只改密码'}</i></span>
       <span class="st-more">›</span>
     </button>
-    <button type="button" class="st-row" id="stMute" role="switch" aria-checked="${!noticeMuted()}" aria-label="系统消息提示开关">
+    <button type="button" class="st-row" id="stMute">
       <span class="st-ico">${ic('bell', 18)}</span>
-      <span class="st-main"><b>系统消息提示</b><i>关掉后消息仍会进铃铛，只是不再弹提示</i></span>
-      <span class="ud-switch${noticeMuted() ? '' : ' is-on'}"><i></i></span>
+      <span class="st-main"><b>消息提示</b><i>按板块关掉弹窗提示：消息照常进铃铛，只是不弹窗打扰</i></span>
+      ${nMutedCats ? `<span class="st-val">${nMutedCats} 个板块已屏蔽</span>` : ''}
+      <span class="st-more">›</span>
     </button>
     ${ghOn ? `
     <button type="button" class="st-row" id="stGh">
@@ -5471,7 +6064,7 @@ function renderSettingsPage() {
   $('stNick').onclick = openNickModal;
   $('stSlug').onclick = openSlugModal;
   $('stPass').onclick = openPassModal;
-  $('stMute').onclick = async () => { await toggleNoticeMute(); if (state.user) renderSettingsPage(); };
+  $('stMute').onclick = openNoticePrefsModal;
   const ghRow = $('stGh'); if (ghRow) ghRow.onclick = openGhModal;
   const gRow = $('stG'); if (gRow) gRow.onclick = openGModal;
   $('stBlocked').onclick = () => openBlockedList('works');
@@ -6288,6 +6881,8 @@ function route() {
     // 同屏只显一处（CSS ≥1100px 显右栏、页头那条让位），藏着的容器不参与曝光计费（IntersectionObserver 不命中）。
     // 投放者本机的自验证优先级在 renderAdSlot 内处理，这里不额外判断
     document.querySelectorAll('#rankView [data-ad-slot="rank"]').forEach(el => renderAdSlot(el, 'rank'));
+    // 右栏期刊架：keepList（返回上一层/详情关掉）时也刷一次，1 分钟内走缓存不会重复请求；H5 没有右栏不请求
+    if (!isH5View()) loadJournalRack();
     updateNavActive();
     restoreScroll();
     return;
@@ -6960,8 +7555,9 @@ async function submitLinks(btn) {
 function openAuthorMoreSheet() {
   const unread = Number((state.user && state.user.unreadNotices) || 0);
   const nb = (state.blocked || []).length, ub = (state.blockedUsers || []).length;
-  openAuthorActionSheet('全部功能', [
+  const rows = [
     { icon: 'bell', label: '站内消息', sub: unread ? `${unread} 条未读` : '审核、评论、灯火通知都在这', badge: unread ? (unread > 99 ? '99+' : String(unread)) : '', on: openNotices },
+    { icon: 'chat', label: '私信', sub: '和作者一对一聊，不用留联系方式', on: () => openInbox() },
     { icon: 'gift', label: '兑换码领灯火', sub: '有兑换码就填在这里', on: openGiftCode },
     { icon: 'medal', label: '我的勋章', sub: '看看攒了几枚、还差什么', on: () => { location.href = '/medals.html'; } },
     { icon: 'share', label: '邀请收录', sub: '拉朋友来投稿，双方都有灯火', on: () => { location.href = '/invite'; } },
@@ -6969,7 +7565,9 @@ function openAuthorMoreSheet() {
     { icon: 'block', label: '屏蔽管理', sub: (nb || ub) ? `已隐藏 ${nb} 件作品${ub ? ` · 拉黑 ${ub} 位作者` : ''}` : '还没有屏蔽任何作品', on: () => openBlockedList(nb ? 'works' : (ub ? 'users' : 'works')) },
     { icon: 'gear', label: '账号设置', sub: '密码、绑定、消息提醒', on: () => navigate('/settings') },
     { icon: 'logout', label: '退出登录', sub: '本机登录状态会清掉', on: doLogout }
-  ]);
+  ];
+  // 私信内测：没开到这个账号就把这一行摘掉，别让人点出一句「内测中」
+  openAuthorActionSheet('全部功能', (state.user && state.user.dmBeta) ? rows : rows.filter(x => x.label !== '私信'));
 }
 
 // 「我的推荐」= 站长口中的「我的订单」：不在主页重造一份记录，直接落到 /promote 的「我的投放」区块
@@ -6978,6 +7576,41 @@ function goMyPromotions() {
   if (!state.user) { openAuth('login'); return; }
   promoFocusMine = true;
   navigate('/promote');
+}
+
+// ---------- 右栏占位决策（2026-11-15 修横跳） ----------
+// 占位要「占对方向」：先占了右栏、接口回来发现没内容（失败 / 访客看无勋章作者）再收掉，
+// 左栏就从两栏宽跳回整页宽——站长看到的「右边加载不出来的时候页面还在跳」就是这一下。
+// 反过来，没占位结果真有勋章墙，扩栏也是跳。所以：
+// ① 本人的主页恒占位——「作品数据」卡是纯静态 HTML，不依赖这条接口，一定有内容；
+// ② 别人的主页按上次成功加载的结果决定（sessionStorage 记忆，刷新 / 换页都稳定）；
+// ③ 首次访问按「没有」处理：真有勋章时只会在第一次多一次扩栏，之后记忆生效不再跳。
+const RAIL_MEMO_KEY = 'dm_au_rail';
+function authorRailWillShow(isMine, name) {
+  if (isMine) return true;
+  try {
+    const m = JSON.parse(sessionStorage.getItem(RAIL_MEMO_KEY) || '{}');
+    return m[name] === true;
+  } catch { return false; }
+}
+function authorRailRemember(name, on) {
+  try {
+    const m = JSON.parse(sessionStorage.getItem(RAIL_MEMO_KEY) || '{}');
+    if (m[name] === on) return;
+    m[name] = on;
+    sessionStorage.setItem(RAIL_MEMO_KEY, JSON.stringify(m));
+  } catch { /* 隐私模式写不进就算了 */ }
+}
+// 右栏显隐的统一入口：占位条、右栏、has-side 三处必须同步动，散着写容易漏
+function authorRailShow(withSkel) {
+  if ($('authorSideSkel')) $('authorSideSkel').style.display = withSkel ? '' : 'none';
+  $('authorSide').style.display = '';
+  $('authorBody').classList.add('has-side');
+}
+function authorRailHide() {
+  if ($('authorSideSkel')) $('authorSideSkel').style.display = 'none';
+  $('authorSide').style.display = 'none';
+  $('authorBody').classList.remove('has-side');
 }
 
 async function loadAuthor(name) {
@@ -7027,12 +7660,11 @@ async function loadAuthor(name) {
   // 2026-11-14 修：加载态不能先把右栏摘掉——那样档案卡会按整页宽画一遍，数据回来再收窄成左栏，
   // 整页横向抖一下（站长在 /u/ 主页上看到「勋章没渲染、左边占满」正是这 300 多毫秒）。
   // 现在加载态就把右栏那一列占住：灰条占位在，has-side 在，回填时只换内容不动列宽。
-  const authorBodyEl = $('authorBody');
+  // 右栏（作品数据卡 / 勋章墙）按上面的决策占位：占位与最终状态一致，中途不塌栏
   $('creatorCard').style.display = 'none';
   $('authorMedalsCard').style.display = 'none';
-  if ($('authorSideSkel')) $('authorSideSkel').style.display = '';
-  $('authorSide').style.display = '';
-  if (authorBodyEl) authorBodyEl.classList.add('has-side');
+  const railOn = authorRailWillShow(isMine, name);
+  if (railOn) authorRailShow(true); else authorRailHide();
   // 「找找」补全条也一样：只在自己主页的作品 tab 出现，换人 / 换页先收干净
   {
     const fs = $('authorFindStrip');
@@ -7044,7 +7676,9 @@ async function loadAuthor(name) {
     if (hs) hs.style.display = 'none';
   }
   try {
-    const data = await (await fetch('/api/authors/' + encodeURIComponent(name))).json();
+    const r = await fetch('/api/authors/' + encodeURIComponent(name), { cache: 'no-store' });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) { const e = new Error('authors http ' + r.status); e.status = r.status; throw e; }
     // 地址栏矫正（2026-11-13）：站内 data-nav 跳进来的还是 /u/<账号id> 或老地址，服务端 301 够不着
     //（那只管整页加载）。接口认出作者后，把地址栏 replaceState 成 canonical（个性地址优先），不刷新页面。
     if (data.slug && name !== data.slug && location.pathname.startsWith('/u/')) {
@@ -7107,12 +7741,13 @@ async function loadAuthor(name) {
     // 作品数据卡仅本人可见；勋章墙人人可见（点亮过才显示）。
     // 两张卡一张都没有时整个右栏收起来，别留一列空白
     const hasBadges = Array.isArray(data.badges) && data.badges.length > 0;
-    if ($('authorSideSkel')) $('authorSideSkel').style.display = 'none';   // 真卡上来了，占位条收掉
+    const railNow = isMe || hasBadges;
+    authorRailRemember(name, railNow);
     $('creatorCard').style.display = isMe ? '' : 'none';
     $('authorMedalsCard').style.display = hasBadges ? '' : 'none';
-    $('authorSide').style.display = (isMe || hasBadges) ? '' : 'none';
-    // 右栏有卡才分两栏（档案卡收窄 + 右栏卡提到顶上）；没有就整页宽，别留一列空白
-    $('authorBody').classList.toggle('has-side', isMe || hasBadges);
+    // 占位判断（railOn）与实际（railNow）一致时这里零布局变化；只有首次访问别人的
+    // 有勋章页会扩栏一次，之后有记忆不再跳。没有就整页宽，别留一列空白
+    if (railNow) authorRailShow(false); else authorRailHide();
     // 别人的主页 + 作者绑定了账号：给「送灯火」直送入口（2026-11-13）。
     // 匿名作者（没绑账号）收不了直送，不显示——想支持就去作品详情页点「送灯火」，灯火记在作品上。
     const tipBtn = $('authorTipBtn');
@@ -7123,6 +7758,14 @@ async function loadAuthor(name) {
         if (!state.user) { openAuth('login'); return; }
         if (typeof openAuthorTipPanelHook === 'function') openAuthorTipPanelHook(data.uid, shown);
       };
+    }
+    // 别人的主页 + 作者绑定了账号：给「私信」入口（站内一对一，不暴露任何外部联系方式）
+    // 内测期间只对站长显示（state.user.dmBeta 由服务端下发）
+    const dmEntry = $('authorDmBtn');
+    if (dmEntry) {
+      const canDm = !isMe && !!data.uid && !!(state.user && state.user.dmBeta);
+      dmEntry.style.display = canDm ? 'inline-flex' : 'none';
+      if (canDm) dmEntry.onclick = () => openDmWith(data.uid, shown);
     }
     // 自己的主页（2026-11-14 改版）：「编辑主页」+ 一行四个功能入口 + 作品/收藏/喜欢三个 tab。
     // 旧的「我的点赞 / 屏蔽管理」胶囊行撤掉——点赞变成 tab，屏蔽管理收进「全部功能」，主页更干净
@@ -7159,15 +7802,28 @@ async function loadAuthor(name) {
         $('authorJoinBtn').onclick = () => $('openUpload').click();
       }
     }
-  } catch {
+  } catch (e) {
     // 失败也要把加载态收干净：占位的「–」留着会让人以为这位作者数据全是空的
     authorTabState.loading = false;
     $('authorStatGrid').innerHTML = '';
-    $('authorGallery').innerHTML = '<div class="empty" style="grid-column:1/-1"><p>作者不存在</p></div>';
-    // 右栏占位条同理：作者都查不到，别留一块灰条在那儿呼吸
-    if ($('authorSideSkel')) $('authorSideSkel').style.display = 'none';
-    $('authorSide').style.display = 'none';
-    $('authorBody').classList.remove('has-side');
+    // 404 才是「作者不存在」；网络类失败给一个当场重试的口子，别让人刷新整页
+    const missing = e && e.status === 404;
+    $('authorGallery').innerHTML = missing
+      ? '<div class="empty" style="grid-column:1/-1"><p>作者不存在</p></div>'
+      : '<div class="empty" style="grid-column:1/-1"><p>主页暂时没加载出来，<button type="button" class="link-btn" id="auRetryBtn">点这里重试</button></p></div>';
+    const retryBtn = $('auRetryBtn');
+    if (retryBtn) retryBtn.onclick = () => loadAuthor(name);
+    // 右栏（2026-11-15）：失败不再无脑塌栏——塌了左栏就从两栏跳回整页宽，整页横跳一下。
+    // 占了位的守住：本人的「作品数据」卡是纯静态的，直接亮出来顶住右栏；
+    // 别人的（上次见过勋章墙）用一行灰字占住位置。加载前没占位的才收。
+    if (railOn) {
+      $('creatorCard').style.display = isMine ? '' : 'none';
+      $('authorMedalsCard').style.display = isMine ? 'none' : '';
+      if (!isMine) $('authorBadges').innerHTML = '<div class="me-fav-empty">勋章墙没能加载出来</div>';
+      authorRailShow(false);
+    } else {
+      authorRailHide();
+    }
   }
 }
 
@@ -7588,7 +8244,242 @@ async function loadRank(period, by, limit, type, cat) {
 // 分端入口：H5 走橱窗式列表，PC 走综合分排行榜
 function loadRankView() {
   if (isH5View()) return loadRankH5();
+  loadJournalRack();   // 右栏期刊架（PC 两栏才有位置，H5 不请求）
   return loadRank();
+}
+
+// ---------- 星梦期刊：榜单右栏的「期刊架」 ----------
+// 周榜期刊每周一出、月榜期刊每月 1 日出，按期把榜单装订成存档（口径见 server.js「星梦期刊」一段）。
+// 右栏只放「本期 + 最近几期」，点任意一期在弹窗里翻整本；
+// 月榜第一期是建站那个自然月，没满月时显示筹备卡（进度条 + 当前领跑），不装假数据。
+const journalState = { type: 'week', data: {}, fetchedAt: {}, loading: {} };
+
+// 11.09–11.15；跨年才写年份
+function jrnRange(from, to) {
+  const f = String(from || '').split('-'), t = String(to || '').split('-');
+  if (f.length < 3 || t.length < 3) return '';
+  const a = f[1] + '.' + f[2], b = t[1] + '.' + t[2];
+  return f[0] === t[0] ? a + '–' + b : f[0] + '.' + a + '–' + t[0] + '.' + b;
+}
+// 2026-11-30 → 11 月 30 日
+function jrnCN(dateStr) {
+  const p = String(dateStr || '').split('-');
+  return p.length === 3 ? Number(p[1]) + ' 月 ' + Number(p[2]) + ' 日' : String(dateStr || '');
+}
+// 状态文案：进行中的一期写「还剩几天截稿」
+function jrnLeftText(live) {
+  if (!live) return '';
+  if (live.status !== 'live' || !live.daysLeft) return '已截稿';
+  return live.daysLeft > 1 ? '还剩 ' + live.daysLeft + ' 天截稿' : '今晚截稿';
+}
+
+async function loadJournalRack(force) {
+  const rack = $('journalRack');
+  if (!rack) return;
+  const type = journalState.type;
+  if (!force && journalState.data[type] && Date.now() - (journalState.fetchedAt[type] || 0) < 60000) {
+    renderJournalRack();
+    return;
+  }
+  if (journalState.loading[type]) return;
+  journalState.loading[type] = true;
+  try {
+    const d = await (await fetch('/api/journals?type=' + type)).json();
+    journalState.data[type] = d;
+    journalState.fetchedAt[type] = Date.now();
+    renderJournalRack();
+  } catch { /* 期刊是右栏的内容，拉不到就整块留着不显示，不影响榜单本身 */ }
+  finally { journalState.loading[type] = false; }
+}
+
+// 本期（进行中）：一张能直接点开的封面卡
+function jrnLiveHtml(d) {
+  const live = d.live || {};
+  if (!live.no) return '';
+  const ch = live.champion;
+  const isMonth = d.type === 'month';
+  const row = ch
+    ? `<span class="jrn-live-row">
+         <img src="${imgUrl(ch.thumb, 400)}" alt="" loading="lazy" />
+         <span class="jrn-live-txt"><b>${escapeHtml(ch.title)}</b><em>${ch.anonymous ? '匿名' : '@' + escapeHtml(ch.author)} · ${ch.score} 分</em></span>
+       </span>`
+    : '<span class="jrn-live-empty">这一期还没有作品上榜，先到先得</span>';
+  return `<button type="button" class="jrn-live" data-jno="${live.no}">
+      <span class="jrn-live-head"><span class="jrn-live-tag">${isMonth ? '本月' : '本周'} · 第 ${live.no} 期</span><i class="jrn-live-left">${jrnLeftText(live)}</i></span>
+      ${row}
+      <span class="jrn-live-foot">${live.count || 0} 件在册 · 翻开本期 ›</span>
+    </button>`;
+}
+
+// 往期：一条一期，像期刊架上的书脊
+function jrnPastHtml(d) {
+  const issues = d.issues || [];
+  if (!issues.length) return '';
+  return `<div class="jrn-past">
+      <div class="jrn-past-head">往期</div>
+      ${issues.map(it => {
+        const ch = it.champion;
+        return `<button type="button" class="jrn-item" data-jno="${it.no}">
+          ${ch && ch.thumb ? `<img src="${imgUrl(ch.thumb, 400)}" alt="" loading="lazy" />` : '<span class="jrn-item-noimg">休刊</span>'}
+          <span class="jrn-item-main">
+            <b>第 ${it.no} 期<i>${jrnRange(it.from, it.to)}</i></b>
+            <em>${ch ? escapeHtml(ch.title) : '这一期没有新作品上架'}</em>
+          </span>
+          ${ch ? `<span class="jrn-item-score">${ch.score}</span>` : ''}
+        </button>`;
+      }).join('')}
+    </div>`;
+}
+
+// 月榜首期筹备中：建站月按整月算，先把「还剩多久、现在谁领跑」摊开
+function jrnPendingHtml(d) {
+  const live = d.live || {};
+  const prog = live.progress || { passed: 0, total: 30 };
+  const pct = Math.min(100, Math.round((prog.passed / Math.max(1, prog.total)) * 100));
+  const ch = live.champion;
+  return `<div class="jrn-pending">
+      <span class="jrn-pending-tag">首期筹备中</span>
+      <p class="jrn-pending-line">建站月按整月算，<b>${jrnCN(live.to)}</b>截稿，<b>${jrnCN(d.firstPublishAt)}</b>出刊</p>
+      <div class="jrn-bar"><i style="width:${pct}%"></i></div>
+      <p class="jrn-pending-meta">已走过 ${prog.passed}/${prog.total} 天 · 在册 ${live.works || 0} 件作品</p>
+      ${ch ? `<button type="button" class="jrn-lead" data-jno="${live.no}">当前领跑《${escapeHtml(ch.title)}》 ${ch.score} 分 ›</button>` : ''}
+    </div>`;
+}
+
+function renderJournalRack() {
+  const box = $('journalBody');
+  const rack = $('journalRack');
+  if (!box || !rack) return;
+  const type = journalState.type;
+  document.querySelectorAll('#journalTabs .jrn-tab').forEach(b => b.classList.toggle('on', b.dataset.jtype === type));
+  const d = journalState.data[type];
+  if (!d) {
+    box.innerHTML = '<div class="jrn-empty">期刊正在装订…</div>';
+    rack.hidden = false;
+    return;
+  }
+  const isMonth = type === 'month';
+  const hasIssues = (d.issues || []).length > 0;
+  let html = (isMonth && !hasIssues) ? jrnPendingHtml(d) : (jrnLiveHtml(d) + jrnPastHtml(d));
+  if (!html) html = '<div class="jrn-empty">期刊还在等第一批作品</div>';
+  html += `<div class="jrn-foot"><button type="button" class="jrn-help" data-jhelp="1">期刊怎么出 ›</button><span>${isMonth ? '每月 1 日' : '每周一'}出刊</span></div>`;
+  box.innerHTML = html;
+  rack.hidden = false;
+}
+
+// 翻整本：杂志式的一页（刊头 / 封面 / 数据 / 本期前二十）
+function journalSheetHtml(it) {
+  const isMonth = it.type === 'month';
+  const live = it.status === 'live';
+  const st = it.stats || {};
+  const ch = it.champion;
+  const list = (it.list || []).slice(0, 20);
+  const bits = [];
+  if (it.works) bits.push(it.works + ' 件新作品上架');
+  if (st.likes) bits.push(st.likes + ' 个赞');
+  if (st.favs) bits.push(st.favs + ' 次收藏');
+  if (st.cmts) bits.push(st.cmts + ' 条评论');
+  if (st.lamps) bits.push(st.lamps + ' 盏灯火');
+  if (st.visitors) bits.push(st.visitors + ' 位朋友来过');
+  const lede = bits.length
+    ? '这一期有 ' + bits.join('、') + '。' + (ch ? '《' + escapeHtml(ch.title) + '》以 ' + ch.score + ' 分拿下榜首。' : '')
+    : '这一期还没有作品上架，位置先空着，等下一期。';
+  const cover = ch
+    ? `<div class="jrn-cover">
+         <img src="${imgUrl(ch.thumb, 800)}" alt="" />
+         <span class="jrn-cover-shade"></span>
+         <div class="jrn-cover-text">
+           <span class="jrn-cover-label">本期榜首</span>
+           <h3>${escapeHtml(ch.title)}</h3>
+           <p>${ch.anonymous ? '匿名' : '@' + escapeHtml(ch.author)} · ${ch.score} 分</p>
+         </div>
+       </div>`
+    : `<div class="jrn-cover is-empty"><div class="jrn-cover-text"><span class="jrn-cover-label">本期</span><h3>这一期没有新作品上架</h3><p>期刊照常出刊，位置先空着</p></div></div>`;
+  const rows = list.map(e => `
+      <li class="jrn-row" data-jwork="${e.id}">
+        <span class="jrn-row-no${e.rank <= 3 ? ' is-top' : ''}">${e.rank}</span>
+        <img src="${imgUrl(e.thumb, 400)}" alt="" loading="lazy" />
+        <span class="jrn-row-main"><b>${escapeHtml(e.title)}</b><em>${e.anonymous ? '匿名' : '@' + escapeHtml(e.author)}</em></span>
+        <span class="jrn-row-score"><b>${e.score}</b><i>${e.likes} 赞 · ${e.favs} 藏 · ${e.uv} 访客</i></span>
+      </li>`).join('');
+  return `<div class="jrn-issue">
+      <div class="jrn-issue-top">
+        <span class="jrn-issue-kind">星梦期刊 · ${isMonth ? '月榜' : '周榜'}</span>
+        <span class="jrn-issue-badge${live ? ' is-live' : ''}">${live ? '本期进行中' : '已出刊'}</span>
+      </div>
+      <div class="jrn-issue-no">第 ${it.no} 期</div>
+      <div class="jrn-issue-date">${jrnRange(it.from, it.to)}${live ? ' · ' + jrnLeftText(it) : ' · ' + jrnCN(it.publishAt) + '出刊'}</div>
+      ${cover}
+      <p class="jrn-lede">${lede}</p>
+      <div class="jrn-figures">
+        <div><b>${it.works || 0}</b><span>件新作</span></div>
+        <div><b>${st.likes || 0}</b><span>获赞</span></div>
+        <div><b>${st.favs || 0}</b><span>收藏</span></div>
+        <div><b>${st.lamps || 0}</b><span>盏灯火</span></div>
+        <div><b>${st.visitors || 0}</b><span>位访客</span></div>
+      </div>
+      ${list.length ? `<ol class="jrn-board">${rows}</ol>` : '<p class="jrn-empty">这一期没有上榜作品</p>'}
+      <div class="jrn-sheet-foot">
+        <span>${it.next ? '下一期：第 ' + it.next.no + ' 期 · ' + jrnRange(it.next.from, it.next.to) : '下一期正在收稿'}</span>
+        <button type="button" class="btn-ghost" data-jrank="${isMonth ? 'month' : 'week'}">去看${isMonth ? '月榜' : '周榜'} ›</button>
+      </div>
+      <p class="jrn-note">计分与榜单同一套：获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 访客×2，只算这一期内的增量；截稿即定稿，之后不再改写名次。</p>
+    </div>`;
+}
+
+async function openJournal(no, type) {
+  const modal = $('journalModal');
+  const sheet = $('journalSheet');
+  if (!modal || !sheet) return;
+  const t = type || journalState.type;
+  const head = $('journalHeadTitle');
+  if (head) head.innerHTML = ic('journal') + ' 星梦期刊 · ' + (t === 'month' ? '月榜' : '周榜') + ' 第 ' + no + ' 期';
+  sheet.innerHTML = '<div class="jrn-empty">正在翻开这一期…</div>';
+  showModal(modal);
+  try {
+    const it = await (await fetch('/api/journal?type=' + t + '&no=' + no)).json();
+    if (!it || it.error) throw new Error('404');
+    sheet.innerHTML = journalSheetHtml(it);
+    sheet.scrollTop = 0;
+  } catch {
+    sheet.innerHTML = '<div class="jrn-empty">这一期还没出刊，或者已经找不到了</div>';
+  }
+}
+
+// 期刊架的交互：切换周榜/月榜、点期号翻整本、封面行跳到作品、底部「去看榜单」
+function bindJournalRack() {
+  const rack = $('journalRack');
+  const modal = $('journalModal');
+  if (!rack || !modal) return;
+  const tabs = $('journalTabs');
+  if (tabs) tabs.addEventListener('click', e => {
+    const b = e.target.closest('.jrn-tab');
+    if (!b || journalState.type === b.dataset.jtype) return;
+    journalState.type = b.dataset.jtype;
+    renderJournalRack();
+    loadJournalRack();
+  });
+  const body = $('journalBody');
+  if (body) body.addEventListener('click', e => {
+    const help = e.target.closest('[data-jhelp]');
+    if (help) { showModal($('rankRulesModal')); return; }
+    const b = e.target.closest('[data-jno]');
+    if (b) openJournal(Number(b.dataset.jno));
+  });
+  const sheet = $('journalSheet');
+  if (sheet) sheet.addEventListener('click', e => {
+    const row = e.target.closest('[data-jwork]');
+    if (row) { hideModal(modal); openWork(row.dataset.jwork); return; }
+    const go = e.target.closest('[data-jrank]');
+    if (go) {
+      hideModal(modal);
+      loadRank(go.dataset.jrank, null, null, '全部', '全部');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  });
+  const close = $('closeJournal');
+  if (close) close.onclick = () => hideModal(modal);
+  bindMaskClose(modal, () => hideModal(modal));
 }
 
 // ---------- 作品详情 ----------
@@ -7689,8 +8580,14 @@ function paintJury(w) {
   const signed = sus - okN;   // 带符号的净差，只用来选文案（领先 / 持平 / 落后）
   const removed = j.removed === true;
   const mine = j.mine || '';
-  // 有票 / 自己投过 / 已被判下架时自动展开；完全没人碰过就折叠成一行，不打扰看作品
-  const open = sus > 0 || okN > 0 || !!mine || removed;
+  const flagged = j.flagged === true;   // 有案件（有人投过 sus 或站长贴过标）
+  // 展开/折叠条件（2026-11-15 优化）：
+  // - 有争议（案件存在 / 已下架）→ 展开
+  // - 自己投过票 → 展开（让用户看到自己投了什么、当前状态如何）
+  // - 其余情况折叠成一行「参与众判 ›」
+  // 之前的问题是：一个人投「不像推广」就会创建案件、展开众判区、后台出现待办，
+  // 让作品看起来在众判中——实际上没有争议。
+  const open = flagged || removed || !!mine;
   box.style.display = '';
   box.classList.toggle('is-open', open);
   box.classList.toggle('is-removed', removed);
@@ -7703,7 +8600,10 @@ function paintJury(w) {
   if (openBtn) openBtn.style.display = open ? 'none' : '';
 
   const gauge = $('juryGaugeFill');
-  // 进度条量的是「净差离下架还有多远」，不是认定票总数：5:5 是 0%，8:3 是 100%
+  const gaugeWrap = gauge && gauge.parentElement;
+  // 进度条量的是「净差离下架还有多远」，不是认定票总数：5:5 是 0%，8:3 是 100%。
+  // 没有争议（没有 sus 票、没有案件）时藏掉进度条——空进度条看着像在等什么。
+  if (gaugeWrap) gaugeWrap.style.display = (flagged || sus > 0) ? '' : 'none';
   if (gauge) gauge.style.width = Math.min(100, Math.round(lead / gap * 100)) + '%';
 
   const count = $('juryCount');
@@ -7716,9 +8616,11 @@ function paintJury(w) {
         : `暂时落后 <b>${-signed}</b> 票（净差满 ${gap} 票才下架整改）`;
     count.innerHTML = removed
       ? `已由众判下架（<b>${sus}</b> 票认定 / ${okN} 票认为不像推广，净差 ${signed} 票）。作者按规范整改后重新提交，审核通过即可恢复。`
-      : (sus || okN)
+      : flagged || sus > 0
         ? `<b>${sus}</b> 人认为疑似推广 · <span class="jury-ok-num">${okN}</span> 人认为不像推广<span class="jury-need">${leadLine}</span>`
-        : `疑似广告、刷量或硬推广？交给大家一起看。「像推广」的票比「不像推广」多 ${gap} 票，作品下架待整改。`;
+        : okN > 0
+          ? `目前 <b>${okN}</b> 人认为不像推广，暂无人觉得像推广——这件作品还没进入众判。`
+          : `疑似广告、刷量或硬推广？交给大家一起看。「像推广」的票比「不像推广」多 ${gap} 票，作品下架待整改。`;
   }
 
   const note = $('juryNote');
@@ -8260,6 +9162,14 @@ async function openWork(id, push = true, opts = {}) {
     // 悬浮提示同步这个行为（自己的作品点名字进我的主页）
     const authorBtn = $('detailAuthor');
     authorBtn.title = w.owned ? '查看我的主页' : `访问 @${dname(w)} 的主页`;
+    // 私信作者：匿名作品 / 没绑账号的作者没有收件箱，按钮直接不出现（别让人点了落空）；
+    // 内测期间也只对站长显示
+    const dmBtn = $('detailDm');
+    if (dmBtn) {
+      const canDm = !w.owned && !!w.authorId && !!(state.user && state.user.dmBeta);
+      dmBtn.style.display = canDm ? '' : 'none';
+      if (canDm) dmBtn.onclick = () => openDmWith(w.authorId, dname(w));
+    }
 
     // 自己的作品：数据区下方显示高亮管理条（编辑 / 下架 / 删除）；别人的作品：登录后可屏蔽，有账号的作者可拉黑
     // 站长账号看别人的作品：同样出这条（浅琥珀色），但只留「站长编辑」——
@@ -9548,6 +10458,7 @@ function setupUploadForm() {
     // 「一眼看懂」回到收起态，计数归零（form.reset 已经清空 value，但计数是 JS 画的）
     qlUI.setOpen(false);
     qlUI.paint();
+    posUI.reset();   // 定位句那行提示也归位：别让「已填入」留在空白的新投稿表单里
   }
   resetUploadForm = resetUploadForm; // 暴露给外部（afterAuth 用）
   restoreUploadDraft = restoreDraft;
@@ -9705,7 +10616,8 @@ function setupUploadForm() {
   }
   async function syncDraft() {
     if (!state.user || editId) return true;   // 这两种情况都不用服务端草稿
-    if (!uploadDirty()) return true;
+    // 只删了一张码（其他什么都没填）也要存一次：不然草稿里那张码永远删不掉
+    if (!uploadDirty() && !(qrCleared && draftId)) return true;
     if (draftBusy) { draftAgain = true; return true; }   // 串行：跑完再补一次
     draftBusy = true;
     try {
@@ -9766,6 +10678,9 @@ function setupUploadForm() {
       }
       const qrFile = form.qrcode.files[0];
       if (qrFile && qrFile.type && qrFile.type.startsWith('image/')) fd.set('qrcode', qrFile, 'qr.jpg');
+      // 删掉的码也要告诉服务端：草稿里存的是上一次自动上传的那张图，不显式删就一直留着，
+      // 下一次自动存草稿服务端还会把旧地址回传回来 —— 用户看到的就是「码删不掉」。
+      else if (qrCleared && draftId) fd.set('removeQrcode', '1');
 
       const res = await fetch('/api/drafts', { method: 'POST', body: fd });
       const data = await res.json().catch(() => ({}));
@@ -9787,8 +10702,17 @@ function setupUploadForm() {
         form.image.value = '';
       }
       if (data.qrcode !== undefined) {
-        qrUrl = data.qrcode || '';
-        if (qrUrl) { form.qrcode.value = ''; $('qrPreviewImg').src = qrUrl; $('qrPreviewBox').style.display = 'block'; }
+        // 以「这次在表单里删掉了」为准：草稿回包里可能还带着刚上传的旧码，
+        // 直接照抄会把 ✕ 删掉的预览图又画回来（看着就像删不掉）
+        qrUrl = qrCleared ? '' : (data.qrcode || '');
+        if (qrUrl) {
+          form.qrcode.value = '';
+          $('qrPreviewImg').src = qrUrl;
+          $('qrPreviewBox').style.display = 'block';
+        } else if (qrCleared) {
+          $('qrPreviewImg').removeAttribute('src');
+          $('qrPreviewBox').style.display = 'none';
+        }
       }
       if ((data.image || Array.isArray(data.images)) && galleryItems.some(it => it.kind === 'new')) {
         galleryItems.forEach(it => { if (it.kind === 'new') URL.revokeObjectURL(it.src); });
@@ -9966,6 +10890,7 @@ function setupUploadForm() {
     form.prompt.value = w.intro || '';
     form.site.value = w.site || ''; // 官网回填
     setQuickLookValues(w);   // 「一眼看懂」回填（老作品多半是空的，空着就保持收起）
+    posUI.reset();   // AI 提示条回到初始态：上一件作品的「已填入 / 确认替换」不能带进来
     if (gapFocus) { qlUI.setOpen(true); qlUI.paint(); }   // 补全进来直接展开：缺的那栏就藏在这一块里
     // 编辑回填：按形态的 links 优先，旧数据的单 link 落到第一个非小程序形态的输入框
     {
@@ -10028,6 +10953,11 @@ function setupUploadForm() {
       if (el) setTimeout(() => {
         try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.focus({ preventScroll: true }); } catch {}
       }, 160);
+      // 缺的是定位句：人已经点过「补全」了，别再让他自己找按钮 —— 空着就直接提炼一次。
+      // 介绍不够 30 字时 gen 内部会拦下请求、把出口指回介绍栏（不硬写）。
+      if (gapFocus === 'positioning' && !String(form.positioning.value || '').trim()) {
+        setTimeout(() => { posUI.gen({ auto: true }); }, 460);   // 等滚动落定，提示条出现在视野里
+      }
     }
   }
 
@@ -10208,6 +11138,110 @@ function setupUploadForm() {
     $('aiIntroAppend').onclick = () => applyIntro('append');
     $('closeAiIntroPick').onclick = () => hideModal(aiIntroPickEl);
     aiIntroPickEl.onclick = e => { if (e.target === aiIntroPickEl) hideModal(aiIntroPickEl); };
+  }
+
+  // 「一句话定位」的 AI 写一句：从作者自己的作品介绍里提炼（服务端只做概括，不加事实）。
+  // 两条体验底线：
+  // · 介绍太短（<30 字）连请求都不发 —— 没依据时模型只会编，不如把出口指回介绍栏；
+  // · 已有定位句时不静默覆盖 —— 第一次点只提醒「这会替换你写的这一句」，再点一次才换。
+  {
+    const posBtn = $('aiPosBtn');
+    const posEl = $('qlPositioning');
+    const hintEl = $('aiPosHint');
+    const goEl = $('aiPosGoIntro');
+    const DEFAULT_HINT = '从上面的作品介绍里提炼，生成后自己改';
+    const formEl = () => document.getElementById('uploadForm');
+    const introEl = () => { const f = formEl(); return f ? f.querySelector('textarea[name="prompt"]') : null; };
+    const introText = () => ((introEl() && introEl().value) || '').trim();
+    const titleText = () => {
+      const f = formEl();
+      if (!f) return '';
+      const n = f.querySelector('[name="wname"]'), t = f.querySelector('[name="wtag"]');
+      return (((n && n.value) || '').trim() + ' ' + ((t && t.value) || '').trim()).trim();
+    };
+    const setHint = (txt, tone) => {
+      if (!hintEl) return;
+      hintEl.textContent = txt || DEFAULT_HINT;
+      hintEl.classList.toggle('is-busy', tone === 'busy');
+      hintEl.classList.toggle('is-ok', tone === 'ok');
+      hintEl.classList.toggle('is-err', tone === 'err');
+    };
+    const focusIntro = () => {
+      const ta = introEl();
+      if (!ta) return;
+      try { ta.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch {}
+      ta.focus({ preventScroll: true });
+    };
+
+    const label0 = posBtn ? posBtn.innerHTML : '';   // 初始文案（图标已被渲染成 svg，别重写字符串）
+    const gen = async ({ auto = false } = {}) => {
+      if (!posBtn || !posEl || posBtn.dataset.busy === '1') return;
+      const intro = introText();
+      if (intro.length < 30) {
+        setHint('定位句得从作品介绍里提炼 —— 先写两句「它是什么、怎么用」', 'err');
+        if (goEl) goEl.hidden = false;
+        if (!auto) { showToast('先写两句作品介绍，AI 才有依据；不然它只会编', undefined, 'err'); focusIntro(); }
+        return;
+      }
+      if (goEl) goEl.hidden = true;
+      // 手写过的句子不静默覆盖：第一次点只警告，再点一次才换
+      if (!auto && posEl.value.trim() && posBtn.dataset.arm !== '1') {
+        posBtn.dataset.arm = '1';
+        setHint('这会替换你写的这一句 —— 想换就再点一次「AI 写一句」', 'err');
+        return;
+      }
+      const label = posBtn.innerHTML;
+      posBtn.dataset.busy = '1';
+      posBtn.disabled = true;
+      posBtn.textContent = '生成中…';
+      setHint(auto ? '正在从你的作品介绍里提炼…' : '正在提炼…', 'busy');
+      try {
+        const picked = sel => Array.from(document.querySelectorAll(sel + ' input:checked')).map(i => i.value).filter(Boolean);
+        const r = await fetch('/api/ai/positioning', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: titleText(),
+            prompt: intro,
+            category: picked('#catPicker')[0] || '',
+            types: picked('#typePicker')
+          })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          // 自动来的（补全条点进来）用中性提示：没配 key / 模型抽风是站里的事，
+          // 别在作者刚打开表单时就甩一行红字，像他做错了什么
+          if (auto) { setHint('没能自动提炼，直接写一句也一样', ''); return; }
+          setHint(d.error || '生成失败，先手动写一句吧', 'err');
+          showToast(d.error || '生成失败，先手动写一句吧', undefined, 'err');
+          return;
+        }
+        posEl.value = d.text;
+        posEl.dispatchEvent(new Event('input', { bubbles: true }));   // 字数跟着刷新
+        setHint('AI 草稿已填入 —— 核对一下，改完保存', 'ok');
+        if (!auto) showToast('草稿已填入，改完再保存', undefined, 'ok');
+        posEl.focus({ preventScroll: true });
+        try { posEl.setSelectionRange(posEl.value.length, posEl.value.length); } catch { /* ignore */ }
+      } catch {
+        setHint(auto ? '没能自动提炼，直接写一句也一样' : '网络异常，先手动写一句吧', auto ? '' : 'err');
+        if (!auto) showToast('网络异常，先手动写一句吧', undefined, 'err');
+      } finally {
+        posBtn.dataset.busy = '';
+        posBtn.disabled = false;
+        posBtn.innerHTML = label;
+      }
+    };
+
+    if (posBtn) posBtn.onclick = () => gen();
+    if (goEl) goEl.onclick = focusIntro;
+    // 作者一开始动这个框就撤掉「确认替换」的武装，别让几秒前的状态生效
+    if (posEl) posEl.addEventListener('input', () => { if (posBtn) posBtn.dataset.arm = ''; });
+    posUI.gen = gen;
+    posUI.reset = () => {
+      if (posBtn) { posBtn.dataset.arm = ''; posBtn.disabled = false; posBtn.innerHTML = label0; }
+      if (goEl) goEl.hidden = true;
+      setHint(DEFAULT_HINT, '');
+    };
   }
 
   // 「一眼看懂」折叠块：默认收起（不吓人），填过内容就自动展开（编辑老作品时直接看到现状）。
@@ -10584,7 +11618,11 @@ function setupUploadForm() {
         const hasQr = form.qrcode.files.length > 0 ||
           (!qrCleared && $('qrPreviewBox').style.display !== 'none');
         if (!hasQr) {
-          showToast('形态含「小程序」，请上传小程序码 / 二维码', undefined, 'err');
+          // 删掉了码又留着「小程序」形态：这不是 bug，是「小程序作品不能没有码」。
+          // 把两条出路说清楚，别让人以为删不掉、也别反复点 ✕ 试。
+          showToast(qrCleared
+            ? '「小程序」形态必须有一张码：直接上传新的把旧的换掉；确实不要二维码，就先把形态里的「小程序」去掉'
+            : '形态含「小程序」，请上传小程序码 / 二维码', 4200, 'err');
           $('qrDrop').scrollIntoView({ block: 'center', behavior: 'smooth' });
           return;
         }
@@ -11021,6 +12059,12 @@ function leaveDetailNav(keepList) {
 }
 
 function setupDetailActions() {
+  // 送灯火面板在 HTML 里是挂在详情弹窗内部的（它本来就是「详情页里点送灯火」的弹层），
+  // 但 2026-11-15 起卡片扇面也能直接送灯火 —— 详情没开时，这个面板会跟着祖先
+  // display:none 一起消失，表现成「点了没反应」。遮罩本身是 position:fixed + 独立
+  // z-index(120)，挪到 body 下渲染一模一样，两个入口就都能用；顺带也不会再出现
+  // 「详情关了、面板还开着但看不见」的滚动锁泄漏。
+  if ($('tipPanel') && $('tipPanel').parentElement !== document.body) document.body.appendChild($('tipPanel'));
   $('closeDetail').onclick = () => {
     hideModal(detailModal);
     // 弹窗是从首页/榜单/作者页打开的（history.state.dm === 'work'）就回退到原页面，
@@ -11151,6 +12195,9 @@ function setupDetailActions() {
   const TIP_AMOUNTS = [1, 2, 5, 10];
   let tipSelAmount = 0;
   let tipAuthorTarget = null;   // 非 null = 作者页直送模式（送给人，不挂作品）；作品打赏时保持 null
+  // 卡片扇面「送灯火」时面板挂的作品：不走详情弹窗，state.currentWork 可能就是空的或上一件，
+  // 所以发送 / 出小程序码都以这个为准（详情弹窗进来的就是 state.currentWork 本身）
+  let tipWorkTarget = null;
 
   // 档位按钮：作品打赏和作者直送共用同一套
   const renderTipAmounts = () => {
@@ -11163,7 +12210,15 @@ function setupDetailActions() {
         $('tipSend').disabled = false;
       };
     });
-    $('tipSend').disabled = true;
+    // 默认选中 5 盏
+    const defaultBtn = $('tipAmounts').querySelector('.tip-amount[data-amount="5"]');
+    if (defaultBtn) {
+      tipSelAmount = 5;
+      defaultBtn.classList.add('active');
+      $('tipSend').disabled = false;
+    } else {
+      $('tipSend').disabled = true;
+    }
   };
 
   // 注入到顶层：openWork 每次换作品时调用（弹窗收起、档位清空、余额重画）
@@ -11171,6 +12226,7 @@ function setupDetailActions() {
     hideModal($('tipPanel'));
     tipSelAmount = 0;
     tipAuthorTarget = null;
+    tipWorkTarget = null;
     // 匿名/游客投稿的作品也能送灯火：文案改成「记在作品上」，不承诺转给作者
     const claimed = !!(w && w.claimed);
     $('tipPanelTitle').textContent = claimed ? '为作者点亮一盏灯火' : '为这件作品点亮一盏灯火';
@@ -11196,6 +12252,7 @@ function setupDetailActions() {
   // 作者页直送：不挂作品，灯火全额转到作者账上（2026-11-13）
   function openAuthorTipPanel(uid, shown) {
     tipAuthorTarget = uid;
+    tipWorkTarget = null;
     tipSelAmount = 0;
     // 直送模式没有作品可落，看广告代送那条黄条不出现（它是「进小程序打开这件作品」的引导）
     $('tipMiniAd').style.display = 'none';
@@ -11211,6 +12268,7 @@ function setupDetailActions() {
 
   async function openTipPanel(w) {
     const p = $('tipPanel');
+    tipWorkTarget = w || null;
     // 居中弹窗：点「送灯火」立刻有反馈，不会再被当成点了没反应
     showModal(p);
     // 看广告代送黄条只在作品打赏模式出现（作者直送模式没有作品可落，openAuthorTipPanel 会藏掉它）
@@ -11239,6 +12297,19 @@ function setupDetailActions() {
     if (!state.user) { openAuth('login'); return; }
     openTipPanel(w);
   };
+  // 卡片扇面里的「送灯火」：不打开详情弹窗，直接开这面板。
+  // 面板标题 / 说明要看 claimed（作者绑没绑账号），卡片列表不带这个字段，
+  // 所以先补一次 /api/works/:id，再走详情页同一套 resetTipPanel + openTipPanel。
+  openWorkTipPanelHook = async function (id) {
+    try {
+      const r = await fetch('/api/works/' + encodeURIComponent(id), { cache: 'no-store' });
+      const w = await r.json().catch(() => ({}));
+      if (!r.ok || w.error) { showToast(w.error || '作品信息没拉到，稍后再试', undefined, 'err'); return; }
+      if (w.owned) { showToast('自己的作品就不用送灯火啦'); return; }
+      resetTipPanel(w);
+      openTipPanel(w);
+    } catch { showToast('网络异常，请稍后再试', undefined, 'err'); }
+  };
   $('tipClose').onclick = () => { hideModal($('tipPanel')); };
   // 「小程序看广告替送 50 盏」入口：出一张直达这件作品详情页的小程序码（scene=w:<作品id>），
   // 用户扫码落在小程序详情页 → 底部「看广告替作品点灯」，平台代送不扣自己的余额。
@@ -11246,7 +12317,7 @@ function setupDetailActions() {
   let tipMiniAdBusy = false;
   $('tipMiniAd').onclick = async () => {
     if (tipMiniAdBusy) return;
-    const w = state.currentWork;
+    const w = tipWorkTarget || state.currentWork;
     const go = $('tipMiniAd').querySelector('.tma-go');
     if (go) go.textContent = '出码中…';
     tipMiniAdBusy = true;
@@ -11293,7 +12364,7 @@ function setupDetailActions() {
         tipSelAmount = 0;
         return;
       }
-      const w = state.currentWork;
+      const w = tipWorkTarget || state.currentWork;
       if (!w) return;
       const res = await fetch(`/api/works/${w.id}/tip`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -11326,8 +12397,9 @@ function setupDetailActions() {
     navigate('/u/' + encodeURIComponent(w.authorId || w.author));
   };
   // 送灯火面板里的「作者主页」入口：关掉面板和详情一起跳
+  // （卡片扇面进来的没有详情可关，tipWorkTarget 里那件作品才是这次要看的作者）
   $('tipAuthorHome').onclick = () => {
-    const w = state.currentWork;
+    const w = tipWorkTarget || state.currentWork;
     if (!w) return;
     hideModal($('tipPanel'));
     hideModal(detailModal);
@@ -11829,7 +12901,11 @@ function wishStatusHtml(i) {
 //   2) 不带人数：人数是服务端给种子词随机抽的，摆在首屏反而露怯；
 //   3) 12 条全出（9 热 + 3 新），种子词贴「热」、近期真被搜过的贴「新」——
 //      两批词来源不同，角标一眼分清（2026-11-14 站长定，桌面折两行、手机只留前 4 个）。
+//   4) 2026-11-15 站长：热的排新的前面（服务端已排，这里再稳定排一次兜底，
+//      手机只露前 4 个，得保证露出来的是热的）。
 const HERO_HOT_MAX = 12;
+// 角标档位：0 热（种子词）、1 新（近 7 天真被搜过）、2 无角标（兜底补位词）
+const HOT_BADGE_RANK = { '热': 0, '新': 1, '': 2 };
 let heroHotLoaded = false;
 
 function renderHeroHot(items) {
@@ -11840,6 +12916,8 @@ function renderHeroHot(items) {
     .filter(it => it && it.w && !it.zero)
     .map(it => ({ w: String(it.w).trim(), badge: it.seed ? '热' : (it.win7 ? '新' : '') }))
     .filter(x => x.w && !seen.has(x.w) && seen.add(x.w))
+    // 热 → 新 → 无角标；Array.sort 稳定，同档之内保留服务端抽出来的随机顺序
+    .sort((a, b) => HOT_BADGE_RANK[a.badge] - HOT_BADGE_RANK[b.badge])
     .slice(0, HERO_HOT_MAX);
   // 拉空/全被筛掉：整块继续隐身但占着一行（is-waiting），别把下方内容顶上去抖一下
   if (!words.length) { wrap.classList.add('is-waiting'); return; }
@@ -14036,7 +15114,7 @@ function normalizeRedeemSel() {
   }
   // 第 5 步（只有两个「首页第一格」独占位才有）：投放期限 1..maxDays，默认给满额。
   // 天数不改价格，只决定这单最多挂多久；不是自选位就固定兜底天数，字段照旧带上（服务端也按位置兜底）。
-  const maxDays = cfg.maxDays || 7;
+  const maxDays = cfg.maxDays || 14;
   if (cfg.daysPick) {
     const d = Math.round(Number(redeemSel.days));
     redeemSel.days = Number.isFinite(d) && d > 0 ? Math.min(maxDays, Math.max(1, d)) : maxDays;
@@ -14425,7 +15503,7 @@ function renderRedeem() {
   // 投放期限（只有两个「首页第一格」独占位才有）：1..maxDays 天，默认给满额。
   // 天数不改价格——仍按次买，天数只决定这单最多挂多久；到期没投完的照样按原价退余额，
   // 所以选短了不亏灯火，只是把位置更早让给排队的人（独占位库存只有 1，这点很关键）。
-  const maxPickDays = cfg.maxDays || 7;
+  const maxPickDays = cfg.maxDays || 14;
   const daysHtml = cfg.daysPick ? `
     <div class="redeem-days">
       <div class="rd-head"><b>投放期限</b><small>这单最多挂几天 · 从开始投放那天算起${occupied ? '，排队等待不算' : ''}</small></div>
@@ -15213,7 +16291,7 @@ async function submitRedeem(btn, opts) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         workId: redeemSel.workId, views: redeemSel.views, clicks: redeemSel.clicks, slot: redeemSel.slot, link,
-        // 投放期限（只有两个首页第一格认这个参数）：1-7 天，不改价格；其它位服务端按兜底天数算
+        // 投放期限（只有两个首页第一格认这个参数）：1-14 天，不改价格；其它位服务端按兜底天数算
         days: redeemSel.days,
         // 用户在「这件作品现在就在第一屏」的弹窗里点了「仍然要投」：带上 ackFresh 才放行
         ackFresh: !!(opts && opts.ackFresh) || undefined
@@ -16423,6 +17501,23 @@ function applySearch(word) {
   if (location.pathname !== '/') navigate('/'); else loadWorks();
 }
 
+// 「你是不是想搜「记账」」：服务端在「靠拼音才命中」或「靠同音白字才命中」时给的提示。
+// 有就显示在列表标题旁边，没有就藏起来（换分类、翻页、清空搜索时都会走到这里）。
+function renderSearchDidYouMean(sg) {
+  const btn = $('searchDidYouMean');
+  if (!btn) return;
+  const text = sg && sg.text ? String(sg.text) : '';
+  if (!text || text === state.q) {
+    btn.hidden = true;
+    btn.dataset.kw = '';
+    btn.textContent = '';
+    return;
+  }
+  btn.hidden = false;
+  btn.dataset.kw = text;
+  btn.textContent = `你是不是想搜「${text}」`;
+}
+
 // 首页「大家在找」：词条是异步插进来的，绑在容器上（代理一次就够），点一下就是一次站内搜索
 function setupHeroHot() {
   const box = $('heroHotList');
@@ -16543,6 +17638,13 @@ function setupSearchSuggest() {
 
   const clearBtn = $('sgClearHist');
   if (clearBtn) clearBtn.onclick = () => { writeSearchHistory([]); render(); };
+
+  // 「你是不是想搜」的点击：换成提示里的中文词重搜（等价于用户自己改输入框再回车）
+  const dym = $('searchDidYouMean');
+  if (dym) dym.addEventListener('click', () => {
+    const kw = dym.dataset.kw || '';
+    if (kw) applySearch(kw);
+  });
 
   // 点面板外关闭；失焦留 150ms，否则点击词条会先被 blur 抢走
   // （手机端收起搜索覆盖层由上面捕获阶段的处理器负责：覆盖层开着时它会 stopPropagation，
@@ -16883,6 +17985,9 @@ function setupHeader() {
   $('rankRulesBtn').onclick = () => showModal(rankRulesModal);
   $('closeRankRules').onclick = () => hideModal(rankRulesModal);
   bindMaskClose(rankRulesModal, () => hideModal(rankRulesModal));
+
+  // 右栏期刊架（星梦期刊）：切周榜/月榜、翻往期、期刊弹窗开关都在这里一次性绑好
+  bindJournalRack();
 
   // H5 榜单「加载更多」：只追加下一页，筛选条件不变
   const rankMoreH5 = $('rankMoreH5');
