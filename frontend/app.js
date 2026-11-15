@@ -934,6 +934,7 @@ function renderAuthBox() {
     const ckDone = !!ck.done;
     const pts = Number(state.user.points || 0);
     const unread = Number(state.user.unreadNotices || 0);
+    const claimable = Number(state.user.taskClaimable || 0);   // 任务中心还差多少盏没领（服务端算的）
     box.innerHTML =
       `<button class="link-btn checkin-entry${ckDone ? ' is-done' : ' is-todo'}" id="checkinBtn"
          title="${ckDone ? `今天已签 · 连续 ${ck.streak || 0} 天 · 点开看进度和签到累计榜` : `每日签到领 ${ck.todayPoints || 5} 盏灯火，越签越多 · 点开签到`}">${ckDone ? '' : `<span class="lb-ico"><span class="ico">${ic('checkin')}</span></span><span class="ck-label">签到 +${ck.todayPoints || 5}</span>`}<span class="ck-pts" title="灯火余额，看明细走签到弹窗或头像菜单里的「灯光明细」"><span class="ico">${ic('lamp')}</span>${pts}</span></button>` +
@@ -942,6 +943,7 @@ function renderAuthBox() {
         <button class="user-chip" id="userMenuBtn" title="个人菜单">${ic('user')} <span class="uc-name">${escapeHtml(state.user.nickname || state.user.username)}</span><span class="um-caret">▾</span></button>
         <div class="user-dropdown" id="userDropdown">
           <a class="ud-item" href="/u/${encodeURIComponent(state.user.slug || state.user.id || state.user.username)}" data-nav>${ic('home', 15)} 我的主页</a>
+          <a class="ud-item" href="/tasks" data-nav>${ic('gift', 15)} 任务中心${claimable ? `<span class="ud-pts">+${claimable}</span>` : ''}</a>
           ${state.user.dmBeta ? `<button class="ud-item" id="dmBtn">${ic('chat', 15)} 私信</button>` : ''}
           <div class="ud-sep"></div>
           <button class="ud-item" id="statsBtn">${ic('bars', 15)} 作品数据</button>
@@ -1327,6 +1329,8 @@ async function afterAuth(data) {
   else if (location.pathname === '/following') loadFollowPage();
   // 微信等 OAuth 建的临时号：登录成功后主动弹一次「账号与密码」引导完善
   maybeNudgePassSetup();
+  // 登录响应里没有奖励/任务状态（那要算一遍任务板）：补一条轻请求，任务角标和 +200 文案才不会缺席
+  refreshTaskState();
   // 从投稿进度页带着凭据来的：登录/注册一成功就把那件匿名作品认到名下
   if (state.pendingClaim) await runPendingClaim();
   // 匿名投过稿、但当时没账号：按投稿 IP 认出来问一句「这些是你投的吗」，确认即当场归属
@@ -1387,9 +1391,14 @@ async function loadMe() {
           noticePrefs: data.noticePrefs || { announce: true, cats: {} },   // 消息提示偏好（屏蔽后仍收消息、不弹窗）
           wechat: data.wechat || null,
           github: data.github || null,
-          // 绑定 GitHub 的一次性奖励状态（服务端 ghBindBonusState）：{ points, claimed, available }
+          // 绑定 GitHub 的一次性奖励状态（服务端 ghBindBonusState）：{ points, claimed, bindable, setup }
           // 白名单拼对象，漏了这一行前端永远读不到，绑定弹窗就只剩一句干巴巴的「绑定 GitHub」
           ghBindBonus: data.ghBindBonus || null,
+          // 微信那一笔（服务端 wxBindBonusState）与「完善账号」那一笔：任务页 / 设置页 / 密码弹窗都要用
+          wxBindBonus: data.wxBindBonus || null,
+          setupBonus: data.setupBonus || null,
+          // 任务中心还有多少盏没领：下拉菜单、「我的」页、任务页角标都用它
+          taskClaimable: Number(data.taskClaimable || 0),
           google: data.google || null }
       : null;
     state.providers = (data && data.providers) || {};
@@ -1410,6 +1419,8 @@ async function loadMe() {
   }
   // 刷新页面 / OAuth 回跳建立的登录态同样要引导：临时号主动弹一次「账号与密码」
   maybeNudgePassSetup();
+  // 直接打开 /tasks 时 route() 跑在登录态之前（先画了游客态），接口回来后补画一次
+  if (location.pathname === '/tasks') renderTasksPage();
 }
 
 // 第三方登录入口是否显示：服务端配置了 clientId/secret 才亮出来，
@@ -2758,8 +2769,8 @@ function afterLoadAuth() {
         : `${viaName} 已绑定：${(prof && (prof.login || prof.email || prof.name)) || ''}`,
         undefined, ghBonus ? 'ok' : undefined);
       else if ((okGh || okG) === 'new') showToast(state.user.nickname
-        ? `已用 ${viaName} 建号，作品上署名「${state.user.nickname}」，记得设个密码`
-        : `已用 ${viaName} 建号 @${state.user.username}，头像菜单里能设昵称、设密码`);
+        ? `已用 ${viaName} 建号，作品上署名「${state.user.nickname}」，设好账号再领 200 盏灯火`
+        : `已用 ${viaName} 建号 @${state.user.username}，去「账号与密码」设好登录名和密码，还能领 200 盏灯火`);
       else showToast(`欢迎回来，${state.user.nickname || state.user.username}`, undefined, 'ok');
     }
   }
@@ -2786,15 +2797,18 @@ function openAuthFromQuery() {
   openAuth('login');
 }
 
-// 绑定 GitHub 的奖励说明（2026-11-16）：额度由服务端 /api/me 下发（ghBindBonus），
-// 前端不写死数字——以后调额度只改 server.js 的 GH_BIND_BONUS_POINTS 一处。
+// 账号奖励说明（2026-11-16）：额度由服务端下发（ghBindBonus / setupBonus），
+// 前端不写死数字——以后调额度只改 server.js 里的常量一处。
+// 三种情况说三句话：还能绑 → 说绑了给多少；已经绑了但用的是自动建号 → 说把账号设置好也给；领过 → 说明不重复发。
 // compact=true 只回「 · +200 盏」这一小截，给按钮用。
 function ghBonusTip(compact) {
   const b = state.user && state.user.ghBindBonus;
+  const sb = state.user && state.user.setupBonus;
   if (!b || !b.points) return '';
-  if (compact) return b.available ? ` · +${b.points} 盏` : '';
-  if (b.available) return `绑定成功后一次性送 <b>${b.points} 盏灯火</b>——每个账号只发一次，解绑后再绑也不会重复发。`;
-  if (b.claimed) return `这个账号的绑定奖励已经领过了（+${b.points} 盏），解绑后再绑不会重复发。`;
+  if (compact) return b.bindable ? ` · +${b.points} 盏` : '';
+  if (b.bindable) return `绑定成功后一次性送 <b>${b.points} 盏灯火</b>——每个账号只发一次，解绑后再绑也不会重复发。`;
+  if (b.claimed) return `这个账号的账号奖励已经领过了（+${b.points} 盏），解绑后再绑不会重复发。`;
+  if (sb && sb.available) return `这个账号是第三方登录时自动建的：把登录名和密码设好，同样一次性送 <b>${sb.points} 盏灯火</b>（每个账号只发一次）。`;
   return '';
 }
 
@@ -2810,6 +2824,9 @@ function openGhModal() {
   if (!enabled) {
     body.innerHTML = `<p class="nick-tip">这个站点还没有配置 GitHub 应用，暂时用不了 GitHub 登录。<br />需要设置 <code>GITHUB_CLIENT_ID</code> / <code>GITHUB_CLIENT_SECRET</code> 后重启服务（见 DEPLOY.md）。</p>`;
   } else if (gh) {
+    // 已绑 + 还没领过 = 这个号本来就是 GitHub 建的：奖励走「完善账号」那条路，给个直达按钮，
+    // 别只留一句「关闭」让用户自己去找设置页
+    const setupAvail = !!(state.user.setupBonus && state.user.setupBonus.available);
     body.innerHTML = `
       <div class="gh-card">
         <img class="gh-avatar" src="${escapeHtml(gh.avatar)}" alt="" referrerpolicy="no-referrer" onerror="this.style.display='none'" />
@@ -2823,9 +2840,13 @@ function openGhModal() {
       <p class="nick-msg" id="ghMsg"></p>
       <div class="nick-actions">
         <button type="button" class="btn-ghost" id="ghUnbind">解绑 GitHub</button>
-        <button type="button" class="btn-primary" id="ghClose2">关闭</button>
+        ${setupAvail
+          ? `<button type="button" class="btn-primary" id="ghSetupPass">设置账号，领 ${state.user.setupBonus.points} 盏</button>`
+          : `<button type="button" class="btn-primary" id="ghClose2">关闭</button>`}
       </div>`;
-    $('ghClose2').onclick = () => hideModal(mask);
+    const ghSetupPass = $('ghSetupPass');
+    if (ghSetupPass) ghSetupPass.onclick = () => { hideModal(mask); openPassModal(); };
+    else $('ghClose2').onclick = () => hideModal(mask);
     const un = $('ghUnbind');
     un.onclick = async () => {
       const msg = $('ghMsg');
@@ -6000,7 +6021,7 @@ function navigate(path) {
 // 原先从其他页跳首页再滚到列表区的 scrollWorksHeadSoon 不再有使用场景，函数已删。
 
 function closeAllViews() {
-  ['homeView', 'rankView', 'wishView', 'miniView', 'guideView', 'howtoView', 'authorView', 'promoteView', 'discoverView', 'meView', 'settingsView', 'favView', 'likeView', 'followView'].forEach(id => { $(id).style.display = 'none'; });
+  ['homeView', 'rankView', 'wishView', 'miniView', 'guideView', 'howtoView', 'authorView', 'promoteView', 'discoverView', 'meView', 'settingsView', 'tasksView', 'favView', 'likeView', 'followView'].forEach(id => { $(id).style.display = 'none'; });
   hideModal(detailModal);
   hideModal(statsModal);   // 灯火/数据面板是弹层：路由切走（比如点了榜单行去作者主页）必须一起收，别盖在新页面上
   closeQrZoom();   // 详情被关掉时二维码放大层一起收，别留一张盖住全屏的图
@@ -6253,7 +6274,17 @@ function renderSettingsPage() {
   const nMutedCats = noticeMutedCount();
   // 登录名只对「自动建的临时号」和早就设过的号开放；网页版正常注册的账号只改密码
   const canSetAlias = u.passSet === false || u.tempAcct === true || !!u.alias;
+  // 任务/奖励状态（服务端 /api/me 下发）：设置页只做提示，能不能领仍由接口说话
+  const setupAvail = !!(u.setupBonus && u.setupBonus.available);
+  const setupPts = u.setupBonus ? Number(u.setupBonus.points || 0) : 0;
+  const taskClaimable = Number(u.taskClaimable || 0);
   body.innerHTML = `
+    <a class="st-row" href="/tasks" data-nav>
+      <span class="st-ico">${ic('gift', 18)}</span>
+      <span class="st-main"><b>任务中心</b><i>绑定账号、完善账号，一次性领灯火</i></span>
+      <span class="st-val${taskClaimable ? '' : ' st-dim'}">${taskClaimable ? '可领 +' + taskClaimable + ' 盏' : '已完成'}</span>
+      <span class="st-more">›</span>
+    </a>
     <button type="button" class="st-row" id="stAva">
       <span class="st-ico">${ic('user', 18)}</span>
       <span class="st-main"><b>头像</b><i>用 GitHub 头像、传一张图，或者就用名字首字</i></span>
@@ -6274,7 +6305,7 @@ function renderSettingsPage() {
     </button>
     <button type="button" class="st-row" id="stPass">
       <span class="st-ico">${ic('key', 18)}</span>
-      <span class="st-main"><b>${canSetAlias ? '账号与密码' : '登录密码'}</b><i>${canSetAlias ? '登录名（别名）和密码都在这里改' : '账号名 @' + escapeHtml(u.username || '') + ' 注册时就定了，这里只改密码'}</i></span>
+      <span class="st-main"><b>${canSetAlias ? '账号与密码' : '登录密码'}</b><i>${canSetAlias ? '登录名（别名）和密码都在这里改' : '账号名 @' + escapeHtml(u.username || '') + ' 注册时就定了，这里只改密码'}${setupAvail ? ` · 设置好送 ${setupPts} 盏灯火` : ''}</i></span>
       <span class="st-more">›</span>
     </button>
     <button type="button" class="st-row" id="stMute">
@@ -6286,7 +6317,7 @@ function renderSettingsPage() {
     ${ghOn ? `
     <button type="button" class="st-row" id="stGh">
       <span class="st-ico">${ic('github', 18)}</span>
-      <span class="st-main"><b>GitHub 绑定</b><i>绑定后可以一键登录，不用再输密码</i></span>
+      <span class="st-main"><b>GitHub 绑定</b><i>绑定后可以一键登录，不用再输密码${u.ghBindBonus && u.ghBindBonus.bindable ? ` · 绑定送 ${u.ghBindBonus.points} 盏` : ''}</i></span>
       <span class="st-val${u.github ? '' : ' st-dim'}">${u.github ? '已绑定' : '未绑定'}</span>
       <span class="st-more">›</span>
     </button>` : ''}
@@ -6362,6 +6393,7 @@ function renderMePage() {
   const favs = (state.favs || []).length;
   // 关注数（2026-11-15）：由 /api/me 下发，前端不自己数——多端登录时以服务端为准
   const following = Number(state.user.followingCount || 0);
+  const taskClaimable = Number(state.user.taskClaimable || 0);   // 任务中心还能领多少盏（服务端算）
   const name = state.user.nickname || state.user.username;
   // 「账号名」小标签只给微信/OAuth 自动建的临时号：上面那串是系统给的，需要一句话解释。
   // PC 正常注册的账号（账号名注册时就定了）名字就是自己起的，再标「账号名」是重复信息
@@ -6406,6 +6438,11 @@ function renderMePage() {
       <button type="button" class="me-ck-btn me-checkin${ckDone ? ' is-done' : ''}" id="meCheckin"${ckDone ? ' disabled' : ''}>${ckDone ? '今日已签 ✓' : `签到 +${ck.todayPoints || 5} 灯火`}</button>
       <p class="me-ck-tip">${ar.points ? `每天打开站点自动 +${ar.points} 盏${ar.done ? '（今天已到账）' : ''} · ` : ''}灯火可兑换推荐位曝光 · <button type="button" class="me-ck-adlink" id="meCkAd">小程序看广告 +${ckAdOnce(ck)} 盏 ›</button></p>
     </div>
+    <a class="me-task-bar${taskClaimable ? ' has-reward' : ''}" href="/tasks" data-nav>
+      <span class="me-task-ico">${ic('gift', 18)}</span>
+      <span class="me-task-txt"><b>任务中心</b><i>${taskClaimable ? `绑好账号还能领 ${taskClaimable} 盏灯火` : '账号任务都领完了，看看每天能做的小事'}</i></span>
+      <span class="me-task-go">›</span>
+    </a>
     <div class="me-quick">
       <button type="button" class="me-quick-card" id="meNotices"><span class="me-quick-ico">${ic('bell', 20)}</span>站内消息${unread ? `<span class="me-badge">${unread > 99 ? '99+' : unread}</span>` : ''}</button>
       <button type="button" class="me-quick-card" id="meStar" title="同步我名下所有开源作品的 GitHub star，按 1:1 换灯火"><span class="me-quick-ico">${ic('github', 20)}</span>更新<br />star 奖励</button>
@@ -7220,6 +7257,13 @@ function route() {
     if (!keepList) loadDiscover();
     updateNavActive();
     restoreScroll();
+    return;
+  }
+  if (path === '/tasks') {
+    $('tasksView').style.display = 'block';
+    setTitle('任务中心');
+    renderTasksPage();
+    updateNavActive();
     return;
   }
   if (path === '/me') {
@@ -18749,11 +18793,15 @@ function openPassModal() {
   $('passModal').querySelector('.modal-head h2').textContent = canAlias ? '账号与密码' : '修改密码';
   $('passNewLabel').textContent = canAlias ? '新密码（不想改密码就留空）' : '新密码';
   $('passSave').textContent = '保存';
+  // 这次设置能不能领「完善账号」那一笔（额度与是否领过都由服务端算好下发）
+  // 能领就给一句（不限于 noPass：临时号先设了密码、还没起登录名时也算没设置完，照样能领）
+  const setupPts = (state.user.setupBonus && state.user.setupBonus.available)
+    ? Number(state.user.setupBonus.points || 0) : 0;
   $('passTip').textContent = !canAlias
-    ? `登录时用「账号名 + 密码」进，账号名注册时就定了，不用另外起登录名。改完密码后其他设备会自动退出登录，当前这台设备不受影响。`
+    ? `登录时用「账号名 + 密码」进，账号名注册时就定了，不用另外起登录名。改完密码后其他设备会自动退出登录，当前这台设备不受影响。` + (setupPts ? ` 设置完成一次性送 ${setupPts} 盏灯火，当场到账。` : '')
     : (noPass
-      ? `你这个账号是${src}登录时自动创建的，设一个登录名和密码，换设备也能用「登录名 + 密码」进。`
-      : '不想改密码就把密码两栏留空；改了密码后，其他设备会自动退出登录，当前这台设备不受影响。');
+      ? `你这个账号是${src}登录时自动创建的，设一个登录名和密码，换设备也能用「登录名 + 密码」进。` + (setupPts ? ` 设置完成一次性送 ${setupPts} 盏灯火，当场到账。` : '')
+      : '不想改密码就把密码两栏留空；改了密码后，其他设备会自动退出登录，当前这台设备不受影响。' + (setupPts ? ` 设置完成一次性送 ${setupPts} 盏灯火，当场到账。` : ''));
   setPassMsg('');
   $('closePass').onclick = () => hideModal($('passModal'));
   $('passCancel').onclick = () => hideModal($('passModal'));
@@ -18809,6 +18857,7 @@ async function submitPass() {
   btn.disabled = true;
   setPassMsg('提交中…');
   let kicked = 0;
+  let bonusPts = 0;   // 这一趟「完善账号」当场发了多少（服务端只在真发了才带 bonus）
   try {
     if (aliasChanged) {
       const ra = await fetch('/api/me/alias', {
@@ -18820,6 +18869,7 @@ async function submitPass() {
       if (!ra.ok) { setPassMsg(da.error || '登录名保存失败，稍后再试', 'err'); return; }
       state.user.alias = da.alias || alias;
       state.user.aliasNextAt = da.aliasNextAt || 0;
+      if (da.bonus && da.bonus.reward) bonusPts += Number(da.bonus.reward) || 0;
     }
     if (wantPass || !noPass) {
       const r = await fetch('/api/me/password', {
@@ -18831,15 +18881,26 @@ async function submitPass() {
       if (!r.ok) { setPassMsg(data.error || '修改失败，稍后再试', 'err'); return; }
       if (state.user) state.user.passSet = true;
       kicked = data.kicked || 0;
+      if (data.bonus && data.bonus.reward) bonusPts += Number(data.bonus.reward) || 0;
     }
     hideModal($('passModal'));
-    showToast(wxReset
-      ? '密码已重设，以后可用「登录名 + 密码」或账号名 + 密码登录'
-      : (aliasChanged && wantPass
-      ? '登录名和密码已保存，以后可用「登录名 + 密码」登录'
-      : (aliasChanged ? '登录名已保存，以后可用「登录名 + 密码」登录' : (noPass
-        ? '密码已设置，以后也能用账号名 + 密码登录'
-        : (kicked ? `密码已修改，${kicked} 台其他设备已退出登录` : '密码已修改')))), undefined, 'ok');
+    if (bonusPts) {
+      // 有奖励时这句压过其它提示：到账是用户最在意的那件事。本地状态先按已领处理，角标不会还挂着 +200
+      showToast(`账号已设置，${bonusPts} 盏灯火已到账`, undefined, 'ok');
+      if (state.user) {
+        if (state.user.setupBonus) { state.user.setupBonus.claimed = true; state.user.setupBonus.available = false; }
+        state.user.taskClaimable = 0;
+      }
+      loadMe();   // 余额、任务状态一起校准（别让「我的」页和任务页还显示旧数）
+    } else {
+      showToast(wxReset
+        ? '密码已重设，以后可用「登录名 + 密码」或账号名 + 密码登录'
+        : (aliasChanged && wantPass
+        ? '登录名和密码已保存，以后可用「登录名 + 密码」登录'
+        : (aliasChanged ? '登录名已保存，以后可用「登录名 + 密码」登录' : (noPass
+          ? '密码已设置，以后也能用账号名 + 密码登录'
+          : (kicked ? `密码已修改，${kicked} 台其他设备已退出登录` : '密码已修改')))), undefined, 'ok');
+    }
   } catch {
     setPassMsg('网络异常，稍后再试', 'err');
   } finally {
@@ -19778,5 +19839,229 @@ window.addEventListener('resize', () => {
   renderFilters();
   if (location.pathname === '/rank') loadRankView();
 });
+
+// ---------- 任务中心（/tasks，2026-11-16） ----------
+// 状态全由 /api/tasks 现算（谁能领、领没领、额度多少），前端只负责画和跳转：
+// 以后调额度 / 加任务只改 server.js 的 taskBoardOf，不会出现「页面写 +200、实际只发 100」。
+let tasksBoard = null;   // 最近一次 /api/tasks 结果：接口挂了也能拿它铺一版，总比空白页强
+const TASK_ACT_TEXT = { pass: '去设置', gh: '去绑定', g: '去绑定', wx: '怎么绑' };
+const TASK_MORE = [
+  { key: 'checkin', icon: 'checkin', name: '每日签到', sub: '连续签到攒得更多，断一天从头算' },
+  { key: 'ad', icon: 'lamp', name: '小程序看广告', sub: '看一条激励视频，灯火直接进账' },
+  { key: 'invite', icon: 'share', name: '邀请朋友来收录', sub: '好友通过你的链接注册，两边都有灯火' },
+  { key: 'star', icon: 'github', name: '更新 star 奖励', sub: '名下开源作品的 GitHub star 按 1:1 换灯火' },
+  { key: 'upload', icon: 'edit', name: '投稿作品', sub: '过审上线就有灯火，还能上首屏' }
+];
+
+// 游客版：只讲「有什么、值多少」，数字按三条任务的理论上限写（500），不假装是用户自己的状态
+function tasksGuestHtml() {
+  const row = (icon, name, pts, desc) => `
+    <li class="task-item">
+      <div class="task-row">
+        <span class="task-ico" data-kind="${icon}">${ic(icon)}</span>
+        <div class="task-main">
+          <div class="task-title"><b>${name}</b><span class="task-pill">+${pts} 盏</span></div>
+          <p>${desc}</p>
+        </div>
+        <button type="button" class="task-btn ghost" data-task-login>登录后领取</button>
+      </div>
+    </li>`;
+  return `
+    <div class="task-hero">
+      <div class="task-hero-txt">
+        <span class="task-kicker">任务中心</span>
+        <b class="task-hero-title">登录后开始做任务，最多 <em>500</em> 盏灯火等你领</b>
+        <p>把 GitHub、微信绑到账号上，或者把系统帮你建的账号设置好，都能一次性领灯火。</p>
+        <div class="task-guest-actions"><button type="button" class="task-btn" data-task-login>登录 / 注册</button></div>
+      </div>
+      <span class="task-hero-lamp">${ic('lamp')}</span>
+    </div>
+    <div class="task-sec">
+      <div class="task-sec-head"><h3>账号任务</h3><span>登录后按你的账号状态显示</span></div>
+      <ul class="task-list">
+        ${row('key', '完善账号', 200, '系统帮你建的号（GitHub / 微信登录自动创建），设好登录名和密码就送')}
+        ${row('github', '绑定 GitHub', 200, '一键登录；作品填了仓库的，星标奖励能自动同步')}
+        ${row('wechat', '绑定微信', 300, '小程序免密登录，手机上看作品、签到都少一步')}
+      </ul>
+    </div>
+    <p class="task-foot">账号奖励都是一次性的：同一个账号、同一个 GitHub / 微信号只发一次，解绑再绑不会重复发。灯火可以在「推荐」里换曝光位。</p>`;
+}
+
+function taskItemHtml(it) {
+  const todo = it.state === 'todo';
+  const pill = it.points ? `<span class="task-pill">+${it.points} 盏</span>` : '';
+  const doneText = it.state === 'bound' ? '已绑定' : (it.state === 'legacy' ? '已设置' : '已完成');
+  const right = todo
+    ? `<button type="button" class="task-btn${it.action === 'wx' ? ' ghost' : ''}" data-task-act="${it.action}">${TASK_ACT_TEXT[it.action] || '去完成'}</button>`
+    : `<span class="task-done${it.state === 'bound' || it.state === 'legacy' ? ' is-muted' : ''}">${it.state === 'done' ? ic('check') : ''}${doneText}</span>`;
+  return `
+    <li class="task-item${it.state === 'done' ? ' is-done' : ''}">
+      <div class="task-row">
+        <span class="task-ico" data-kind="${it.key}">${ic(it.icon || 'key')}</span>
+        <div class="task-main">
+          <div class="task-title"><b>${escapeHtml(it.name || '')}</b>${todo ? pill : ''}</div>
+          <p>${escapeHtml(it.desc || '')}</p>
+        </div>
+        ${right}
+      </div>
+      ${it.key === 'wechat' && todo ? `
+      <div class="task-steps" data-wx-steps hidden>
+        <div class="task-steps-inner">
+          <b>在微信里把账号绑过来</b>
+          <ol>
+            <li>微信扫下面的小程序码（也可以在微信里搜「造梦橱窗」小程序）</li>
+            <li>进小程序的「我的」→ 找到「绑定已有账号」</li>
+            <li>输入本站账号名和密码，确认后 ${it.points || 0} 盏当场到账</li>
+          </ol>
+          <img class="task-qr" data-wx-qr alt="造梦橱窗小程序码" />
+          <p class="task-qr-tip">小程序码加载中…</p>
+        </div>
+      </div>` : ''}
+    </li>`;
+}
+
+function tasksPageHtml(d) {
+  const pv = d.providers || {};
+  // 站点没开通的登录方式不列出来：点了也只会报「未配置」
+  const items = (Array.isArray(d.items) ? d.items : []).filter(it =>
+    it.key === 'setup' || (it.key === 'github' && pv.github) || (it.key === 'wechat' && pv.wechat) || (it.key === 'google' && pv.google));
+  const claimable = Number(d.claimable || 0);
+  const pts = Number(d.points || 0);
+  const hero = claimable ? `
+    <div class="task-hero">
+      <div class="task-hero-txt">
+        <span class="task-kicker">任务中心</span>
+        <b class="task-hero-title">绑好账号，还有 <em>${claimable}</em> 盏灯火可以领</b>
+        <p>一次性到账，不用审核。灯火能换推荐位，让作品多一次被看见的机会。</p>
+      </div>
+      <span class="task-hero-lamp">${ic('lamp')}</span>
+    </div>` : `
+    <div class="task-hero is-done">
+      <div class="task-hero-txt">
+        <span class="task-kicker">任务中心</span>
+        <b class="task-hero-title">账号任务都领完了</b>
+        <p>当前余额 ${pts} 盏。下面几件每天都能做，签到、看广告都能接着攒。</p>
+      </div>
+      <span class="task-hero-lamp">${ic('check')}</span>
+    </div>`;
+  const ck = d.checkin || {};
+  const more = TASK_MORE.map(m => {
+    const val = m.key === 'checkin' ? (ck.done ? '今天已签' : `+${ck.todayPoints || 5}`) : '';
+    return `
+    <li>
+      <button type="button" class="task-more-row" data-more="${m.key}">
+        <span class="task-more-ico">${ic(m.icon)}</span>
+        <span class="task-more-main"><b>${m.name}</b><span>${m.sub}</span></span>
+        ${val ? `<span class="task-more-val">${val}</span>` : ''}
+        <span class="task-more-go">›</span>
+      </button>
+    </li>`;
+  }).join('');
+  return hero + `
+    <div class="task-sec">
+      <div class="task-sec-head"><h3>账号任务</h3><span>完成即到账</span></div>
+      <ul class="task-list">${items.map(taskItemHtml).join('')}</ul>
+    </div>
+    <div class="task-sec">
+      <div class="task-sec-head"><h3>更多赚灯火</h3><span>每天都能做</span></div>
+      <ul class="task-more">${more}</ul>
+    </div>
+    <p class="task-foot">账号奖励都是一次性的：同一个账号、同一个 GitHub / 微信号只发一次，解绑再绑不会重复发。奖励只为让账号更安全、登录更方便，站内不靠这个刷量。余额与明细见 <a href="/settings" data-nav>账号设置</a> 里的灯光明细。</p>`;
+}
+
+// 微信那条「怎么绑」：就地展开三步 + 小程序码，不弹新窗口（手机上多一层弹窗更容易丢）
+async function loadTasksWxQr(panel) {
+  if (!panel || panel.dataset.qrLoaded) return;
+  panel.dataset.qrLoaded = '1';
+  const img = panel.querySelector('[data-wx-qr]');
+  const tip = panel.querySelector('.task-qr-tip');
+  try {
+    const r = await fetch('/api/mini/self-qr');
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.qr) throw new Error(d.error || 'load failed');
+    img.src = d.qr;
+    if (tip) tip.textContent = '扫码进小程序绑定后，回这一页刷新就能看到到账';
+  } catch (e) {
+    if (img) img.style.display = 'none';
+    if (tip) tip.textContent = '小程序码暂时取不到：在微信里搜「造梦橱窗」小程序，进「我的」绑定已有账号即可';
+  }
+}
+
+function bindTasksPage(box) {
+  box.querySelectorAll('[data-task-act]').forEach(btn => {
+    btn.onclick = () => {
+      const act = btn.dataset.taskAct;
+      if (act === 'pass') return openPassModal();
+      if (act === 'gh') return openGhModal();
+      if (act === 'g') return openGModal();
+      if (act === 'wx') {
+        const item = btn.closest('.task-item');
+        const panel = item && item.querySelector('[data-wx-steps]');
+        if (!panel) return;
+        panel.hidden = !panel.hidden;
+        btn.textContent = panel.hidden ? '怎么绑' : '收起';
+        if (!panel.hidden) loadTasksWxQr(panel);
+        return;
+      }
+    };
+  });
+  // 「更多赚灯火」：都复用已有的入口，不另做一套流程
+  box.querySelectorAll('[data-more]').forEach(btn => {
+    btn.onclick = () => {
+      const k = btn.dataset.more;
+      if (k === 'checkin') return openStats('checkin');
+      if (k === 'ad') return openCheckinAdQr();
+      if (k === 'invite') return navigate('/invite');
+      if (k === 'star') return openStarSync();
+      if (k === 'upload') return $('openUpload').click();
+    };
+  });
+}
+
+async function renderTasksPage() {
+  const box = $('tasksBody');
+  if (!box) return;
+  if (!state.user) {
+    box.innerHTML = tasksGuestHtml();
+    box.querySelectorAll('[data-task-login]').forEach(b => { b.onclick = () => openAuth('login'); });
+    return;
+  }
+  if (!tasksBoard) box.innerHTML = '<div class="task-loading">正在整理你的任务…</div>';
+  try {
+    const r = await fetch('/api/tasks', { cache: 'no-store' });
+    if (!r.ok) throw new Error('status ' + r.status);
+    const d = await r.json();
+    tasksBoard = d;
+    if (location.pathname !== '/tasks') return;   // 拉的过程中已经切走了，别往隐藏页里画
+    box.innerHTML = tasksPageHtml(d);
+    bindTasksPage(box);
+    // 全局任务状态一起对齐：下拉菜单角标、设置页提示、密码弹窗文案都读这几个字段
+    state.user.taskClaimable = Number(d.claimable || 0);
+    state.user.setupBonus = d.setupBonus || state.user.setupBonus;
+    if (d.ghBindBonus) state.user.ghBindBonus = d.ghBindBonus;
+    if (d.wxBindBonus) state.user.wxBindBonus = d.wxBindBonus;
+    if (d.points != null) state.user.points = d.points;
+    renderAuthBox();
+  } catch (e) {
+    if (tasksBoard) { box.innerHTML = tasksPageHtml(tasksBoard); bindTasksPage(box); }
+    else box.innerHTML = '<div class="task-loading">任务加载失败，刷新页面再试一次</div>';
+  }
+}
+
+// 登录接口的响应里没有任务状态（要现算一遍任务板），登录成功后补一条轻请求，
+// 让下拉菜单角标 / 设置页的「+200」提示当场就正确，不用等下次刷新。
+function refreshTaskState() {
+  if (!state.user) return;
+  fetch('/api/tasks', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => {
+    if (!d || !state.user) return;
+    tasksBoard = d;
+    state.user.taskClaimable = Number(d.claimable || 0);
+    state.user.setupBonus = d.setupBonus || state.user.setupBonus;
+    if (d.ghBindBonus) state.user.ghBindBonus = d.ghBindBonus;
+    if (d.wxBindBonus) state.user.wxBindBonus = d.wxBindBonus;
+    renderAuthBox();
+    if (location.pathname === '/tasks') renderTasksPage();
+  }).catch(() => {});
+}
 
 init();

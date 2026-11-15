@@ -40,6 +40,7 @@ html[data-page="author"] #homeView,
 html[data-page="promote"] #homeView,
 html[data-page="discover"] #homeView,
 html[data-page="me"] #homeView,
+html[data-page="tasks"] #homeView,
 html[data-page="chronicle"] #homeView,
 html[data-page="rules"] #homeView,
 html[data-page="invite"] #homeView,
@@ -56,7 +57,8 @@ html[data-page="howto"] #howtoView,
 html[data-page="author"] #authorView,
 html[data-page="promote"] #promoteView,
 html[data-page="discover"] #discoverView,
-html[data-page="me"] #meView { display: block !important; }
+html[data-page="me"] #meView,
+html[data-page="tasks"] #tasksView { display: block !important; }
 
 /* 作者页首屏直达右栏预显示（2026-11-15 修闪动）：
    直接打开 /u/xxx 时，authorView 由上面规则显示，但 authorSide 和 authorSideSkel
@@ -11575,3 +11577,136 @@ html.dm-quiet .jar-fly-star { display: none; }
   .fl-latest { font-size: 12px; }
   .fl-follow { padding: 6px 12px; }
 }
+
+/* ========== 任务中心（/tasks，2026-11-16） ==========
+   目标是「引导绑定账号」：一张主色卡讲清还能领多少，下面是三行账号任务，
+   完成态用绿色勾、未完成用主色按钮，视觉上不需要再解释一遍怎么用。 */
+.task-wrap { max-width: 720px; margin: 0 auto; padding: 0 0 44px; }
+.task-hero {
+  position: relative; display: flex; align-items: center; gap: 16px;
+  padding: 22px 24px; border-radius: 18px; overflow: hidden; color: #fff;
+  background: linear-gradient(135deg, #4f4fce 0%, #6b62e8 52%, #9184f5 100%);
+  box-shadow: 0 10px 26px rgba(91, 91, 214, .22);
+}
+.task-hero::after {
+  content: ""; position: absolute; right: -46px; top: -70px; width: 210px; height: 210px;
+  border-radius: 50%; background: rgba(255, 255, 255, .12); pointer-events: none;
+}
+.task-hero.is-done { background: linear-gradient(135deg, #2f7a5c 0%, #3f9c74 60%, #62b992 100%); box-shadow: 0 10px 26px rgba(47, 122, 92, .2); }
+.task-hero-txt { position: relative; z-index: 1; min-width: 0; }
+.task-kicker { display: inline-block; font-size: 12px; letter-spacing: .08em; opacity: .88; margin-bottom: 5px; }
+.task-hero-title { display: block; font-size: 19px; font-weight: 700; line-height: 1.4; }
+.task-hero-title em { font-style: normal; font-size: 27px; color: #ffe08a; margin: 0 3px; }
+.task-hero-txt p { margin-top: 6px; font-size: 12.5px; line-height: 1.7; color: rgba(255, 255, 255, .87); }
+.task-hero-lamp {
+  position: relative; z-index: 1; margin-left: auto; flex: none; width: 56px; height: 56px;
+  border-radius: 17px; background: rgba(255, 255, 255, .17);
+  display: flex; align-items: center; justify-content: center;
+}
+.task-hero-lamp svg { width: 30px; height: 30px; }
+.task-sec { margin-top: 22px; }
+.task-sec-head { display: flex; align-items: baseline; justify-content: space-between; margin: 0 4px 10px; }
+.task-sec-head h3 { font-size: 15px; font-weight: 700; }
+.task-sec-head span { font-size: 12px; color: var(--muted); }
+.task-list { list-style: none; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 4px 0; }
+.task-item { position: relative; }
+.task-item + .task-item::before {
+  content: ""; position: absolute; left: 60px; right: 14px; top: 0; border-top: 1px solid #f0f1f7;
+}
+.task-row { display: flex; align-items: center; gap: 12px; padding: 14px; }
+.task-ico {
+  flex: none; width: 34px; height: 34px; border-radius: 11px;
+  background: #eeeefc; color: var(--primary);
+  display: flex; align-items: center; justify-content: center;
+}
+.task-ico svg { width: 18px; height: 18px; }
+.task-ico[data-kind="wechat"] { background: #e7f7ec; color: #1aad19; }
+.task-ico[data-kind="google"] { background: #f2f4f8; }
+.task-item.is-done .task-ico { background: #e9f7ef; color: #188a5c; }
+.task-main { flex: 1; min-width: 0; }
+.task-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.task-title b { font-size: 14px; font-weight: 600; }
+.task-pill {
+  font-size: 11.5px; font-weight: 700; color: #b45309;
+  background: #fff6e6; border: 1px solid #ffe2b0; border-radius: 999px; padding: 1px 8px;
+}
+.task-main p { margin-top: 3px; font-size: 12px; line-height: 1.65; color: var(--muted); }
+.task-btn {
+  flex: none; padding: 7px 15px; border-radius: 999px; border: 1px solid var(--primary);
+  background: var(--primary); color: #fff; font: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: background .15s, border-color .15s;
+}
+.task-btn:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+.task-btn:disabled { opacity: .6; cursor: default; }
+.task-btn.ghost { background: #fff; color: var(--primary); }
+.task-btn.ghost:hover { background: #f2f2fd; color: var(--primary-dark); }
+.task-done { flex: none; display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: #188a5c; }
+.task-done svg { width: 14px; height: 14px; }
+.task-done.is-muted { color: var(--muted); }
+/* 微信绑定的「怎么绑」展开区：不弹新窗口，就地讲三步 + 一张小程序码 */
+.task-steps { padding: 0 14px 16px 60px; }
+.task-steps[hidden] { display: none; }
+.task-steps-inner { background: #fafaff; border: 1px solid #eceafd; border-radius: 12px; padding: 12px 14px; }
+.task-steps-inner b { font-size: 12.5px; }
+.task-steps ol { margin: 6px 0 0 18px; color: var(--muted); font-size: 12.5px; line-height: 1.95; }
+.task-qr { display: block; width: 148px; height: 148px; margin: 10px auto 2px; border-radius: 10px; border: 1px solid var(--border); background: #fff; }
+.task-qr-tip { text-align: center; font-size: 11.5px; color: var(--muted); }
+.task-more { list-style: none; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 4px 0; }
+.task-more-row {
+  position: relative; display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 12px 14px; border: 0; background: none; color: var(--text); font: inherit;
+  text-align: left; cursor: pointer; text-decoration: none;
+}
+.task-more-row + .task-more-row::before {
+  content: ""; position: absolute; left: 60px; right: 14px; top: 0; border-top: 1px solid #f0f1f7;
+}
+.task-more-row:hover { background: #f9f9fd; }
+.task-more-ico { flex: none; width: 30px; height: 30px; border-radius: 9px; background: #f3f3fa; color: var(--primary); display: flex; align-items: center; justify-content: center; }
+.task-more-ico svg { width: 16px; height: 16px; }
+.task-more-main { flex: 1; min-width: 0; }
+.task-more-main b { display: block; font-size: 13.5px; font-weight: 600; }
+.task-more-main span { display: block; font-size: 12px; color: var(--muted); margin-top: 1px; }
+.task-more-val { flex: none; font-size: 12.5px; color: #b45309; font-weight: 600; }
+.task-more-go { flex: none; font-size: 16px; line-height: 1; color: var(--muted); opacity: .45; }
+.task-foot { margin: 16px 4px 0; font-size: 12px; line-height: 1.9; color: var(--muted); }
+.task-foot a { color: var(--primary); }
+.task-loading { padding: 40px 0; text-align: center; color: var(--muted); font-size: 13px; }
+.task-guest-actions { display: flex; gap: 10px; margin-top: 14px; }
+.task-hero .task-btn { background: #fff; border-color: #fff; color: var(--primary); }
+.task-hero .task-btn:hover { background: #f3f1ff; border-color: #f3f1ff; color: var(--primary-dark); }
+@media (max-width: 640px) {
+  .task-hero { padding: 18px 18px; border-radius: 16px; }
+  .task-hero-lamp { width: 44px; height: 44px; border-radius: 13px; }
+  .task-hero-lamp svg { width: 24px; height: 24px; }
+  .task-hero-title { font-size: 17px; }
+  .task-hero-title em { font-size: 23px; }
+  .task-row { padding: 13px 12px; gap: 10px; }
+  .task-ico { width: 30px; height: 30px; border-radius: 9px; }
+  .task-ico svg { width: 16px; height: 16px; }
+  .task-item + .task-item::before, .task-more-row + .task-more-row::before { left: 52px; right: 12px; }
+  .task-btn { padding: 6px 12px; font-size: 12.5px; }
+  .task-main p { font-size: 11.5px; }
+  .task-steps { padding: 0 12px 14px 52px; }
+}
+
+/* 「我的」页任务引导条：签到卡下面一条，比宫格里的小格子更容易被点到。
+   有奖可领时副标题转琥珀色，扫一眼就知道「这里还有东西没领」。 */
+.me-task-bar {
+  display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 11px 14px;
+  border: 1px solid #e4e3fb; border-radius: 13px; text-decoration: none; color: var(--text);
+  background: linear-gradient(100deg, #f2f1ff, #fbfaff);
+}
+.me-task-bar:hover { border-color: #cfcdf6; }
+.me-task-ico {
+  flex: none; width: 30px; height: 30px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  background: #e6e4fd; color: var(--primary);
+}
+.me-task-ico svg { width: 16px; height: 16px; }
+.me-task-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.me-task-txt b { font-size: 13.5px; }
+.me-task-txt i { font-style: normal; font-size: 12px; color: var(--muted); }
+.me-task-bar.has-reward .me-task-txt i { color: #b45309; }
+.me-task-go { flex: none; font-size: 16px; line-height: 1; color: var(--muted); opacity: .5; }
+/* 设置页用 <a> 复用 .st-row：去掉链接下划线，其余交给 .st-row */
+a.st-row { text-decoration: none; }

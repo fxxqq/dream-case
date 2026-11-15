@@ -6804,8 +6804,8 @@ const GH_BIND_BONUS_POINTS = 200;
 function ghBindIdKey(id) {
   return 'gh:' + String(id == null ? '' : id).replace(/[^0-9A-Za-z_-]/g, '').slice(0, 32);
 }
-function awardGhBindBonus(user, gh) {
-  const rec = shareRecOf(user.id);
+function awardGhBindBonus(user, gh, opts) {
+  const rec = shareRecOf(user.id);   // opts.setup = 这次是「完善账号」发的，不是「绑定」
   if (!shareData.ghBindIds || typeof shareData.ghBindIds !== 'object') shareData.ghBindIds = {};
   const gkey = ghBindIdKey(gh && gh.id);
   if (rec.ghBindBonusAt || shareData.ghBindIds[gkey]) {
@@ -6815,24 +6815,35 @@ function awardGhBindBonus(user, gh) {
   rec.ghBindBonusAt = at;
   shareData.ghBindIds[gkey] = { uid: user.id, at };
   const points = addPoints(user.id, GH_BIND_BONUS_POINTS, 'ghbind');
+  const setup = !!(opts && opts.setup);   // 两条路（绑定 / 完善账号）共用同一笔额度与同一条领取记录
   addNotice(user.id, {
     key: 'ghbind-bonus:' + user.id,           // 同一个账号只发一条，重启/重放不会刷通知
     kind: 'points',
-    title: `绑定 GitHub 奖励 +${GH_BIND_BONUS_POINTS} 盏灯火`,
-    text: `GitHub @${(gh && gh.login) || ''} 已绑到「${displayNameOf(user.username)}」，一次性送 ${GH_BIND_BONUS_POINTS} 盏灯火，当前余额 ${points} 盏。以后能用 GitHub 一键登录；作品填了 GitHub 仓库的，星标奖励也能自动同步。`,
+    title: (setup ? '完善账号奖励 +' : '绑定 GitHub 奖励 +') + GH_BIND_BONUS_POINTS + ' 盏灯火',
+    text: setup
+      ? `你把「${displayNameOf(user.username)}」的账号设置好了，一次性送 ${GH_BIND_BONUS_POINTS} 盏灯火，当前余额 ${points} 盏。以后换设备可以用「登录名 + 密码」登录，不用每次都走第三方登录。`
+      : `GitHub @${(gh && gh.login) || ''} 已绑到「${displayNameOf(user.username)}」，一次性送 ${GH_BIND_BONUS_POINTS} 盏灯火，当前余额 ${points} 盏。以后能用 GitHub 一键登录；作品填了 GitHub 仓库的，星标奖励也能自动同步。`,
     points,
     delta: GH_BIND_BONUS_POINTS
   });
   saveShareNow();                             // 200 盏是当场到账的钱，和 GitHub id 记录一起同步落盘，别等 2 秒 debounce
   return { reward: GH_BIND_BONUS_POINTS, points };
 }
-// /api/me 下发给前端：没绑、也没领过时，绑定弹窗里显示「+200」引导
+// /api/me 下发给前端：分三态，弹窗与任务页按它选文案——
+//   bindable = 还没绑，绑完给钱；setup = 自动建号的临时号，把账号设置好也给钱（同一笔）；
+//   claimed  = 这个账号已经领过（解绑再绑不会重发）。
 function ghBindBonusState(user) {
   const rec = shareData.users[user.id] || {};
+  const claimed = !!rec.ghBindBonusAt;
+  const bound = !!(user.github && user.github.id);
+  // 完善账号这一路只对「GitHub / Google 自动建的临时号」开放：普通注册的号本来就是自己设的账号，不该再发一次
+  const setup = !claimed && (bound || !!(user.google && user.google.sub)) && acctSetupPending(user);
   return {
     points: GH_BIND_BONUS_POINTS,
-    claimed: !!rec.ghBindBonusAt,
-    available: !(user.github && user.github.id) && !rec.ghBindBonusAt
+    claimed: claimed,
+    bindable: !bound && !claimed,
+    setup: setup,
+    available: !claimed && (!bound || setup)
   };
 }
 
@@ -6977,7 +6988,7 @@ const WX_BIND_BONUS_POINTS = 300;
 function wxBindOpenidKey(openid) {
   return crypto.createHash('sha256').update('wxbind:' + String(openid)).digest('hex').slice(0, 32);
 }
-function awardWxBindBonus(user, openid) {
+function awardWxBindBonus(user, openid, opts) {
   const rec = shareRecOf(user.id);
   if (!shareData.wxBindOpenids || typeof shareData.wxBindOpenids !== 'object') shareData.wxBindOpenids = {};
   const okey = wxBindOpenidKey(openid);
@@ -6988,25 +6999,110 @@ function awardWxBindBonus(user, openid) {
   rec.wxBindBonusAt = at;
   shareData.wxBindOpenids[okey] = { uid: user.id, at };
   const points = addPoints(user.id, WX_BIND_BONUS_POINTS, 'wxbind');
+  const setup = !!(opts && opts.setup);   // 「微信建号后完善账号」与「老账号绑微信」共用同一笔额度与领取记录
   addNotice(user.id, {
     key: 'wxbind-bonus:' + user.id,          // 同一个账号只发一条，重启/重放不会刷通知
     kind: 'points',
-    title: `绑定微信奖励 +${WX_BIND_BONUS_POINTS} 盏灯火`,
-    text: `你把微信绑定到了「${displayNameOf(user.username)}」，一次性送 ${WX_BIND_BONUS_POINTS} 盏灯火，当前余额 ${points} 盏。以后这个微信打开小程序免密登录；灯火可在「推荐」换推荐位。`,
+    title: (setup ? '完善账号奖励 +' : '绑定微信奖励 +') + WX_BIND_BONUS_POINTS + ' 盏灯火',
+    text: setup
+      ? `你把「${displayNameOf(user.username)}」的账号设置好了，一次性送 ${WX_BIND_BONUS_POINTS} 盏灯火，当前余额 ${points} 盏。以后换设备可以用「登录名 + 密码」登录，不用每次都走微信登录。`
+      : `你把微信绑定到了「${displayNameOf(user.username)}」，一次性送 ${WX_BIND_BONUS_POINTS} 盏灯火，当前余额 ${points} 盏。以后这个微信打开小程序免密登录；灯火可在「推荐」换推荐位。`,
     points,
     delta: WX_BIND_BONUS_POINTS
   });
   saveShareNow();                           // 300 盏是当场到账的钱：和 openid 哈希一起同步落盘，别等 2 秒 debounce
   return { reward: WX_BIND_BONUS_POINTS, points };
 }
-// /api/me 下发给前端：没绑微信且没领过时显示「+300」引导，领过/已绑就别再吊胃口
+// /api/me 下发给前端：与 GitHub 那笔同一套三态（bindable / setup / claimed）
 function wxBindBonusState(user) {
   const rec = shareData.users[user.id] || {};
+  const claimed = !!rec.wxBindBonusAt;
+  const bound = !!(user.wechat && user.wechat.openid);
+  const setup = !claimed && bound && acctSetupPending(user);
   return {
     points: WX_BIND_BONUS_POINTS,
-    claimed: !!rec.wxBindBonusAt,
-    available: !(user.wechat && user.wechat.openid) && !rec.wxBindBonusAt
+    claimed: claimed,
+    bindable: !bound && !claimed,
+    setup: setup,
+    available: !claimed && (!bound || setup)
   };
+}
+
+// ---------- 任务中心用：账号类任务的状态（2026-11-16） ----------
+// 「自动建号的号把账号设置好」也算一次领取：GitHub / Google 建号发 200（GitHub 档），
+// 微信建号发 300（微信档）。和「主动绑定」共用同一笔额度、同一条领取记录（rec.ghBindBonusAt /
+// rec.wxBindBonusAt），所以一个账号最多拿一笔 200 + 一笔 300，不会因为换个入口就重复发。
+
+// 还是「系统替我建的号」：tempAcct 建号时写入、一直不清（合并/解绑判定要用它）；
+// passSet=false 是老数据的兜底。
+function isAutoAcct(user) {
+  return !!(user && (user.tempAcct === true || user.passSet === false));
+}
+// 账号还没交到用户手里：密码是系统随机给的、或者登录名还没起。
+// 两个都齐了才算「设置好了」——任务页据此显示待办；领取本身只看有没有点过保存，见下面的调用点。
+function acctSetupPending(user) {
+  if (!isAutoAcct(user)) return false;
+  return user.passSet === false || !user.alias;
+}
+// 这个账号「完善账号」该发多少：微信建号的走微信档，其余（GitHub / Google）走 GitHub 档
+function setupPointsOf(user) {
+  return (user && user.wechat && user.wechat.openid) ? WX_BIND_BONUS_POINTS : GH_BIND_BONUS_POINTS;
+}
+function awardAcctSetupBonus(user) {
+  if (!user) return { reward: 0 };
+  if (user.wechat && user.wechat.openid) return awardWxBindBonus(user, user.wechat.openid, { setup: true });
+  if (user.github && user.github.id) return awardGhBindBonus(user, user.github, { setup: true });
+  // Google 建号：用 'g'+sub 做身份键，GitHub id 是纯数字，不会撞车（ghBindIdKey 会拼成 gh:g<sub>）
+  if (user.google && user.google.sub) {
+    return awardGhBindBonus(user, { id: 'g' + user.google.sub, login: user.google.email || user.google.name || '' }, { setup: true });
+  }
+  return { reward: 0 };
+}
+// /api/me 下发给前端：「完善账号」这条任务还领不领得到（弹窗、设置页文案用）
+function setupBonusStateOf(user) {
+  const rec = (user && shareData.users[user.id]) || {};
+  const claimed = !!(rec.ghBindBonusAt || rec.wxBindBonusAt);
+  return { points: setupPointsOf(user), claimed: claimed, available: isAutoAcct(user) && !claimed };
+}
+// 任务页的数据源：状态全在服务端算，前端只负责画——以后加任务只改这一处
+function taskBoardOf(user) {
+  const gh = ghBindBonusState(user);
+  const wx = wxBindBonusState(user);
+  const setup = setupBonusStateOf(user);
+  const ghBound = !!(user.github && user.github.id);
+  const wxBound = !!(user.wechat && user.wechat.openid);
+  const items = [];
+  if (setup.available || setup.claimed) {
+    items.push({
+      key: 'setup', icon: 'key', action: 'pass',
+      name: '完善账号', points: setup.points,
+      // legacy = 奖励上线前就把账号设好了（有密码也有登录名）：算完成，但不补发，别给一个点了没用的按钮
+      state: setup.claimed ? 'done' : (acctSetupPending(user) ? 'todo' : 'legacy'),
+      desc: setup.claimed ? '账号已设好，换设备也能用「登录名 + 密码」进'
+        : '设一个登录名和密码，换设备、换浏览器都能进自己的账号'
+    });
+  }
+  // 站点没开通的登录方式不列：列出来也点不动，还会把「可领合计」算高
+  if (GH_ENABLED) items.push({
+    key: 'github', icon: 'github', action: 'gh',
+    name: '绑定 GitHub', points: gh.points,
+    state: gh.claimed ? 'done' : (ghBound ? 'bound' : 'todo'),
+    desc: ghBound ? ('已绑定 @' + ((user.github && user.github.login) || '') + '，作品填了仓库的星标奖励能自动同步')
+      : '一键登录不用记密码；作品填了 GitHub 仓库的，星标奖励能自动同步'
+  });
+  if (WECHAT_ENABLED) items.push({
+    key: 'wechat', icon: 'wechat', action: 'wx',
+    name: '绑定微信', points: wx.points,
+    state: wx.claimed ? 'done' : (wxBound ? 'bound' : 'todo'),
+    desc: wxBound ? '已绑定，小程序里打开就是你的账号，不用再输密码'
+      : '小程序免密登录；手机上看作品、签到、收消息都少一步'
+  });
+  if (GOOGLE_ENABLED && user.google && user.google.sub) {
+    items.push({ key: 'google', icon: 'google', action: 'g', name: 'Google 账号', points: 0,
+      state: 'bound', desc: '已绑定，可以用 Google 一键登录' });
+  }
+  const claimable = items.reduce((sum, it) => sum + (it.state === 'todo' ? (it.points || 0) : 0), 0);
+  return { points: shareStatsOf(user.id).points, claimable: claimable, items: items };
 }
 
 // 微信建号：账号名 wx_<openid 尾部>（重名自动加后缀），随机密码 + passSet=false（同 GitHub 建号）
@@ -7889,6 +7985,8 @@ app.get('/api/me', (req, res) => {
   // 不另开接口是刻意的——多一个接口就多一处「前端忘了调」，而到访奖励最怕的就是漏发。
   const arrived = grantArrive(user);
   const providers = { github: GH_ENABLED, google: GOOGLE_ENABLED, wechat: WECHAT_ENABLED };   // 没配对应登录方式时前端不显示入口
+  // 任务角标（顶栏 /「我的」/ 设置页共用）：只有真登录了才算，游客恒为 0
+  const taskClaimable = user ? taskBoardOf(user).claimable : 0;
   res.json(user
     ? {
         id: user.id,
@@ -7960,9 +8058,30 @@ app.get('/api/me', (req, res) => {
         // 没绑微信且没领过 → 前端在「微信未绑定」那一行显示「绑定 +300 盏灯火」
         wxBindBonus: wxBindBonusState(user),
         ghBindBonus: ghBindBonusState(user),
+        // 「自动建号的号把账号设置好」这一笔：额度按来源分（微信建号 300 / GitHub·Google 建号 200）
+        setupBonus: setupBonusStateOf(user),
+        // 任务中心还有多少盏没领：入口上那个小红标就是它，别让前端自己算（口径要和服务端一致）
+        taskClaimable: taskClaimable,
         providers
       }
     : { user: null, providers });
+});
+
+// 任务中心（/tasks）：状态在服务端算好，前端只画。未登录 401，页面自己弹登录。
+app.get('/api/tasks', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('tasks:' + user.id, 120, 3600e3)) return res.status(429).json({ error: '刷新太频繁，稍后再试' });
+  const board = taskBoardOf(user);
+  res.json({
+    points: board.points,
+    claimable: board.claimable,
+    items: board.items,
+    // 「更多赚灯火」那几条的实时状态：签到今天签没签、看广告还能不能看（前端不重复算规则）
+    checkin: checkinView(user),
+    setupBonus: setupBonusStateOf(user),
+    providers: { github: GH_ENABLED, google: GOOGLE_ENABLED, wechat: WECHAT_ENABLED }
+  });
 });
 
 // ================= 头像 =================
@@ -8527,6 +8646,8 @@ app.post('/api/me/password', (req, res) => {
     return res.status(429).json({ error: '尝试太频繁了，请一小时后再试' });
   }
   const { currentPassword, newPassword } = req.body || {};
+  // 进来时先记一笔：这一趟之前是不是「系统替我建的号还没设置好」。设完就不再是 pending，得用进门时的快照判断
+  const setupPending = acctSetupPending(user);
   // GitHub 建号的账号没有可用密码（随机生成且用户不知道），这里允许直接设置新密码
   const hasPass = user.passSet !== false;
   // ---- 微信验证重设（找回密码的落地形式）----
@@ -8566,7 +8687,14 @@ app.post('/api/me/password', (req, res) => {
     if (sessions[k].uid === user.id && k !== sid) { delete sessions[k]; kicked++; }
   }
   if (kicked) saveSessions();
-  res.json({ ok: true, kicked });
+  // 自动建号的号把密码设好 → 一次性账号奖励当场到账（微信建号 300 / GitHub·Google 建号 200）。
+  // 发奖失败不能连累改密码本身：密码已经落盘，奖励后台能补。
+  let bonus = null;
+  if (setupPending) {
+    try { const b = awardAcctSetupBonus(user); if (b && b.reward) bonus = b; }
+    catch (e) { console.warn('[acct-setup-bonus] 发放失败:', e.message); }
+  }
+  res.json({ ok: true, kicked, bonus: bonus });
 });
 
 // ---- 设置登录别名 ----
@@ -8588,6 +8716,7 @@ app.post('/api/me/alias', (req, res) => {
     return res.status(429).json({ error: '尝试太频繁了，请一小时后再试' });
   }
   const name = String((req.body && req.body.alias) || '').trim();
+  const setupPending = acctSetupPending(user);   // 同 /api/me/password：用进门时的状态判断要不要发奖
   if (!NAME_RE.test(name)) return res.status(400).json({ error: '登录名需 2-20 位，可为中文、字母、数字、下划线' });
   if (user.alias && name.toLowerCase() === String(user.alias).toLowerCase()) {
     return res.json({ ok: true, alias: user.alias, aliasNextAt: aliasNextAt(user) });
@@ -8618,7 +8747,13 @@ app.post('/api/me/alias', (req, res) => {
   user.alias = name;
   user.aliasChangedAt = Date.now();
   saveUsers();
-  res.json({ ok: true, alias: user.alias, aliasNextAt: aliasNextAt(user) });
+  // 只起了登录名、没改密码也算「设置账号」：自动建号的号照样把一次性奖励发掉（幂等靠 rec 上的领取时间）
+  let bonus = null;
+  if (setupPending) {
+    try { const b = awardAcctSetupBonus(user); if (b && b.reward) bonus = b; }
+    catch (e) { console.warn('[acct-setup-bonus] 发放失败:', e.message); }
+  }
+  res.json({ ok: true, alias: user.alias, aliasNextAt: aliasNextAt(user), bonus: bonus });
 });
 
 // ---- 注销账号（不可恢复） ----
@@ -9762,7 +9897,8 @@ const POINTS_KIND_TEXT = {
   jar: '星星罐攒星',
   adreward: '看激励视频奖励',
   pwa: '添加到桌面奖励',
-  wxbind: '绑定微信奖励',
+  ghbind: '绑定 GitHub / 完善账号奖励',
+  wxbind: '绑定微信 / 完善账号奖励',
   wxmerge: '合并账号：灯火取多的那份',
   gift: '站长激励',
   admin: '站长调整',
@@ -23574,6 +23710,19 @@ app.get('/me', (req, res) => {
     title: `我的 - ${seo.SITE_NAME}`,
     description: '我的收藏、我的作品、每日签到与账号设置。',
     canonical: base + '/me',
+    noindex: true
+  });
+  sendHtml(res, shell(headHtml, ''));
+});
+
+// 任务中心（/tasks）：引导绑定 / 完善账号，账号类任务状态与灯火额度都由 /api/tasks 现算。
+// 登录态内容（未登录会弹登录），和 /me、/favs 一样只发 SEO 头 + 空壳，不收录。
+app.get('/tasks', (req, res) => {
+  const base = seo.baseUrl(req);
+  const headHtml = seo.head({
+    title: `任务中心 - ${seo.SITE_NAME}`,
+    description: '绑定 GitHub、微信或完善账号，一次性领灯火。',
+    canonical: base + '/tasks',
     noindex: true
   });
   sendHtml(res, shell(headHtml, ''));

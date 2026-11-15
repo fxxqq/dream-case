@@ -351,7 +351,7 @@ cmd_ship() {
     # 序号合法性
     local x
     for x in $choose; do
-      (( x >= 1 && x <= nh )) || die "hunk 序号 $x 超出范围（1..$nh）"
+      (( x >= 1 && x <= nh )) || die "hunk 序号 $x 超出范围（1..${nh}）"
     done
 
     filter_hunks "$df" "$choose" "$sel"
@@ -367,7 +367,7 @@ cmd_ship() {
     fi
     local changed; changed=$(diff -u "$on" "$patched" | grep -c '^[+-]' || true)
     changed=$((changed-2))
-    c_ok "✓ $f 已生成待发版本（$changed 行改动，hunk: $choose）"
+    c_ok "✓ $f 已生成待发版本（$changed 行改动，hunk: ${choose}）"
     do_files+=("$f")
     if [[ "$eol" == crlf ]]; then
       # 线上这份原本就是 CRLF（如 admin.html），上传前转回去，别把一个文件的行尾风格改了
@@ -404,7 +404,7 @@ cmd_ship() {
     baklist+=("$f.bak-$stamp")
     $SSH "cd $REMOTE_DIR && cp -p '$f' '$f.bak-$stamp'" || die "备份 $f 失败 —— 未上传任何文件"
   done
-  c_ok "✓ 备份完成（$stamp）"
+  c_ok "✓ 备份完成（${stamp}）"
 
   for i in "${!do_files[@]}"; do
     f="${do_files[$i]}"
@@ -455,7 +455,7 @@ cmd_ship() {
     $SSH "cd $REMOTE_DIR && ls -1t '$f'.bak-* 2>/dev/null | tail -n +\$(( $KEEP_BAK + 1 )) | xargs -r rm -f"
   done
   echo
-  c_ok "发版完成（备份后缀 $stamp）"
+  c_ok "发版完成（备份后缀 ${stamp}）"
   [[ " ${do_files[*]} " == *" frontend/"* ]] && c_dim "静态文件无哈希，让用户强刷（Ctrl+F5）才看得到新文案"
   return 0
 }
