@@ -7,6 +7,12 @@
   --primary-dark: #4747c2;
   --border: #e6e8f0;
   --danger: #e5484d;
+  /* 全站主容器宽度：首页、榜单、酒馆、任务页、头尾共用这一个值。
+     2026-11-16 统一：原来首页按列数放宽到 1330 / 1660，其它页还是 1200，
+     切页面时整个头部和内容区横向跳动，看着像两个站。现在一律 1260——
+     正好够首页 5 列排到 228px 一张（设计下限 226），也比原来的 1200 只宽 60，
+     其它页几乎看不出变化。改宽度只改这一处。 */
+  --page-max: 1260px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -86,9 +92,9 @@ html[data-page="author"] #creatorCard { display: none !important; }
   font-size: 13px;
 }
 
-/* 页面主容器：宽度不再写死 1200 —— 选 5/6 列时由 --page-max 放宽（见 .gallery 上面那段），
-   保证 2K 屏上作品区不会缩成中间一条窄带、两侧各空 600px。窄屏仍受 100% 限制 */
-.container { max-width: var(--page-max, 1200px); margin: 0 auto; padding: 0 20px; width: 100%; }
+/* 页面主容器：全站一个宽度（--page-max，见 :root），头尾、首页、各个子页都走它。
+   不再随首页列数变化——那样切页面时容器会在 1200 / 1330 / 1660 之间跳 */
+.container { max-width: var(--page-max, 1260px); margin: 0 auto; padding: 0 20px; width: 100%; }
 
 /* Header */
 .site-header {
@@ -572,14 +578,11 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
 @media (min-width: 1500px) {
   .gallery.cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }
-/* 整页跟着列数放宽：5 列 1330 / 6 列 1660，卡宽才够 240+。
-   4 列保持 1200（262px/张，本来就不挤）；窄屏被 viewport 卡住，写多大都一样。
-   只在首页生效（#homeView 被 route() 用 inline display:none 藏起来时不匹配）——
-   榜单/酒馆/开源是另一套版式，主栏拉太宽反而难读，不跟着变 */
-@media (min-width: 1240px) {
-  body:has(#homeView:not([style*="none"])):has(#gallery.cols-5) { --page-max: 1330px; }
-  body:has(#homeView:not([style*="none"])):has(#gallery.cols-6) { --page-max: 1660px; }
-}
+/* 2026-11-16：容器宽度不再跟着列数变。
+   原来 5 列放宽到 1330、6 列放宽到 1660，只有首页吃这套（:has(#homeView)），
+   结果首页头尾比榜单/酒馆宽一截，来回切页面整页内容横向抖。
+   现在统一 1260（:root 的 --page-max），列数只决定「这 1260 里放几张」：
+   4 列 285px / 5 列 228px / 6 列 187px，都在可读范围内。 */
 .card {
   background: var(--card); border: 1px solid var(--border); border-radius: 14px;
   overflow: hidden; cursor: pointer; transition: transform .15s, box-shadow .15s;

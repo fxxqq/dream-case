@@ -18353,7 +18353,8 @@ function setupHeader() {
   // 窗口跨断点时实际列数会变（桌面 4/5 列 ↔ 平板 3 列 ↔ 手机 2 列），页大小跟着变，
   // 同样需要重载首页；只比较列数，滚动时地址栏伸缩引起的 resize 不会误触发。
   // 跨 1500 / 1260 断点还要重挂装列数类、重排开关（6 列可能变得可选 / 不可选），
-  // 而类一变 --page-max 跟着变，所以必须先同步再量真实列数。
+  // 所以先同步列数类（网格模板跟着变），再量真实列数。容器宽度自 2026-11-16 起固定，
+  // 不再随列数变，量到的列数只跟视口和模板有关。
   let lastCols = galleryCols(), resizeTimer = null;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
