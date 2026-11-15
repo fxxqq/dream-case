@@ -6792,6 +6792,50 @@ app.post('/api/logout', (req, res) => {
 // ---- GitHub 登录 / 绑定 ----
 // start?mode=login   → 未登录也能走，登录后回到 next（默认首页）
 // start?mode=bind    → 必须是已登录账号，把 GitHub 挂到当前账号上
+// ---------- 绑定 GitHub 一次性奖励（2026-11-16） ----------
+// 与「绑定微信」同一套做法，只是额度轻一档（微信 300 / GitHub 200）：
+// 微信那条还买了小程序免密登录；GitHub 换来的是「仓库归属验证」——发星标奖励时
+// 单次上限放宽、不用站长抽查，值这个价，但没重到跟微信并列。
+// 只对「已登录的老账号主动点绑定」发。GitHub 一键建号（mode=login 第一次进来）不算绑定，不发。
+// 防刷两条：① 账号维度 rec.ghBindBonusAt；② GitHub 用户维度 shareData.ghBindIds[gh id]。
+// 领取记录放 share.json 而不是 user 上：解绑（delete user.github）不会把记录带走，
+// 所以「解绑再绑」领不到第二次；同一个 GitHub 号绑到另一个站内账号也领不到。
+const GH_BIND_BONUS_POINTS = 200;
+function ghBindIdKey(id) {
+  return 'gh:' + String(id == null ? '' : id).replace(/[^0-9A-Za-z_-]/g, '').slice(0, 32);
+}
+function awardGhBindBonus(user, gh) {
+  const rec = shareRecOf(user.id);
+  if (!shareData.ghBindIds || typeof shareData.ghBindIds !== 'object') shareData.ghBindIds = {};
+  const gkey = ghBindIdKey(gh && gh.id);
+  if (rec.ghBindBonusAt || shareData.ghBindIds[gkey]) {
+    return { reward: 0, already: true, points: rec.points || 0 };
+  }
+  const at = new Date().toISOString();
+  rec.ghBindBonusAt = at;
+  shareData.ghBindIds[gkey] = { uid: user.id, at };
+  const points = addPoints(user.id, GH_BIND_BONUS_POINTS, 'ghbind');
+  addNotice(user.id, {
+    key: 'ghbind-bonus:' + user.id,           // 同一个账号只发一条，重启/重放不会刷通知
+    kind: 'points',
+    title: `绑定 GitHub 奖励 +${GH_BIND_BONUS_POINTS} 盏灯火`,
+    text: `GitHub @${(gh && gh.login) || ''} 已绑到「${displayNameOf(user.username)}」，一次性送 ${GH_BIND_BONUS_POINTS} 盏灯火，当前余额 ${points} 盏。以后能用 GitHub 一键登录；作品填了 GitHub 仓库的，星标奖励也能自动同步。`,
+    points,
+    delta: GH_BIND_BONUS_POINTS
+  });
+  saveShareNow();                             // 200 盏是当场到账的钱，和 GitHub id 记录一起同步落盘，别等 2 秒 debounce
+  return { reward: GH_BIND_BONUS_POINTS, points };
+}
+// /api/me 下发给前端：没绑、也没领过时，绑定弹窗里显示「+200」引导
+function ghBindBonusState(user) {
+  const rec = shareData.users[user.id] || {};
+  return {
+    points: GH_BIND_BONUS_POINTS,
+    claimed: !!rec.ghBindBonusAt,
+    available: !(user.github && user.github.id) && !rec.ghBindBonusAt
+  };
+}
+
 app.get('/api/auth/github/start', (req, res) => {
   if (!GH_ENABLED) return ghErrorRedirect(res, 'github_disabled');
   if (!rateLimit('ghstart:' + clientIp(req), 30, 600e3)) return ghErrorRedirect(res, 'too_frequent');
@@ -6846,7 +6890,12 @@ app.get('/api/auth/github/callback', async (req, res) => {
     if (owner) return ghErrorRedirect(res, 'github_taken');
     user.github = gh;
     saveUsers();
-    return res.redirect(withQuery(rec.next, 'github=bound'));
+    // 绑定成功顺手发一次性奖励。发奖失败不能连累绑定本身：绑定丢了要重新走一遍授权，
+    // 奖励可以后补（后台「送灯火」也能补）。
+    let bonus = 0;
+    try { bonus = awardGhBindBonus(user, gh).reward || 0; }
+    catch (e) { console.warn('[gh-bind-bonus] 发放失败:', e.message); }
+    return res.redirect(withQuery(rec.next, bonus ? 'github=bound&ghbonus=' + bonus : 'github=bound'));
   }
 
   // ② 登录：先按 github id 认人
@@ -7910,6 +7959,7 @@ app.get('/api/me', (req, res) => {
           : null,
         // 没绑微信且没领过 → 前端在「微信未绑定」那一行显示「绑定 +300 盏灯火」
         wxBindBonus: wxBindBonusState(user),
+        ghBindBonus: ghBindBonusState(user),
         providers
       }
     : { user: null, providers });
@@ -21970,11 +22020,13 @@ app.get('/api/admin/points-ledger', requireAdmin, (req, res) => {
       checkinDays: checkinDaysOf(u.id, ck),   // 走兜底：days 字段中途才加的，老账号要靠 maxStreak 补（站长 13 连签别再显示 6 天）
       checkinStreak: Number(ck.streak || 0),
       lastCheckin: ck.last || '',
-      // 三个一次性来源（2026-11-14）：绑微信 +300 / 桌面 PWA 打开 +200 有灯火，绑 GitHub 只记状态不发灯火
+      // 四个一次性来源：绑微信 +300 / 绑 GitHub +200（2026-11-16 起）/ 桌面 PWA 打开 +200 / 签到
       wxbind: rec.wxBindBonusAt ? WX_BIND_BONUS_POINTS : 0,
       wxBindAt: rec.wxBindBonusAt || '',
       ghBind: (u.github && u.github.id) ? 1 : 0,
       ghLogin: (u.github && u.github.login) || '',
+      ghBonus: rec.ghBindBonusAt ? GH_BIND_BONUS_POINTS : 0,
+      ghBonusAt: rec.ghBindBonusAt || '',
       pwa: rec.pwaBonusAt ? PWA_BONUS_POINTS : 0,
       pwaAt: rec.pwaBonusAt || '',
       // 看激励视频领灯火（/api/me/ad-reward）：今天看了几次（0~3）+ 累计次数（2026-11-14 起记，ar.total 中途才加的，老号没有就是 0）
@@ -22016,6 +22068,7 @@ app.get('/api/admin/points-ledger', requireAdmin, (req, res) => {
       wxbind: sum('wxbind'),
       pwa: sum('pwa'),
       ghBound: rows.reduce((n, r) => n + (r.ghBind ? 1 : 0), 0),
+      ghBonus: sum('ghBonus'),
       tipIn: sum('tipIn'),
       tipOut: sum('tipOut'),
       adminNet: sum('adminNet'),

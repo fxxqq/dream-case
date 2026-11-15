@@ -1387,6 +1387,9 @@ async function loadMe() {
           noticePrefs: data.noticePrefs || { announce: true, cats: {} },   // 消息提示偏好（屏蔽后仍收消息、不弹窗）
           wechat: data.wechat || null,
           github: data.github || null,
+          // 绑定 GitHub 的一次性奖励状态（服务端 ghBindBonusState）：{ points, claimed, available }
+          // 白名单拼对象，漏了这一行前端永远读不到，绑定弹窗就只剩一句干巴巴的「绑定 GitHub」
+          ghBindBonus: data.ghBindBonus || null,
           google: data.google || null }
       : null;
     state.providers = (data && data.providers) || {};
@@ -2734,10 +2737,12 @@ function afterLoadAuth() {
   const err = p.get('auth_error');
   const okGh = p.get('github');
   const okG = p.get('google');
+  const ghBonus = Number(p.get('ghbonus')) || 0;   // 绑定 GitHub 当场到账的那笔（服务端只在真发了才带）
   if (err || okGh || okG) {
     p.delete('auth_error');
     p.delete('github');
     p.delete('google');
+    p.delete('ghbonus');
     const qs = p.toString();
     history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
     if (err) {
@@ -2748,7 +2753,10 @@ function afterLoadAuth() {
       const viaName = okGh ? 'GitHub' : 'Google';
       const prof = via === 'github' ? state.user && state.user.github : state.user && state.user.google;
       if (!state.user) showToast(`${viaName} 登录状态已失效，请重新登录`, undefined, 'err');
-      else if ((okGh || okG) === 'bound') showToast(`${viaName} 已绑定：${(prof && (prof.login || prof.email || prof.name)) || ''}`);
+      else if ((okGh || okG) === 'bound') showToast(ghBonus
+        ? `${viaName} 已绑定，${ghBonus} 盏灯火已到账`
+        : `${viaName} 已绑定：${(prof && (prof.login || prof.email || prof.name)) || ''}`,
+        undefined, ghBonus ? 'ok' : undefined);
       else if ((okGh || okG) === 'new') showToast(state.user.nickname
         ? `已用 ${viaName} 建号，作品上署名「${state.user.nickname}」，记得设个密码`
         : `已用 ${viaName} 建号 @${state.user.username}，头像菜单里能设昵称、设密码`);
@@ -2778,6 +2786,18 @@ function openAuthFromQuery() {
   openAuth('login');
 }
 
+// 绑定 GitHub 的奖励说明（2026-11-16）：额度由服务端 /api/me 下发（ghBindBonus），
+// 前端不写死数字——以后调额度只改 server.js 的 GH_BIND_BONUS_POINTS 一处。
+// compact=true 只回「 · +200 盏」这一小截，给按钮用。
+function ghBonusTip(compact) {
+  const b = state.user && state.user.ghBindBonus;
+  if (!b || !b.points) return '';
+  if (compact) return b.available ? ` · +${b.points} 盏` : '';
+  if (b.available) return `绑定成功后一次性送 <b>${b.points} 盏灯火</b>——每个账号只发一次，解绑后再绑也不会重复发。`;
+  if (b.claimed) return `这个账号的绑定奖励已经领过了（+${b.points} 盏），解绑后再绑不会重复发。`;
+  return '';
+}
+
 function openGhModal() {
   if (!state.user) { openAuth('login'); return; }
   const mask = $('ghModal');
@@ -2799,6 +2819,7 @@ function openGhModal() {
         </div>
       </div>
       <p class="nick-tip">绑定后可以直接用 GitHub 一键登录这个账号；作品、灯火、收藏都不会变。</p>
+      <p class="nick-tip">${ghBonusTip()}</p>
       <p class="nick-msg" id="ghMsg"></p>
       <div class="nick-actions">
         <button type="button" class="btn-ghost" id="ghUnbind">解绑 GitHub</button>
@@ -2834,9 +2855,10 @@ function openGhModal() {
     body.innerHTML = `
       <p class="nick-tip">把 GitHub 绑到当前账号 <b>@${escapeHtml(state.user.username)}</b> 上，以后就能用 GitHub 一键登录，不用记这个站点的密码。</p>
       <p class="nick-tip">只会读取你的 GitHub 公开资料（用户名、头像），不会碰仓库和邮箱。</p>
+      <p class="nick-tip">${ghBonusTip()}</p>
       <div class="nick-actions">
         <button type="button" class="btn-ghost" id="ghCancel">取消</button>
-        <button type="button" class="btn-primary btn-github-inline" id="ghBind"><span class="ico" data-ico="github"></span> 绑定 GitHub</button>
+        <button type="button" class="btn-primary btn-github-inline" id="ghBind"><span class="ico" data-ico="github"></span> 绑定 GitHub${ghBonusTip(true)}</button>
       </div>`;
     $('ghCancel').onclick = () => hideModal(mask);
     $('ghBind').onclick = () => {

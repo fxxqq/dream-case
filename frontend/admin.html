@@ -8284,7 +8284,7 @@
       { key: 'points', label: '余额', tip: '当前还剩的灯火' },
       { key: 'checkin', label: '签到', tip: '累计签到拿到的灯火 · 小字是累计签到天数（7 天一轮：5/5/10/10/20/20/30）' },
       { key: 'wxbind', label: '绑微信', tip: '老账号绑定微信的一次性奖励（+300 盏）· 小字是领取日期' },
-      { key: 'ghBind', label: '绑GitHub', tip: '是否绑定了 GitHub · 小字是 GitHub 用户名（绑定本身目前不发灯火，只记状态）' },
+      { key: 'ghBind', label: '绑GitHub', tip: '是否绑定了 GitHub · 小字是 GitHub 用户名。老账号首次绑定一次性 +200 盏（2026-11-16 起）——小字后面带「+200」的表示这笔已经领过' },
       { key: 'pwa', label: 'PWA', tip: '添加到桌面后用图标打开的一次性奖励（+200 盏）· 小字是领取日期' },
       { key: 'adTotal', label: '看广告', tip: '看激励视频领灯火：主数字是累计次数（2026-11-14 起才记，之前的历史次数没有记录），小字是今天已看 X/3 次' },
       { key: 'tipIn', label: '被送', tip: '别人打赏给 TA 的合计（含小程序「看广告代送」——那笔平台出，确实进了 TA 账）' },
@@ -8392,7 +8392,7 @@
           ? `<td><b${admin < 0 ? ' class="pl-neg"' : ''}>${admin < 0 ? '−' + plNum(-admin) : plNum(admin)}</b></td>`
           : '<td class="pl-zero"><b>0</b></td>';
         const ghCell = r.ghBind
-          ? `<td><b>✓</b><span class="pl-sub">${esc(r.ghLogin || '已绑')}</span></td>`
+          ? `<td><b>✓</b><span class="pl-sub">${esc(r.ghLogin || '已绑')}${r.ghBonus ? ' · +' + plNum(r.ghBonus) : ''}</span></td>`
           : '<td class="pl-zero"><b>—</b></td>';
         return `<tr>
           <td class="pl-who"><b>@${esc(r.name)}</b> <span class="tag">${esc(r.username)}</span>${r.isOwner ? ' <span class="tag bad">站长</span>' : ''}
