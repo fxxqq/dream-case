@@ -331,6 +331,24 @@
     .friend-edit-desc { flex:1; min-width:190px; }
     .friend-edit-url { flex:1; min-width:220px; }
     .tag { display:inline-block; font-size:11px; padding:2px 8px; border-radius:999px; background:#eeeefc; color:var(--primary); margin-left:6px; }
+    /* 代投单的展示优先级做成下拉（2026-11-16）：外观仍是一枚小标签，点开就能改，
+       不用为了换个优先级把单撤了重挂。箭头用内联 SVG，免得各浏览器原生箭头粗细不一 */
+    select.tag.pm-prio {
+      font: inherit; font-size:11px; line-height:16px; padding:1px 18px 1px 8px; border:0;
+      cursor:pointer; appearance:none; -webkit-appearance:none; text-align:left;
+      background-color:#eeeefc; background-repeat:no-repeat; background-position:right 5px center;
+      background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 0h7L3.5 5z' fill='%235b5bd6'/%3E%3C/svg%3E");
+    }
+    select.tag.pm-prio:hover { background-color:#e6e6fb; }
+    select.tag.pm-prio.is-owner { background-color:#fff7e6; color:#d48806;
+      background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 0h7L3.5 5z' fill='%23d48806'/%3E%3C/svg%3E"); }
+    select.tag.pm-prio:disabled { opacity:.6; cursor:default; }
+    /* 代投行里那行「这位投放者投过什么包、多少次」：次要信息，压成灰字 */
+    .row-buyer { margin-top:3px; font-size:12px; color:var(--muted); }
+    /* 代投弹窗选中作品后，作者的历史投放小卡 */
+    .pm-buyer-box { margin-top:8px; padding:7px 10px; background:#f7f7fd; border:1px solid var(--border); border-radius:10px; font-size:12px; line-height:1.75; }
+    .pm-buyer-box b { font-weight:600; }
+    .pm-buyer-muted { color:var(--muted); }
     .tag.warn { background:#fff7e6; color:#d48806; }
     .tag.bad { background:#fff0f1; color:var(--danger); }
     .tag.ok { background:#e7f8ec; color:var(--ok); }
@@ -1471,6 +1489,8 @@
         <label>作品 *</label>
         <input type="search" id="pmCompQ" placeholder="搜作品名 / 一句话介绍 / 作者 / ID" autocomplete="off" />
         <div id="pmCompResults" style="margin-top:8px;display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto"></div>
+        <!-- 选中作品后显示这位作者在本站投过什么（服务端全历史聚合），帮站长判断是常客还是头一次 -->
+        <div id="pmCompBuyer" class="pm-buyer-box" hidden></div>
       </div>
       <div class="field">
         <label>推荐位 * <em class="paste-tip">可多选，一次挂到多个位</em></label>
@@ -7944,7 +7964,7 @@
           <b>投放权重</b>（右上角切换，是「没单独设过的单」的兜底口径，不配＝优先用户）：同一个位置有多条在投时谁先展示——
           <b>优先用户</b>＝作者买的单先上，站长代投只在这个位没有买家单时补位；
           <b>平级</b>＝不分买家 / 代投，全池随机；<b>优先站长</b>＝代投先占位，买家单等代投撤下 / 到期。
-          单条代投在「＋ 站长代投」弹窗里各自选（让位买家单 / 齐平随机 / 优先这条，默认让位买家单），单条设过就按单条的来。
+          单条代投在「＋ 站长代投」弹窗里各自选（让位买家单 / 齐平随机 / 优先这条，默认让位买家单），单条设过就按单条的来；投出去以后在列表里那枚标签上直接点也能改（只在投 / 排队中的单，改完立即生效，不用撤了重挂）。
           只决定「挑哪条」，不动扣费和期限：没被挑中的单不扣额度、投放天数照走。<br />
           想看走势和点击率排行去「推荐效果」页。
         </div>
@@ -8011,13 +8031,32 @@
           ? '点击包：按点击计费，被点一次扣一次灯火，曝光只计数不扣额度'
           : '曝光包：按曝光计费，卡片被看到扣灯火，点击只计数不扣额度'
       )}">${isClickPack ? '点击包' : '曝光包'}</span>`;
-      // 代投单的展示优先级（只影响同一个位里挑谁）：老单没有这个字段＝跟随右上角的全局投放权重
-      const prioTag = !comp ? '' : `<span class="tag${o.prio === 'owner' ? ' warn' : ''}" title="${esc({
+      // 代投单的展示优先级（只影响同一个位里挑谁）：老单没有这个字段＝跟随右上角的全局投放权重。
+      // 2026-11-16 起可以就地改：还在投 / 排队时给下拉，改完立刻写服务端（ad.prio 决定前台挑谁），
+      // 已结束的单只留静态标签——改了也没有下一次展示了。
+      const prioTip = {
         owner: '优先这条：压过买家单先展示（买家单不扣额度、天数照走）',
         tie: '齐平随机：和买家单一起随机，不看来源',
         user: '让位买家单：这个位有买家单时先让买家上，这条补位',
         '': '这单没单独设优先级，跟随右上角「投放权重」'
-      }[o.prio || ''] || '')}">${esc(o.prioLabel || '跟随全局')}</span>`;
+      };
+      const prioTag = !comp ? '' : (live
+        ? `<select class="tag pm-prio${o.prio === 'owner' ? ' is-owner' : ''}" data-pmprio="${esc(o.id)}" title="点一下改这条的展示优先级：${esc(prioTip[o.prio || ''] || '')}">${
+            [['', '跟随全局'], ['user', '让位买家'], ['tie', '齐平随机'], ['owner', '优先这条']]
+              .map(([v, t]) => `<option value="${v}"${(o.prio || '') === v ? ' selected' : ''}>${t}</option>`).join('')
+          }</select>`
+        : `<span class="tag${o.prio === 'owner' ? ' warn' : ''}" title="${esc(prioTip[o.prio || ''] || '')}">${esc(o.prioLabel || '跟随全局')}</span>`);
+
+      // 投放者画像（服务端 promoBuyerMap 全历史聚合）：这位作者投过几单、什么包、多少次。
+      // 每行都挂（付费单也挂）：同一件作品反复投的人不少，站长看一行就知道是常客还是头一次。
+      const b = o.buyer;
+      const buyerLine = b && b.orders
+        ? `<div class="row-buyer" title="这个账号在本站的全部投放记录，含已结束 / 已撤">投放者记录 · 累计 ${b.orders} 单${[
+            b.viewOrders ? `曝光包 ${b.viewOrders} 次（共 ${nf(b.viewUnits)} 次曝光）` : '',
+            b.clickOrders ? `点击包 ${b.clickOrders} 次（共 ${nf(b.clickUnits)} 次点击）` : '',
+            b.compOrders ? `代投 ${b.compOrders} 次` : ''
+          ].filter(Boolean).map(t => ' · ' + t).join('')}${b.liveOrders ? ` · 在投 ${b.liveOrders} 单` : ''}</div>`
+        : '';
       const done = isClickPack ? o.clickUsed : o.used;
       const total = isClickPack ? o.clicksBought : o.viewsBought;
       const donePct = total ? Math.min(100, Math.round(done / total * 100)) : 0;
@@ -8041,6 +8080,7 @@
             ${qPos ? `<span class="tag">排队第 ${qPos} 位</span>` : ''}
           </div>
           <div class="row-meta">${esc(o.userName)} · ${esc(when)} 下单 · 投 ${o.days} 天${comp ? ' · 站长代投，不计费' : ''}${esc(until)}</div>
+          ${buyerLine}
           <div class="rd-metrics">
             <span title="作品半张卡滚进屏幕就算一次，同一个人反复看到也照记（含不扣钱的重复展示）">展示 <b>${nf(o.pv)}</b></span>
             <span title="独立访客：登录按账号、未登录按本机">UV <b>${nf(o.uv)}</b></span>
@@ -8102,6 +8142,29 @@
       const q = $('pmQ');
       if (q) q.onchange = () => { pmQ = q.value.trim(); renderPromos(); };
 
+      // 代投的展示优先级：就地改（服务端写 ad.prio + r.prio），改完重画整页让标签与全局口径一起对齐
+      panel.querySelectorAll('[data-pmprio]').forEach(sel => {
+        sel.onchange = async () => {
+          const o = pmOrders.find(x => x.id === sel.dataset.pmprio);
+          const back = o ? (o.prio || '') : '';
+          const want = sel.value;
+          sel.disabled = true;
+          try {
+            const r = await api('/api/admin/redemptions/' + encodeURIComponent(sel.dataset.pmprio) + '/prio', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prio: want })
+            });
+            notifyAds();
+            toast(`已改为「${r.prioLabel || '跟随全局'}」` + (want ? '，前台下次刷新按新口径挑' : '（跟随右上角投放权重）'));
+            await loadPromos();
+          } catch (err) {
+            sel.value = back;
+            sel.disabled = false;
+            toast(err.message || '改优先级失败');
+          }
+        };
+      });
+
       panel.querySelectorAll('[data-pmtoggle]').forEach(b => {
         b.onclick = async () => {
           const wasPaused = b.dataset.pmpaused === '1';
@@ -8160,6 +8223,38 @@
       setCompPrioHint('user');
     }
 
+    // 投放者画像：和列表里那行「投放者记录」同一套数字（服务端 promoBuyerStatsOf），
+    // 只是这里针对「当前选中的作品作者」。换作品后旧请求回来要丢掉，别把 A 的记录画到 B 上。
+    function pmBuyerSummaryHtml(d) {
+      const nf = n => (Number(n) || 0).toLocaleString('zh-CN');
+      if (!d || !d.orders) return '<span class="pm-buyer-muted">这位作者还没投过推荐位（第一次）。</span>';
+      const parts = [];
+      if (d.viewOrders) parts.push(`曝光包 ${d.viewOrders} 次（共 ${nf(d.viewUnits)} 次曝光）`);
+      if (d.clickOrders) parts.push(`点击包 ${d.clickOrders} 次（共 ${nf(d.clickUnits)} 次点击）`);
+      if (d.compOrders) parts.push(`代投 ${d.compOrders} 次`);
+      return `<b>${esc(d.name || '这位作者')}</b>${d.username && d.username !== d.name ? `（@${esc(d.username)}）` : ''} · 累计 <b>${d.orders}</b> 单：${esc(parts.join(' · '))}`
+        + (d.liveOrders ? ` · 当前在投 <b>${d.liveOrders}</b> 单` : '');
+    }
+    let pmBuyerToken = null;
+    async function pmCompBuyerLoad(w) {
+      const box = $('pmCompBuyer');
+      if (!box) return;
+      if (!w) { box.hidden = true; box.innerHTML = ''; pmBuyerToken = null; return; }
+      box.hidden = false;
+      if (!w.authorId) { box.innerHTML = '<span class="pm-buyer-muted">这件作品没有归属账号（匿名 / 无主），没有投放记录。</span>'; return; }
+      const token = w.id;
+      pmBuyerToken = token;
+      box.innerHTML = '<span class="pm-buyer-muted">正在查这位作者的历史投放…</span>';
+      try {
+        const d = await api('/api/admin/promo-buyer/' + encodeURIComponent(w.authorId));
+        if (pmBuyerToken !== token) return;   // 期间换了作品，丢掉这次结果
+        box.innerHTML = pmBuyerSummaryHtml(d);
+      } catch (e) {
+        if (pmBuyerToken !== token) return;
+        box.innerHTML = '<span class="pm-buyer-muted">历史投放查不到：' + esc(e.message) + '</span>';
+      }
+    }
+
     function renderCompResults() {
       const box = $('pmCompResults');
       if (!pmCompItems.length) {
@@ -8180,6 +8275,7 @@
         el.onclick = () => {
           pmCompWork = pmCompItems.find(x => x.id === el.dataset.compwork) || null;
           renderCompResults();
+          pmCompBuyerLoad(pmCompWork);
         };
       });
     }
@@ -8216,6 +8312,7 @@
       setCompPrioHint('user');
       $('pmCompMask').style.display = 'flex';
       $('pmCompResults').innerHTML = '<div class="ad-empty">加载中…</div>';
+      pmCompBuyerLoad(null);   // 上次选中的作者记录不要带过来
       setTimeout(() => { try { $('pmCompQ').focus(); } catch (e) { /* ignore */ } }, 40);
       pmCompSearch();
     }

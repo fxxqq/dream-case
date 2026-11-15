@@ -5493,6 +5493,7 @@ const ADMIN_API_PERM = {
   reports: 'review', jury: 'review', claims: 'review', feedback: 'review', kf: 'review',
   'search-block': 'data', behavior: 'data', 'reg-stats': 'data', 'redeem-overview': 'data',
   outlinks: 'data', 'link-health': 'data', 'baidu-push': 'data', 'promo-priority': 'data',
+  'promo-buyer': 'data',
   categories: 'config', types: 'config', tools: 'config', ads: 'config', 'ad-gate': 'config',
   redemptions: 'config', gift: 'config', friends: 'config', 'friend-requests': 'config',
   discover: 'config', broadcast: 'config', 'guest-notice': 'config', brands: 'config',
@@ -5680,6 +5681,8 @@ function auditDescribe(req) {
   }
   m = p.match(/^\/api\/admin\/redemptions\/([^/]+)\/cancel$/);
   if (m) return '撤下推广订单 ' + m[1] + '（退款）';
+  m = p.match(/^\/api\/admin\/redemptions\/([^/]+)\/prio$/);
+  if (m) return '改代投展示优先级 ' + m[1] + ' → ' + s(b.prio || '跟随全局');
   if (p === '/api/admin/redemptions/comp') return '代投推荐位：作品 ' + s(b.workId) + ' → ' + s(b.slot) + ' ' + s(b.days) + ' 天';
   m = p.match(/^\/api\/admin\/gift\/([^/]+)\/([a-z-]+)$/);
   if (m) return (m[2] === 'toggle' ? '停用/恢复灯火活动 ' : '改灯火活动渠道 ') + m[1];
@@ -19605,12 +19608,45 @@ function adStatsWindow(adId, fromDay) {
   return { pv, uv: uv.size, clk, clkUv: clkUv.size };
 }
 
+// 投放者画像（2026-11-16）：一个账号在本站投过多少单、各是什么包。
+//   曝光包 = 有 views 的单；纯点击包 = 没有 views、只有 clicks；代投 = comp（不计费，单列一档）
+// 口径是全历史（含已结束 / 已撤），跟列表右上角的时间窗无关——用来回答「这位是常客还是头一次」。
+function promoBuyerSeed() {
+  return { orders: 0, viewOrders: 0, viewUnits: 0, clickOrders: 0, clickUnits: 0, compOrders: 0, liveOrders: 0, lastAt: 0 };
+}
+function promoBuyerAdd(x, r) {
+  x.orders += 1;
+  x.lastAt = Math.max(x.lastAt, Number(r.createdAt) || 0);
+  if (r.status === 'active' || r.status === 'queued') x.liveOrders += 1;
+  if (r.comp === true) { x.compOrders += 1; return; }
+  const views = Number(r.views) || 0, clicks = Number(r.clicks) || 0;
+  if (!views && clicks) { x.clickOrders += 1; x.clickUnits += clicks; }
+  else { x.viewOrders += 1; x.viewUnits += views; }
+}
+function promoBuyerStatsOf(userId) {
+  const x = promoBuyerSeed();
+  if (!userId) return x;
+  redemptions.forEach(r => { if (r && r.userId === userId) promoBuyerAdd(x, r); });
+  return x;
+}
+// 列表一次算好：几百单也只遍历一遍，别每行都 filter 一次（O(n²)）
+function promoBuyerMap() {
+  const m = new Map();
+  redemptions.forEach(r => {
+    if (!r || !r.userId) return;
+    let x = m.get(r.userId);
+    if (!x) { x = promoBuyerSeed(); m.set(r.userId, x); }
+    promoBuyerAdd(x, r);
+  });
+  return m;
+}
 function redeemOverview(daysRaw) {
   const days = REDEEM_OVERVIEW_DAYS.includes(Number(daysRaw)) ? Number(daysRaw) : 30;
   const fromMs = days > 0 ? Date.now() - days * 86400e3 : 0;
   const fromDay = fromMs ? dateKey(new Date(fromMs)) : '';
   const today = dateKey();
 
+  const buyerMap = promoBuyerMap();   // 投放者画像：全历史口径，见 promoBuyerStatsOf
   const rows = redemptions.filter(r => {
     if (!r) return false;
     if (!fromMs) return true;
@@ -19661,6 +19697,8 @@ function redeemOverview(daysRaw) {
       clicksAll: ad ? (ad.clicks || 0) : 0,       // 累计点击（含 11-04 前没有明细的部分）
       pvAll: ad ? adStatsOf(ad.id).pv : 0,
       price: r.price || 0, spent, refunded: r.refunded || 0,
+      // 这位投放者在本站的全部投放：几单、什么包、多少次（含当前这一单）
+      buyer: buyerMap.get(r.userId) || null,
       // 还挂在页面上、没被消耗掉也没退的那部分：在投单才有意义
       pending: Math.max(0, (r.price || 0) - spent - (r.refunded || 0))
     };
@@ -22002,6 +22040,37 @@ app.post('/api/admin/redemptions/comp', requireAdmin, (req, res) => {
   });
   const queuedPos = occupied ? slotQueue(slot).findIndex(r => r.id === redemptionId) + 1 : 0;
   res.json({ ok: true, id: redemptionId, queued: occupied, queuePos: queuedPos, prio, ...adListJson() });
+});
+
+// 改单条代投的展示优先级（2026-11-16）：后台列表里直接改，不用撤了重挂。
+// 只对 comp 单有效；空串 = 跟随全局投放权重（老单的默认状态）。
+// 改完两边一起写：ad.prio 决定前台挑谁（applyPromoPriority），r.prio 负责后台列表显示。
+app.post('/api/admin/redemptions/:id/prio', requireAdmin, (req, res) => {
+  const r = redemptions.find(x => x.id === req.params.id);
+  if (!r) return res.status(404).json({ error: '投放单不存在' });
+  if (r.comp !== true) return res.status(400).json({ error: '只有站长代投的单才有这条展示优先级' });
+  const prio = String((req.body && req.body.prio) || '');
+  if (prio !== '' && !COMP_PRIO_MODES.includes(prio)) return res.status(400).json({ error: '不认识的优先级' });
+  r.prio = prio;
+  const ad = ads.find(a => a.id === r.adId);
+  // 排队中的单也写：轮到它时直接按新优先级参与挑选
+  if (ad && ad.comp === true) ad.prio = prio;
+  saveRedemptions();
+  saveAds();
+  res.json({ ok: true, prio, prioLabel: COMP_PRIO_LABEL[prio] || '跟随全局' });
+});
+
+// 投放者画像（代投弹窗里选中作品后拉一下，看这位作者在本站投过什么包、多少次）。
+// 数字全历史：含已结束 / 已撤，不只是当前窗口。
+app.get('/api/admin/promo-buyer/:userId', requireAdmin, (req, res) => {
+  const u = users.find(x => x.id === req.params.userId);
+  if (!u) return res.status(404).json({ error: '账号不存在' });
+  res.json({
+    userId: u.id,
+    name: u.nickname || u.username || '未命名',
+    username: u.username || '',
+    ...promoBuyerStatsOf(u.id)
+  });
 });
 
 // 「用户推广」页的撤下按钮：按订单 id 撤（排队中的单也建好了广告，但 adId 不好当入口用，
