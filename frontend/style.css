@@ -6820,10 +6820,35 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
   border-radius: 999px; background: var(--danger); color: #fff;
   font-size: 9.5px; font-weight: 700; font-style: normal; line-height: 1;
 }
+/* 屏蔽态分栏：标签整颗变灰，图标划一道斜杠——「静音」的通用画法。
+   未读数不藏：换成灰底角标，用户照样知道漏了几条，但一眼区分出这栏不弹窗 */
+.nt-tab.is-muted { color: #a9adbc; }
+.nt-tab.is-muted:hover { color: #9296a3; }
+.nt-tab.is-muted.is-on { background: #fff; color: #8a8f99; box-shadow: 0 2px 8px rgba(0, 0, 0, .06); }
+.nt-tab.is-muted .ico { position: relative; opacity: .55; }
+.nt-tab.is-muted .ico::after {
+  content: ''; position: absolute; left: -25%; top: 50%; width: 150%; height: 1.5px;
+  background: currentColor; border-radius: 2px; transform: rotate(-45deg);
+}
+.nt-n.is-muted { background: #e7e8ef; color: #9296a3; }
 @media (max-width: 560px) {
   .nt-tab { font-size: 12px; gap: 2px; padding: 6px 1px; }
   .nt-tab .ico { display: none; }   /* 手机窄屏：图标让位给文字，6 个标签才不挤 */
+  /* 手机上图标没了，靠灰字 + 灰角标传达屏蔽态 */
+  .nt-tab.is-muted { color: #b6b9c6; }
 }
+/* 停在被屏蔽分栏时列表顶部的提示条：确认「屏蔽生效了」，顺手给一颗恢复按钮 */
+.notice-muted-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: 0 0 10px; padding: 9px 12px;
+  background: #f4f4fb; border: 1px dashed #c9cbdb; border-radius: 10px;
+  font-size: 12px; line-height: 1.5; color: #8a8f99;
+}
+.notice-muted-banner .nm-unmute {
+  flex: none; padding: 4px 10px; border: 1px solid #c9cbdb; border-radius: 999px;
+  background: #fff; cursor: pointer; font-family: inherit; font-size: 12px; color: var(--primary);
+}
+.notice-muted-banner .nm-unmute:hover { border-color: var(--primary); }
 /* 「全部」栏里每条消息前的分区小标签：一眼看出这条是营销、系统还是灯火 */
 .nc-tag {
   display: inline-block; margin-right: 5px; padding: 0 5px; border-radius: 4px;
@@ -11653,6 +11678,16 @@ html.dm-quiet .jar-fly-star { display: none; }
 .task-steps-inner b { font-size: 12.5px; }
 .task-steps ol { margin: 6px 0 0 18px; color: var(--muted); font-size: 12.5px; line-height: 1.95; }
 .task-qr { display: block; width: 148px; height: 148px; margin: 10px auto 2px; border-radius: 10px; border: 1px solid var(--border); background: #fff; }
+.task-qr[hidden] { display: none; }
+/* 小程序码的加载占位（2026-11-16）：生成码要几秒，先亮个转圈占位块，onload 再换真图，
+   不然展开后是一块白底空格像坏了。转圈复用全站 wxqr-spin，尺寸跟真码一致避免展开时跳动 */
+.task-qr-box { min-height: 148px; }
+.task-qr-loading {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 148px; height: 148px; margin: 10px auto 2px;
+  border: 1px dashed var(--border); border-radius: 10px;
+  font-size: 11.5px; color: var(--muted);
+}
 .task-qr-tip { text-align: center; font-size: 11.5px; color: var(--muted); }
 .task-more { list-style: none; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 4px 0; }
 .task-more-row {

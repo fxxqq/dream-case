@@ -28,6 +28,7 @@ ai-works-site/
 | `GOOGLE_CLIENT_SECRET` | 空 | Google OAuth 客户端的 Client Secret |
 | `GOOGLE_CALLBACK_URL` | 自动推断 | 回调地址，同上，须与应用里登记的完全一致 |
 | `DATA_DIR` / `UPLOAD_DIR` | `./data`、`./uploads` | 数据/上传目录，仅自动化测试时改指向临时目录 |
+| `DM_BETA` | 空 | 用户私信内测开关。空 = 只有站长可用（普通用户隐藏入口、接口 403）；`DM_BETA=open` 全量放开。线上已于 2026-11-16 设为 `open`（`export DM_BETA=open pm2 restart ai-works --update-env && pm2 save`）。收回去掉该变量重启即可，代码不用改 |
 
 ## GitHub 登录 / 绑定（可选）
 

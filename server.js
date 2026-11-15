@@ -1321,6 +1321,55 @@ function dmBetaDenied(res) {
   return res.status(403).json({ error: '私信正在内测，暂时只对站长开放', beta: true });
 }
 
+// 使用资格（2026-11-16 站长定）：放开不等于人人可用——注册满 7 天 + 在造梦酒馆
+// 发过 10 条以上「非灌水」发言，才能发私信。拦纯小号，不挡真聊天的用户。
+// 「非灌水」口径：散座帖子 ≥15 字（与灯火奖励的「有效帖」同标；常量就地自持，
+//   不引用 BAR_POST_MIN_LEN——那批灯火奖励还没发版，私信门槛不能依赖未上线的东西），
+//   回应没有现成口径，取 ≥10 字的底线挡「哈哈 / +1 / 签到」式刷数；想法池（吧台许愿）不算。
+// 例外：站长永远可用；对站长说话也豁免（客服口子 + 「站长找上来的会话对方可回」都靠它）。
+// 资格不足时接口 403 带具体差多少，前端锁输入框就地显示原因，不用另做 UI。
+// 文案口径（2026-11-16 站长定）：要说清门槛是防骚扰 / 垃圾营销号，不是拦正常用户，
+//   并给出还差多少的可达成提示——让人知道往前走一步就能用。
+const DM_MIN_AGE_DAYS = 7;
+const DM_MIN_AGE_MS = DM_MIN_AGE_DAYS * 86400000;
+const DM_GATE_BAR_MSGS = 10;
+const DM_GATE_REPLY_MIN_LEN = 10;
+const DM_GATE_POST_MIN_LEN = 15;   // 帖子「非灌水」底线：≥15 字（同灯火奖励的有效帖口径）
+function dmBarSignalCount(uid) {
+  let n = 0;
+  for (const p of barPosts) {
+    if (!p || p.hidden) continue;
+    if (p.userId === uid && String(p.text || '').length >= DM_GATE_POST_MIN_LEN) n++;
+    const replies = Array.isArray(p.replies) ? p.replies : [];
+    for (const r of replies) {
+      if (!r || r.hidden) continue;
+      if (r.userId === uid && String(r.text || '').length >= DM_GATE_REPLY_MIN_LEN) n++;
+    }
+  }
+  return n;
+}
+function dmEligibleOf(u) {
+  if (!u) return { ok: false, error: '账号不存在' };
+  if (isSiteOwner(u)) return { ok: true };
+  const born = Date.parse(u.createdAt || '');
+  if (isNaN(born) || Date.now() - born < DM_MIN_AGE_MS) {
+    const left = isNaN(born) ? DM_MIN_AGE_DAYS
+      : Math.max(1, Math.ceil((DM_MIN_AGE_MS - (Date.now() - born)) / 86400000));
+    return {
+      ok: false, gate: 'age',
+      error: `私信对注册满 ${DM_MIN_AGE_DAYS} 天的用户开放——这道小门槛是为了挡住骚扰和营销小号，不是针对你。还差 ${left} 天，很快就到啦`
+    };
+  }
+  const n = dmBarSignalCount(u.id);
+  if (n < DM_GATE_BAR_MSGS) {
+    return {
+      ok: false, gate: 'bar',
+      error: `在造梦酒馆认真聊满 ${DM_GATE_BAR_MSGS} 条（帖子 / 回应）就能开私信——先让大家在酒馆认识你，私信就不会变成骚扰和垃圾广告的入口。目前还差 ${DM_GATE_BAR_MSGS - n} 条`
+    };
+  }
+  return { ok: true };
+}
+
 let dmStore = readJSON('dms.json', null);
 if (!dmStore || typeof dmStore !== 'object') dmStore = { threads: [] };
 if (!Array.isArray(dmStore.threads)) dmStore.threads = [];
@@ -1413,6 +1462,10 @@ function dmCanSend(from, to, existing) {
   if (!existing && dmPolicyOf(to) === 'known') {
     return { ok: false, error: '对方设置了只接收聊过的人的私信' };
   }
+  // 使用资格（2026-11-16）：注册满 7 天 + 酒馆非灌水发言满 10 条，不够不发。
+  // 站长豁免——站长找上门的会话对方可回，用户找站长（客服口子）也照常通。
+  const gate = dmEligibleOf(from);
+  if (!gate.ok && !isSiteOwner(to)) return gate;
   return { ok: true };
 }
 function dmThreadOut(t, uid) {
@@ -1445,6 +1498,8 @@ function dmThreadPayload(t, uid) {
   const me = users.find(u => u.id === uid) || {};
   const blockedByMe = !!(peer && Array.isArray(me.blockedUsers) && me.blockedUsers.indexOf(peer.username) !== -1);
   const blockedMe = !!(peer && Array.isArray(peer.blockedUsers) && peer.blockedUsers.indexOf(me.username) !== -1);
+  // 资格不足也锁输入框：canSend=false + reason，前端就地显示差多少（不用另做 UI）
+  const gateChk = peer && !t.closed ? dmCanSend(me, peer, t) : { ok: true };
   return {
     threadId: t.id,
     peer: dmPeerOut(peer),
@@ -1454,7 +1509,8 @@ function dmThreadPayload(t, uid) {
     blockedByMe, blockedMe,
     // closed：被举报后由后台关闭的会话。双方都不能再发，历史记录照常读到保留期满
     closed: !!t.closed,
-    canSend: !!peer && !blockedByMe && !blockedMe && !t.closed
+    canSend: !!peer && !blockedByMe && !blockedMe && !t.closed && gateChk.ok,
+    reason: gateChk.ok ? '' : (gateChk.error || '暂时不能给对方发私信')
   };
 }
 // 保留期清理：正文超过 180 天的消息逐条丢掉；清完一条不剩、且最后动静也在保留期外的会话连壳删掉。
@@ -7100,6 +7156,19 @@ function taskBoardOf(user) {
     desc: wxBound ? '已绑定，小程序里打开就是你的账号，不用再输密码'
       : '小程序免密登录；手机上看作品、签到、收消息都少一步'
   });
+  // 发帖任务：发没发过帖以账上的 barFirstPostAt 为准；奖励上线前就发过帖的老用户
+  // 走 legacy（算完成不补发，口径同「完善账号」），再发一条也不会重复给这 50 盏
+  const barRec = barBonusRec(user.id);
+  const barPosted = !!barRec.barFirstPostAt || barHasPost(user.id);
+  items.push({
+    key: 'firstpost', icon: 'chat', action: 'bar',
+    name: '发第一条帖子', points: BAR_FIRST_POST_POINTS,
+    state: barRec.barFirstPostAt ? 'done' : (barPosted ? 'legacy' : 'todo'),
+    doneText: barRec.barFirstPostAt ? '已领过' : '已发过',
+    desc: barRec.barFirstPostAt ? '首帖奖励已领，每天前 2 帖、每条回应还有小奖励'
+      : barPosted ? '已经在酒馆发过帖了；每天前 2 帖、每条回应都有小奖励'
+      : '去造梦酒馆说一句话，灯火立刻到账；以后每天发帖、回应也有小奖励'
+  });
   if (GOOGLE_ENABLED && user.google && user.google.sub) {
     items.push({ key: 'google', icon: 'google', action: 'g', name: 'Google 账号', points: 0,
       state: 'bound', desc: '已绑定，可以用 Google 一键登录' });
@@ -9431,7 +9500,10 @@ app.get('/api/dm/with/:ref', (req, res) => {
     });
   }
   const t = dmThreadOfPair(user.id, peer.id);
-  if (t) return res.json({ ...dmThreadPayload(t, user.id), reason: t.closed ? '这段私信已被关闭' : '' });
+  if (t) {
+    const pay = dmThreadPayload(t, user.id);
+    return res.json({ ...pay, reason: t.closed ? '这段私信已被关闭' : pay.reason });
+  }
   const chk = dmCanSend(user, peer, null);
   const blockedByMe = Array.isArray(user.blockedUsers) && user.blockedUsers.indexOf(peer.username) !== -1;
   const blockedMe = Array.isArray(peer.blockedUsers) && peer.blockedUsers.indexOf(user.username) !== -1;
@@ -9449,7 +9521,8 @@ app.get('/api/dm/threads/:id', (req, res) => {
   const t = dmThreadByIdFor(String(req.params.id || ''), user.id);
   if (!t) return res.status(404).json({ error: '会话不存在' });
   if (!dmPairAllowed(user, dmPeerUserOf(t, user.id))) return dmBetaDenied(res);
-  res.json({ ...dmThreadPayload(t, user.id), reason: t.closed ? '这段私信已被关闭' : '' });
+  const pay = dmThreadPayload(t, user.id);
+  res.json({ ...pay, reason: t.closed ? '这段私信已被关闭' : pay.reason });
 });
 
 // 已读：把「我」的水位推到当前时间（不清消息，对方也看不到我读没读）
@@ -9903,6 +9976,10 @@ const POINTS_KIND_TEXT = {
   ghbind: '绑定 GitHub / 完善账号奖励',
   wxbind: '绑定微信 / 完善账号奖励',
   wxmerge: '合并账号：灯火取多的那份',
+  barpost: '酒馆发帖奖励',
+  'barpost-recall': '酒馆发帖奖励已收回',
+  barreply: '酒馆回应奖励',
+  'barreply-recall': '酒馆回应奖励已收回',
   gift: '站长激励',
   admin: '站长调整',
   tip_in: '收到打赏',
@@ -10855,6 +10932,94 @@ app.get('/api/bar/posts', (req, res) => {
   });
 });
 
+// ---------- 造梦酒馆 · 发帖/回应灯火（2026-11-16 站长拍板）----------
+// 定位：社区冷启动激励，单价刻意压在「做一个真实贡献」之下（首投 200 / 开源 50）——
+//   首帖任务 +50：一次性，任务页「发第一条帖子」，和开源奖励同档；
+//   发帖：每天前 2 帖各 +10（≥15 字才算有效帖，挡「签个到」式灌水）；
+//   回应：每天前 5 条各 +2（回自己的楼不发）。
+// 日常档顶格 20/天（140/周），只略高于签到满勤 100，刷帖不如签到划算。
+// 防薅口径沿用上传奖励那套：
+//   ① 酒馆发帖 / 回应本来就要求登录（requireUser），匿名不发天然成立；
+//   ② 计奖金额记在内容上（p.barBonus / r.barBonus），被隐藏或删除时按记录回收
+//     （与开源奖励回收同款走负数流水），恢复不补发——奖励只发一次；
+//   ③ 每日限量按「实际发出了奖励」计数，不够门槛的帖子不占额度；
+//   ④ 计数走 share.json（barDay/barPosts/barReplies + barFirstPostAt），
+//     首帖任务与 gh/wx 绑定一样记在账上，解绑换号也刷不走。
+const BAR_FIRST_POST_POINTS = 50;    // 首帖任务：一次性
+const BAR_POST_POINTS = 10;          // 常态发帖：每帖
+const BAR_POST_DAILY_MAX = 2;        // 每天最多 2 帖计奖
+const BAR_POST_MIN_LEN = 15;         // 计奖门槛：≥15 字
+const BAR_REPLY_POINTS = 2;          // 回应：每条
+const BAR_REPLY_DAILY_MAX = 5;       // 每天最多 5 条计奖
+// 北京时间的自然日 key（和流量统计 / 看广告同一套口径）
+function barDayKey() { return new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10); }
+function barBonusRec(uid) {
+  const rec = shareRecOf(uid);
+  const day = barDayKey();
+  if (rec.barDay !== day) { rec.barDay = day; rec.barPosts = 0; rec.barReplies = 0; }
+  return rec;
+}
+// 首帖任务的 legacy 判定：奖励上线前就发过帖的老用户算完成、不补发（口径同「完善账号」）
+function barHasPost(userId) {
+  return barPosts.some(p => p.userId === userId);
+}
+// 发帖奖励：返回实发金额（记在 p.barBonus 上供回收）。首帖任务奖励不看字数，
+// 只要真发出去就算（任务页写的是「发第一条帖子」，不是「发第一条 15 字的帖子」）。
+function grantBarPostBonus(user, p) {
+  if (!user || !user.id || !p || p.hidden) return 0;
+  const rec = barBonusRec(user.id);
+  let total = 0;
+  let firstPost = false;
+  if (!rec.barFirstPostAt && !barHasPost(user.id)) {
+    rec.barFirstPostAt = new Date().toISOString();
+    firstPost = true;
+    total += BAR_FIRST_POST_POINTS;
+  }
+  if ((p.text || '').length >= BAR_POST_MIN_LEN && (rec.barPosts || 0) < BAR_POST_DAILY_MAX) {
+    rec.barPosts = (rec.barPosts || 0) + 1;
+    total += BAR_POST_POINTS;
+  }
+  if (total > 0) {
+    p.barBonus = total;
+    p.barBonusAt = new Date().toISOString();
+    const points = addPoints(user.id, total, 'barpost', p.id);
+    addNotice(user.id, {
+      kind: 'points',
+      title: `发帖奖励 +${total} 盏灯火`,
+      text: firstPost
+        ? `第一条帖子发出去了，送 ${total} 盏灯火（其中 ${BAR_FIRST_POST_POINTS} 盏是「发第一条帖子」任务奖励），当前余额 ${points} 盏。以后每天前 ${BAR_POST_DAILY_MAX} 帖、每帖 ${BAR_POST_MIN_LEN} 字以上还有 ${BAR_POST_POINTS} 盏小奖励；回应别人的帖子也有灯火，把酒馆聊起来。`
+        : `帖子发出去了，送 ${total} 盏灯火，当前余额 ${points} 盏。每天前 ${BAR_POST_DAILY_MAX} 帖有效，回应别人的帖子也有小奖励。`,
+      points,
+      delta: total
+    });
+  }
+  return total;
+}
+// 回应奖励：单价小，不发站内信（逐条弹会把铃铛淹了），到账明细在灯光明细里看；
+// 回自己的楼不发——自己跟自己聊两句就能刷钱，这个口子不能开。
+function grantBarReplyBonus(user, p, r) {
+  if (!user || !user.id || !p || !r || p.userId === user.id) return 0;
+  const rec = barBonusRec(user.id);
+  if ((rec.barReplies || 0) >= BAR_REPLY_DAILY_MAX) return 0;
+  rec.barReplies = (rec.barReplies || 0) + 1;
+  r.barBonus = BAR_REPLY_POINTS;
+  r.barBonusAt = new Date().toISOString();
+  // 只回本次发的金额（addPoints 的返回值是余额，直接回会把余额当成到账提示给用户）
+  addPoints(user.id, BAR_REPLY_POINTS, 'barreply', p.id);
+  return BAR_REPLY_POINTS;
+}
+// 计奖内容被隐藏 / 删除时按记录回收（恢复不再补发：奖励只发一次）
+function recallBarBonus(uid, amount, kind, refId, label) {
+  if (!uid || !amount) return;
+  addPoints(uid, -amount, kind, refId);
+  addNotice(uid, {
+    kind: 'points',
+    title: `酒馆奖励已收回 -${amount} 盏灯火`,
+    text: `${label}被隐藏或删除，按规则把这次的 ${amount} 盏灯火收回了。内容改好重新发出来，还有奖励。`,
+    delta: -amount
+  });
+}
+
 app.post('/api/bar/posts', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
@@ -10904,9 +11069,12 @@ app.post('/api/bar/posts', async (req, res) => {
     createdAt: now,
     updatedAt: now
   };
+  // 发奖要赶在 unshift 之前：barHasPost 要数「之前的帖」判首帖，自己算自己就永远不发了；
+  // bonus 金额记在帖子上，和帖子一起落盘，之后隐藏/删除才有账可回收。
+  const barBonus = grantBarPostBonus(user, p);
   barPosts.unshift(p);
   saveBarPosts();
-  res.status(201).json(publicBarPost(p, req, user));
+  res.status(201).json({ ...publicBarPost(p, req, user), bonus: barBonus });
 });
 
 // 碰杯：要登录。匿名也能碰的话，一个脚本就能把一条闲聊刷成「热门」
@@ -10952,6 +11120,8 @@ app.post('/api/bar/posts/:id/reply', async (req, res) => {
     at: new Date().toISOString()
   });
   p.updatedAt = new Date().toISOString();
+  // 回应的小奖励（每天前 5 条各 +2，回自己不发）：金额记在这层回应上，落盘一起存
+  const barBonus = grantBarReplyBonus(user, p, replies[replies.length - 1]);
   saveBarPosts();
   // 有人接话了要给帖子作者一声（2026-11-13）：以前酒馆只有卡片上那个 💬 数字在悄悄涨，
   // 帖子沉下去以后本人永远不知道自己被回了什么。自己回自己的楼不通知。
@@ -10966,7 +11136,7 @@ app.post('/api/bar/posts/:id/reply', async (req, res) => {
       link: '/bar?p=' + encodeURIComponent(p.id)
     });
   }
-  res.status(201).json(publicBarPost(p, req, user));
+  res.status(201).json({ ...publicBarPost(p, req, user), bonus: barBonus });
 });
 
 // 删除：只有本人和管理员。站长在后台没有这块的界面，先给接口留口子，别让人删不掉自己的话
@@ -10976,6 +11146,11 @@ app.delete('/api/bar/posts/:id', (req, res) => {
   const p = barPostById(req.params.id);
   if (!p) return res.status(404).json({ error: '这条已经不在了' });
   if (p.userId !== user.id && !isAdmin(req)) return res.status(403).json({ error: '只能删自己说的' });
+  // 删帖也要回收：不然「发了领钱、删了再发」能把每日额度刷成无限
+  if (p.barBonus && !p.barBonusRecalled) {
+    p.barBonusRecalled = true;
+    recallBarBonus(p.userId, p.barBonus, 'barpost-recall', p.id, '你发的那条帖子');
+  }
   barPosts = barPosts.filter(x => x.id !== p.id);
   saveBarPosts();
   res.json({ ok: true });
@@ -11021,7 +11196,15 @@ app.get('/api/admin/bar-posts', requireAdmin, (req, res) => {
 app.put('/api/admin/bar-posts/:id', requireAdmin, (req, res) => {
   const p = barPostById(req.params.id);
   if (!p) return res.status(404).json({ error: '这条闲聊不在了' });
-  if (req.body && req.body.hidden !== undefined) p.hidden = !!req.body.hidden;
+  if (req.body && req.body.hidden !== undefined) {
+    const was = !!p.hidden;
+    p.hidden = !!req.body.hidden;
+    // 领过奖励的帖子被隐藏 → 按记录回收；恢复不补发（奖励只发一次，防「藏了又亮」反复刷）
+    if (!was && p.hidden && p.barBonus && !p.barBonusRecalled) {
+      p.barBonusRecalled = true;
+      recallBarBonus(p.userId, p.barBonus, 'barpost-recall', p.id, '你发的那条帖子');
+    }
+  }
   saveBarPosts();
   res.json({ ok: true, hidden: !!p.hidden });
 });
@@ -11030,7 +11213,15 @@ app.put('/api/admin/bar-posts/:id/replies/:rid', requireAdmin, (req, res) => {
   if (!p) return res.status(404).json({ error: '这条闲聊不在了' });
   const r = barPostReplies(p).find(x => x.id === req.params.rid);
   if (!r) return res.status(404).json({ error: '这层回应不在了' });
-  if (req.body && req.body.hidden !== undefined) r.hidden = !!req.body.hidden;
+  if (req.body && req.body.hidden !== undefined) {
+    const was = !!r.hidden;
+    r.hidden = !!req.body.hidden;
+    // 回应的小奖励同口径：隐藏回收、恢复不补发
+    if (!was && r.hidden && r.barBonus && !r.barBonusRecalled) {
+      r.barBonusRecalled = true;
+      recallBarBonus(r.userId, r.barBonus, 'barreply-recall', p.id, '你发的那条回应');
+    }
+  }
   saveBarPosts();
   res.json({ ok: true, hidden: !!r.hidden });
 });
@@ -11038,6 +11229,11 @@ app.put('/api/admin/bar-posts/:id/replies/:rid', requireAdmin, (req, res) => {
 app.delete('/api/admin/bar-posts/:id', requireAdmin, (req, res) => {
   const p = barPostById(req.params.id);
   if (!p) return res.status(404).json({ error: '这条闲聊不在了' });
+  // 后台删帖同样回收计奖金额（用户自己删走 /api/bar/posts 那条，同一套口径）
+  if (p.barBonus && !p.barBonusRecalled) {
+    p.barBonusRecalled = true;
+    recallBarBonus(p.userId, p.barBonus, 'barpost-recall', p.id, '你发的那条帖子');
+  }
   barPosts = barPosts.filter(x => x.id !== p.id);
   saveBarPosts();
   res.json({ ok: true });
@@ -19611,8 +19807,8 @@ const REDEEM_OVERVIEW_DAYS = [7, 30, 90, 0];   // 0 = 全部（ad-stats 只留 9
 // 注意：真正扣了多少次是订单级的（views - 剩余预算），不按窗口拆——后台那一列「计费曝光」
 // 直接取 used，才能和「已消耗 = used × 单价」严格对上；窗口里的 PV 只是展示人次。
 function adStatsWindow(adId, fromDay) {
-  let pv = 0, clk = 0;
-  const uv = new Set(), clkUv = new Set();
+  let pv = 0, clk = 0, closePv = 0;
+  const uv = new Set(), clkUv = new Set(), closeUv = new Set();
   Object.keys(adStats).forEach(d => {
     if (fromDay && d < fromDay) return;
     const st = adStats[d] && adStats[d][adId];
@@ -19623,8 +19819,12 @@ function adStatsWindow(adId, fromDay) {
       clk += st.clk.pv || 0;
       Object.keys(st.clk.uv || {}).forEach(k => clkUv.add(k));
     }
+    if (st.close) {   // 关闭明细 2026-11-04 起才有，更早的只存在访客浏览器里，无从补记
+      closePv += st.close.pv || 0;
+      Object.keys(st.close.uv || {}).forEach(k => closeUv.add(k));
+    }
   });
-  return { pv, uv: uv.size, clk, clkUv: clkUv.size };
+  return { pv, uv: uv.size, clk, clkUv: clkUv.size, closePv, closeUv: closeUv.size };
 }
 
 // 投放者画像（2026-11-16）：一个账号在本站投过多少单、各是什么包。
@@ -19674,7 +19874,7 @@ function redeemOverview(daysRaw) {
     return (Number(r.endedAt) || 0) >= fromMs;
   }).map(r => {
     const ad = ads.find(a => a.id === r.adId);
-    const st = ad ? adStatsWindow(ad.id, fromDay) : { pv: 0, uv: 0, clk: 0, clkUv: 0 };
+    const st = ad ? adStatsWindow(ad.id, fromDay) : { pv: 0, uv: 0, clk: 0, clkUv: 0, closePv: 0, closeUv: 0 };
     const w = works.find(x => x.id === r.workId) || {};
     const u = users.find(x => x.id === r.userId) || {};
     const cfg = redeemCfg(r.slot);
@@ -19710,6 +19910,8 @@ function redeemOverview(daysRaw) {
       viewsBought, clicksBought, used, left: Math.max(0, viewsBought - used),
       clickUsed, clickLeft: Math.max(0, clicksBought - clickUsed),
       pv: st.pv, uv: st.uv, clicks: st.clk, clickUv: st.clkUv,
+      // 被关掉的情况（2026-11-04 起记录）：关掉后这条广告 90 天内不再给这个人看
+      closePv: st.closePv || 0, closeUv: st.closeUv || 0,
       // 点击率分母沿用「展示人次」，与前台「投放效果榜」同一口径（2026-11-14 统一），
       // 别再按计费曝光算一遍——两边数字必须一样，对账看的是 bill × 单价 = spent
       ctr: st.pv ? Math.round(st.clk / st.pv * 1000) / 10 : 0,
@@ -19735,6 +19937,7 @@ function redeemOverview(daysRaw) {
     viewsBought: sum('viewsBought'), used: sum('used'), left: sum('left'),
     clicksBought: sum('clicksBought'), clickUsed: sum('clickUsed'),
     pv: sum('pv'), uv: sum('uv'), clicks: sum('clicks'), clickUv: sum('clickUv'),
+    closePv: sum('closePv'), closeUv: sum('closeUv'),
     price: sum('price'), spent: sum('spent'), refunded: sum('refunded'), pending: sum('pending')
   };
   totals.ctr = totals.pv ? Math.round(totals.clicks / totals.pv * 1000) / 10 : 0;

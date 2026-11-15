@@ -1504,12 +1504,17 @@ function renderNoticeTabs() {
     const c = btn.dataset.cat || 'all';
     const st = noticeCounts[c] || { n: 0, u: 0 };
     const on = c === noticeCat;
+    const muted = c !== 'all' && noticeCatMuted(c);
     btn.classList.toggle('is-on', on);
+    btn.classList.toggle('is-muted', muted);   // 屏蔽态：标签变灰 + 图标划斜杠，一眼看出这栏不再弹窗
+    btn.title = muted ? '本栏提示已屏蔽：消息仍会进列表，只是不再弹窗提醒' : '';
     btn.setAttribute('aria-selected', on ? 'true' : 'false');
     const chip = btn.querySelector('.nt-n');
     if (chip) {
+      // 被屏蔽的分栏未读照样显示（用户得知道漏了什么），但换成灰底角标和红点区分开
       chip.textContent = st.u > 99 ? '99+' : String(st.u || '');
       chip.hidden = !st.u;
+      chip.classList.toggle('is-muted', muted);
     }
   });
   const readAll = $('noticeReadAll');
@@ -1657,17 +1662,22 @@ function renderNoticeList() {
   if (!box) return;
   const tab = NOTICE_TABS.find(t => t.key === noticeCat) || NOTICE_TABS[0];
   const items = noticeCat === 'all' ? noticeItems : noticeItems.filter(n => noticeCatOf(n) === noticeCat);
+  // 停在被屏蔽的分栏：列表顶部挂一条提示，让人知道刚才那次屏蔽生效了（消息还在收、只是不弹窗）
+  const mutedBanner = (noticeCat !== 'all' && noticeCatMuted(noticeCat))
+    ? `<div class="notice-muted-banner"><span>本栏提示已屏蔽——新消息不再弹窗提醒，但仍会进这个列表。</span><button type="button" class="nm-unmute">恢复提示</button></div>`
+    : '';
   if (!items.length) {
-    box.innerHTML = `
+    box.innerHTML = `${mutedBanner}
     <div class="notice-empty">
       <div class="ne-art"><i class="ico" data-ico="${tab.icon || 'bell'}" data-ico-size="24"></i><i class="ico ne-spark" data-ico="sparkle" data-ico-size="12"></i></div>
       <div class="ne-title">${tab.title || '这里还空着'}</div>
       ${tab.empty ? `<div class="ne-text">${tab.empty}</div>` : ''}
     </div>`;
+    bindNoticeMutedBanner(box);
     try { if (window.Icons && Icons.hydrate) Icons.hydrate(box); } catch { /* 图标脚本没加载就先裸占位 */ }
     return;
   }
-  box.innerHTML = items.map(n => {
+  box.innerHTML = mutedBanner + items.map(n => {
     const goto = n.workId || n.link || '';
     const dmThread = n.dmThreadId || '';
     const clickable = !!(goto || dmThread);
@@ -1721,6 +1731,20 @@ function renderNoticeList() {
   box.querySelectorAll('.notice-reply-btn').forEach(btn => {
     btn.onclick = e => { e.stopPropagation(); openNoticeReply(btn.dataset.reply); };
   });
+  bindNoticeMutedBanner(box);
+}
+
+// 「本栏提示已屏蔽」提示条上的恢复按钮：点了直接切回提示中，列表和 tab 立刻跟上
+function bindNoticeMutedBanner(box) {
+  const btn = box.querySelector('.nm-unmute');
+  if (!btn) return;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    await toggleNoticeCatMute(noticeCat);
+    await loadNotices();
+    renderNoticeTabs();
+    renderNoticeList();
+  };
 }
 
 // ---------- 游客公告条 ----------
@@ -12245,7 +12269,8 @@ async function submitPubok() {
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || '没发出去，再试一次');
     btn.textContent = '已发到酒馆 ✓';
-    showToast('已同步到酒馆，散座里挂上了你的新作品卡', undefined, 'ok');
+    showToast('已同步到酒馆，散座里挂上了你的新作品卡'
+      + (d.bonus > 0 ? `，+${d.bonus} 盏灯火到账` : ''), undefined, 'ok');
   } catch (err) {
     btn.disabled = false;
     showToast(err.message, undefined, 'err');
@@ -13835,11 +13860,13 @@ async function submitChat() {
       .filter(t => t.toLowerCase() !== String(d.topic || barTopic).toLowerCase());
     const inTopic = feedState.tag && posted.some(t => t.toLowerCase() === feedState.tag.toLowerCase());
     if (feedState.tag && !inTopic) { feedState.tag = ''; feedState.tagTotal = 0; renderTopicBar(); }
-    showToast(d.work
+    // 服务端这单真发了灯火才念（首帖 +50 / 日常 +10；没到门槛是 0，不念空话）
+    const bonusTip = d.bonus > 0 ? `，+${d.bonus} 盏灯火到账` : '';
+    showToast((d.work
       ? `发好了，主题「${d.topic || barTopic}」· 已关联作品「${d.work.title}」`
         : (posted.length
           ? `发好了，主题「${d.topic || barTopic}」，归到话题 ${posted.map(t => '#' + t).join(' ')}`
-          : `发好了，主题「${d.topic || barTopic}」`), undefined, 'ok');
+          : `发好了，主题「${d.topic || barTopic}」`)) + bonusTip, undefined, 'ok');
     loadFeed(true);
     loadBarTags();   // 话题栏的句数跟着改，新话题也立刻出现在上面
   } catch (e) { showToast(e.message, undefined, 'err'); }
@@ -13877,6 +13904,8 @@ async function sendChatReply(id, input, btn) {
     if (!r.ok) throw new Error(d.error || '回应没发出去');
     const row = feedState.rows.find(x => x.kind === 'chat' && x.id === id);
     if (row) row.post = d;
+    // 回应奖励单价小（2 盏）不弹站内信，这里口头报一下到账；0 盏（额度用完/回自己）不念
+    if (d.bonus > 0) showToast(`回应发出去了，+${d.bonus} 盏灯火到账`, undefined, 'ok');
     reRenderFeedRow(id);
     // 弹窗开着的就是这条：刷新回应区，聚焦回输入框接着聊
     if (chatModalId === id) {
@@ -19845,7 +19874,7 @@ window.addEventListener('resize', () => {
 // 状态全由 /api/tasks 现算（谁能领、领没领、额度多少），前端只负责画和跳转：
 // 以后调额度 / 加任务只改 server.js 的 taskBoardOf，不会出现「页面写 +200、实际只发 100」。
 let tasksBoard = null;   // 最近一次 /api/tasks 结果：接口挂了也能拿它铺一版，总比空白页强
-const TASK_ACT_TEXT = { pass: '去设置', gh: '去绑定', g: '去绑定', wx: '怎么绑' };
+const TASK_ACT_TEXT = { pass: '去设置', gh: '去绑定', g: '去绑定', wx: '怎么绑', bar: '去发帖' };
 const TASK_MORE = [
   { key: 'checkin', icon: 'checkin', name: '每日签到', sub: '连续签到攒得更多，断一天从头算' },
   { key: 'ad', icon: 'lamp', name: '小程序看广告', sub: '看一条激励视频，灯火直接进账' },
@@ -19854,7 +19883,7 @@ const TASK_MORE = [
   { key: 'upload', icon: 'edit', name: '投稿作品', sub: '过审上线就有灯火，还能上首屏' }
 ];
 
-// 游客版：只讲「有什么、值多少」，数字按三条任务的理论上限写（500），不假装是用户自己的状态
+// 游客版：只讲「有什么、值多少」，数字按任务的理论上限写（账号 500 + 首帖 50），不假装是用户自己的状态
 function tasksGuestHtml() {
   const row = (icon, name, pts, desc) => `
     <li class="task-item">
@@ -19871,8 +19900,8 @@ function tasksGuestHtml() {
     <div class="task-hero">
       <div class="task-hero-txt">
         <span class="task-kicker">任务中心</span>
-        <b class="task-hero-title">登录后开始做任务，最多 <em>500</em> 盏灯火等你领</b>
-        <p>把 GitHub、微信绑到账号上，或者把系统帮你建的账号设置好，都能一次性领灯火。</p>
+        <b class="task-hero-title">登录后开始做任务，最多 <em>550</em> 盏灯火等你领</b>
+        <p>把 GitHub、微信绑到账号上、把账号设置好，或者去酒馆发第一条帖子，都能一次性领灯火。</p>
         <div class="task-guest-actions"><button type="button" class="task-btn" data-task-login>登录 / 注册</button></div>
       </div>
       <span class="task-hero-lamp">${ic('lamp')}</span>
@@ -19883,15 +19912,18 @@ function tasksGuestHtml() {
         ${row('key', '完善账号', 200, '系统帮你建的号（GitHub / 微信登录自动创建），设好登录名和密码就送')}
         ${row('github', '绑定 GitHub', 200, '一键登录；作品填了仓库的，星标奖励能自动同步')}
         ${row('wechat', '绑定微信', 300, '小程序免密登录，手机上看作品、签到都少一步')}
+        ${row('chat', '发第一条帖子', 50, '去造梦酒馆说一句话，灯火立刻到账')}
       </ul>
     </div>
-    <p class="task-foot">账号奖励都是一次性的：同一个账号、同一个 GitHub / 微信号只发一次，解绑再绑不会重复发。灯火可以在「推荐」里换曝光位。</p>`;
+    <p class="task-foot">账号奖励都是一次性的：同一个账号、同一个 GitHub / 微信号只发一次，解绑再绑不会重复发。酒馆发帖 / 回应的日常奖励每天限量（每天前 2 帖各 10 盏、回应前 5 条各 2 盏），被隐藏或删除的内容会按记录收回。灯火可以在「推荐」里换曝光位。</p>`;
 }
 
 function taskItemHtml(it) {
   const todo = it.state === 'todo';
   const pill = it.points ? `<span class="task-pill">+${it.points} 盏</span>` : '';
-  const doneText = it.state === 'bound' ? '已绑定' : (it.state === 'legacy' ? '已设置' : '已完成');
+  // doneText 服务端可以按任务给专属文案（如首帖的「已发过」），没给就走通用三态
+  const doneText = it.doneText
+    || (it.state === 'bound' ? '已绑定' : (it.state === 'legacy' ? '已设置' : '已完成'));
   const right = todo
     ? `<button type="button" class="task-btn${it.action === 'wx' ? ' ghost' : ''}" data-task-act="${it.action}">${TASK_ACT_TEXT[it.action] || '去完成'}</button>`
     : `<span class="task-done${it.state === 'bound' || it.state === 'legacy' ? ' is-muted' : ''}">${it.state === 'done' ? ic('check') : ''}${doneText}</span>`;
@@ -19914,7 +19946,10 @@ function taskItemHtml(it) {
             <li>进小程序的「我的」→ 找到「绑定已有账号」</li>
             <li>输入本站账号名和密码，确认后 ${it.points || 0} 盏当场到账</li>
           </ol>
-          <img class="task-qr" data-wx-qr alt="造梦橱窗小程序码" />
+          <div class="task-qr-box">
+            <span class="task-qr-loading" data-wx-qr-loading><i class="list-spin"></i>小程序码生成中…</span>
+            <img class="task-qr" data-wx-qr alt="造梦橱窗小程序码" hidden />
+          </div>
           <p class="task-qr-tip">小程序码加载中…</p>
         </div>
       </div>` : ''}
@@ -19925,7 +19960,8 @@ function tasksPageHtml(d) {
   const pv = d.providers || {};
   // 站点没开通的登录方式不列出来：点了也只会报「未配置」
   const items = (Array.isArray(d.items) ? d.items : []).filter(it =>
-    it.key === 'setup' || (it.key === 'github' && pv.github) || (it.key === 'wechat' && pv.wechat) || (it.key === 'google' && pv.google));
+    it.key === 'setup' || it.key === 'firstpost'
+    || (it.key === 'github' && pv.github) || (it.key === 'wechat' && pv.wechat) || (it.key === 'google' && pv.google));
   const claimable = Number(d.claimable || 0);
   const pts = Number(d.points || 0);
   const hero = claimable ? `
@@ -19967,7 +20003,7 @@ function tasksPageHtml(d) {
       <div class="task-sec-head"><h3>更多赚灯火</h3><span>每天都能做</span></div>
       <ul class="task-more">${more}</ul>
     </div>
-    <p class="task-foot">账号奖励都是一次性的：同一个账号、同一个 GitHub / 微信号只发一次，解绑再绑不会重复发。奖励只为让账号更安全、登录更方便，站内不靠这个刷量。余额与明细见 <a href="/settings" data-nav>账号设置</a> 里的灯光明细。</p>`;
+    <p class="task-foot">账号奖励都是一次性的：同一个账号、同一个 GitHub / 微信号只发一次，解绑再绑不会重复发。酒馆发帖 / 回应的日常奖励每天限量，被隐藏或删除的内容会按记录收回。余额与明细见 <a href="/settings" data-nav>账号设置</a> 里的灯光明细。</p>`;
 }
 
 // 微信那条「怎么绑」：就地展开三步 + 小程序码，不弹新窗口（手机上多一层弹窗更容易丢）
@@ -19975,14 +20011,24 @@ async function loadTasksWxQr(panel) {
   if (!panel || panel.dataset.qrLoaded) return;
   panel.dataset.qrLoaded = '1';
   const img = panel.querySelector('[data-wx-qr]');
+  const loading = panel.querySelector('[data-wx-qr-loading]');
   const tip = panel.querySelector('.task-qr-tip');
+  // 生成小程序码要几秒、图片本体还要再下载一会儿：先亮占位转圈，img.onload 再收，
+  // 不然展开后是一块 148px 的白底空格，像坏了
+  const setLoading = on => {
+    if (loading) loading.style.display = on ? 'flex' : 'none';
+    if (img) img.hidden = on;
+  };
+  setLoading(true);
   try {
     const r = await fetch('/api/mini/self-qr');
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.qr) throw new Error(d.error || 'load failed');
+    img.onload = () => setLoading(false);
     img.src = d.qr;
     if (tip) tip.textContent = '扫码进小程序绑定后，回这一页刷新就能看到到账';
   } catch (e) {
+    setLoading(false);
     if (img) img.style.display = 'none';
     if (tip) tip.textContent = '小程序码暂时取不到：在微信里搜「造梦橱窗」小程序，进「我的」绑定已有账号即可';
   }
@@ -19995,6 +20041,7 @@ function bindTasksPage(box) {
       if (act === 'pass') return openPassModal();
       if (act === 'gh') return openGhModal();
       if (act === 'g') return openGModal();
+      if (act === 'bar') return navigate('/bar');
       if (act === 'wx') {
         const item = btn.closest('.task-item');
         const panel = item && item.querySelector('[data-wx-steps]');
