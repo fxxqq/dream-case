@@ -55,6 +55,14 @@ html[data-page="brand"] #homeView,
 html[data-page="enterprise"] #homeView,
 html[data-page="open"] #homeView { display: none !important; }
 
+/* 整页打开内页（/u/、/rank、/bar …）时，服务端把该页的 SSR 副本挂在 #homeView 末尾
+   （index.html 的 SEO_HOME 占位符）。首屏靠上面的 data-page 把 homeView 整个藏起来，
+   但 SPA 再切回首页、或打开作品详情拿首页列表托底时 homeView 会重新显示，这份副本
+   就漏在列表下方——「回首页了，作者主页还挂在页面下边」。首页自己的索引块带
+   .seo-home，是常驻栏目，不能动。JS 侧 route() 会把它删掉，这里是 bfcache 恢复 /
+   JS 没跑完时的兜底。 */
+#homeView > #seoContent:not(.seo-home) { display: none !important; }
+
 html[data-page="rank"] #rankView,
 html[data-page="bar"] #wishView,
 html[data-page="mini"] #miniView,
@@ -5866,6 +5874,15 @@ a.board-row:hover:not(.is-me) { background: #f5f3ff; }
   font-size: 13px; font-weight: 600; margin-bottom: 8px;
 }
 .redeem-sec-head span { font-weight: 400; font-size: 11.5px; color: var(--muted); }
+/* 现金直购（内测）：网页只展示套餐与价格，付款引导去小程序 */
+.xp-sec { border: 1px solid #e9e5fb; background: #fbfaff; border-radius: 12px; padding: 12px 14px; }
+.redeem-sec-head .xp-badge { font-size: 10px; font-weight: 600; color: #6d4bb8; background: #ede8fd; border-radius: 5px; padding: 1px 6px; }
+.xp-packs { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; margin: 4px 0 10px; }
+.xp-pack { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+.xp-name { color: var(--text); }
+.xp-price { font-weight: 700; color: var(--primary); white-space: nowrap; }
+.xp-tip { font-size: 12px; line-height: 1.7; color: var(--muted); margin: 0 0 10px; }
+.xp-go { font-size: 12px; padding: 6px 14px; }
 .redeem-empty {
   padding: 16px 14px; font-size: 12.5px; line-height: 1.7; color: var(--muted);
   background: #fafafd; border: 1px dashed #e4e4f2; border-radius: 10px;

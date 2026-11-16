@@ -14332,14 +14332,30 @@ const XPAY_CONF = (() => {
 })();
 const XPAY_ENABLED = !!(XPAY_CONF.offerId && XPAY_CONF.appKey) || XPAY_CONF.mock;
 
-// 套餐表（价格是 2026-11-14 的建议值，锚：1 盏灯火 ≈ 5 分，现金直购不打折不溢价——
-// 上线前站长拍板改价格后，MP 后台道具价格必须改成同一个数，单位分，不一致下单报 -15013）。
+// 内测可见性（2026-11-16 站长定）：现金直购先只对「思绪到处飞」这个账号出现。
+// Web 的 /promote 与小程序 promote 页都读同一个 /api/xpay/goods 结果，两端天然一致；
+// 别只在前端藏 —— 下单与查单接口也一起拦，否则别人直接调接口就能买。
+// 加人：环境变量 XPAY_BETA_USERS（逗号分隔 id）后重启；设成 all / * 就是全站登录用户可见，
+// 后期正式开放不用改代码，只改一个环境变量。
+const XPAY_BETA_USERS = new Set(
+  String(process.env.XPAY_BETA_USERS || 'umvvz1cl5xcs7').split(/[^A-Za-z0-9_-]+/).filter(Boolean)
+);
+const XPAY_BETA_ALL = /^(all|\*|1|on|true|yes)$/i.test(String(process.env.XPAY_BETA_USERS || ''));
+function xpayAllows(user) {
+  return XPAY_BETA_ALL ? !!user : (!!user && XPAY_BETA_USERS.has(String(user.id)));
+}
+
+// 套餐表（2026-11-16 内测：四档统一 1 分钱，正式价站长后期拍板）。
+// 改价必须同时改 MP 后台「道具管理」里的道具价（单位分），两侧不一致下单报 -15013；
+// 后台改完约 10 分钟才生效，别刚改就测。道具只能新增不能删除，id 定好就别动。
+// iOS 走苹果 IAP 有最低金额限制（常见 1 元），1 分钱在 iOS 拉不起支付 —— 内测请用安卓；
+// 真要在 iOS 测，把这一档临时改成 ≥100 分，测完走后台退款。
 // 只做曝光包、只做小程序位（internalOnly 无外链），id 同时是 MP 后台的道具 productId。
 const XPAY_GOODS = [
-  { id: 'zc_home_50',     slot: 'mini-home-first', views: 50,  days: 14, priceFen: 1200, name: '首页第一格 · 50 次曝光',  desc: '小程序首页作品流第一张卡，展示 50 次，投放期最长 14 天（灯火价 200 盏）' },
-  { id: 'zc_home_100',    slot: 'mini-home-first', views: 100, days: 14, priceFen: 2500, name: '首页第一格 · 100 次曝光', desc: '小程序首页作品流第一张卡，展示 100 次，投放期最长 14 天（灯火价 400 盏）' },
-  { id: 'zc_rankline_50', slot: 'mini-rank-line',  views: 50,  days: 14, priceFen: 800,  name: '榜单+发现一行字 · 50 次曝光', desc: '星梦榜分段栏下方 + 发现页顶部两处轮展，展示 50 次（灯火价 150 盏）' },
-  { id: 'zc_detail_100',  slot: 'mini-detail',     views: 100, days: 14, priceFen: 600,  name: '作品详情页 · 100 次曝光', desc: '小程序详情页评论区上方一行，展示 100 次（灯火价 100 盏）' }
+  { id: 'zc_home_50',     slot: 'mini-home-first', views: 50,  days: 14, priceFen: 1, name: '首页第一格 · 50 次曝光',  desc: '小程序首页作品流第一张卡，展示 50 次，投放期最长 14 天' },
+  { id: 'zc_home_100',    slot: 'mini-home-first', views: 100, days: 14, priceFen: 1, name: '首页第一格 · 100 次曝光', desc: '小程序首页作品流第一张卡，展示 100 次，投放期最长 14 天' },
+  { id: 'zc_rankline_50', slot: 'mini-rank-line',  views: 50,  days: 14, priceFen: 1, name: '榜单+发现一行字 · 50 次曝光', desc: '星梦榜分段栏下方 + 发现页顶部两处轮展，展示 50 次' },
+  { id: 'zc_detail_100',  slot: 'mini-detail',     views: 100, days: 14, priceFen: 1, name: '作品详情页 · 100 次曝光', desc: '小程序详情页评论区上方一行，展示 100 次' }
 ];
 function xpayGoodOf(id) { return XPAY_GOODS.find(g => g.id === String(id || '')) || null; }
 
@@ -14434,10 +14450,12 @@ function xpayExpirePending() {
 app.get('/api/xpay/goods', (req, res) => {
   res.set('Cache-Control', 'no-cache');
   xpayExpirePending();
+  // 没配钥匙、或不是内测白名单账号，一律 enabled:false：前端整块不渲染，线上无感
+  const on = XPAY_ENABLED && xpayAllows(currentUser(req));
   res.json({
-    enabled: XPAY_ENABLED,
+    enabled: on,
     mock: XPAY_CONF.mock,
-    goods: XPAY_ENABLED ? XPAY_GOODS.map(g => ({
+    goods: on ? XPAY_GOODS.map(g => ({
       id: g.id, name: g.name, desc: g.desc, priceFen: g.priceFen, slot: g.slot, views: g.views, days: g.days
     })) : []
   });
@@ -14449,6 +14467,7 @@ app.post('/api/xpay/order', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
   if (!XPAY_ENABLED) return res.status(400).json({ error: '虚拟支付还没开通，先用灯火兑换' });
+  if (!xpayAllows(user)) return res.status(403).json({ error: '现金直购还在内测，暂时没开放' });
   if (!rateLimit('xpay:' + user.id, 6, 60000)) return res.status(429).json({ error: '操作太频繁，稍等一下' });
   const body = req.body || {};
   const g = xpayGoodOf(body.productId);
@@ -14531,6 +14550,7 @@ app.post('/api/xpay/order', async (req, res) => {
 app.post('/api/xpay/confirm', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
+  if (!xpayAllows(user)) return res.status(403).json({ error: '现金直购还在内测，暂时没开放' });
   const order = xpayOrders.find(o => o.outTradeNo === String((req.body || {}).outTradeNo || '') && o.uid === user.id);
   if (!order) return res.status(404).json({ error: '找不到这笔订单' });
   if (order.status === 'pending' && XPAY_CONF.mock) {
@@ -16854,8 +16874,8 @@ app.get('/api/works/:id', (req, res) => {
   out.authorFollowers = w.userId ? followerCount(w.userId) : 0;
   out.authorFollowing = !!(user && w.userId && isFollowing(user.id, w.userId));
   // 相关作品：详情弹窗底部的站内导流（同分类优先，不够补同作者）。
-  // 只是展示用的小卡，4 件足够，别把弹窗撑成第二个列表页。
-  out.related = relatedWorksOf(w, user, 4);
+  // 展示用小卡 3 件刚好收尾：4 件会把末条顶成半截、还得在弹窗里再滚一次。
+  out.related = relatedWorksOf(w, user, 3);
   // 站长编辑回填：灯火解锁的作品在普通详情里 link / 二维码是空的，直接拿去回填会把它们存丢。
   // 只有「站长 + ?edit=1」这一条路径下发未锁定值，普通浏览（含站长本人看详情）仍按解锁状态走。
   if (out.adminEdit && req.query.edit === '1') {

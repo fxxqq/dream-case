@@ -6219,6 +6219,16 @@ function removeSeoBlock() {
   if (el) el.remove();
 }
 
+// 整页打开 /u/、/rank、/bar 这类内页时，服务端把该页的 SSR 副本挂在 #homeView 末尾
+// （SEO_HOME 占位符）：首屏靠 <html data-page> 藏起来给爬虫读，SPA 切回首页 / 打开详情
+// 托底时 homeView 会重新显示，副本就漏在列表下面（「回首页了，主页还挂在页面下边」）。
+// 首页自己的索引块 .seo-home 是常驻栏目，保留。style.css 里还有一条 CSS 兜底。
+function stripForeignSeoBlocks() {
+  document.querySelectorAll('#homeView > #seoContent').forEach(el => {
+    if (!el.classList.contains('seo-home')) el.remove();
+  });
+}
+
 function navigate(path) {
   history.pushState({}, '', path);
   route();
@@ -7345,6 +7355,7 @@ function route() {
       updateNavActive();
       return;
     }
+    stripForeignSeoBlocks();   // 详情托底要显示首页列表，别把整页 SSR 副本一起带出来
     $('homeView').style.display = 'block';
     openWork(path.slice(3), false);
     updateNavActive();
@@ -7505,6 +7516,7 @@ function route() {
     updateNavActive();
     return;
   }
+  stripForeignSeoBlocks();   // 从 /u/ 等整页 SSR 页切回首页：清掉挂在列表下方的上一页副本
   $('homeView').style.display = 'block';
   setTitle(state.q ? `搜索「${state.q}」` : '');
   // 「大家在找」只在首页露面（只拉一次，之后 heroHotLoaded 短路）
@@ -15658,6 +15670,8 @@ const REDEEM_STATUS = {
 // 后面所有互斥都由「步骤顺序 + normalizeRedeemSel() 单点归一化」保证，事件处理只改自己那一个字段。
 let redeemSel = { workId: '', mode: 'view', views: 0, clicks: 0, slot: 'detail', ext: false, link: '', days: 0 };
 let redeemData = null;
+// 现金直购（内测）：/api/xpay/goods 的结果，白名单账号才拿到 enabled:true
+let xpayData = null;
 // 投放效果榜数据：loadRedeemPanel 并行拉好存这里，renderRedeem 每次重绘都带上（选择操作会整版重绘）
 let promoBoardData = null;
 // 「为什么这个推荐位值」折叠卡的展开状态：切作品/位置/套餐都会整版重绘，别让人展开一次就被打回
@@ -15870,6 +15884,25 @@ function redeemFootHtml() {
       </button>`;
 }
 
+// 现金直购（内测）：微信虚拟支付只能在小程序内拉起，网页这端只展示同一批套餐与价格，
+// 不放假的「付款」按钮；点「看小程序码」打开站内那张码，扫码进小程序「推荐」页付款。
+function xpaySectionHtml() {
+  const d = xpayData;
+  if (!d || !d.enabled || !(d.goods || []).length) return '';
+  const packs = d.goods.map(g => `
+    <div class="xp-pack">
+      <span class="xp-name">${escapeHtml(g.name)}</span>
+      <span class="xp-price">¥${((g.priceFen || 0) / 100).toFixed(2)}</span>
+    </div>`).join('');
+  return `
+    <div class="redeem-sec xp-sec">
+      <div class="redeem-sec-head">现金直购 <span class="xp-badge">内测</span><span>与小程序同一批套餐 · 支付在小程序里完成</span></div>
+      <div class="xp-packs">${packs}</div>
+      <p class="xp-tip">微信的虚拟支付只能在小程序内拉起，网页这边不收钱。用微信扫小程序码，进「我的 → 推荐」就能看到同样的四档，选一件自己的作品付款后立刻开始展示。</p>
+      <button type="button" class="btn-primary xp-go" id="xpayGoMini">看小程序码 ›</button>
+    </div>`;
+}
+
 // 推荐面板入口：各处按钮统一跳独立页面 /promote（没登录先弹登录）
 function openRedeem() {
   if (!state.user) { openAuth('login'); return; }
@@ -15900,7 +15933,12 @@ async function loadRedeemPanel() {
   body.innerHTML = '<div class="stats-loading">加载中…</div>';
   try {
     // 榜单和面板一起等齐再渲染：renderRedeem 重绘频繁，榜单数据没到手就画会漏掉，等下次重绘才能补上
-    const [res] = await Promise.all([fetch('/api/redeem/options', { cache: 'no-store' }), boardP]);
+    // 现金直购与兑换选项并行拉；拉不到 / 没开通就当不存在，绝不拖慢灯火主流程
+    const xpayP = fetch('/api/xpay/goods', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { xpayData = d; return d; })
+      .catch(() => { xpayData = null; return null; });
+    const [res] = await Promise.all([fetch('/api/redeem/options', { cache: 'no-store' }), boardP, xpayP]);
     redeemData = await res.json();
   } catch {
     body.innerHTML = '<div class="stats-loading">加载失败，请稍后重试</div>';
@@ -16469,6 +16507,7 @@ function renderRedeem() {
       <div class="redeem-sec-head">4. 选去向<span>${mode === 'view' ? '曝光包固定跳站内作品详情页' : '点广告的人去哪儿：站内详情，或作品自己的官网 / 下载页'}</span></div>
       ${targetHtml}
     </div>
+    ${xpaySectionHtml()}
     <details class="redeem-value" id="redeemValue"${redeemValueOpen ? ' open' : ''}>
       <summary>
         <span class="rv-tag">为什么值</span>
@@ -16507,6 +16546,8 @@ function renderRedeem() {
     };
   }
   bindPromoBoard(body, 'scroll');
+  const xg = $('xpayGoMini');
+  if (xg) xg.onclick = () => { const m = $('miniModal'); if (m) showModal(m); };
   body.querySelectorAll('[data-rwork]').forEach(el => {
     el.onclick = () => {
       redeemSel.workId = el.dataset.rwork;
