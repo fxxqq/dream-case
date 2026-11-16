@@ -275,7 +275,12 @@
     const types = (typeof typesOf === 'function' ? typesOf(work) : [work.type || 'Web']).slice(0, 4);
     const labels = types.map(x => `${(typeof TYPE_ICONS === 'object' && TYPE_ICONS[x]) || '✨'} ${x}`);
     if (work.openSource === true) labels.push('🔓 开源');
-    if (work.paid === true) labels.push('💰 付费');
+    // 收费标记与卡片/弹窗同口径（PAID_MODELS 来自 app.js）：有具体形式就写形式，
+    // 只在没填形式时才笼统写「付费」——海报上不能比页面说得更死。
+    if (work.paid === true) {
+      const payLabel = (typeof PAID_MODELS === 'object' && PAID_MODELS[work.paidModel]) || '付费';
+      labels.push('💰 ' + payLabel);
+    }
     let px = PAD;
     const pillY = titleBottom + 18 + 28 + 22, pillH = 44;
     ctx.font = `500 24px ${FONT}`;

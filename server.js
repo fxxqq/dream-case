@@ -414,6 +414,23 @@ function adGateDaily() {
   return out;
 }
 const saveAdGate = () => writeJSON('ad-gate.json', adGateCfg);
+
+// 推荐位（灯火兑换 rank 槽）同屏条数（后台「广告位」页可改，存 data/ad-display.json，改完即生效不用重启）：
+//   rankTop  = 星梦榜页顶部通栏最多条数（PC 宽屏并排，900-1180 视口自动降到 3）
+//   rankSide = 星梦榜页右栏竖排卡列最多条数
+//   barSide  = 造梦酒馆页右栏竖排最多条数
+// 三个容器共用 rank 槽位（一次购买多处轮展），但各有各的条数上限；右栏窄，调太大标题会挤碎。
+const AD_DISPLAY_DEFAULTS = { rankTop: 4, rankSide: 3, barSide: 2 };
+const AD_DISPLAY_MAX = 6;
+function readAdDisplay() {
+  const raw = readJSON('ad-display.json', null) || {};
+  const num = (v, def) => (Number.isInteger(v) && v >= 1 && v <= AD_DISPLAY_MAX ? v : def);
+  return {
+    rankTop: num(raw.rankTop, AD_DISPLAY_DEFAULTS.rankTop),
+    rankSide: num(raw.rankSide, AD_DISPLAY_DEFAULTS.rankSide),
+    barSide: num(raw.barSide, AD_DISPLAY_DEFAULTS.barSide)
+  };
+}
 // 投放权重（后台「投放单」页切换，存 data/promo-priority.json，2026-11-13 站长定档）：
 // 同一个推荐位同时有多条在投时，谁优先被挑中：
 //   user  = 优先用户（默认）：作者用灯火买的单先上，站长代投只在这个位「没有买家单」时补位
@@ -470,6 +487,12 @@ const saveWorkRedirects = () => writeJSON('work-redirects.json', workRedirects);
 const DEFAULT_CATEGORIES = ['效率工具', '生活助手', '内容创作', '学习教育', '娱乐游戏', '开发工具', '个人站'];
 let categories = readJSON('categories.json', DEFAULT_CATEGORIES);
 if (!Array.isArray(categories) || !categories.length) categories = DEFAULT_CATEGORIES.slice();
+// 历史数据可能因新增分类的并发竞态写入重复项（查重在 AI 审核的 await 之前），启动时去重一次
+if (new Set(categories).size !== categories.length) {
+  categories = Array.from(new Set(categories));
+  writeJSON('categories.json', categories);
+  console.log('[fix] categories.json 去重 →', categories.length, '项');
+}
 
 // ---------- 场景（按「什么情况下用」逛）----------
 // 配置在 content/scenes.json（进部署包；data/ 运行时数据不进包），改场景名/归组不用碰代码。
@@ -1215,6 +1238,8 @@ function queueFollowerNotice(authorId, fanId) {
 function announceWorkVisible(w, reason) {
   baiduPushWork(w, reason);
   try { notifyFollowersNewWork(w, reason); } catch (e) { console.log('[follow] 新作通知失败：' + e.message); }
+  // 若是「被邀请来的人」上架的第一件作品，顺手把邀请人的 1000 盏结算掉（幂等，重复调不会重发）
+  try { payReferralFirstWork(w); } catch (e) { console.log('[refwork] 邀请奖励结算失败：' + e.message); }
 }
 function notifyFollowersNewWork(w, reason) {
   if (!w || !w.userId) return 0;                    // 匿名 / 无主作品没有作者，也就没有关注者
@@ -1791,7 +1816,7 @@ const REDEEM_SLOTS = [
     note: '多条同时投放，每次随机展示一条，各家机会均等 · 兑换后 10 分钟内你这边会优先展示自己那条，方便确认效果（自己看不扣灯火）'
   },
   // 榜单页 + 造梦酒馆页头下方共用同一个槽位（两页定位一致——「推荐站内作品」，
-  // 多条随机挑；榜单页 PC 宽屏推荐位在右栏竖排最多 5 条、窄屏在页头下方通栏并排 2-4 条，手机一条；
+  // 多条随机挑；榜单页 PC 宽屏推荐位在右栏竖排最多 3 条（2026-11-16 由 5 改 3）、窄屏在页头下方通栏并排 2-4 条，手机一条；
   // 酒馆右栏竖排 2 条；不独占、不占排序）。
   // 合并理由：两处规则、单价完全一样，分开卖只会让投放者多做一个无意义的选择题；
   // 合并后一次购买两处都展示，曝光面更大、池子更满。
@@ -1800,7 +1825,7 @@ const REDEEM_SLOTS = [
     showViews: 1, showPoints: 2, clickPoints: 60, extClickPoints: 120,
     showPacks: [50, 100, 200], clickPacks: [10, 20, 50], showMax: 1000, clickMax: 100,
     exclusive: false, maxActive: 5, maxQueued: 0,
-    note: '一次购买、星梦榜页和造梦酒馆两处都展示：PC 上星梦榜右栏一次竖排最多 5 条同屏曝光（酒馆右栏 2 条，手机一条），各家机会均等 · 不占榜单名次/想法排序 · 兑换后 10 分钟内你这边会优先展示自己那条，方便确认效果（自己看不扣灯火）'
+    note: '一次购买、星梦榜页和造梦酒馆两处都展示：PC 上星梦榜右栏一次竖排最多 3 条同屏曝光（酒馆右栏 2 条，手机一条），各家机会均等 · 不占榜单名次/想法排序 · 兑换后 10 分钟内你这边会优先展示自己那条，方便确认效果（自己看不扣灯火）'
   },
   // 首页第一格：同时最多 5 条在投，但一次只显示一条（2026-11-11 站长拍板：不做自动轮播切换）。
   // 每次进页面随机挑一条（各家机会均等，与详情/榜单位同口径）；访客关掉当前条后从剩下的里再随机补一条。
@@ -2660,29 +2685,50 @@ function normLanding(raw) {
 
 // 记流量构成。排除名单里的身份、以及超过单日 PV 上限的身份一律不记 ——
 // 站长自己刷自己的站，能把设备/来源分布带得完全失真。PV/UV 不受影响。
+// 2026-11-16 起每次同时写两份账：
+//   1) 日桶（原有）—— 近 7 天 / 30 天 / 累计按自然日聚合用；
+//   2) 分时桶 bucket.hours[<小时>]（结构与日桶一致）—— 后台「近24小时」滚动窗口专用，
+//      隔天的分时桶不单独清，随日期桶一起被 VISIT_RETENTION_DAYS 裁掉。
+// 另外给每个维度补一份去重访客（devUv / refUv / refUrlUv / landUv / hUv），后台「访问人数」口径用；
+// 老数据没有这些字段，聚合出来为空，前端按「—」展示。
 function trackTrafficShape(req, bucket, vid, mini, o) {
   if (visitExcludeSet().has(vid)) return;
   if ((bucket.pvBy[vid] || 0) > VISIT_PV_CAP_PER_ID) return;
 
+  bucket.hours = bucket.hours || {};
+  const hKey = String(new Date().getHours()).padStart(2, '0');
+  const hb = bucket.hours[hKey] || (bucket.hours[hKey] = {});
+  const cnt = (dst, k) => { dst[k] = (dst[k] || 0) + 1; };
+  const markUv = (dst, k) => { (dst[k] || (dst[k] = {}))[vid] = 1; };
+  const bumpCapped = (dst, k, max, otherKey) => {
+    if (dst[k] != null) dst[k] += 1;
+    else if (Object.keys(dst).length < max) dst[k] = 1;
+    else dst[otherKey] = (dst[otherKey] || 0) + 1;
+  };
+
   bucket.devs = bucket.devs || {};
   const dev = deviceOf(req, mini);
-  bucket.devs[dev] = (bucket.devs[dev] || 0) + 1;
+  cnt(bucket.devs, dev); cnt(hb.devs = hb.devs || {}, dev);
+  bucket.devUv = bucket.devUv || {}; markUv(bucket.devUv, dev);
+  hb.devUv = hb.devUv || {}; markUv(hb.devUv, dev);
   if (mini) return;   // 小程序入口固定，没有 referrer 也没有「落地页」概念
   // 爬虫只留一个数量（能看出站点 PV 里有多少是机器），不进来源和落地页：
   // 「人从哪来、第一眼落在哪」讲的是人，把蜘蛛算进去只会把真实来源稀释掉
   if (dev === 'bot') return;
 
+  // 网页访客去重（不含小程序 / 爬虫，与 refs 同口径）：后台头部「访问人数」就是它
+  (bucket.hUv = bucket.hUv || {})[vid] = 1;
+  (hb.hUv = hb.hUv || {})[vid] = 1;
+
   bucket.refs = bucket.refs || {};
   const ref = normRefHost(o.ref, selfHostSet(req));
-  if (bucket.refs[ref] != null) bucket.refs[ref] += 1;
-  else if (Object.keys(bucket.refs).length < TRAFFIC_REF_MAX) bucket.refs[ref] = 1;
-  else bucket.refs[TRAFFIC_REF_OTHER] = (bucket.refs[TRAFFIC_REF_OTHER] || 0) + 1;
+  bumpCapped(bucket.refs, ref, TRAFFIC_REF_MAX, TRAFFIC_REF_OTHER);
+  bumpCapped(hb.refs = hb.refs || {}, ref, TRAFFIC_REF_MAX, TRAFFIC_REF_OTHER);
   // 每个来路域名同时记一份去重访客（友链「来量 N · M 人」的人数口径）。
   // refs 超上限溢出到「其他来源」时 ref 也落到同一个溢出键，两份账的 key 恒一致。
   // 2026-11-14 起才有这份数据，之前的天聚合出来人数是 0，前端按「—」展示。
-  bucket.refUv = bucket.refUv || {};
-  const refUv = bucket.refUv[ref] || (bucket.refUv[ref] = {});
-  refUv[vid] = 1;
+  bucket.refUv = bucket.refUv || {}; markUv(bucket.refUv, ref);
+  markUv(hb.refUv = hb.refUv || {}, ref);
 
   // 来源明细链接（2026-11-15 起）：域名榜回答「从哪个站来」，这里补「从那个站的哪个页面来」。
   // 直接访问 / 站内跳转没有外部页面可记；溢出规则同 refs。
@@ -2690,20 +2736,20 @@ function trackTrafficShape(req, bucket, vid, mini, o) {
   if (ref !== TRAFFIC_DIRECT && ref !== TRAFFIC_INNER) {
     const rk = normRefUrl(o.ref);
     if (rk) {
-      bucket.refUrls = bucket.refUrls || {};
-      if (bucket.refUrls[rk] != null) bucket.refUrls[rk] += 1;
-      else if (Object.keys(bucket.refUrls).length < TRAFFIC_REF_URL_MAX) bucket.refUrls[rk] = 1;
-      else bucket.refUrls[TRAFFIC_REF_URL_OTHER] = (bucket.refUrls[TRAFFIC_REF_URL_OTHER] || 0) + 1;
+      bumpCapped(bucket.refUrls = bucket.refUrls || {}, rk, TRAFFIC_REF_URL_MAX, TRAFFIC_REF_URL_OTHER);
+      bumpCapped(hb.refUrls = hb.refUrls || {}, rk, TRAFFIC_REF_URL_MAX, TRAFFIC_REF_URL_OTHER);
+      bucket.refUrlUv = bucket.refUrlUv || {}; markUv(bucket.refUrlUv, rk);
+      markUv(hb.refUrlUv = hb.refUrlUv || {}, rk);
     }
   }
 
   // 落地页只在「本次打开的第一屏」记一次，站内跳转不重复记（否则每个内页都成了落地页）
   if (o.entry && o.path) {
-    bucket.land = bucket.land || {};
     const p = normLanding(o.path);
-    if (bucket.land[p] != null) bucket.land[p] += 1;
-    else if (Object.keys(bucket.land).length < TRAFFIC_LAND_MAX) bucket.land[p] = 1;
-    else bucket.land[TRAFFIC_LAND_OTHER] = (bucket.land[TRAFFIC_LAND_OTHER] || 0) + 1;
+    bumpCapped(bucket.land = bucket.land || {}, p, TRAFFIC_LAND_MAX, TRAFFIC_LAND_OTHER);
+    bumpCapped(hb.land = hb.land || {}, p, TRAFFIC_LAND_MAX, TRAFFIC_LAND_OTHER);
+    bucket.landUv = bucket.landUv || {}; markUv(bucket.landUv, p);
+    markUv(hb.landUv = hb.landUv || {}, p);
   }
 }
 
@@ -2857,6 +2903,17 @@ function trafficStats() {
     if (!src || typeof src !== 'object') return;
     Object.keys(src).forEach(k => { dst[k] = (dst[k] || 0) + (src[k] || 0); });
   };
+  // UV 并集：把每个日桶/分时桶里「key → {vid:1}」的访客集合并到一起，最后取 size ——
+  // 同一访客窗口内来 10 次，次数 +10、人数只 +1
+  const unionUv = (dst, src) => {
+    if (!src || typeof src !== 'object') return;
+    Object.keys(src).forEach(k => {
+      const ids = Object.keys(src[k] || {});
+      if (!ids.length) return;
+      const s = dst[k] || (dst[k] = new Set());
+      ids.forEach(v => s.add(v));
+    });
+  };
   // n > 0 取「最近 n 个自然日内」有数据的天（按日期卡，不是「最后 n 条记录」——
   // 中间断几天的话，后者会把 40 天前的数据当成「近 7 天」）；n = 0 取全部（受保留期限制）
   const cutoff = n => {
@@ -2866,6 +2923,8 @@ function trafficStats() {
   };
   const aggBy = keys => {
     const refs = {}, devs = {}, land = {}, refUrls = {};
+    const refsUv = {}, devsUv = {}, landUv = {}, refUrlsUv = {};
+    const uvSet = new Set();
     let miniPv = 0;
     keys.forEach(k => {
       const d = days[k] || {};
@@ -2873,15 +2932,63 @@ function trafficStats() {
       addAll(devs, d.devs);
       addAll(land, d.land);
       addAll(refUrls, d.refUrls);
+      unionUv(refsUv, d.refUv);
+      unionUv(devsUv, d.devUv);
+      unionUv(landUv, d.landUv);
+      unionUv(refUrlsUv, d.refUrlUv);
+      Object.keys(d.hUv || {}).forEach(v => uvSet.add(v));
       if (d.mini) miniPv += (d.mini.pv || 0);   // 小程序只进设备分布，没有来路/落地页
     });
-    return { window: 0, keys, refs, devs, land, refUrls, miniPv };
+    return { window: 0, keys, refs, devs, land, refUrls, miniPv, refsUv, devsUv, landUv, refUrlsUv, uvSet };
   };
   const agg = n => aggBy(n > 0 ? allKeys.filter(k => k >= cutoff(n)) : allKeys);
-  // 昨天 = 单独一个自然日（cutoff(2) 就是昨天的日期），给后台加一档「昨天」
+  // 昨天 = 单独一个自然日（cutoff(2) 就是昨天的日期），窗口表里留着它做兜底/对数，页面不再展示
   const yKey = cutoff(2);
   const aYes = aggBy(allKeys.filter(k => k === yKey));
   const a7 = agg(7), a30 = agg(30), aAll = agg(0);
+  // 近24小时（2026-11-16）：滚动窗口 = 昨天 hour>当前 的分时桶 + 今天 hour<=当前 的分时桶。
+  // 分时桶是本改动才开始记的；一条都没有时退回今天的自然日桶（≈「今日」），别给 0。
+  const tKey = dateKey();
+  const nowH = new Date().getHours();
+  const hourKeysOf = d => Object.keys((d && d.hours) || {}).filter(h => /^\d{1,2}$/.test(h));
+  const inH24 = (dk, h) => (dk === tKey ? h <= nowH : h > nowH);
+  const a24 = (() => {
+    const keys = [yKey, tKey].filter(k => days[k]);
+    const refs = {}, devs = {}, land = {}, refUrls = {};
+    const refsUv = {}, devsUv = {}, landUv = {}, refUrlsUv = {};
+    const uvSet = new Set();
+    let miniPv = 0;
+    const pick = (b, fromMini) => {
+      addAll(refs, b.refs);
+      addAll(devs, b.devs);
+      addAll(land, b.land);
+      addAll(refUrls, b.refUrls);
+      unionUv(refsUv, b.refUv);
+      unionUv(devsUv, b.devUv);
+      unionUv(landUv, b.landUv);
+      unionUv(refUrlsUv, b.refUrlUv);
+      Object.keys(b.hUv || {}).forEach(v => uvSet.add(v));
+      if (fromMini) miniPv += (b.devs && b.devs.mini) || 0;
+    };
+    let hasHours = false;
+    keys.forEach(dk => {
+      const d = days[dk] || {};
+      hourKeysOf(d).forEach(hh => {
+        if (!inH24(dk, parseInt(hh, 10))) return;
+        hasHours = true;
+        pick(d.hours[hh] || {}, false);
+        const mh = d.mini && d.mini.hours && d.mini.hours[hh];
+        if (mh) pick(mh, true);
+      });
+    });
+    // 老数据没有分时桶：整桶退回「今天」的自然日聚合（含当日的小时数据进了日桶，不会丢）
+    if (!hasHours) {
+      const d = days[tKey] || {};
+      pick(d, false);
+      if (d.mini) miniPv += (d.mini.pv || 0);
+    }
+    return { window: 'h24', keys, refs, devs, land, refUrls, miniPv, refsUv, devsUv, landUv, refUrlsUv, uvSet };
+  })();
   const DEV_KEYS = ['mobile', 'desktop', 'wechat', 'tablet', 'bot', 'unknown'];
   const devsOf = a => {
     const o = {};
@@ -2910,6 +3017,8 @@ function trafficStats() {
     return r;
   };
   const rYes = extRefs(aYes.refs), r7 = extRefs(a7.refs), r30 = extRefs(a30.refs), rAll = extRefs(aAll.refs);
+  const uvAt = (m, k) => (m[k] || { size: 0 }).size;   // 窗口内去重人数；老数据没有访客集合时是 0，前端按「—」展示
+  const sizeMapOf = m => { const o = {}; Object.keys(m || {}).forEach(k => { o[k] = m[k].size; }); return o; };
   const refs = merge(r7, rAll, rYes).map(name => ({
     name,
     url: refUrlOf(name),                                             // 后台来源榜点名字跳过去用
@@ -2918,6 +3027,10 @@ function trafficStats() {
     c7: r7[name] || 0,
     c30: r30[name] || 0,
     cAll: rAll[name] || 0,
+    u1: uvAt(a24.refsUv, name),
+    u7: uvAt(a7.refsUv, name),
+    u30: uvAt(a30.refsUv, name),
+    uAll: uvAt(aAll.refsUv, name),
     friend: friendHosts.has(name)
   }));
   // 来源明细链接：每条具体来路页面挂到所属来源域名（host 与来源榜同名，前端嵌在对应行下展开）。
@@ -2938,7 +3051,11 @@ function trafficStats() {
         c1: uYes[k] || 0,
         c7: u7[k] || 0,
         c30: u30[k] || 0,
-        cAll: uAll[k] || 0
+        cAll: uAll[k] || 0,
+        u1: uvAt(a24.refUrlsUv, k),
+        u7: uvAt(a7.refUrlsUv, k),
+        u30: uvAt(a30.refUrlsUv, k),
+        uAll: uvAt(aAll.refUrlsUv, k)
       };
     });
   // 作品详情页的落地量比首页更有意义：直接标上作品名，不然看一屏 /w/xxx 认不出是谁
@@ -2954,16 +3071,26 @@ function trafficStats() {
     c1: aYes.land[p] || 0,
     c7: a7.land[p] || 0,
     c30: a30.land[p] || 0,
-    cAll: aAll.land[p] || 0
+    cAll: aAll.land[p] || 0,
+    u1: uvAt(a24.landUv, p),
+    u7: uvAt(a7.landUv, p),
+    u30: uvAt(a30.landUv, p),
+    uAll: uvAt(aAll.landUv, p)
   }));
   const winOf = a => ({
     window: a.window,
     days: a.keys.length,
     since: a.keys[0] || '',
     visits: vOf(a),
+    uv: a.uvSet.size,                                                // 窗口内去重网页访客（不含小程序/爬虫）
     direct: a.refs[TRAFFIC_DIRECT] || 0,
+    directUv: uvAt(a.refsUv, TRAFFIC_DIRECT),
     inner: a.refs[TRAFFIC_INNER] || 0,
-    devs: devsOf(a)
+    innerUv: uvAt(a.refsUv, TRAFFIC_INNER),
+    devs: devsOf(a),
+    devsUv: sizeMapOf(a.devsUv),
+    landUv: sizeMapOf(a.landUv),
+    refUrlsUv: sizeMapOf(a.refUrlsUv)
   });
   return {
     // 顶层字段保持「近 7 天」口径不变（老前端、tools/test-traffic-dims.js 都读这里）
@@ -2977,8 +3104,8 @@ function trafficStats() {
     inner: a7.refs[TRAFFIC_INNER] || 0,
     devs: devsOf(a7),
     landings,
-    // 四档口径对照表：d1（昨天）/ d7 / d30 / all（累计）
-    windows: { d1: winOf(aYes), d7: winOf(a7), d30: winOf(a30), all: winOf(aAll) },
+    // 四档口径对照表：h24（近24小时滚动）/ d1（昨天，页面不再展示、留作对数）/ d7 / d30 / all（累计）
+    windows: { h24: winOf(a24), d1: winOf(aYes), d7: winOf(a7), d30: winOf(a30), all: winOf(aAll) },
     retentionDays: VISIT_RETENTION_DAYS
   };
 }
@@ -3206,8 +3333,9 @@ function trackWorkVisit(req, workId, opts) {
   w.views = (w.views || 0) + 1;
   scheduleWorksSave();
 
-  const rec = workVisits[workId] || (workVisits[workId] = { pv: 0, uv: {}, days: {} });
+  const rec = workVisits[workId] || (workVisits[workId] = { pv: 0, uv: {}, uvDays: {}, days: {} });
   if (!rec.uv) rec.uv = {};
+  if (!rec.uvDays) rec.uvDays = {};   // 每个访客来过多少个自然日（2026-11-16 起，回访天数分用）
   if (!rec.days) rec.days = {};
   rec.pv = (rec.pv || 0) + 1;
 
@@ -3241,7 +3369,13 @@ function trackWorkVisit(req, workId, opts) {
   const day = rec.days[dk] || (rec.days[dk] = { pv: 0, uv: {} });
   if (!day.uv) day.uv = {};
   day.pv = (day.pv || 0) + 1;
-  if (countUv) { rec.uv[uvKey] = 1; day.uv[uvKey] = 1; }
+  if (countUv) {
+    // 2026-11-16 起 uv 从「来过没」的标记（1）改成累计打开次数（含第一次）：
+    // 回访加分要按人计次（每人最多 10 次），老数据里的 1 当作「来过 1 次」沿用。
+    rec.uv[uvKey] = (rec.uv[uvKey] || 0) + 1;
+    if (!day.uv[uvKey]) rec.uvDays[uvKey] = (rec.uvDays[uvKey] || 0) + 1;   // 该访客今天头一回来：回访天数 +1
+    day.uv[uvKey] = (day.uv[uvKey] || 0) + 1;
+  }
   // 每个作品只保留最近 N 天明细
   const keys = Object.keys(rec.days).sort();
   while (keys.length > VISIT_RETENTION_DAYS) delete rec.days[keys.shift()];
@@ -3263,19 +3397,40 @@ function workVisitStats(workId) {
   };
 }
 
-// 榜单用：作品在周期内的 PV / UV（days=36500 表示全部）
+// 榜单用：作品在周期内的 PV / UV（days=36500 表示全部）。
+// 2026-11-16 增加两个回访口径（回访加分用，见 viewPartOf）：
+//   pvCap  = Σ 每人 min(打开次数, VIEW_PV_PER_PERSON)——次数含第一次；
+//   dayCap = Σ 每人 min(来过的自然日数, VIEW_PV_PER_PERSON)——一天内开多少次都只算 1 天。
+// 周期口径从 days 明细逐日累出来；累计口径（36500）读 rec.uv / rec.uvDays 的按人计数。
+// 老数据里 uv 值是「1」（来过没的标记）、uvDays 不存在，按「来过 1 次 / 0 天」沿用，只少不多。
+const VIEW_PV_PER_PERSON = 10;
+function capPerPerson(map, cap) {
+  let s = 0;
+  for (const k in map) s += Math.min(map[k] || 1, cap);
+  return s;
+}
 function workPvUv(workId, days) {
   const rec = workVisits[workId];
-  if (!rec) return { pv: 0, uv: 0 };
-  if (days >= 36500) return { pv: rec.pv || 0, uv: Object.keys(rec.uv || {}).length };
+  if (!rec) return { pv: 0, uv: 0, pvCap: 0, dayCap: 0 };
+  if (days >= 36500) {
+    return {
+      pv: rec.pv || 0,
+      uv: Object.keys(rec.uv || {}).length,
+      pvCap: capPerPerson(rec.uv || {}, VIEW_PV_PER_PERSON),
+      dayCap: capPerPerson(rec.uvDays || {}, VIEW_PV_PER_PERSON)
+    };
+  }
   const from = dateKey(new Date(Date.now() - days * 86400000));
-  let pv = 0; const uvSet = new Set();
+  let pv = 0; const cnt = {}, dcnt = {};
   Object.entries(rec.days || {}).forEach(([k, d]) => {
     if (k < from) return;
     pv += d.pv || 0;
-    Object.keys(d.uv || {}).forEach(x => uvSet.add(x));
+    Object.entries(d.uv || {}).forEach(([k2, v]) => {
+      cnt[k2] = (cnt[k2] || 0) + (v || 1);
+      dcnt[k2] = (dcnt[k2] || 0) + 1;   // 这一天来过：天数 +1（同一天开几次都只算这天）
+    });
   });
-  return { pv, uv: uvSet.size };
+  return { pv, uv: Object.keys(cnt).length, pvCap: capPerPerson(cnt, VIEW_PV_PER_PERSON), dayCap: capPerPerson(dcnt, VIEW_PV_PER_PERSON) };
 }
 
 // ---------- 行为流水（谁 · 什么时候 · 做了什么） ----------
@@ -4642,6 +4797,13 @@ const SHARE_VISIT_POINTS = 1;        // 一次有效分享访问
 const SHARE_REG_POINTS = 100;        // 网页端一个有效邀请注册（冷启动阶段加大激励）
 const SHARE_REG_POINTS_MINI = 10;    // 小程序内建号的邀请注册：微信一键建号几乎零成本，激励降到 1/10（2026-11-06 站长定）
 
+// ---- 邀请好友投稿（2026-11-16 站长定）：被邀请人上架第一件作品，邀请人 +1000 ----
+// 和上面那笔「邀请注册 +100」是两笔账：注册就到 vs 真把作品摆上橱窗才给。
+// 口径：只认已上线可见的作品（草稿 / 待审 / 预告卡不算）；每位被邀请人只发一次；
+//      上线之前投的稿不补发（改价不给历史数据凭空加钱，同上传奖励补齐的口径）。
+const REF_FIRST_WORK_POINTS = 1000;
+const REF_FIRST_WORK_SINCE = '2026-11-16T00:00:00+08:00';
+
 // ---- 访问奖励：不设每日上限 ----
 // 「满 50 就停」会打击真正带量的人：一个大 V 一天带 2000 次访问也只能拿 50 盏，
 // 而且是静默停的 —— 用户只看到「我分享了怎么没加分」。所以这里改成：每次有效访问 +1，不封顶。
@@ -5061,6 +5223,74 @@ function creditShareRegister(req, newUser, refName, ipkOverride) {
   saveUsers();
   saveShareSoon();
   return { credited: true, points: gained, bonus, viaPromo, inviter: displayNameOf(refUser.username) };
+}
+
+// ---------- 邀请好友投稿：被邀请人上架第一件作品，邀请人 +1000 ----------
+// 被邀请人身上只记了用户名（invitedBy，见 creditShareRegister），顺着它反查邀请人。
+// 邀请人已经注销 / 自作自受地指向自己，都当没有邀请人处理。
+function inviterOf(user) {
+  if (!user || !user.invitedBy || !user.id) return null;
+  const inviter = users.find(u => u.username === user.invitedBy);
+  return inviter && inviter.id !== user.id ? inviter : null;
+}
+// 某位作者名下最早的一件「已上线可见」作品：没有就返回 null。
+// 奖励只认这一件 —— 后面再上多少件都不给第二笔，删了重传也还是这一件。
+function firstLiveWorkOf(uid) {
+  if (!uid) return null;
+  let first = null;
+  for (const w of works) {
+    if (!w || w.userId !== uid || w.deleted || !isVisible(w)) continue;
+    if (!first || String(w.createdAt) < String(first.createdAt)) first = w;
+  }
+  return first;
+}
+// 作品上线那一刻结算邀请奖励。幂等：同一对被邀请人 / 邀请人只发一次（rec.refWorkBonus 记着）。
+// 各条上线路径（投稿直发 / 审核通过 / 预告转上线 / 后台代建）都会调到，重复调也安全。
+function payReferralFirstWork(w) {
+  if (!w || !w.userId || !isVisible(w)) return 0;
+  if (!(Date.parse(w.createdAt) >= Date.parse(REF_FIRST_WORK_SINCE))) return 0;   // 奖励上线前的稿子不补
+  const author = users.find(u => u.id === w.userId);
+  const inviter = inviterOf(author);
+  if (!inviter) return 0;
+  const first = firstLiveWorkOf(author.id);
+  if (!first || first.id !== w.id) return 0;
+  const rec = shareRecOf(inviter.id);
+  if (!rec.refWorkBonus) rec.refWorkBonus = {};
+  if (rec.refWorkBonus[author.id]) return 0;
+  rec.refWorkBonus[author.id] = new Date().toISOString();
+  const points = addPoints(inviter.id, REF_FIRST_WORK_POINTS, 'refwork', w.id);
+  // 达人榜比的是「带来多少真实的人」，这笔正是推广挣来的，跟着 promoPoints 一起涨
+  rec.promoPoints = (rec.promoPoints || 0) + REF_FIRST_WORK_POINTS;
+  saveShareNow();   // 钱和标记一起当场落盘，别等 2 秒 debounce（重启窗口会把钱弄丢）
+  addNotice(inviter.id, {
+    kind: 'points',
+    title: `邀请好友投稿奖励 +${REF_FIRST_WORK_POINTS} 盏灯火`,
+    text: `你邀请的 @${author.username} 上架了第一件作品「${w.title}」，${REF_FIRST_WORK_POINTS} 盏灯火已到账，当前余额 ${points} 盏。以后再有朋友上架第一件作品，奖励照样到账。`,
+    points,
+    delta: REF_FIRST_WORK_POINTS
+  });
+  return REF_FIRST_WORK_POINTS;
+}
+// 巡检兜底：恢复上架、后台改状态这些没走 announceWorkVisible 的路径在这里接住。
+// 只遍历「身上有 invitedBy 的账号」，站里这类账号很少，比给每条路径单独打补丁可靠。
+function payPendingReferralBonuses() {
+  for (const u of users) {
+    if (!u || !u.invitedBy) continue;
+    const w = firstLiveWorkOf(u.id);
+    if (w) payReferralFirstWork(w);
+  }
+}
+// 任务中心那条「邀请朋友投稿」的进度：邀请了几位、几位已上架、已经发过几笔
+function referralStatOf(user) {
+  const invited = users.filter(u => u && u.invitedBy === user.username);
+  const rec = shareRecOf(user.id);
+  const paid = Object.keys(rec.refWorkBonus || {}).length;
+  return {
+    invited: invited.length,
+    posted: invited.filter(u => !!firstLiveWorkOf(u.id)).length,
+    paid,
+    points: REF_FIRST_WORK_POINTS
+  };
 }
 
 // 分享榜：按积分排序，只展示昵称与公开数字（管理员赠送的灯火不计入榜单分）
@@ -5498,6 +5728,9 @@ async function compressUploads(req) {
 // 口令只用来「换一张 HttpOnly 票据」，此后每个请求带 cookie，口令不再出现在 URL 里。
 // 之前每个后台请求都拼 ?key=xxx，等于把管理口令明文写进 nginx access.log、浏览器历史和 Referer。
 const ADMIN_COOKIE = 'dm_admin';
+// 站长代看管理员视角时，站长本人的票暂存在这里；切回 / 再切别人都凭它。
+// 不落盘、跟代看票一样是会话 cookie，浏览器一关两票同灭，不会挂着管理员身份过夜。
+const ADMIN_ROOT_COOKIE = 'dm_admin_root';
 const ADMIN_TTL = 30 * 24 * 3600 * 1000;   // 勾「记住」时的票据有效期
 function adminToken() {
   // 由口令派生的票据：改口令即让所有旧票据失效，票据本身不存盘
@@ -5543,14 +5776,14 @@ const NEW_ADMIN_DEFAULT_PERMS = ['works', 'content', 'review'];
 // 接口一级路径 → 权限模块。挂在 /api/admin 下的每个资源都要在这里登记，
 // 漏登记的接口会被闸门直接拒绝（宁可挡住，也不让新接口悄悄对所有人开放）。
 const ADMIN_API_PERM = {
-  works: 'works',
+  works: 'works', github: 'works',
   users: 'users', points: 'users', 'points-ledger': 'users', taglib: 'users', owners: 'users',
   comments: 'content', ideas: 'content', 'idea-discussions': 'content', 'bar-posts': 'content', badges: 'content',
   reports: 'review', jury: 'review', claims: 'review', feedback: 'review', kf: 'review',
   'search-block': 'data', behavior: 'data', 'reg-stats': 'data', 'redeem-overview': 'data',
   outlinks: 'data', 'link-health': 'data', 'baidu-push': 'data', 'promo-priority': 'data',
   'promo-buyer': 'data',
-  categories: 'config', types: 'config', tools: 'config', ads: 'config', 'ad-gate': 'config',
+  categories: 'config', types: 'config', tools: 'config', ads: 'config', 'ad-gate': 'config', 'ad-display': 'config',
   redemptions: 'config', gift: 'config', friends: 'config', 'friend-requests': 'config',
   discover: 'config', broadcast: 'config', 'guest-notice': 'config', brands: 'config',
   scenes: 'config',
@@ -5672,6 +5905,11 @@ function adminWho(req) {
   // 操作留痕用：header / query 口令也认成「站长」
   if (safeEqualStr(req.headers['x-admin-key'], ADMIN_KEY) || safeEqualStr(req.query.key, ADMIN_KEY)) return '站长(口令)';
   return adminTicketName(req) || '';
+}
+// 代看视角：切身份时站长原票暂存在 dm_admin_root，凭它能切回站长 / 直接再切别人
+function adminRootOk(req) {
+  const c = parseCookies(req)[ADMIN_ROOT_COOKIE];
+  return !!c && safeEqualStr(c, adminToken());
 }
 // 把一笔后台写操作翻成人话：按接口 + 关键参数拼一句「干了啥」。
 // 注意：留痕发生在 handler 校验之前，参数可能不完整/操作可能没成功，所以宁可少说不可说错；
@@ -5843,13 +6081,13 @@ function requireOwner(req, res, next) {
 
 // ---------- 权限闸门（2026-11-15）----------
 // 一个中间件管住整片 /api/admin/*，不靠在几百个 handler 上各挂一次 requirePerm（漏挂就是漏权）：
-//   ① 白名单放行（登录换票 / 账号登录 / 申请）
+//   ① 白名单放行（登录换票 / 账号登录 / 申请 / 站长切视角——identity 接口自己验权）
 //   ② 没票 → 403，同原来的 requireAdmin
 //   ③ 站长 → 全放
 //   ④ 名单管理员 → 按「接口一级路径 → 权限模块」查表，没有该模块就 403 并标 permDenied
 // 表里查不到的新接口一律拒绝：以后加接口忘了登记，只有站长能用，不会悄悄对所有管理员开放。
 // 注意：必须注册在所有 /api/admin 路由之前，Express 按注册顺序匹配。
-const ADMIN_OPEN_PATHS = new Set(['/session', '/login', '/apply']);
+const ADMIN_OPEN_PATHS = new Set(['/session', '/login', '/apply', '/identity']);
 app.use('/api/admin', (req, res, next) => {
   const sub = String(req.originalUrl || req.url || '').split('?')[0].replace(/^\/api\/admin(?=\/|$)/, '').replace(/\/+$/, '') || '/';
   if (ADMIN_OPEN_PATHS.has(sub)) return next();
@@ -5896,6 +6134,54 @@ app.delete('/api/admin/session', (req, res) => {
   res.json({ ok: true });
 });
 
+// 站长视角切换（2026-11-16）：以名单管理员的身份打开后台，菜单/权限所见即所得，方便核对给出去的权限。
+// 切换时站长原票暂存 dm_admin_root；「切回站长」「再切别人」都凭它。留痕写 admin-audit.json。
+app.post('/api/admin/identity', (req, res) => {
+  if (!ADMIN_KEY) return res.status(503).json({ error: '后台未启用（未配置管理口令）' });
+  const body = req.body || {};
+  const action = String(body.action || '');
+  const rootOk = adminRootOk(req);
+  // 站长本人（口令票据/口令头）或正在代看（root 票）都允许发；普通名单管理员不行
+  if (!adminIsOwner(req) && !rootOk) return res.status(403).json({ error: '只有站长能切换后台视角' });
+  const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const secure = req.secure || proto === 'https' ? '; Secure' : '';
+  if (action === 'view') {
+    const name = String(body.username || '').trim();
+    const a = loadAdmins().admins.find(x => String(x.username || '').toLowerCase() === name.toLowerCase());
+    if (!a) return res.status(404).json({ error: '名单里没有这个管理员' });
+    res.setHeader('Set-Cookie', [
+      `${ADMIN_COOKIE}=${adminNameToken(a.username)}; Path=/; HttpOnly; SameSite=Lax${secure}`,
+      `${ADMIN_ROOT_COOKIE}=${adminToken()}; Path=/; HttpOnly; SameSite=Lax${secure}`
+    ]);
+    try {
+      const f = path.join(DATA_DIR, 'admin-audit.json');
+      let list = [];
+      try { list = JSON.parse(fs.readFileSync(f, 'utf-8')); } catch { /* 空 */ }
+      if (!Array.isArray(list)) list = [];
+      list.push({
+        t: new Date().toISOString(),
+        name: rootOk ? '站长(代看)' : '站长',
+        method: req.method,
+        url: '/api/admin/identity',
+        what: '后台视角切换 → @' + a.username,
+        ip: clientIp(req)
+      });
+      if (list.length > 2000) list = list.slice(-2000);
+      fs.writeFileSync(f, JSON.stringify(list));
+    } catch { /* 审计失败不影响主流程 */ }
+    return res.json({ ok: true, viewingAs: a.username });
+  }
+  if (action === 'restore') {
+    if (!rootOk) return res.status(403).json({ error: '本地没有站长票据，无法切回；请用口令重新登录' });
+    res.setHeader('Set-Cookie', [
+      `${ADMIN_COOKIE}=${adminToken()}; Path=/; HttpOnly; SameSite=Lax${secure}`,
+      `${ADMIN_ROOT_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`
+    ]);
+    return res.json({ ok: true });
+  }
+  res.status(400).json({ error: '未知操作' });
+});
+
 // 当前登录的管理员是谁 + 他有哪些权限（后台顶部展示、左侧菜单裁剪都靠它）
 // 未登录返回 ok:false；名单管理员返回 isOwner:false 与自己的 perms；站长返回 isOwner:true 与全部 key。
 app.get('/api/admin/session', (req, res) => {
@@ -5903,11 +6189,24 @@ app.get('/api/admin/session', (req, res) => {
   if (!name) return res.json({ ok: false, name: '' });
   const isOwner = adminIsOwner(req);
   const perms = adminPerms(req) || [];
+  // 代看视角：站长原票还在 root cookie 里 → 标出「当前看到的是谁」，顶部给「切回站长」按钮；
+  // 站长（本人或代看中）都带上可切换名单，前端下拉直接用，不用另拉 /admins
+  const rootOk = adminRootOk(req);
+  const viewingAs = rootOk && !isOwner && name !== '站长(口令)' ? name : '';
+  const canSwitchId = isOwner || rootOk;
   res.json({
     ok: true,
     name,
     isOwner,
     perms,
+    viewingAs,
+    impersonatable: canSwitchId
+      ? loadAdmins().admins.map(a => ({
+          username: a.username,
+          nickname: a.nickname || '',
+          perms: Array.isArray(a.perms) ? a.perms.filter(k => ALL_PERM_KEYS.includes(k) && !OWNER_ONLY_PERMS.includes(k)).length : null
+        }))
+      : undefined,
     modules: ADMIN_PERMS.map(m => ({
       key: m.key, label: m.label, desc: m.desc, tabs: m.tabs, ownerOnly: !!m.ownerOnly
     })),
@@ -7173,6 +7472,19 @@ function taskBoardOf(user) {
     items.push({ key: 'google', icon: 'google', action: 'g', name: 'Google 账号', points: 0,
       state: 'bound', desc: '已绑定，可以用 Google 一键登录' });
   }
+  // 邀请朋友投稿：每位朋友上架第一件作品 +1000，可以一直累计。
+  // 刻意不进 claimable —— 这笔钱取决于别人做不做，算不进「你现在就能领多少」；
+  // 也不在入口上挂红点、不弹窗催，愿意做的人自己去做（2026-11-16 站长要求）。
+  const ref = referralStatOf(user);
+  items.push({
+    key: 'refwork', group: 'invite', icon: 'share', action: 'invite',
+    name: '邀请朋友来投稿', points: REF_FIRST_WORK_POINTS, state: 'go',
+    desc: ref.paid
+      ? `已经有 ${ref.paid} 位朋友上架了第一件作品，${ref.paid * REF_FIRST_WORK_POINTS} 盏到账；继续邀请，后续每位照样 +${REF_FIRST_WORK_POINTS}`
+      : ref.invited
+        ? `你已经把邀请链接给了 ${ref.invited} 位朋友，谁先上架第一件作品，你就多 ${REF_FIRST_WORK_POINTS} 盏`
+        : `把邀请链接发给做东西的朋友：他注册并上架第一件作品，你得 ${REF_FIRST_WORK_POINTS} 盏，他自己也有投稿奖励`
+  });
   const claimable = items.reduce((sum, it) => sum + (it.state === 'todo' ? (it.points || 0) : 0), 0);
   return { points: shareStatsOf(user.id).points, claimable: claimable, items: items };
 }
@@ -9963,6 +10275,7 @@ const POINTS_KIND_TEXT = {
   visit: '分享链接带来访问',
   scan: '有人扫了你的分享码',
   reg: '好友通过你的链接注册',
+  refwork: '邀请好友投稿奖励',
   promo: '外宣里程碑奖励',
   upload: '上传作品奖励',
   claimbonus: '暗号认领额外奖励',
@@ -9970,6 +10283,7 @@ const POINTS_KIND_TEXT = {
   'os-recall': '开源奖励已收回',
   star: 'GitHub star 奖励',
   checkin: '每日签到',
+  journal: '星梦期刊上榜奖励',
   jar: '星星罐攒星',
   adreward: '看激励视频奖励',
   pwa: '添加到桌面奖励',
@@ -9989,8 +10303,83 @@ const POINTS_KIND_TEXT = {
   lamp_out: '解锁作品',
   lamp_in: '作品被解锁',
   redeem: '换推荐位',
-  refund: '推广撤回 / 到期退回'
+  refund: '推广撤回 / 到期退回',
+  test_recharge: '内测充值（模拟到账）'
 };
+
+// ---------- 内测充值（模拟到账，不走钱） ----------
+// 仅白名单账号 + 总开关同时打开才生效，给站长看充值入口的视觉效果用。
+// 不发真钱、不接微信支付，账本 kind='test_recharge' 单独可查，随时能按账清回。
+// 关掉 RECHARGE_BETA 后：入口接口和入账接口一起失效，不残留任何用户可见状态。
+const RECHARGE_BETA_ENABLED = /^(1|on|true|yes)$/i.test(String(process.env.RECHARGE_BETA || ''));
+const RECHARGE_BETA_CONF = path.join(DATA_DIR, 'recharge-beta.json');
+const RECHARGE_BETA_USERS = new Set(
+  (String(process.env.RECHARGE_BETA_USERS || 'umvvz1cl5xcs7').match(/[A-Za-z0-9_-]+/g) || [])
+);
+const RECHARGE_BETA_TIERS = [100, 500, 1000];
+const RECHARGE_BETA_DAILY_CAP = 3000;
+
+// 总开关也可以写 data/recharge-beta.json（热读，不用重启）：{"enabled":true,"users":["..."]}。
+// env 优先级更高；没配文件时按默认白名单走，关掉就把文件 enabled 改 false（或删掉文件）。
+function rechargeBetaConf() {
+  try {
+    const c = JSON.parse(fs.readFileSync(RECHARGE_BETA_CONF, 'utf-8'));
+    return c && typeof c === 'object' ? c : {};
+  } catch { return {}; }
+}
+function rechargeBetaOn() {
+  return RECHARGE_BETA_ENABLED || rechargeBetaConf().enabled === true;
+}
+function rechargeBetaAllows(user) {
+  const conf = rechargeBetaConf();
+  const ids = Array.isArray(conf.users) ? conf.users : Array.from(RECHARGE_BETA_USERS);
+  return ids.map(String).includes(String(user.id));
+}
+
+function rechargeBetaState(user) {
+  const rec = shareRecOf(user.id);
+  const rb = rec.betaRecharge && rec.betaRecharge.day === dateKey() ? rec.betaRecharge : { day: dateKey(), used: 0 };
+  return {
+    enabled: rechargeBetaOn() && rechargeBetaAllows(user),
+    tiers: RECHARGE_BETA_TIERS,
+    dailyCap: RECHARGE_BETA_DAILY_CAP,
+    usedToday: rb.used || 0,
+    points: rec.points || 0
+  };
+}
+
+app.get('/api/me/recharge-beta', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  res.json(rechargeBetaState(user));
+});
+
+app.post('/api/me/recharge-beta', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rechargeBetaOn() || !rechargeBetaAllows(user)) {
+    return res.status(403).json({ error: '内测充值未开放' });
+  }
+  const amount = Math.floor(Number((req.body || {}).amount));
+  if (!RECHARGE_BETA_TIERS.includes(amount)) {
+    return res.status(400).json({ error: '内测档位只能是 ' + RECHARGE_BETA_TIERS.join(' / ') + ' 盏' });
+  }
+  if (!rateLimit('recharge-beta:' + user.id, 8, 60000)) {
+    return res.status(429).json({ error: '操作太频繁，稍等一下' });
+  }
+  const rec = shareRecOf(user.id);
+  const rb = rec.betaRecharge && rec.betaRecharge.day === dateKey() ? rec.betaRecharge : { day: dateKey(), used: 0 };
+  if ((rb.used || 0) + amount > RECHARGE_BETA_DAILY_CAP) {
+    return res.status(400).json({ error: `今天内测到账已用 ${rb.used || 0} / ${RECHARGE_BETA_DAILY_CAP} 盏，明天再来` });
+  }
+  const points = addPoints(user.id, amount, 'test_recharge');
+  rb.used = (rb.used || 0) + amount;
+  rec.betaRecharge = rb;
+  saveShareSoon();
+  console.log('[recharge-beta] 模拟到账', { userId: user.id, username: user.username, amount, points, usedToday: rb.used });
+  res.json({ ok: true, amount, points, usedToday: rb.used, dailyCap: RECHARGE_BETA_DAILY_CAP });
+});
+
 app.get('/api/me/points-log', (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
@@ -11603,6 +11992,8 @@ app.post('/api/categories', async (req, res) => {
   if (ai.pass === false) {
     return res.status(400).json({ error: '分类名疑似违规' + (ai.reason ? '：' + ai.reason : '') + '，换一个吧' });
   }
+  // AI 审核是异步的（要等几秒），同名请求可能同时通过上面的查重，写回前必须再查一次
+  if (categories.includes(name)) return res.status(400).json({ error: '分类已存在' });
   categories.push(name);
   saveCategories();
   res.status(201).json(['全部', ...orderedCategories()]);
@@ -11626,6 +12017,8 @@ app.post('/api/types', async (req, res) => {
   if (ai.pass === false) {
     return res.status(400).json({ error: '形态名疑似违规' + (ai.reason ? '：' + ai.reason : '') + '，换一个吧' });
   }
+  // AI 审核是异步的（要等几秒），同名请求可能同时通过上面的查重，写回前必须再查一次
+  if (workTypes.some(t => t.name === name)) return res.status(400).json({ error: '该形态已存在' });
   workTypes.push({ name, icon: '✨', svg: '' });
   saveTypes(); syncWorkTypes();
   res.status(201).json({ ok: true, types: WORK_TYPES });
@@ -11940,6 +12333,7 @@ app.get('/api/ads', (req, res) => {
   // 前端照单渲染即可；带回原值只为排查「为什么这条没出来」。
   res.json({
     slots: AD_SLOTS, gate: adGateDaily(), priority: promoPriorityMode(),
+    display: readAdDisplay(),
     ads: applyPromoPriority(activeAds()).map(publicAd)
   });
 });
@@ -12546,6 +12940,8 @@ function payUploadRewards() {
     changed = true;
   }
   if (changed) saveWorks();
+  // 邀请好友投稿的 1000 盏：同一趟巡检兜底，接住恢复上架 / 后台改状态这类没走 announceWorkVisible 的路径
+  try { payPendingReferralBonuses(); } catch (e) { console.log('[refwork] 巡检结算失败：' + e.message); }
 }
 
 // 存量补齐：把没有奖励记录的历史作品按「最早一件 200、其余 20」一次性补发并通知作者。
@@ -13434,7 +13830,18 @@ function myRedemptionList(user) {
         comp: r.comp === true,               // 站长代投单：作者端标「站长代投」，没有灯火往来
         paid: r.paid === true,               // 现金直购单（虚拟支付）：撤下/到期不退灯火，现金退款走 MP 后台
         cashFen: r.cashFen || 0,             // 现金单实付金额（分），前端显示「¥x.xx」用
-        queuePos, pv: st.pv || 0, uv: st.uv || 0
+        queuePos, pv: st.pv || 0, uv: st.uv || 0,
+        // 真被点开的次数 / 人数（2026-11-16 加）：曝光包没买点击额度也会被点，
+        // 而作者最想知道的就是「有没有人真的点进去」。次数取 a.clicks —— 与后台「累计点击」
+        // （overview 里的 clicksAll）同一本账，作者自点不计、同访客 60 秒去重；
+        // 人数取 ad-stats 的点击 UV，11-04 起才记，更早的老单可能只有次数没有人数。
+        clicksReal: ad ? (ad.clicks || 0) : 0,
+        clickPeople: st.clickUv || 0,
+        // 被访客主动关掉的人数 / 次数（2026-11-16 加）：与后台「关闭 N 人 / N 次」同一本账，
+        // 给作者端「我的投放」当软参考——关掉的多半是同一批人最近看得太频繁看腻了，
+        // 前端据此提示，不影响投放。11-04 起才记录，更早的老单这里是 0、前端不显示。
+        closePv: st.closePv || 0,
+        closeUv: st.closeUv || 0
       };
     });
 }
@@ -13488,7 +13895,11 @@ function redeemSlotView(user) {
     const activeCount = redemptions.filter(r => r.slot === c.key && r.status === 'active').length;
     return {
       key: c.key, name: adSlot.name || c.key, where: c.where || adSlot.where || '',
-      note: c.note || '',
+      // rank 位的说明里写着「右栏竖排最多 N 条」——条数现在是后台可配的，这里跟着配置现算，
+      // 别让买家看到的数字和前台实际展示的条数对不上
+      note: c.key === 'rank'
+        ? String(c.note || '').replace(/竖排最多 \d+ 条/, '竖排最多 ' + readAdDisplay().rankSide + ' 条')
+        : (c.note || ''),
       showViews: c.showViews, showPoints: c.showPoints, clickPoints: c.clickPoints,
       extClickPoints: c.extClickPoints || c.clickPoints * 2,
       showPacks: c.showPacks, clickPacks: c.clickPacks,
@@ -13543,6 +13954,8 @@ function redeemPayload(user) {
     clickPacks: detail.clickPacks,
     maxActive: Math.max(...REDEEM_SLOTS.map(s => s.maxActive)),
     maxDays: REDEEM_MAX_DAYS,
+    // 推荐位同屏条数（后台可配）：/promote 面板的「2. 选位置」说明文字跟着它现算
+    display: readAdDisplay(),
     dayCapViews: REDEEM_DAY_CAP_VIEWS,
     dayCapClicks: REDEEM_DAY_CAP_CLICKS,
     ipCapViews: REDEEM_IP_CAP_VIEWS,
@@ -14327,9 +14740,11 @@ app.get('/api/works', (req, res) => {
 //   「严格」的意思：这条链路上不留任何调解空间——
 //     · 后台手选的作品不再插队、不再压轴（「设为精选」现在只留徽标，不占这 20 个名额）；
 //     · 不再按作者去重：同一作者多件都够分就都上 —— 这就是分数榜，不是作品集策划；
-//     · 不再每天洗牌：第 1 名就是最高分，卡片左上角的序号 = 名次，刷新不跳；
 //     · 不再设「窗口分 > 0」的门槛：分数为 0 的作品只在全站不足 20 件时才可能补进榜尾。
 //   并列时依次比窗口访客 → 累计浏览 → id，任何时刻只有一种排法。
+//   展示顺序（2026-11-16 站长改口径）：入选严格按分数，但顺序每天用日期当种子重洗一次、
+//   当天内固定 —— 分数榜长期不变会让前排作品一直吃点击，新作品没露头机会；
+//   卡片左上角的序号是「当天排位」，不再是分数名次。
 //   卡片上的数据是累计口径（pvAll/uvAll），窗口分只用于排名，不对外展示
 const FEATURED_TOP = 20;
 const FEATURED_DAYS = 7;              // 与 WEEKHOT_DAYS 同口径，改一处要一起看
@@ -14378,6 +14793,26 @@ function featuredRank(agg, user) {
   const set = blockedIds(user), authors = blockedAuthorSet(user);
   if (!set.size && !authors.size) return rows;
   return rows.filter(r => !set.has(r.w.id) && !authors.has(r.w.author));
+}
+
+// 展示顺序每天一洗（2026-11-16 站长改口径）：入选仍严格按分数取前 20，但队列顺序
+// 用「今天的日期」当种子重洗一次、当天内固定 —— 刷新不跳、API/首屏直出/preload
+// 三处口径一致；跨天自动换一副牌，前排作品不会整周蹲在头部吃点击，新作品也有露头位。
+// 种子取本地日期的 YYYYMMDD，纯确定性：任何时候重算，当天的顺序都一样。
+function featuredDayOrder(list) {
+  const d = new Date();
+  const rng = mulberry32(d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate());
+  const arr = list.slice();
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  }
+  return arr;
+}
+// 精选的完整出榜口径：分数取前 20 + 当日洗牌。所有消费点（/api/featured、
+// 首屏直出 featuredBootRows、<head> preload 图）都走这一层，不许各自 slice。
+function featuredDayList(agg, user) {
+  return featuredDayOrder(featuredRank(agg, user).slice(0, FEATURED_TOP));
 }
 
 // 「随便逛逛」取卡（spec §3.3/§3.4）：mode=pool 分层随机；mode=random 洗牌发牌。
@@ -14611,10 +15046,10 @@ function featuredReasonOf(r, agg) {
 app.get('/api/featured', (req, res) => {
   const user = currentUser(req);
   const agg = weekAgg();   // 近 7 天增量（30s 缓存），与「本周热榜」共用同一份，口径不会跑偏
-  // 严格按分数取前 20：不筛门槛、不限作者、不洗牌、不夹手选（口径见 FEATURED_TOP 上方的注释）
-  const ranked = featuredRank(agg, user);
+  // 入选严格按分数取前 20：不筛门槛、不限作者、不夹手选（口径见 FEATURED_TOP 上方的注释）；
+  // 展示顺序每天洗一次牌、当天固定（featuredDayList），序号是当天排位不是分数名次
   const reasonOf = r => featuredReasonOf(r, agg);
-  const list = ranked.slice(0, FEATURED_TOP).map(r => ({
+  const list = featuredDayList(agg, user).map(r => ({
     ...publicWork(r.w, user), uv7: r.uv7, pv7: r.pv7,
     // 累计口径给卡片展示用：数字比 7 天窗口厚，避免「12 次打开」看着单薄
     pvAll: r.pvAll, uvAll: r.uvAll,
@@ -14698,7 +15133,7 @@ function ssrFeatCard(w, i) {
 // 直出用的精简行（够 featCardHtml 画，不含详情/链接等大字段）：20 条约 4KB，gzip 后 1KB 出头
 function featuredBootRows(user) {
   const agg = weekAgg();
-  return featuredRank(agg, user).slice(0, FEATURED_TOP).map(r => {
+  return featuredDayList(agg, user).map(r => {
     const pw = publicWork(r.w, user);
     return {
       id: pw.id, title: pw.title, thumb: pw.thumb,
@@ -14716,6 +15151,7 @@ function featuredBootRows(user) {
 function bootAdPayload() {
   return {
     slots: AD_SLOTS, gate: adGateDaily(), priority: promoPriorityMode(),
+    display: readAdDisplay(),
     ads: applyPromoPriority(activeAds()).map(publicAd)
   };
 }
@@ -14773,16 +15209,37 @@ const VIEW_SCORE_PER_UV = (() => {
   const n = Number(raw);
   return Number.isFinite(n) && n >= 0 ? n : 2;
 })();
-// 访问折算分的统一入口：三处（总榜 / 本周热榜 / 高光榜）都走这里，
+// 回访加分的两个系数（2026-11-16）：0.1 分/次、0.1 分/天，配 VIEW_PV_PER_PERSON=10 的按人上限，
+// 同一个访客最多再贡献 1+1=2 分。想临时关掉其中一笔：env 置 0。
+const VIEW_SCORE_PER_PV = (() => {
+  const raw = process.env.VIEW_SCORE_PER_PV;
+  if (raw === undefined || raw === '') return 0.1;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 0.1;
+})();
+const VIEW_SCORE_PER_DAY = (() => {
+  const raw = process.env.VIEW_SCORE_PER_DAY;
+  if (raw === undefined || raw === '') return 0.1;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 0.1;
+})();
+// 访问折算分的统一入口：总榜 / 本周热榜 / 高光榜 / 星梦期刊计分都走这里，
 // 别再各写一遍系数，否则会出现「总榜按 2 分、热榜按 4 分」的半截状态。
-// 只认 UV 不认 PV：同一人反复打开不该多拿分。
-function viewPartOf(uv) {
-  if (!VIEW_SCORE_PER_UV || !(uv > 0)) return 0;
-  return Math.round(uv * VIEW_SCORE_PER_UV);
+// 2026-11-16 站长定案：访客人数×2 主导不封顶（访问占比高是口径不是 bug），
+// 另加两笔很轻的「回访加分」，奖励真有人反复回来看的优秀作品：
+//   打开次数 × VIEW_SCORE_PER_PV（含第一次，同一人最多 VIEW_PV_PER_PERSON 次 → 每人最多 1 分）
+//   回访天数 × VIEW_SCORE_PER_DAY（一天算 1 天，同一人最多 VIEW_PV_PER_PERSON 天 → 每人最多 1 分）
+// 刷回访的效率只有拉新访客的四分之一（2 分/人 vs 最多 1 分/人），且要先过 UA / 频次 / 排作者三道闸。
+function viewPartOf(uv, pvCap, dayCap) {
+  if (!VIEW_SCORE_PER_UV) return 0;
+  let s = (uv > 0) ? uv * VIEW_SCORE_PER_UV : 0;
+  if (VIEW_SCORE_PER_PV && pvCap > 0) s += pvCap * VIEW_SCORE_PER_PV;
+  if (VIEW_SCORE_PER_DAY && dayCap > 0) s += dayCap * VIEW_SCORE_PER_DAY;
+  return Math.round(s);
 }
 
 // 本周增量分：与总榜综合分同一套权重，但每一项只数近 7 天的新增。
-// 访问部分走 viewPartOf（按窗口内的访客人数，不按次数）。
+// 访问部分走 viewPartOf（访客人数 + 回访加分，全部按窗口内的按人口径）。
 // 本周增量分的各项明细。本周热榜（求总分）和本周精选（挑主打项做入选理由）共用这一处，
 // 避免两个榜单各算一遍、口径慢慢跑偏。
 function weekHotParts(w, agg) {
@@ -14800,10 +15257,12 @@ function weekHotParts(w, agg) {
     cmts,
     tippers: agg.tippers[w.id] ? agg.tippers[w.id].size : 0,
     uv: m.uv,
-    pv: m.pv
+    pv: m.pv,
+    pvCap: m.pvCap,
+    dayCap: m.dayCap
   };
   parts.score = parts.likes * 5 + parts.favs * 8 + parts.cmts * 3
-    + parts.tippers * 10 + viewPartOf(parts.uv);
+    + parts.tippers * 10 + viewPartOf(parts.uv, parts.pvCap, parts.dayCap);
   return parts;
 }
 function weekHotScore(w, agg) {
@@ -14928,15 +15387,20 @@ function peakWindowOf(w, by) {
   let best = null;
   for (let i = 0; i < arr.length; i++) {
     let likes = 0, favs = 0, cmts = 0, tipAmt = 0, pv = 0;
-    const tipSet = new Set(), uvSet = new Set();
+    const tipSet = new Set(), uvCnt = {}, uvDayCnt = {};
     for (let j = i; j < arr.length && j < i + PEAK_WINDOW_DAYS; j++) {
       const x = arr[j];
       likes += x.likes; favs += x.favs; cmts += x.cmts; tipAmt += x.tipAmt; pv += x.pv;
       if (x.tips) x.tips.forEach(t => tipSet.add(t));
-      if (x.uv) for (const k in x.uv) uvSet.add(k);
-      const uvN = uvSet.size;
+      // 2026-11-16：uv 从「当天来过的人」标记改为「当天打开次数」（老数据值=1，同义）。
+      // uvCnt 累计窗口内每人的打开次数，uvDayCnt 累计每人来过的天数（一天只 +1）。
+      if (x.uv) for (const k in x.uv) {
+        uvCnt[k] = (uvCnt[k] || 0) + (x.uv[k] || 1);
+        uvDayCnt[k] = (uvDayCnt[k] || 0) + 1;
+      }
+      const uvN = Object.keys(uvCnt).length;
       if (uvN < PEAK_MIN_UV || (likes + favs + cmts + tipSet.size) < PEAK_MIN_ENGAGE) continue;
-      const viewPart = viewPartOf(uvN);
+      const viewPart = viewPartOf(uvN, capPerPerson(uvCnt, VIEW_PV_PER_PERSON), capPerPerson(uvDayCnt, VIEW_PV_PER_PERSON));
       const cand = {
         score: likes * 5 + favs * 8 + cmts * 3 + tipSet.size * 10 + viewPart,
         likes, favs, cmts, tippers: tipSet.size, tipAmt, pv, uvN,
@@ -15477,6 +15941,12 @@ app.get('/api/rank', (req, res) => {
         if (by === 'tips') return wkTippers(b) - wkTippers(a) || wkTipAmt(b) - wkTipAmt(a) || hotOf(b) - hotOf(a);
         return hotOf(b) - hotOf(a) || new Date(b.createdAt) - new Date(a.createdAt);
       }
+      // 总榜综合排序套新作加成（见 newBoostFactor）：只改排序，行上 hotScore 仍返回真实综合分。
+      // 勋章「众梦之首」跟着这份排序走——榜上看到谁是第一，勋章就发给谁，口径一致不玩两套。
+      if (period === 'all' && by === 'hot') {
+        return score(b) * newBoostFactor(b) - score(a) * newBoostFactor(a)
+          || new Date(b.createdAt) - new Date(a.createdAt);
+      }
       return RANK_BY[by](a, b) || new Date(b.createdAt) - new Date(a.createdAt);
     });
   // 高光榜：把当前进前 PEAK_TOP_N 的作品登记进「首次进榜」名册，新面孔据此标「新晋」。
@@ -15519,6 +15989,8 @@ app.get('/api/rank', (req, res) => {
         hotScore: isWeekHot ? hotOf(w) : score(w),
         tipsTippers: isWeekHot ? wkTippers(w) : tipTippersOf(w.id),
         ...(isWeekHot ? { likes: wkLikes(w), favs: wkFavs(w) } : {}),
+        // 新作加成标记：只有总榜综合排序里系数 >1 的作品才带，前端据此挂「新作加成中」角标
+        ...(period === 'all' && by === 'hot' && newBoostFactor(w) > 1 ? { newBoost: newBoostFactor(w) } : {}),
         isNew: dateKey(new Date(w.createdAt)) === today
       };
     });
@@ -15589,25 +16061,115 @@ app.get('/api/today', (req, res) => {
 // 榜单回答「此刻谁在前面」，期刊回答「那一期是谁在前面」：周榜期刊一周一期、月榜期刊一月一刊，
 // 榜单页右栏的「期刊架」随手往前翻，点开是一页杂志式的存照。
 //
-// 收录口径与周榜/月榜完全一致：只收**这一期内上架的新作品**，按**这一期内的互动增量**计分
+// 收录口径：只收**这一期内上架的新作品**，计分取**每件作品上架后首 7 天的互动增量**
 // （获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 访客×2，与综合分同一套权重）。
-// 为什么按期内增量：期刊是这一期的存照，上一期攒下的赞不该带进这一期。
+// 为什么按「首 7 天」：2026-11-16 前按「期内增量」算，周一上架的有 7 天窗口、周日上架的只有几小时，
+// 同样质量的作品分差好几倍——不公平。改成每件作品都计自己头 7 天，谁也不吃亏：
+// 周日上架的窗口跨过截稿点往「后面」借几天，算满 7 天为止。周榜月榜同一口径。
 //
 // 截稿：自然周（周一 0 点起算）到下周一 0 点截稿；自然月到次月 1 日 0 点截稿。
-// 已截稿的期在第一次被打开时定稿存档（data/journals.json），此后不再重算——
-// 点赞可以取消、访客还在涨，但「那一周谁第一」不该被后来的动作改写。
+// 定稿：出刊（截稿）那天先发「暂定榜」，等这一期里上架最晚的作品也攒满 7 天
+// （截稿后再过 7 天）才定稿存档（data/journals.json），此后不再重算——
+// 点赞可以取消、访客还在涨，但定稿后的名次不再改写。
 // 进行中的期实时算，右栏先看到「本周谁在领跑」。
 // 月榜第一期＝建站那个自然月，所以站点没满一个月时它还在筹备（右栏显示筹备卡＋当前领跑）。
 const JOURNAL_TOP_N = 20;        // 一期收录前 20 名（详情弹窗滑两屏看完）
 const JOURNAL_LIST_MAX = 12;     // 期刊架一次最多回多少期往期
-// 第 1 期真正起算日：建站日 10-30 傍晚上线的，落在周一 10-26 那一周；对外口径是 10-31 上线，
-// 所以首期窗口从 10-31 00:00 裁起（10-30 那几件内测作品不进任何一期）。后续期次仍是自然周，
+const JOURNAL_SCORE_DAYS = 7;    // 每件作品只计上架后首 7 天的增量（周榜月榜同口径）；出刊后再过 7 天才定稿
+// 第 1 期真正起算日：建站日 10-30 傍晚上线，周榜 / 月榜首期都从 10-30 00:00 裁起，
+// 10-30 当天上架的作品计入第 1 期（2026-11-16 站长拍板改回建站日起算；此前裁到 10-31 是把
+// 内测作品挡在刊外，月榜当时漏套这个裁剪才显示出 10.01 起头）。后续期次仍是自然周 / 自然月，
 // 只有第 1 期的起点被裁短。要改首期起点，只改这一行。
-const JOURNAL_FIRST_FROM = '2026-10-31';
+const JOURNAL_FIRST_FROM = '2026-10-30';
 let journals = readJSON('journals.json', { week: {}, month: {} });
 if (!journals || typeof journals !== 'object' || Array.isArray(journals)) journals = { week: {}, month: {} };
 ['week', 'month'].forEach(t => { if (!journals[t] || typeof journals[t] !== 'object' || Array.isArray(journals[t])) journals[t] = {}; });
 function saveJournals() { writeJSON('journals.json', journals); }
+
+// ---------- 上榜灯火奖励（2026-11-16 站长定）----------
+// 周榜前三 200 / 100 / 50，月榜前三 1000 / 500 / 200，**定稿才发**：
+// 暂定榜（closing）期间最晚上架的作品还在涨分，名次会变，先发就得反复追账。
+// 奖给作品的上传账号：匿名作品照发（站内信只写作品名，不写实名）；没有账号的作品（游客投稿、
+// 未认领）没人可发，存档里记一笔 skip 便于后台核对；站长自己的作品留名次、不发灯火
+// （领奖人就是发奖人，账面上没意义）。一件作品只会上架那一期的周榜 + 所在月的月榜，
+// 所以「连着好几期霸榜」不存在，单件作品最多拿两份。
+const JOURNAL_PRIZE = { week: [200, 100, 50], month: [1000, 500, 200] };
+// 只给「上线之后才定稿」的期发：之前已经定稿的期不回头追账。想补发全站历史就把这行改早
+// （回归测试用 JOURNAL_PRIZE_START 环境变量往前挪，别直接改这行再忘回去）。
+const JOURNAL_PRIZE_START = process.env.JOURNAL_PRIZE_START || '2026-11-17';
+function journalPrizeOf(type, rank) {
+  const arr = JOURNAL_PRIZE[type] || [];
+  return Number(arr[rank - 1]) || 0;
+}
+// 定稿那一刻的发奖名单：先落进存档（paidAt 记在每个人身上），再逐笔入账。
+// 落档在前、入账在后 —— 万一两步之间进程挂了，下次翻到这一期会按 paidAt 补发，不会重复发。
+function buildJournalPrizes(type, list) {
+  const n = (JOURNAL_PRIZE[type] || []).length;
+  const out = [];
+  (list || []).slice(0, n).forEach(e => {
+    const points = journalPrizeOf(type, e.rank);
+    if (!points) return;
+    const w = works.find(x => x.id === e.id);
+    const uid = (w && w.userId) || e.authorId || '';
+    const user = uid ? users.find(u => u.id === uid) : null;
+    let skip = '';
+    if (!user) skip = 'no_user';
+    else if (isSiteOwner(user)) skip = 'owner';
+    out.push({ rank: e.rank, workId: e.id, title: String(e.title || ''), userId: uid, points, skip, paidAt: 0 });
+  });
+  return out;
+}
+function payJournalPrizes(issue, reissue) {
+  const list = Array.isArray(issue && issue.prizes) ? issue.prizes : [];
+  if (!list.length) return 0;
+  const kind = issue.type === 'month' ? '月榜' : '周榜';
+  let paid = 0;
+  for (const p of list) {
+    if (!p || p.paidAt || p.skip) continue;
+    const user = p.userId ? users.find(u => u.id === p.userId) : null;
+    if (!user) { p.skip = 'no_user'; continue; }
+    const total = addPoints(user.id, p.points, 'journal', p.workId);
+    p.paidAt = Date.now();
+    paid++;
+    addNotice(user.id, {
+      kind: 'points',
+      title: `${reissue ? '补发 · ' : ''}星梦期刊 · ${kind}第 ${issue.no} 期第 ${p.rank} 名 +${p.points} 盏灯火`,
+      text: `${reissue ? '这是往期定稿后的补发。' : ''}你的作品《${p.title}》在星梦期刊${kind}第 ${issue.no} 期（${issue.from} ~ ${issue.to}）排第 ${p.rank} 名，奖励 ${p.points} 盏灯火已到账，当前余额 ${total} 盏。这一期已定稿，名次不再改写；灯火可以在「推荐」换推荐位。`,
+      points: total,
+      delta: p.points,
+      workId: p.workId
+    });
+  }
+  if (paid) saveJournals();
+  return paid;
+}
+
+// 往期补发（11-16 站长拍板）：起发日之前已定稿的期，存档里 prizes 是空的，按当时冻结的名次
+// 一次性补上名单、入账并发站内信。之后的期仍由 journalCut / settleJournals 定稿时自动发。
+// 幂等：整期已有 prizes 就跳过，单笔 paidAt 保证不重发；无账号 / 站长作品照记 skip，不发灯火。
+app.post('/api/admin/journal/reissue', requireAdmin, (req, res) => {
+  const out = { issues: 0, paid: 0, points: 0, skipped: 0, details: [] };
+  for (const type of ['week', 'month']) {
+    for (const key of Object.keys(journals[type] || {})) {
+      const issue = journals[type][key];
+      if (!issue || !Array.isArray(issue.list)) continue;
+      if (issue.phase !== 'closed' && issue.status !== 'closed') continue;
+      if (Array.isArray(issue.prizes) && issue.prizes.length) continue;   // 已经发过 / 补过，整期跳过
+      if (String(issue.finalAt || '') >= JOURNAL_PRIZE_START) continue;   // 起发日之后的期走自动发，不在这儿重复
+      issue.prizes = buildJournalPrizes(type, issue.list);
+      const paid = payJournalPrizes(issue, true);
+      const points = issue.prizes.reduce((s, p) => s + (p.paidAt && !p.skip ? p.points : 0), 0);
+      out.issues++;
+      out.paid += paid;
+      out.points += points;
+      out.skipped += issue.prizes.filter(p => p.skip).length;
+      out.details.push({ type, no: issue.no, from: issue.from, to: issue.to, paid, points, prizes: issue.prizes });
+    }
+  }
+  // addPoints 是 2 秒 debounce：补发完把灯火、通知、存档一起刷到盘上，别留「钱还在内存里」的窗口
+  if (out.issues) { saveJournals(); saveShareNow(); }
+  res.json(out);
+});
 
 // 期刊计算要「站在访客视角」取公开作品（屏蔽名单是每个人自己的，存档不能带个人口味）
 const JOURNAL_REQ = { headers: {}, socket: { remoteAddress: '127.0.0.1' } };
@@ -15668,39 +16230,65 @@ function journalNo(type, start) {
   return Math.max(1, Math.round((weekStart(start) - b) / (7 * 86400000)) + 1);
 }
 
-// 一期之内的互动流水：点赞 / 收藏 / 评论按时间戳取窗口内的那几条；
-// 访客与 PV 按天桶取窗口内的每一天（UV 是这几天里出现过的身份并集，跨天去重）。
-function journalAgg(fromMs, toMs) {
-  const inWin = t => t >= fromMs && t < toMs;
-  const likes = {}, favs = {}, cmts = {}, tippers = {}, uv = {}, pv = {};
+// 一期之内每件作品的互动流水：计分窗口 = 上架后首 JOURNAL_SCORE_DAYS 天（可能跨过截稿点往「后面」借天数）。
+// 点赞 / 收藏 / 评论按时间戳落在各自窗口里的那几条；
+// 访客与 PV 按天桶取「上架日起 7 个自然日」（UV 是这些天里出现过的身份并集，跨天去重）；
+// uvCap / dayCap 是回访加分的口径：每人打开次数、回访天数各按 VIEW_PV_PER_PERSON 封顶后求和。
+function journalAgg(pool, fromMs, toMs) {
+  const scoreMs = JOURNAL_SCORE_DAYS * 86400000;
+  const win = new Map();
+  for (const w of pool) {
+    const t = Date.parse(w.createdAt) || 0;
+    // 上架时间缺失的兜底回「整期窗口」，与旧口径一致
+    win.set(w.id, t > 0 ? { from: t, to: t + scoreMs } : { from: fromMs, to: toMs });
+  }
+  const hitWin = (id, t) => {
+    const x = win.get(id);
+    return !!x && t >= x.from && t < x.to;
+  };
+  const likes = {}, favs = {}, cmts = {}, tippers = {}, uv = {}, uvCap = {}, dayCap = {}, pv = {};
   for (const e of likeLog) {
-    if (!e || !e.workId || !inWin(e.t || 0)) continue;
+    if (!e || !e.workId || !hitWin(e.workId, e.t || 0)) continue;
     likes[e.workId] = (likes[e.workId] || 0) + 1;
   }
   for (const e of favLog) {
-    if (!e || !e.workId || !inWin(e.t || 0)) continue;
+    if (!e || !e.workId || !hitWin(e.workId, e.t || 0)) continue;
     favs[e.workId] = (favs[e.workId] || 0) + 1;
   }
   for (const c of comments) {
-    if (!c || !c.workId || c.anon || !c.userId || !inWin(c.createdAt || 0)) continue;
+    if (!c || !c.workId || c.anon || !c.userId || !hitWin(c.workId, c.createdAt || 0)) continue;
     cmts[c.workId] = (cmts[c.workId] || 0) + 1;
   }
   for (const t of tips) {
-    if (!t || !t.workId || !inWin(t.createdAt || 0)) continue;
+    if (!t || !t.workId || !hitWin(t.workId, t.createdAt || 0)) continue;
     const set = tippers[t.workId] || (tippers[t.workId] = new Set());
     set.add(t.fromUserId || 'anon');
   }
   Object.entries(workVisits).forEach(([id, rec]) => {
-    let p = 0; const set = new Set();
+    const x = win.get(id);
+    if (!x) return;
+    // 访客按自然日算：从上架那天（含）起 7 个日历天，沿用「上架当天全天都算」的旧行为
+    const dayFrom = dayStart(new Date(x.from)).getTime();
+    const dayTo = dayFrom + scoreMs;
+    let p = 0; const cnt = {}, dcnt = {};
     Object.entries((rec && rec.days) || {}).forEach(([k, dd]) => {
-      if (!inWin(new Date(k + 'T00:00:00').getTime())) return;
+      const dms = new Date(k + 'T00:00:00').getTime();
+      if (dms < dayFrom || dms >= dayTo) return;
       p += (dd && dd.pv) || 0;
-      Object.keys((dd && dd.uv) || {}).forEach(x => set.add(x));
+      // uv 值 = 当天打开次数（老数据 1 = 来过 1 次）；dcnt 按天 +1 = 回访天数
+      Object.entries((dd && dd.uv) || {}).forEach(([k2, v]) => {
+        cnt[k2] = (cnt[k2] || 0) + (v || 1);
+        dcnt[k2] = (dcnt[k2] || 0) + 1;
+      });
     });
     if (p) pv[id] = p;
-    if (set.size) uv[id] = set.size;
+    if (Object.keys(cnt).length) {
+      uv[id] = Object.keys(cnt).length;
+      uvCap[id] = capPerPerson(cnt, VIEW_PV_PER_PERSON);
+      dayCap[id] = capPerPerson(dcnt, VIEW_PV_PER_PERSON);
+    }
   });
-  return { likes, favs, cmts, tippers, uv, pv, fromMs, toMs };
+  return { likes, favs, cmts, tippers, uv, uvCap, dayCap, pv, win, fromMs, toMs };
 }
 
 // 把一期的候选作品折算成名次。口径与综合分一致：
@@ -15712,16 +16300,18 @@ function journalEntries(pool, agg) {
     const favs = agg.favs[w.id] || 0;
     let cmts = agg.cmts[w.id] || 0;
     if (cmts && w.userId) {
+      const wwin = agg.win.get(w.id) || { from: agg.fromMs, to: agg.toMs };
       for (const c of comments) {
         if (c.workId === w.id && !c.anon && c.userId === w.userId
-          && (c.createdAt || 0) >= agg.fromMs && (c.createdAt || 0) < agg.toMs) cmts--;
+          && (c.createdAt || 0) >= wwin.from && (c.createdAt || 0) < wwin.to) cmts--;
       }
       if (cmts < 0) cmts = 0;
     }
     const tippers = agg.tippers[w.id] ? agg.tippers[w.id].size : 0;
     const uv = agg.uv[w.id] || 0;
     const pv = agg.pv[w.id] || 0;
-    const score = likes * 5 + favs * 8 + cmts * 3 + tippers * 10 + viewPartOf(uv);
+    const score = likes * 5 + favs * 8 + cmts * 3 + tippers * 10
+      + viewPartOf(uv, agg.uvCap[w.id] || 0, agg.dayCap[w.id] || 0);
     if (!score && !pv) continue;   // 一点动静都没有的作品不进期刊，免得一期里躺一排 0 分
     const author = String(displayNameOf(w.author) || w.author || '');
     out.push({
@@ -15768,29 +16358,60 @@ function journalCard(e) {
   };
 }
 
-// 算一期。offset=0 为进行中的本期（status=live），历史期为 closed。
+// 作者主页「第 N 期周榜 / 月榜前三」荣誉标识的数据源（2026-11-16 站长定）：
+// 只认已定稿（phase=closed）的期，攒分中的暂定名次不贴——名次还会变，贴出去隔天就错。
+// 定稿期的 list 是 frozen 时落档的完整名次（journalEntries 打的 rank），带 authorId，
+// 直接扫出这位作者进前三的期。返回 [{ type, no, rank, title, workId }]，前端拼胶囊。
+// 一件作品只进上架那一期的周榜 + 所在月的月榜，不会连期霸榜；同一作者多件作品可多期上榜，逐条列。
+function authorJournalRanks(uid) {
+  if (!uid) return [];
+  const out = [];
+  for (const type of ['week', 'month']) {
+    const issues = journals[type] || {};
+    for (const key of Object.keys(issues)) {
+      const iss = issues[key];
+      if (!iss || iss.phase !== 'closed' || !Array.isArray(iss.list)) continue;
+      for (const e of iss.list) {
+        if (e && e.authorId === uid && e.rank >= 1 && e.rank <= 3) {
+          out.push({ type, no: Number(iss.no) || 0, rank: e.rank, title: e.title || '', workId: e.id || '' });
+        }
+      }
+    }
+  }
+  // 周榜在前、月榜在后，各自按期号升序；同作者同期多件都列（都是真实前三）
+  out.sort((a, b) => (a.type === b.type ? a.no - b.no || a.rank - b.rank : (a.type === 'week' ? -1 : 1)));
+  return out;
+}
+
+// 算一期。offset=0 为进行中的本期；出刊后、定稿前的「攒分中」期也走这里实时算。
 function journalBuild(type, offset) {
   const { start, end } = journalSpanOf(type, offset) || journalSpan(type, offset);
   const fromMs = start.getTime(), toMs = end.getTime();
-  const closed = toMs <= Date.now();
-  const agg = journalAgg(fromMs, toMs);
   const pool = publicWorks(JOURNAL_REQ).filter(w => {
     const t = Date.parse(w.createdAt) || 0;
     return t >= fromMs && t < toMs;
   });
+  const agg = journalAgg(pool, fromMs, toMs);
   const list = journalEntries(pool, agg).slice(0, JOURNAL_TOP_N);
   const totalDays = Math.round((toMs - fromMs) / 86400000);
   const passedDays = Math.min(totalDays, Math.max(0, Math.floor((Date.now() - fromMs) / 86400000) + 1));
+  // phase 三段：live=收稿中 / closing=出刊后攒分中（名次暂定，还会涨）/ closed=定稿。
+  // status 兼容旧前端：定稿前一律 'live'。
+  const scoreMs = JOURNAL_SCORE_DAYS * 86400000;
+  const now = Date.now();
+  const phase = now < toMs ? 'live' : now < toMs + scoreMs ? 'closing' : 'closed';
   return {
     type,
     no: journalNo(type, start),
     from: dateKey(start),
     to: dateKey(addDays(end, -1)),
     publishAt: dateKey(end),
-    status: closed ? 'closed' : 'live',
+    finalAt: dateKey(new Date(toMs + scoreMs)),
+    status: phase === 'closed' ? 'closed' : 'live',
+    phase,
     works: pool.length,
     count: list.length,
-    daysLeft: closed ? 0 : Math.max(0, Math.ceil((toMs - Date.now()) / 86400000)),
+    daysLeft: phase === 'live' ? Math.max(0, Math.ceil((toMs - now) / 86400000)) : 0,
     progress: { passed: passedDays, total: totalDays },
     stats: journalStats(fromMs, toMs),
     champion: list.length ? journalCard(list[0]) : null,
@@ -15798,18 +16419,21 @@ function journalBuild(type, offset) {
   };
 }
 
-// 已截稿的期：第一次被打开时定稿并存档，之后永远返回存档那一份
+// 已定稿的期：攒满 7 天（出刊后再过 7 天）后第一次被打开时定稿并存档，之后永远返回存档那一份
 function journalCut(type, span) {
   const key = dateKey(span.start);
   const saved = journals[type][key];
-  if (saved && Array.isArray(saved.list)) return saved;
+  if (saved && Array.isArray(saved.list)) {
+    payJournalPrizes(saved);   // 上次定稿了但没发完（进程重启之类）：翻到就补上，paidAt 保证不重发
+    return saved;
+  }
   const { start, end } = span;
   const fromMs = start.getTime(), toMs = end.getTime();
-  const agg = journalAgg(fromMs, toMs);
   const pool = publicWorks(JOURNAL_REQ).filter(w => {
     const t = Date.parse(w.createdAt) || 0;
     return t >= fromMs && t < toMs;
   });
+  const agg = journalAgg(pool, fromMs, toMs);
   const list = journalEntries(pool, agg).slice(0, JOURNAL_TOP_N);
   const frozen = {
     type,
@@ -15817,7 +16441,9 @@ function journalCut(type, span) {
     from: dateKey(start),
     to: dateKey(addDays(end, -1)),
     publishAt: dateKey(end),
+    finalAt: dateKey(new Date(toMs + JOURNAL_SCORE_DAYS * 86400000)),
     status: 'closed',
+    phase: 'closed',
     works: pool.length,
     count: list.length,
     daysLeft: 0,
@@ -15825,10 +16451,14 @@ function journalCut(type, span) {
     stats: journalStats(fromMs, toMs),
     champion: list.length ? journalCard(list[0]) : null,
     list,
+    // 前三名灯火奖励：只在上线日之后定稿的期发（JOURNAL_PRIZE_START），先落档再入账
+    prizes: String(dateKey(new Date(toMs + JOURNAL_SCORE_DAYS * 86400000))) >= JOURNAL_PRIZE_START
+      ? buildJournalPrizes(type, list) : [],
     frozenAt: new Date().toISOString()
   };
   journals[type][key] = frozen;
   saveJournals();
+  payJournalPrizes(frozen);
   return frozen;
 }
 
@@ -15842,12 +16472,16 @@ function journalLive(type) {
   return issue;
 }
 
-// 系列的第一期从哪开始：建站那一周 / 那个月（之前的期不存在，期号也不占位）
+// 系列的第一期从哪开始：建站那一周 / 那个月，再被 JOURNAL_FIRST_FROM 裁到首期起算日
+// （之前的期不存在，期号也不占位）。周榜月榜都套这个裁剪。
 function journalFirstStart(type) {
   const birth = new Date(siteBirthMs());
-  if (type === 'month') return monthStart(birth);
+  const from = dayStart(new Date(JOURNAL_FIRST_FROM + 'T00:00:00'));   // 本地时区 0 点，和 weekStart / monthStart 同口径
+  if (type === 'month') {
+    const m = monthStart(birth);
+    return from.getTime() > m.getTime() ? from : m;
+  }
   const wk = weekStart(birth);
-  const from = dayStart(new Date(JOURNAL_FIRST_FROM + 'T00:00:00'));   // 本地时区 0 点，和 weekStart 同口径
   return from.getTime() > wk.getTime() ? from : wk;
 }
 
@@ -15858,17 +16492,20 @@ app.get('/api/journals', (req, res) => {
   res.set('Cache-Control', 'no-store');
   const firstStart = journalFirstStart(type);
   const live = journalLive(type);
+  const scoreMs = JOURNAL_SCORE_DAYS * 86400000;
   const issues = [];
   for (let off = 1; off <= 260 && issues.length < limit; off++) {
     const span = journalSpanOf(type, off);
     if (!span) break;
     if (span.start.getTime() < firstStart.getTime()) break;
     if (span.end.getTime() > Date.now()) continue;
-    const issue = journalCut(type, span);
+    // 出刊后 7 天内是「攒分中」：实时算不落档；攒满才交给 journalCut 定稿存档
+    const closing = span.end.getTime() + scoreMs > Date.now();
+    const issue = closing ? journalBuild(type, off) : journalCut(type, span);
     if (!issue.works) continue;   // 整期没有新作品上架：期刊架不摆空壳（期号照旧占位，翻期详情仍能打开）
     issues.push({
       no: issue.no, from: issue.from, to: issue.to, publishAt: issue.publishAt,
-      status: 'closed', works: issue.works, count: issue.count,
+      phase: issue.phase || 'closed', status: issue.status, works: issue.works, count: issue.count,
       stats: issue.stats, champion: issue.champion
     });
   }
@@ -15880,6 +16517,7 @@ app.get('/api/journals', (req, res) => {
     today: dateKey(),
     live: {
       no: live.no, from: live.from, to: live.to, publishAt: live.publishAt,
+      phase: live.phase || 'live', finalAt: live.finalAt,
       status: live.status, daysLeft: live.daysLeft, progress: live.progress,
       works: live.works, count: live.count, stats: live.stats,
       champion: live.champion, top: live.list.slice(0, 3).map(journalCard)
@@ -15901,11 +16539,15 @@ app.get('/api/journal', (req, res) => {
     if (!span) break;
     if (span.start.getTime() < firstStart.getTime()) break;
     if (journalNo(type, span.start) !== no) continue;
-    const issue = span.end.getTime() > Date.now() ? journalBuild(type, off) : journalCut(type, span);
+    // 出刊（截稿）后 7 天内是「攒分中」：实时算；攒满 7 天才定稿
+    const issue = span.end.getTime() + JOURNAL_SCORE_DAYS * 86400000 > Date.now()
+      ? journalBuild(type, off) : journalCut(type, span);
     const newer = off > 0 ? journalSpanOf(type, off - 1) : null;
     const older = journalSpanOf(type, off + 1);
     res.json({
       ...issue,
+      // 前三名灯火奖励的价目随期次一起下发，前端别再抄一份数字
+      prize: JOURNAL_PRIZE[type] || [],
       next: newer ? { no: issue.no + 1, from: dateKey(newer.start), to: dateKey(addDays(newer.end, -1)) } : null,
       prev: (older && older.start.getTime() >= firstStart.getTime())
         ? { no: Math.max(1, issue.no - 1), from: dateKey(older.start), to: dateKey(addDays(older.end, -1)) }
@@ -15920,7 +16562,8 @@ app.get('/api/journal', (req, res) => {
 // 所以网页端和 App 里的访问现在跟小程序一样，都能被公平地算进来。
 function viewScore(w) {
   if (!VIEW_SCORE_PER_UV) return 0;
-  return viewPartOf(workPvUv(w.id, 36500).uv || 0);
+  const m = workPvUv(w.id, 36500);
+  return viewPartOf(m.uv || 0, m.pvCap || 0, m.dayCap || 0);
 }
 // 评论分：只数登录用户发的评论；作者自己在自己作品下的评论不计（自评刷分）
 function commentScore(w) {
@@ -15940,6 +16583,20 @@ function commentScore(w) {
 // 灯火计分按「送过灯火的人数」：同一人送多笔只算 1 份，和获赞/收藏一样是「一人一票」，
 // 避免单笔大额打赏直接碾压真实口碑；匿名/未认领作品收到的灯火同样计分（送礼必须登录，都有人头）
 function score(w) { return (w.likes || 0) * 5 + (w.favs || 0) * 8 + commentScore(w) * 3 + tipTippersOf(w.id) * 10 + viewScore(w); }
+
+// 新作加成（2026-11-16）：总榜按综合排序时，给上架 14 天内的作品乘一个 >1 的排序系数——
+// 首 7 天 ×1.3、8–14 天 ×1.15，之后恢复 1。只影响排序，不改变任何计数与展示分数：
+// 榜行上的综合分还是真实的 score(w)，加成只在排序比较时生效，防止「数字注水」。
+// 用乘法不用固定加分：空作品加完还是排不上去，只有真实互动被放大，才对认真攒口碑的作品公平。
+// 周榜/月榜不需要它——那两榜本身就是同期作品同场竞技；高光榜/本周热榜口径独立，也不掺。
+function newBoostFactor(w) {
+  const t = new Date(w.createdAt).getTime();
+  if (!t || isNaN(t)) return 1;
+  const age = (Date.now() - t) / 86400000;   // 上架至今的天数（小数，满 24h 记 1 与 workAgeText 同口径起点）
+  if (age <= 7) return 1.3;
+  if (age <= 14) return 1.15;
+  return 1;
+}
 
 // 作者主页（创作者档案页）
 // 2026-11-12 扩展：除了作品列表，把「这位创作者值不值得关注」的信号一次算全——
@@ -16062,6 +16719,8 @@ app.get('/api/authors/:name', (req, res) => {
     totalComments: all.reduce((s, w) => s + (commentStats().scoreable[w.id] || 0), 0),
     openCount: all.filter(w => w.openSource === true).length,
     badges,
+    // 星梦期刊前三荣誉（定稿期）：作者主页名字后逐期列出；进行中的期不贴
+    journalRanks: authorJournalRanks(uid),
     cats,
     // true = 这位作者把主页作品收起来了（本人视角恒为 false），前端据此换成一句说明而不是空作品区
     hideWorks,
@@ -19693,6 +20352,165 @@ app.post('/api/admin/link-health/schedule', requireAdmin, (req, res) => {
   res.json({ ok: true, sched: next });
 });
 
+// ---------- GitHub 仓库预览（后台「1 分钟极速填写」用，2026-11-16）----------
+// 浏览器直连 GitHub API 在部分网络下会被限流（实测用户浏览器 403、Node 200），
+// 改由服务端代取。线上已验证 api.github.com 可达；raw.githubusercontent.com 不通，
+// 所以 README 走 API 的 /readme 端点，不碰 raw 域名。
+// 匿名配额 60 次/小时，加 30 分钟内存缓存，重复读同一个仓库不重复消耗。
+const GH_PREVIEW_CACHE = new Map();
+const GH_PREVIEW_TTL = 30 * 60 * 1000;
+const GH_PREVIEW_TIMEOUT = 9000;
+
+function ghPreviewParse(raw) {
+  const s = String(raw || '').trim().replace(/\.git$/i, '');
+  let m = s.match(/^https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?:[/?#].*)?$/i);
+  if (!m) m = s.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
+  return m ? { owner: m[1], repo: m[2] } : null;
+}
+
+async function ghPreviewFetchJson(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), GH_PREVIEW_TIMEOUT);
+  try {
+    const r = await fetch(url, {
+      headers: { 'User-Agent': 'dm-site-gh-preview', Accept: 'application/vnd.github+json' },
+      signal: ctrl.signal
+    });
+    if (!r.ok) {
+      if (r.status === 403 || r.status === 429) throw new Error('GitHub 访问频率超限，半小时后再试');
+      throw new Error('GitHub 返回 ' + r.status);
+    }
+    return await r.json();
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('连 GitHub 超时，稍后再试');
+    throw e;
+  } finally { clearTimeout(timer); }
+}
+
+// README → 纯文本素材：喂给 AI 抽分类/形态/关键词用。去掉代码块、徽章、HTML 和 markdown 记号，
+// 只留正文句子；README 越长噪声越多，截前 2400 字（和 /api/work/parse 的 3000 上限留余量）。
+function ghPlainText(md) {
+  return String(md || '')
+    .replace(/```[\s\S]*?```/g, ' ')                 // 代码块（安装命令、示例）
+    .split(/\r?\n/).filter(line => {
+      const s = line.trim();
+      return s && !/^\[!\[|^!\[|^#{1,6}\s|^\|/.test(s);  // 去徽章、图片、标题、表格
+    }).join('\n')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')          // 链接留文字
+    .replace(/<[^>]+>/g, '')                          // HTML 标签
+    .replace(/[*_`~>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim().slice(0, 2400);
+}
+
+// 从 README 里抠「大标题 + 开头第一段简介」：跳过徽章、图片、表格、列表和「本地运行」之后的内容
+function ghPreviewBrief(md) {
+  const lines = String(md || '').split(/\r?\n/);
+  let title = '';
+  const para = [];
+  for (let i = 0; i < Math.min(lines.length, 100); i++) {
+    const line = lines[i].trim();
+    if (!title) {
+      const h = line.match(/^#{1,2}\s+(.+?)\s*#*$/);
+      if (h) title = h[1];
+      continue;
+    }
+    if (!line) { if (para.length) break; continue; }
+    if (/^\[!\[|^!\[|^---+$|^\|/.test(line)) continue;
+    if (/^[-*+]\s/.test(line) && !para.length) continue;
+    if (/^(本地运行|安装|用法|功能|目录|简介|快速开始|Features?|Installation|Usage|Getting started)/i.test(line)) break;
+    para.push(line);
+    if (para.join('').length > 500) break;
+  }
+  const clean = s => String(s || '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]+>/g, '')
+    .replace(/[*_`~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return { title: clean(title), summary: clean(para.join(' ')) };
+}
+
+// 后台页签 / 前台投稿共用一份取数逻辑（30 分钟缓存也共用），避免两处口径分叉
+async function ghPreviewData(raw) {
+  const p = ghPreviewParse(String(raw || '').trim());
+  if (!p) throw new Error('链接不像 GitHub 仓库，填完整地址或「用户名/仓库」');
+  const key = p.owner + '/' + p.repo;
+  const hit = GH_PREVIEW_CACHE.get(key);
+  if (hit && Date.now() - hit.at < GH_PREVIEW_TTL) return Object.assign({ cached: true }, hit.data);
+  const base = 'https://api.github.com/repos/' + encodeURIComponent(p.owner) + '/' + encodeURIComponent(p.repo);
+  const info = await ghPreviewFetchJson(base);
+  let brief = { title: '', summary: '' }, readmeOk = false, plain = '';
+  try {
+    const rm = await ghPreviewFetchJson(base + '/readme');
+    if (rm && rm.content) {
+      const md = Buffer.from(String(rm.content).replace(/\s/g, ''), 'base64').toString('utf8');
+      brief = ghPreviewBrief(md);
+      plain = ghPlainText(md);
+      readmeOk = !!brief.summary;
+    }
+  } catch (_) { /* README 读不到就用 About 兜底，不算失败 */ }
+  const about = String(info.description || '');
+  let homepage = String(info.homepage || '').trim();
+  if (homepage && !/^https?:\/\//i.test(homepage)) homepage = 'https://' + homepage;
+  // 补分类 / 形态 / 关键词：复用 /api/work/parse 那条链路（extractFromText：AI 优先，
+  // 无 key / 超时 / 挂了自动降级到本地词表 ruleParseWork + autoKeywords）。后台调用不受匿名限流。
+  // 素材用 README 纯正文 + About，比只用第一段简介抽得准；模型给的分类/形态还要过站里白名单。
+  let parsed = { categories: [], types: [], keywords: [], source: 'rules', degraded: true };
+  const material = [brief.title || p.repo, plain || '', about].filter(Boolean).join('\n').slice(0, 3000);
+  if (material.length >= 8) {
+    try {
+      const r = await extractFromText(material, plain || material);
+      if (r && r.out) {
+        const o = r.out;
+        parsed = {
+          categories: Array.isArray(o.categories) ? o.categories : [],
+          types: Array.isArray(o.types) ? o.types : [],
+          keywords: Array.isArray(o.keywords) ? o.keywords : [],
+          source: o.source || 'rules',
+          degraded: !!o.degraded
+        };
+      }
+    } catch (_) { /* 解析挂了就留空，前端照常回填读到的原文 */ }
+  }
+  const data = {
+    repoUrl: 'https://github.com/' + key,
+    repoName: p.repo,
+    readmeTitle: brief.title,
+    about, homepage, readmeOk,
+    summary: brief.summary || about,
+    site: homepage || '',
+    categories: parsed.categories,
+    types: parsed.types,
+    keywords: parsed.keywords,
+    parseSource: parsed.source,
+    parseDegraded: parsed.degraded
+  };
+  GH_PREVIEW_CACHE.set(key, { at: Date.now(), data });
+  return data;
+}
+
+app.post('/api/admin/github/preview', requireAdmin, async (req, res) => {
+  try { res.json(await ghPreviewData((req.body && req.body.url) || '')); }
+  catch (e) { res.status(400).json({ error: e.message || '读取 GitHub 失败' }); }
+});
+
+// 前台投稿「1 分钟极速填写」用：匿名可调，闸门比后台严。
+// GitHub 匿名 API 只有 60 次/小时，分类/形态抽取还走站长的模型额度，
+// 所以按 IP 限 5 次/分 + 20 次/时，再加一道全站 20 次/时；缓存命中也照样计数，
+// 避免有人拿同一个仓库反复刷。后台已登录的照旧不限。
+app.post('/api/work/github-preview', async (req, res) => {
+  const raw = String((req.body && req.body.url) || '').trim();
+  if (!ghPreviewParse(raw)) return res.status(400).json({ error: '链接不像 GitHub 仓库，填完整地址或「用户名/仓库」' });
+  if (!isAdmin(req)) {
+    if (!rateLimit('wgh:' + clientIp(req), 5, 60000)) return res.status(429).json({ error: '读取太频繁了，等一分钟再试' });
+    if (!rateLimit('wgh-h:' + clientIp(req), 20, 3600e3)) return res.status(429).json({ error: '一小时内读取次数用完了，请手动填写' });
+    if (!rateLimit('wgh-all', 20, 3600e3)) return res.status(429).json({ error: 'GitHub 读取有点忙，稍后再试' });
+  }
+  try { res.json(await ghPreviewData(raw)); }
+  catch (e) { res.status(400).json({ error: e.message || '读取 GitHub 失败' }); }
+});
+
 // ---------- 注册统计看板 ----------
 // 单独接口，不塞进 /api/admin/stats：那边后台每次刷新都拉，这边口径多
 // （按天 / 星期 / 来源 / 绑定 / 标签），独立成页，切时间窗时各查各的。
@@ -20845,6 +21663,351 @@ app.post('/api/admin/works', requireAdmin, (req, res) => {
       authorPending: !authorAccount && !anon,
       uploadReward: uploadReward ? { amount: uploadReward.amount, instant: uploadReward.instant || 0, instantPaid: !!uploadReward.instantPaid, rest: Math.max(0, uploadReward.amount - (uploadReward.instant || 0)), first: uploadReward.first, readyAt: uploadReward.readyAt, readyHours: typeof uploadReward.readyHours === 'number' ? uploadReward.readyHours : UPLOAD_REWARD_DELAY / 3600e3 } : null
     });
+  });
+});
+
+// ---------- md 一键导入：一份 md 清单批量建作品（后台专用，2026-11-16） ----------
+// 口径：
+//   1. 格式极简：`## 作品名字` 起一条，后面写「键: 值」；没带键的行算介绍正文。中文键 / 英文键都认。
+//   2. 不收图片：所有导入作品统一挂 frontend/import-default-cover.png，站长之后在作品列表逐条换真实截图。
+//      放 frontend/ 而不是 uploads/ —— deploy.sh 会把它随前端目录发版，uploads/ 被排除在包外。
+//   3. 不逐条发通知、不发灯火奖励：批量代建是「补录」，不是「新投稿」，别给关注者刷屏也别凭空发奖。
+//   4. 预览（dryRun）和正式导入共用同一个解析器：站长看到什么就建成什么。
+const MD_IMPORT_COVER = '/import-default-cover.svg';
+// 默认封面内联成 SVG 由本站路由吐出：*.png 被 gitignore，deploy-patch 也只按文本 hunk 发固定几个文件，
+// 单独放图片文件必然漏发到线上，导入的作品就全是裂图。SVG 跟着 server.js 走，发版不用额外 scp。
+const MD_IMPORT_COVER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f3f1ff"/>
+      <stop offset="0.55" stop-color="#e9e5ff"/>
+      <stop offset="1" stop-color="#dcd5fb"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="42%" r="55%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <rect width="1200" height="675" fill="url(#glow)"/>
+  <g fill="none" stroke="#c9c0f5" stroke-width="2" opacity="0.55">
+    <circle cx="120" cy="108" r="62"/><circle cx="1086" cy="562" r="104"/>
+    <circle cx="1044" cy="96" r="30"/><circle cx="168" cy="598" r="38"/>
+  </g>
+  <g transform="translate(600,214)" fill="none" stroke="#6b5bd2" stroke-width="7" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="-42" y="-36" width="84" height="72" rx="13"/>
+    <path d="M0 -36v72M-42 0h84"/>
+  </g>
+  <text x="600" y="356" text-anchor="middle" font-family="Microsoft YaHei,PingFang SC,Noto Sans CJK SC,sans-serif" font-size="46" font-weight="700" fill="#3a3358">造梦橱窗</text>
+  <text x="600" y="406" text-anchor="middle" font-family="Microsoft YaHei,PingFang SC,Noto Sans CJK SC,sans-serif" font-size="22" fill="#6f688c">默认封面 · 请在后台换成作品截图</text>
+  <line x1="470" y1="438" x2="730" y2="438" stroke="#ded8f4" stroke-width="2"/>
+  <text x="600" y="482" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" letter-spacing="4" fill="#a9a2c6">IMPORTED · COVER PENDING</text>
+</svg>`;
+app.get(MD_IMPORT_COVER, (req, res) => {
+  res.set('Content-Type', 'image/svg+xml; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.send(MD_IMPORT_COVER_SVG);
+});
+const MD_IMPORT_LIMIT = 100;   // 一次最多 100 件，防手滑把整本书粘进来
+function mdKey(s) { return String(s == null ? '' : s).trim().toLowerCase().replace(/[\s_\-]/g, ''); }
+const MD_FIELD_ALIAS = {
+  '名字': 'name', '作品名': 'name', '作品名字': 'name', 'name': 'name', 'title': 'name',
+  '一句话': 'tag', '一句话介绍': 'tag', 'tag': 'tag', 'slogan': 'tag', '口号': 'tag',
+  '介绍': 'prompt', '简介': 'prompt', '正文': 'prompt', '说明': 'prompt', 'desc': 'prompt', 'description': 'prompt', 'prompt': 'prompt',
+  '链接': 'link', '网址': 'link', '地址': 'link', 'url': 'link', 'link': 'link',
+  '官网': 'site', 'site': 'site', '主页': 'site',
+  '形态': 'types', '类型': 'types', 'type': 'types', 'types': 'types',
+  '分类': 'categories', 'category': 'categories', 'categories': 'categories',
+  '作者': 'author', 'author': 'author', '署名': 'author',
+  '关键词': 'keywords', '标签': 'keywords', 'keyword': 'keywords', 'keywords': 'keywords', 'tags': 'keywords',
+  '定位': 'positioning', 'positioning': 'positioning',
+  '解决': 'problem', '解决什么': 'problem', 'problem': 'problem',
+  '适合谁': 'audience', '受众': 'audience', 'audience': 'audience',
+  '步骤': 'steps', '上手': 'steps', 'steps': 'steps',
+  '亮点': 'diff', '差异': 'diff', '和同类比': 'diff', 'diff': 'diff',
+  '收费': 'paid', 'paid': 'paid',
+  '收费形式': 'paidModel', '形式': 'paidModel', 'paidmodel': 'paidModel',
+  '解锁价': 'lampPrice', 'lampprice': 'lampPrice',
+  '仓库': 'repo', '源码': 'repo', 'repo': 'repo', 'github': 'repo',
+  '状态': 'status', 'status': 'status',
+  '阶段': 'stage', 'stage': 'stage',
+  '完成度': 'progress', 'progress': 'progress',
+  '预计上线': 'eta', 'eta': 'eta',
+  '匿名': 'anonymous', 'anonymous': 'anonymous',
+  '发布时间': 'pubTime', 'pubtime': 'pubTime',
+  '暗号': 'claimCode', 'claimcode': 'claimCode', '认领暗号': 'claimCode'
+};
+// 形态别名：站长写中文更顺手，映射后再过 normalizeTypes 白名单（后台删掉的形态不会漏进来）
+const MD_TYPE_ALIAS = {
+  'web': 'Web', '网站': 'Web', '网页': 'Web', '网址': 'Web', '浏览器': 'Web', 'web版': 'Web',
+  'ios': 'iOS', '苹果': 'iOS', 'appstore': 'iOS', 'iphone': 'iOS',
+  'android': 'Android', '安卓': 'Android',
+  'macos': 'macOS', 'mac': 'macOS', '苹果电脑': 'macOS',
+  'windows': 'Windows', 'win': 'Windows', '电脑版': 'Windows',
+  'linux': 'Linux',
+  '小程序': '小程序', 'mini': '小程序', '微信小程序': '小程序',
+  '浏览器插件': '浏览器插件', '插件': '浏览器插件', '扩展': '浏览器插件', 'ext': '浏览器插件',
+  '机器人': '机器人', 'bot': '机器人', 'api': 'API'
+};
+const MD_PAID_MODEL_ALIAS = {
+  '部分免费': 'freemium', 'freemium': 'freemium',
+  '会员专享': 'member', 'member': 'member',
+  '单篇购买': 'onetime', 'onetime': 'onetime',
+  '订阅制': 'subscription', 'subscription': 'subscription',
+  '一次买断': 'buyout', 'buyout': 'buyout',
+  '试用后付费': 'trial', 'trial': 'trial',
+  '灯火解锁': 'lamp', 'lamp': 'lamp'
+};
+const MD_SPLIT = /[,，、;；\/]+/;
+function mdBool(v, def) {
+  const s = mdKey(v);
+  if (!s) return def;
+  if (['是', 'yes', 'y', '1', 'true', '付费', '需要付费', 'on'].includes(s)) return true;
+  if (['否', 'no', 'n', '0', 'false', '免费', 'off'].includes(s)) return false;
+  return def;
+}
+// 分类宽松匹配：先精确，再唯一子串（站长写「效率」→ 站里的「效率工具」；一对多就不猜）
+function mdCategory(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  if (categories.includes(s)) return s;
+  const hits = categories.filter(c => c.includes(s) || s.includes(c));
+  return hits.length === 1 ? hits[0] : '';
+}
+function mdPushText(cur, field, text) {
+  const s = String(text || '').trim();
+  if (!s) return;
+  cur[field] = cur[field] ? cur[field] + '\n' + s : s;
+}
+/**
+ * 解析 md 清单 → { items, fileTitle, errors }
+ * 每条 item 的键与后台新建表单对齐，另带 line（起始行）和 warnings（逐条识别提示）。
+ */
+function parseMdImport(text) {
+  const raw = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+  const lines = raw.split('\n');
+  const items = [], errors = [];
+  let fileTitle = '', cur = null, lastField = null;
+  const FIELD_RE = /^\s*(?:[-*+]\s+)?([^\s:：][^:：]{0,23}?)\s*[:：]\s*(.*)$/;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i], no = i + 1;
+    const h2 = line.match(/^##\s+(.*)$/);
+    if (h2) {
+      const name = h2[1].replace(/[#*`\s]+$/g, '').trim().slice(0, 60);
+      if (name) { cur = { line: no, wname: name, warnings: [] }; items.push(cur); }
+      else { errors.push(`第 ${no} 行：## 后面没写名字，这一段跳过了`); cur = null; }
+      lastField = null;
+      continue;
+    }
+    if (/^#\s+\S/.test(line)) {
+      if (!items.length && !fileTitle) fileTitle = line.replace(/^#\s+/, '').trim();
+      continue;
+    }
+    if (!cur) continue;   // ## 之前的说明文字不进任何作品
+    const m = line.match(FIELD_RE);
+    if (m) {
+      const keyRaw = m[1].trim(), field = MD_FIELD_ALIAS[mdKey(keyRaw)], val = m[2].trim();
+      if (field) {
+        lastField = null;
+        switch (field) {
+          case 'name': if (val) cur.wname = val.slice(0, 60); break;
+          case 'tag': cur.wtag = val.slice(0, 100); break;
+          case 'prompt':
+            if (val) mdPushText(cur, 'prompt', val); else lastField = 'prompt';
+            break;
+          case 'link': cur.link = val; break;
+          case 'site': cur.site = val; break;
+          case 'types': {
+            const names = [];
+            val.split(MD_SPLIT).map(x => x.trim()).filter(Boolean).forEach(x => {
+              const t = MD_TYPE_ALIAS[mdKey(x)];
+              if (!t) cur.warnings.push(`第 ${no} 行：形态「${x}」没认出来，已跳过`);
+              else if (!names.includes(t)) names.push(t);
+            });
+            cur.typesRaw = names;
+            break;
+          }
+          case 'categories': {
+            const cats = [];
+            val.split(MD_SPLIT).map(x => x.trim()).filter(Boolean).forEach(x => {
+              const c = mdCategory(x);
+              if (!c) cur.warnings.push(`第 ${no} 行：分类「${x}」站里没有，已跳过`);
+              else if (!cats.includes(c)) cats.push(c);
+            });
+            cur.categories = cats.slice(0, 3);
+            break;
+          }
+          case 'keywords': cur.keywords = val; break;   // sanitizeKeywords 认逗号 / 顿号 / 空格
+          case 'author': cur.author = val.slice(0, 50); break;
+          case 'steps': {
+            const v = val.replace(/[；;]+/g, '\n');   // 站长常写「打开；选择；播放」，拆成一步一行
+            if (v) mdPushText(cur, 'steps', v); else lastField = 'steps';
+            break;
+          }
+          case 'paid': cur.paid = mdBool(val, false); break;
+          case 'paidModel': {
+            const pm = MD_PAID_MODEL_ALIAS[mdKey(val)];
+            if (val && !pm) cur.warnings.push(`第 ${no} 行：收费形式「${val}」没认出来，已按免费处理`);
+            cur.paidModel = pm || '';
+            break;
+          }
+          case 'lampPrice': cur.lampPrice = val; break;
+          case 'repo': cur.repo = val; break;
+          case 'status': {
+            const st = { '已通过': 'approved', '待审核': 'pending', '已拒绝': 'rejected' }[val] || val;
+            cur.status = ['approved', 'pending', 'rejected'].includes(st) ? st : '';
+            if (val && !cur.status) cur.warnings.push(`第 ${no} 行：状态「${val}」没认出来，已按「已通过」处理`);
+            break;
+          }
+          case 'stage': {
+            const sg = { '已上线': 'live', '上线': 'live', '审核中': 'reviewing', '等审核': 'reviewing', '还在做': 'wip', '预告': 'wip', '开发中': 'wip' }[val] || val;
+            cur.stage = STAGES.includes(sg) ? sg : '';
+            if (val && !cur.stage) cur.warnings.push(`第 ${no} 行：阶段「${val}」没认出来，已按「已经上线」处理`);
+            break;
+          }
+          case 'progress': cur.progress = val; break;
+          case 'eta': cur.eta = val; break;
+          case 'anonymous': cur.anonymous = mdBool(val, false); break;
+          case 'pubTime': cur.pubTime = val; break;
+          case 'claimCode': cur.claimCode = val; break;
+          case 'positioning': case 'problem': case 'audience': case 'diff':
+            cur[field] = val.slice(0, 200); break;
+          default: mdPushText(cur, 'prompt', line.trim()); break;
+        }
+        continue;
+      }
+      // 没识别的「键: 值」当正文，并提示（站长写「备注: xxx」不至于整行丢掉）
+      cur.warnings.push(`第 ${no} 行「${keyRaw}」不是认识的字段，已当介绍正文`);
+    }
+    // 没带键的行：归到上一条空值字段（介绍 / 步骤），否则进介绍
+    if (lastField === 'steps') mdPushText(cur, 'steps', line.trim());
+    else mdPushText(cur, 'prompt', line.trim());
+  }
+  const seen = new Map();
+  items.forEach((it, idx) => {
+    it.index = idx + 1;
+    if (!String(it.wname || '').trim()) it.warnings.push('没写名字');
+    if (!String(it.wtag || '').trim()) it.warnings.push('缺一句话介绍，卡片副标题会空着');
+    const types = normalizeTypes(it.typesRaw || []);
+    it.resolvedTypes = types;
+    if (it.typesRaw && it.typesRaw.length && !types.includes(it.typesRaw[0]))
+      it.warnings.push(`形态「${it.typesRaw[0]}」站里没有，已按「Web」处理`);
+    if (types.includes('Web') && !String(it.link || '').trim() && !String(it.site || '').trim())
+      it.warnings.push('形态含 Web 但没写链接 / 官网，前台打不开');
+    if (types.includes('小程序')) it.warnings.push('形态含小程序：之后要在作品编辑器里补一张小程序码');
+    if (it.repo && !repoHostAllowed(it.repo)) {
+      it.warnings.push('仓库地址不是开源托管站，已忽略开源标注'); delete it.repo;
+    }
+    if (it.pubTime) {
+      const p = normCustomPubTime(it.pubTime);
+      if (p.err) { it.warnings.push('发布时间：' + p.err + '，已按现在处理'); it.pubTime = ''; }
+    }
+    const key = String(it.wname || '').trim().toLowerCase();
+    if (seen.has(key)) it.warnings.push(`与第 ${seen.get(key)} 条同名，仍会单独建一件`);
+    else seen.set(key, it.index);
+    it.preview = {
+      index: it.index, line: it.line, name: it.wname, tag: it.wtag || '',
+      types: types, categories: (it.categories || []).slice(0, 3),
+      author: it.author || '管理员', introLen: String(it.prompt || '').length,
+      keywords: sanitizeKeywords(it.keywords || []),
+      status: it.status || 'approved', stage: it.stage || 'live',
+      paid: it.paid ? { model: it.paidModel || '付费', lampPrice: String(it.lampPrice || '').slice(0, 8) } : null,
+      quickLook: ['positioning', 'problem', 'audience', 'diff'].filter(k => String(it[k] || '').trim()).length
+        + String(it.steps || '').split('\n').filter(Boolean).length,
+      warnings: it.warnings.slice()
+    };
+  });
+  return { items, fileTitle, errors };
+}
+
+app.post('/api/admin/works/import-md', requireAdmin, (req, res) => {
+  const text = String((req.body && req.body.md) || '');
+  if (!text.trim()) return res.status(400).json({ error: '先粘贴 md 内容再解析' });
+  if (text.length > 500000) return res.status(400).json({ error: 'md 内容太长了（上限 50 万字）' });
+  const parsed = parseMdImport(text);
+  if (!parsed.items.length) return res.status(400).json({
+    error: '没认出任何作品。至少写一条「## 作品名字」开头',
+    errors: parsed.errors
+  });
+
+  // 预览：只解析，不碰数据
+  if ([true, '1', 'true'].includes(req.body.dryRun)) {
+    return res.json({
+      dryRun: true, fileTitle: parsed.fileTitle, errors: parsed.errors,
+      total: parsed.items.length, items: parsed.items.map(it => it.preview)
+    });
+  }
+
+  if (parsed.items.length > MD_IMPORT_LIMIT) return res.status(400).json({
+    error: `一次最多导入 ${MD_IMPORT_LIMIT} 件，这次认出了 ${parsed.items.length} 件，请拆成几份`
+  });
+
+  const now = new Date().toISOString();
+  const created = [], failed = [];
+  for (const it of parsed.items) {
+    try {
+      if (!String(it.wname || '').trim()) { failed.push({ line: it.line, name: it.wname, error: '没写名字' }); continue; }
+      const types = it.resolvedTypes;
+      const cats = (it.categories && it.categories.length ? it.categories : [DEFAULT_CATEGORIES[0]]).slice(0, 3);
+      const name = wideSlice(String(it.wname).replace(/\s+/g, ' ').trim(), WNAME_MAX);
+      const tag = String(it.wtag || '').replace(/\s+/g, ' ').trim().slice(0, 100);
+      let link = String(it.link || '').trim();
+      if (link && !/^https?:\/\//i.test(link)) link = 'https://' + link;
+      const site = normSite(it.site);
+      if (!link && site) link = site;
+      if (!link && !onlyMini(types) && types.includes('Web')) {
+        failed.push({ line: it.line, name: it.wname, error: '形态含 Web 但没写链接 / 官网' }); continue;
+      }
+      const claim = claimCodeInput(it.claimCode);
+      if (claim.err) { failed.push({ line: it.line, name: it.wname, error: claim.err }); continue; }
+      const pubAt = it.pubTime ? normCustomPubTime(it.pubTime) : { iso: null };
+      if (pubAt.err) { failed.push({ line: it.line, name: it.wname, error: pubAt.err }); continue; }
+      const stage = STAGES.includes(it.stage) ? it.stage : 'live';
+      const anon = !!it.anonymous;
+      const authorName = anon ? '匿名' : (String(it.author || '').trim().slice(0, 50) || '管理员');
+      const authorAccount = anon ? null : users.find(u => u.username === authorName);
+      const work = {
+        id: newWorkId(),
+        title: (name + (tag ? ' ' + tag : '')).slice(0, 100),
+        author: authorName, userId: authorAccount ? authorAccount.id : null, anonymous: anon,
+        prompt: String(it.prompt || '').slice(0, 3000),
+        category: cats[0] || DEFAULT_CATEGORIES[0], categories: cats,
+        type: types[0] || 'Web', types: types,
+        link: (link && !onlyMini(types)) ? link.slice(0, 500) : '',
+        site: site,
+        image: MD_IMPORT_COVER, thumb: MD_IMPORT_COVER, qrcode: '', images: [],
+        status: ['approved', 'pending', 'rejected'].includes(it.status) ? it.status : 'approved',
+        stage: stage,
+        progress: stage === 'wip' ? clampProgress(it.progress) : null,
+        eta: stage === 'wip' ? normEta(it.eta) : '',
+        progressLog: stage === 'wip' ? [{
+          at: now, text: String(it.prompt || '').slice(0, 200), progress: clampProgress(it.progress)
+        }] : [],
+        featured: false, pinned: false,
+        openSource: it.repo ? true : null, repo: it.repo || '',
+        ...paidFieldsOf({ paid: it.paid, paidModel: it.paid && it.paidModel ? it.paidModel : '', lampPrice: it.lampPrice }),
+        reports: 0, likes: 0, favs: 0, views: 0,
+        createdAt: pubAt.iso || now, updatedAt: pubAt.iso || now,
+        keywords: (it.keywords !== undefined && String(it.keywords).trim())
+          ? sanitizeKeywords(it.keywords)
+          : autoKeywords({ title: name + ' ' + tag, prompt: it.prompt || '', categories: cats, types: types })
+      };
+      applyTitleParts(work, { wname: name, wtag: tag });
+      applyContentFields(work, it);   // 一眼看懂五件套：选填，缺了不拦导入
+      if (claim.code) work.claimCode = claim.code;
+      if (pubAt.iso) { work.createdAtReal = now; work.pubTimeCustom = true; }
+      works.push(work);
+      created.push({ id: work.id, title: work.title, line: it.line, author: work.author, status: work.status });
+    } catch (e) {
+      failed.push({ line: it.line, name: it.wname, error: '建作品时出错：' + ((e && e.message) || '未知错误') });
+    }
+  }
+  if (created.length) saveWorks();
+  // 不逐条 announceWorkVisible：批量补录不该给关注者刷一屏站内信，也不发灯火奖励。
+  res.status(created.length ? 201 : 400).json({
+    ok: created.length, failed: failed, created: created, total: parsed.items.length,
+    cover: MD_IMPORT_COVER,
+    note: '统一用了默认封面，可在作品列表逐条换成真实截图。批量导入不发灯火奖励。'
   });
 });
 
@@ -22084,6 +23247,27 @@ app.post('/api/admin/ad-gate', requireAdmin, (req, res) => {
   res.json(adListJson());
 });
 
+// 推荐位同屏条数（rankTop / rankSide / barSide）：后台「广告位」页顶部那张卡改这里，
+// 一次请求带全三格统一校验，落 data/ad-display.json，下一次 /api/ads 就带新值。
+app.get('/api/admin/ad-display', requireAdmin, (req, res) => {
+  res.json({ display: readAdDisplay() });
+});
+app.post('/api/admin/ad-display', requireAdmin, (req, res) => {
+  const body = req.body || {};
+  const cur = readAdDisplay();
+  const next = {};
+  for (const k of Object.keys(AD_DISPLAY_DEFAULTS)) {
+    const v = body[k] === undefined ? cur[k] : Number(body[k]);
+    if (!Number.isInteger(v) || v < 1 || v > AD_DISPLAY_MAX) {
+      return res.status(400).json({ error: `${k} 要填 1-${AD_DISPLAY_MAX} 的整数` });
+    }
+    next[k] = v;
+  }
+  try { writeJSON('ad-display.json', next); }
+  catch (e) { return res.status(500).json({ error: '保存失败：' + e.message }); }
+  res.json({ ok: true, display: next });
+});
+
 app.post('/api/admin/ads/:id/toggle', requireAdmin, (req, res) => {
   const a = ads.find(x => x.id === req.params.id);
   if (!a) return res.status(404).json({ error: '广告不存在' });
@@ -22638,6 +23822,11 @@ app.post('/api/admin/taglib/delete', requireAdmin, (req, res) => { // 删除标�
 // ---- 管理员送灯火 / 扣灯火（delta 可负，账本统一走 addPoints）----
 app.post('/api/admin/points', requireAdmin, (req, res) => {
   const { userId, delta, note } = req.body || {};
+  // 后台「作者回复」页点作者名送灯火是站长专属入口：名单管理员就算带着「用户与灯火」模块，
+  // 也不能从私信会话里给作者发灯火（前端连名字都不给点，这里再兜一道）。
+  if (req.body && req.body.fromReplies && !adminIsOwner(req)) {
+    return res.status(403).json({ error: '只有站长能从私信页送灯火', permDenied: true });
+  }
   const u = users.find(x => x.id === String(userId || ''));
   if (!u) return res.status(404).json({ error: '用户不存在' });
   const d = parseInt(delta, 10);
@@ -23518,7 +24707,8 @@ app.get('/', (req, res) => {
   // HTML 一到就开拉，跟 API 请求并行，首屏图片能提前半个 RTT 露出来。
   // 只在非搜索页做：/?q= 是搜索落地页，没有精选条。
   if (!q) {
-    const preImgs = featuredRank(weekAgg(), null).slice(0, 4)
+    // 前 4 张必须跟首屏直出的前 4 张卡同序：同样走 featuredDayList（当日洗牌口径）
+    const preImgs = featuredDayList(weekAgg(), null).slice(0, 4)
       .map(r => {
         const u = String(r.w.thumb || r.w.image || '');
         return u.indexOf('/uploads/') === 0
@@ -23862,11 +25052,12 @@ app.get('/u/:name', (req, res) => {
   const ids = new Set(worksOfAuthorName(name).map(w => w.id));
   const list = byNewest(visibleWorks().filter(w => ids.has(w.id) && w.anonymous !== true));
   const totalLikes = list.reduce((s, w) => s + (w.likes || 0), 0);
-  // 档案数字与 /api/authors 同口径：访客（各作品 uv 合计）、灯火人数、常写分类、入驻时间
+  // 档案数字与 /api/authors 同口径：访客（各作品 uv 合计）、灯火人数、常写分类、入驻时间。
+  // 11-16 看板把「评论」换成「关注」（粉丝数用下面的 followerN），评论数不再在这里累计——
+  // 它只在「作品数据」面板里用，别让首屏为了一个不显示的数字去扫一遍评论表。
   const totalUv = list.reduce((s, w) => s + (workPvUv(w.id, 36500).uv || 0), 0);
   const totalTippers = list.reduce((s, w) => s + tipTippersOf(w.id), 0);
   const totalFavs = list.reduce((s, w) => s + (w.favs || 0), 0);
-  const totalComments = list.reduce((s, w) => s + (commentStats().scoreable[w.id] || 0), 0);
   const catCount = {};
   list.forEach(w => catsOf(w).forEach(c => { catCount[c] = (catCount[c] || 0) + 1; }));
   const catList = Object.entries(catCount).sort((a, b) => b[1] - a[1]).slice(0, 3)
@@ -23875,6 +25066,12 @@ app.get('/u/:name', (req, res) => {
   const since = times.length ? Math.min(...times) : null;
   const pageUrl = refUser ? base + authorPathOf(refUser) : base + '/u/' + encodeURIComponent(name);
   const shown = displayNameOf(name);   // 页面显示昵称，URL / 作者匹配仍用账号名
+  // 星梦期刊前三荣誉（定稿期）：首屏 SSR 也贴，和 SPA 接口同一口径（refUser 没认出的无主作品作者不算）
+  const journalRanks = authorJournalRanks(refUser && refUser.id);
+  const journalRankLabel = x => `${x.type === 'week' ? '周' : '月'}榜第${x.no}期第${x.rank}名`;
+  const journalRankHtml = journalRanks.length
+    ? journalRanks.map(x => `<span class="jrn-rank-tag" title="星梦期刊 ${seo.esc(journalRankLabel(x))}">${seo.esc(journalRankLabel(x))}</span>`).join('')
+    : '';
   // 档案行下面的外链（无主作品没有账号，自然也没有链接）
   const profileLinks = refUser ? profileLinksOf(refUser) : [];
   // 粉丝数（2026-11-15）：SSR 这一份只作展示与结构化数据，关注按钮在 SPA 里（需要登录态）
@@ -23949,6 +25146,7 @@ app.get('/u/:name', (req, res) => {
         <h1>@${seo.esc(shown)}</h1>
         <div class="author-badges">
           ${userTagsOf(name).map(t => `<span class="author-tag">${seo.esc(t)}</span>`).join('')}
+          ${journalRankHtml}
         </div>
         <p class="author-meta">
           ${since ? `<span class="am-item">${new Date(since).getFullYear()} 年 ${new Date(since).getMonth() + 1} 月入驻</span>` : ''}
@@ -23960,13 +25158,15 @@ app.get('/u/:name', (req, res) => {
         ).join('')}</p>` : ''}
       </div>
     </div>
+    <!-- 六格顺序与 SPA 的 AUTHOR_STAT_CELLS 一致（11-16）：作品 / 关注 / 获赞 / 被收藏 / 点亮人数 / 访客。
+         评论换成关注数（粉丝），关注排第二；访客只是流量，挪到最后 -->
     <div class="author-stat-grid">
       <div class="as-cell"><span class="as-ico">${Icons.icon('edit', 15)}</span><b class="as-val">${list.length}</b><span class="as-label">作品</span></div>
+      <div class="as-cell" title="有多少人关注了这位作者；关注后他发新作品会在站内消息里提醒你"><span class="as-ico">${Icons.icon('person', 15)}</span><b class="as-val">${followerN}</b><span class="as-label">关注</span></div>
       <div class="as-cell"><span class="as-ico">${Icons.icon('heart', 15)}</span><b class="as-val">${totalLikes}</b><span class="as-label">获赞</span></div>
       <div class="as-cell"><span class="as-ico">${Icons.icon('fav', 15)}</span><b class="as-val">${totalFavs}</b><span class="as-label">被收藏</span></div>
-      <div class="as-cell" title="各作品访客合计：同一人看多件会重复计入"><span class="as-ico">${Icons.icon('eye', 15)}</span><b class="as-val">${totalUv}</b><span class="as-label">访客</span></div>
       <div class="as-cell" title="送过灯火的人数，同一人多笔只算一人"><span class="as-ico">${Icons.icon('lamp', 15)}</span><b class="as-val">${totalTippers}</b><span class="as-label">点亮人数</span></div>
-      <div class="as-cell"><span class="as-ico">${Icons.icon('chat', 15)}</span><b class="as-val">${totalComments}</b><span class="as-label">评论</span></div>
+      <div class="as-cell" title="各作品访客合计：同一人看多件会重复计入"><span class="as-ico">${Icons.icon('eye', 15)}</span><b class="as-val">${totalUv}</b><span class="as-label">访客</span></div>
     </div>
   </div>
   <div class="gallery">${profileHidden
@@ -25446,13 +26646,13 @@ app.get('/rules', (req, res) => {
     </section>
 
     <section class="rules-sec">
-      <h2>九、灯火要不要花钱</h2>
-      <p class="rules-note">一句话：<b>灯火只送不卖，永远不需要花钱买。</b>站里没有充值入口，也不打算开。</p>
+      <h2>九、灯火怎么攒、怎么用</h2>
+      <p class="rules-note">灯火是站内使用的积分：签到、看广告、投稿、分享等都能攒，攒下的灯火可以用来换推荐位，也可以送给喜欢的作品。</p>
       <ul class="rules-list">
-        <li><b>所有获取方式都免费。</b>每天签到、看激励视频广告、邀请好友注册、投稿过审、点亮开源项目，全都不收一分钱。</li>
-        <li><b>没有「买灯火」这回事。</b>站内不存在充值按钮或购买页面；你看到的灯火数，只能从上面那几条免费路径来。</li>
-        <li><b>将来要调整，也只调送多少。</b>如果哪天运营成本变了，我们只会调整赠送规则（比如签到给多给少、每轮几天），不会把灯火改成要花钱买。</li>
-        <li><b>和付费广告是两条账。</b>站里唯一和钱有关的是顶部广告位——那是企业投放，明码标价、带「广告」角标。它和灯火互不相通：不能花钱买灯火，也不能拿灯火抵广告费。</li>
+        <li><b>免费途径都能攒。</b>每天签到、看激励视频广告、邀请好友注册、投稿过审、点亮开源项目，都会按规则赠送灯火。</li>
+        <li><b>花在哪儿自己定。</b>灯火可以换推荐位曝光，让更多人看见作品；也可以送给喜欢的作者，为作品点一盏灯。</li>
+        <li><b>赠送规则会调整。</b>如果运营成本变了，我们可能调整各途径赠送的数量和周期，调整后会在这里说明。</li>
+        <li><b>和付费广告是两条账。</b>顶部广告位是企业投放，明码标价、带「广告」角标；它和灯火分开记账。</li>
       </ul>
     </section>
 
@@ -25472,7 +26672,7 @@ app.get('/rules', (req, res) => {
       <p class="rules-note">所有投票记录（账号、时间、选择）后台可查。用众判打击同行、组织小圈子围投的，按上一条「违规怎么处理」处理。</p>
     </section>
 
-    <p class="rules-foot">规范会随平台规则调整，重要变更在站内通知。最近更新：2026-11-15。</p>
+    <p class="rules-foot">规范会随平台规则调整，重要变更在站内通知。最近更新：2026-11-16。</p>
     <p class="seo-more"><a class="btn-ghost" href="/">← 返回首页</a> <a class="btn-ghost" href="/howto">投稿指南 →</a></p>
   </div>
 </div>`;
@@ -25818,6 +27018,27 @@ setInterval(() => { try { expireRedemptions(); } catch (e) { /* 忽略 */ } }, 6
 try { backfillUploadRewards(); } catch (e) { console.warn('上传奖励存量补齐失败', e); }
 try { payUploadRewards(); } catch (e) { /* 忽略 */ }
 setInterval(() => { try { payUploadRewards(); } catch (e) { /* 忽略 */ } }, 5 * 60e3).unref();
+
+// 期刊定稿巡检：期刊本来是「有人翻开才定稿」的，但前三名的灯火不能等读者来触发——
+// 每小时扫一遍已经过了定稿日、还没落档的期，主动定稿并把奖励发出去（发出后名次也冻结）。
+// 已落档的期在这里几乎是空跑：journalCut 一次 key 查询就返回。
+function settleJournals() {
+  const scoreMs = JOURNAL_SCORE_DAYS * 86400000;
+  for (const type of ['week', 'month']) {
+    const firstStart = journalFirstStart(type);
+    for (let off = 1; off <= 260; off++) {
+      const span = journalSpanOf(type, off);
+      if (!span) break;
+      if (span.start.getTime() < firstStart.getTime()) break;
+      if (span.end.getTime() + scoreMs > Date.now()) continue;   // 还在攒分中，不到定稿日
+      try { journalCut(type, span); } catch (e) {
+        console.warn('[journal] 定稿失败', type, dateKey(span.start), e && e.message);
+      }
+    }
+  }
+}
+setTimeout(() => { try { settleJournals(); } catch (e) { /* 忽略 */ } }, 90e3).unref?.();
+setInterval(() => { try { settleJournals(); } catch (e) { /* 忽略 */ } }, 3600e3).unref();
 
 // ---------- 「即将上线」巡检 ----------
 // 1) 平台上架审核中的作品：每 6 小时探一次链接，能打开就提醒作者「可以点我上线了」。

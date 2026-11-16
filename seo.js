@@ -198,6 +198,14 @@ function osBadgeHtml(w) {
   return '';
 }
 
+// 收费形式中文标签：必须与 frontend/app.js 的 PAID_MODELS 完全一致。
+// 之前这里所有付费作品一律输出「付费」，导致同一件作品服务端页写「付费」、
+// 前端弹窗写「部分免费」——2026-11-16 站长反馈（/w/mfjnrdckvbva）后统一为按 paidModel 出具体形式。
+const PAID_MODELS = {
+  freemium: '部分免费', member: '会员专享', onetime: '单篇购买',
+  subscription: '订阅制', buyout: '一次买断', trial: '试用后付费'
+};
+
 // 付费 / 灯火解锁标识：默认免费不输出，只有作者标注了才显示
 // 两种口径要分开写清楚：付费=要花钱买；N 盏解锁=要花灯火才能看入口
 // （打赏是全站通用能力，不再作为作品标注，所以这里没有「可送灯火」徽章）
@@ -205,7 +213,10 @@ function paidBadgeHtml(w) {
   if (w.paidModel === 'lamp' && w.lampPrice) {
     return `<span class="os-badge paid" title="需要用 ${Number(w.lampPrice)} 盏灯火解锁才能看到入口">${svgIco('lock')} ${Number(w.lampPrice)} 盏解锁</span>`;
   }
-  return w.paid ? `<span class="os-badge paid" title="需要付费或含付费版本">${svgIco('coin')} 付费</span>` : '';
+  if (!w.paid) return '';
+  const label = PAID_MODELS[w.paidModel] || '付费';
+  const tip = PAID_MODELS[w.paidModel] ? `付费作品（${label}）` : '需要付费或含付费版本';
+  return `<span class="os-badge paid" title="${esc(tip)}">${svgIco('coin')} ${esc(label)}</span>`;
 }
 
 // 展示名：有昵称用昵称，没有就用账号名（链接/作者页仍按账号）
@@ -295,7 +306,7 @@ function quickLookHtml(w) {
       ${rows.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('\n      ')}
     </dl>` : '';
   const ol = steps.length ? `<div class="seo-quick-steps">
-      <h3>上手${steps.length === 3 ? '三' : ''}步</h3>
+      <h3>${steps.length === 3 ? '上手三步' : '上手步骤'}</h3>
       <ol>${steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>
     </div>` : '';
   return `<section class="seo-quick">
@@ -328,10 +339,22 @@ function workArticle(base, w, trail, related = [], opts = {}) {
     <div class="gallery">${related.map(x => cardHtml(x, suffix)).join('')}</div>
   </section>` : '';
 
-  // 完整页展示全部宣传图，橱窗弹窗里已经能看到，这里补齐给分享/收录
-  const gallery = (w.images || []).length ? `<div class="seo-gallery">
-    ${w.images.map((src, i) => `<img src="${esc(src)}" alt="${esc(w.title)} 宣传图 ${i + 1}" loading="lazy" />`).join('')}
-  </div>` : '';
+  // 完整页图片（2026-11-16 站长要求）：封面 + 宣传图合成一个轮播，不再一张张往下摞。
+  // SSR 照旧把所有 <img> 写进 DOM（爬虫读得到、JS 没起来时 CSS 退回平铺），
+  // 只有 JS 接管后才加 .carousel-on 一次只显示一张；非完整页维持原结构。
+  const shots = [w.image, ...(Array.isArray(w.images) ? w.images : [])]
+    .filter((src, i, arr) => !!String(src || '').trim() && arr.indexOf(src) === i);
+  const useCarousel = full && shots.length > 1;
+  const coverHtml = useCarousel ? '' : `<img class="seo-cover" src="${esc(w.image)}" alt="${esc(w.title)} 作品截图" />`;
+  const gallery = useCarousel ? `<div class="seo-gallery" data-seo-carousel>
+      ${shots.map((src, i) => `<figure class="sg-slide${i === 0 ? ' show' : ''}"><img src="${esc(src)}" alt="${esc(w.title)} 作品截图 ${i + 1}" loading="${i === 0 ? 'eager' : 'lazy'}" /></figure>`).join('\n      ')}
+      <button type="button" class="sg-nav sg-prev" data-sg-prev aria-label="上一张">‹</button>
+      <button type="button" class="sg-nav sg-next" data-sg-next aria-label="下一张">›</button>
+      <div class="sg-dots">${shots.map((_, i) => `<button type="button" class="sg-dot${i === 0 ? ' on' : ''}" data-sg-dot="${i}" aria-label="第 ${i + 1} 张"></button>`).join('')}</div>
+      <span class="sg-count">1 / ${shots.length}</span>
+    </div>` : ((w.images || []).length ? `<div class="seo-gallery">
+      ${w.images.map((src, i) => `<img src="${esc(src)}" alt="${esc(w.title)} 宣传图 ${i + 1}" loading="lazy" />`).join('')}
+    </div>` : '');
 
   // 小程序码：纯小程序作品唯一的真实入口，服务端页也要给出来（点链接是进不了小程序的）
   // qrSrc 是服务端算好的展示码：作者原码优先，没有就是自动短链码（扫码可数）
@@ -351,9 +374,20 @@ function workArticle(base, w, trail, related = [], opts = {}) {
   const DL = { 'iOS': 1, 'Android': 1, 'macOS': 1, 'Windows': 1, 'Linux': 1, '浏览器插件': 1 };
   const actAttr = `data-act="${DL[firstType] ? 'download' : 'visit'}" data-atype="${esc(firstType)}"`;
 
-  return `<div id="seoContent" class="seo-wrap${full ? ' seo-full' : ''}" data-full="${full ? '1' : '0'}">
-  ${breadcrumbHtml(base, trail)}
-  <article class="seo-article">
+  // 完整页右侧动作栏（2026-11-16 站长要求）：只出骨架和登录无关的入口（作者主页），
+  // 互动状态（已赞/已收藏/是否自己的作品）由前端 bindSeoRail 拉 /api/works/:id 补——
+  // SSR 不知道访客是谁，也不能把互动按钮做成死链给爬虫看。
+  // 「在橱窗里打开」大按钮按站长要求去掉，评论走动作栏的 💬（打开详情弹窗，评论在那里）。
+  const railHtml = full ? `<aside class="seo-rail" id="seoRail" data-work="${esc(w.id)}" data-title="${esc(w.title)}">
+      <a class="sr-item" href="${authorHref(w)}" rel="author" title="访问作者主页">${svgIco('user')}<span>作者主页</span></a>
+      <button type="button" class="sr-item" data-seo-like="${esc(w.id)}" aria-label="点赞">${svgIco('heart')}<span class="sr-txt">点赞</span></button>
+      <button type="button" class="sr-item" data-fav="${esc(w.id)}" aria-label="收藏">${svgIco('fav')}<span>收藏</span></button>
+      <button type="button" class="sr-item" data-seo-cmt="${esc(w.id)}" aria-label="评论">${svgIco('chat')}<span>评论</span></button>
+      <button type="button" class="sr-item" data-seo-tip="${esc(w.id)}" aria-label="送灯火">${svgIco('lamp')}<span>送灯火</span></button>
+      <button type="button" class="sr-item sr-danger" data-seo-block="${esc(w.id)}" data-bw-title="${esc(w.title)}" aria-label="不再看这个作品">${svgIco('block')}<span>屏蔽</span></button>
+      <button type="button" class="sr-item sr-danger" data-seo-report="${esc(w.id)}" aria-label="举报">${svgIco('flag')}<span>举报</span></button>
+    </aside>` : '';
+  const articleInner = `
     <h1>${esc(w.title)}</h1>
     <div class="seo-meta">
       ${typeBadges(w)}
@@ -366,7 +400,7 @@ function workArticle(base, w, trail, related = [], opts = {}) {
       ? '<span rel="author">匿名</span>'
       : `<a href="${authorHref(w)}" rel="author">@${esc(nameOf(w))}</a>`}
       · ${w.likes || 0} 点赞 · ${w.favs || 0} 人收藏 · ${w.commentCount || 0} 评论 · ${w.views || 0} 浏览${date ? ' · ' + esc(date) : ''}</p>
-    <img class="seo-cover" src="${esc(w.image)}" alt="${esc(w.title)} 作品截图" />
+    ${coverHtml}
     ${quickLookHtml(w)}
     ${gallery}
     ${qrHtml}
@@ -377,11 +411,15 @@ function workArticle(base, w, trail, related = [], opts = {}) {
     <div class="seo-actions">
       ${w.link ? `<a class="${miniOnly ? 'btn-ghost' : 'btn-primary'}" href="/out/${esc(w.id)}?k=link" target="_blank" rel="nofollow noopener" ${actAttr}>${svgIco(linkIco)} ${linkLabel}</a>` : ''}
       ${w.repo ? `<a class="btn-ghost" href="/out/${esc(w.id)}?k=repo" target="_blank" rel="nofollow noopener">${svgIco('folder')} 源码仓库</a>` : ''}
-      ${full ? `<a class="btn-ghost" href="/w/${esc(w.id)}">在橱窗里打开（点赞 / 收藏 / 评论）</a>` : ''}
       ${w.category ? `<a class="btn-ghost" href="/c/${encodeURIComponent(w.category)}">更多${esc(w.category)}作品</a>` : ''}
       <a class="btn-ghost" href="/">返回首页</a>
-    </div>
-  </article>
+    </div>`;
+  const fullBody = full
+    ? `<div class="seo-full-body"><article class="seo-article">${articleInner}</article>${railHtml}</div>`
+    : `<article class="seo-article">${articleInner}</article>`;
+  return `<div id="seoContent" class="seo-wrap${full ? ' seo-full' : ''}" data-full="${full ? '1' : '0'}">
+  ${breadcrumbHtml(base, trail)}
+  ${fullBody}
   ${relatedHtml}
 </div>`;
 }

@@ -441,11 +441,15 @@ cmd_ship() {
     c_err "✗ pm2 进程不在 online，回滚"; do_rollback "$stamp" "${do_files[@]}"; return 1
   fi
   for i in "${!expect_paths[@]}"; do
-    local p="${expect_paths[$i]}" t="${expect_texts[$i]}"
-    if curl --noproxy '*' -s "$SITE_URL$p" | grep -qF -- "$t"; then
+    local p="${expect_paths[$i]}" t="${expect_texts[$i]}" body
+    # 别写成 `curl ... | grep -q`：grep -q 一命中就退出，curl 写剩下的字节吃 SIGPIPE（141），
+    # set -o pipefail 会把整条管道判成失败 —— 断言永远"没找到"，好补丁被误回滚（2026-11-16 踩）。
+    # 先落到变量再按纯 bash 比较，既躲开 SIGPIPE 也躲开 msys 下 grep 的中文匹配问题。
+    body="$(curl --noproxy '*' -s "$SITE_URL$p" || true)"
+    if [[ -n "$body" && "$body" == *"$t"* ]]; then
       c_ok "✓ $p 含「$t」"
     else
-      c_err "✗ $p 里没找到「$t」，回滚"
+      c_err "✗ $p 里没找到「$t」（响应 ${#body} 字节），回滚"
       do_rollback "$stamp" "${do_files[@]}"; return 1
     fi
   done

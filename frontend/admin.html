@@ -11,6 +11,19 @@
     body { font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif; background:var(--bg); color:var(--text); }
     .wrap { max-width:1320px; margin:0 auto; padding:0 20px 60px; }
     header { background:#fff; border-bottom:1px solid var(--border); }
+    /* 站长视角切换：顶部「当前管理员」旁边的小按钮 + 下拉名单 */
+    #adminWhoWrap { display:none; position:relative; align-items:center; gap:8px; }
+    #adminWhoWrap .idbtn { border:1px solid var(--border); background:#fff; color:#5b5bd6; border-radius:99px; padding:3px 11px; font-size:12px; cursor:pointer; white-space:nowrap; }
+    #adminWhoWrap .idbtn:hover { background:#f3f4fb; }
+    #adminWhoWrap .idbtn.back { color:#b45309; border-color:#ecc99b; }
+    #adminWhoWrap .idbtn.back:hover { background:#fdf6ec; }
+    #idMenu { position:absolute; top:calc(100% + 8px); right:0; background:#fff; border:1px solid rgba(31,35,48,.14); border-radius:12px; box-shadow:0 12px 34px rgba(15,18,26,.16); min-width:210px; padding:6px; z-index:80; }
+    #idMenu .idm-head { font-size:11px; color:#8a8fa8; padding:5px 10px 3px; }
+    #idMenu .idm-item { display:flex; flex-direction:column; align-items:flex-start; width:100%; border:none; background:#fff; padding:7px 10px; border-radius:8px; cursor:pointer; text-align:left; }
+    #idMenu .idm-item:hover { background:#f3f4fb; }
+    #idMenu .idm-item b { font-size:12.5px; color:#333; font-weight:600; }
+    #idMenu .idm-item span { font-size:11px; color:#8a8fa8; margin-top:1px; }
+    #idMenu .idm-empty { padding:10px; font-size:12px; color:#8a8fa8; }
     .header-inner { display:flex; align-items:center; gap:16px; height:60px; max-width:1320px; margin:0 auto; padding:0 20px; }
     .logo { font-weight:700; color:var(--primary); font-size:17px; }
     .spacer { flex:1; }
@@ -58,8 +71,14 @@
     .tr-grid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:14px; align-items:stretch; }
     .tr-col { display:flex; flex-direction:column; background:#fafbff; border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
     .tr-col h5 { display:flex; align-items:baseline; gap:6px; margin:0 0 4px; padding-bottom:9px; border-bottom:1px solid #eef0f7; font-size:12.5px; font-weight:600; color:#555; }
-    /* 四档数字列：昨天（深）/ 近 7 天 / 近 30 天 / 累计（浅），等宽对齐方便竖着读 */
+    /* 四档数字列：近24小时（深）/ 近 7 天 / 近 30 天 / 累计（浅），等宽对齐方便竖着读 */
     .tr-legend { margin-left:auto; font-size:11px; font-weight:400; color:var(--muted); font-style:normal; white-space:nowrap; }
+    /* 访问人数 / 访问次数 切换：默认人数（去重），选择记在本地；挂在标题右侧 */
+    .tr-switch { display:inline-flex; align-items:center; margin-left:8px; border:1px solid var(--border); border-radius:99px; overflow:hidden; vertical-align:middle; }
+    .tr-switch button { border:none; background:#fff; padding:2px 11px; font-size:11.5px; line-height:1.7; color:var(--muted); cursor:pointer; }
+    .tr-switch button + button { border-left:1px solid var(--border); }
+    .tr-switch button:hover { color:var(--primary); }
+    .tr-switch button.on { background:var(--primary, #5b5bd6); color:#fff; cursor:default; }
     .tr-3 { flex:none; display:inline-flex; font-size:12px; font-variant-numeric:tabular-nums; }
     .tr-3 b { min-width:26px; text-align:right; font-weight:600; color:#333; }
     .tr-3 i { min-width:34px; text-align:right; color:#a0a0b4; font-style:normal; }
@@ -289,6 +308,7 @@
     /* 名字 / 一句话介绍拆开展示：介绍小一号灰字，跟前台卡片口径一致 */
     .row-title .row-intro { font-weight:400; font-size:12px; color:var(--muted); }
     .row-meta { font-size:12px; color:var(--muted); }
+    .row-kw { font-size:12px; color:#6b5b95; margin-top:4px; cursor:help; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .row-meta .pvuv { color:#5b5bd6; font-variant-numeric:tabular-nums; cursor:help; }
     .row-meta .row-link { color:#5b5bd6; word-break:break-all; }
     .row-meta .row-link.repo { color:#0a7d43; }
@@ -539,6 +559,10 @@
     .replies-head { font-size:13px; color:var(--muted); margin-bottom:14px; }
     .reply-thread { background:#fff; border:1px solid var(--border); border-radius:12px; padding:14px 16px; margin-bottom:14px; }
     .reply-thread-head { font-size:13px; color:var(--muted); margin-bottom:10px; }
+    /* 点作者名 = 送灯火（只有站长能看到这颗可点的名字，名单管理员是纯文字；服务端同样会拦） */
+    .reply-thread-head .reply-au { color:#5b5bd6; font-weight:600; cursor:pointer; border-bottom:1px dashed rgba(91,91,214,.45); }
+    .reply-thread-head .reply-au:hover { color:#4a4ac4; border-bottom-style:solid; }
+    .reply-thread-head .reply-au::after { content:"送灯火"; font-size:11px; font-weight:400; color:var(--muted); margin-left:5px; }
     .reply-msgs { display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
     .rmsg { font-size:13px; line-height:1.6; padding:8px 12px; border-radius:10px; max-width:92%; }
     .rmsg-user { background:#f4f4fb; align-self:flex-start; }
@@ -790,13 +814,13 @@
     .ai-fill-pane { padding-top:10px; }
     .ai-fill-tip { margin:0 0 8px; font-size:12px; line-height:1.6; color:var(--muted); }
     .ai-fill-tip b { color:var(--text); font-weight:600; }
-    .ai-fill-body textarea, .ai-fill-body input[type="url"] {
+    .ai-fill-body textarea, .ai-fill-body input[type="url"], #adminAiFillGh {
       display:block; width:100%; box-sizing:border-box;
       padding:9px 11px; border:1px solid var(--border); border-radius:9px;
       font:inherit; font-size:13px; line-height:1.6; color:var(--text); background:#fff;
     }
     .ai-fill-body textarea { resize:vertical; min-height:78px; }
-    .ai-fill-body textarea:focus, .ai-fill-body input[type="url"]:focus {
+    .ai-fill-body textarea:focus, .ai-fill-body input[type="url"]:focus, #adminAiFillGh:focus {
       outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(91,91,214,.12);
     }
     .ai-fill-cover { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:9px; }
@@ -1030,7 +1054,12 @@
       </span>
       <a class="btn btn-ghost" href="/">返回网站</a>
       <span class="spacer"></span>
-      <span id="adminWho" style="display:none;font-size:12px;color:#6b7280;margin-right:6px"></span>
+      <span id="adminWhoWrap">
+        <span id="adminWho" style="font-size:12px;color:#6b7280"></span>
+        <button class="idbtn back" id="restoreIdBtn" style="display:none" title="结束代看，切回站长身份">切回站长</button>
+        <button class="idbtn" id="switchIdBtn" style="display:none" title="以名单管理员的身份查看后台，权限所见即所得">切换视角</button>
+        <div id="idMenu" style="display:none"></div>
+      </span>
       <button class="btn btn-ghost" id="refreshBtn" title="刷新数据和当前列表">
         <svg class="refresh-ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 1.8v2.7h-2.7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         刷新
@@ -1156,8 +1185,10 @@
           </button>
           <div class="ai-fill-body" id="adminAiFillBody" hidden>
             <div class="ai-fill-tabs" role="tablist">
-              <button type="button" class="ai-fill-tab active" data-aimode="text" role="tab" aria-selected="true">粘贴介绍</button>
               <button type="button" class="ai-fill-tab" data-aimode="url" role="tab" aria-selected="false">从网址读取</button>
+              <!-- 2026-11-16 新增：GitHub 仓库预览，走服务端 /api/admin/github/preview 代取，不经浏览器直连 -->
+              <button type="button" class="ai-fill-tab" data-aimode="gh" role="tab" aria-selected="false">GitHub 仓库</button>
+              <button type="button" class="ai-fill-tab active" data-aimode="text" role="tab" aria-selected="true">粘贴介绍</button>
             </div>
             <div class="ai-fill-pane" id="adminAiFillPaneText">
               <p class="ai-fill-tip">把作者发来的介绍整段粘进来，自动提取标题、简介、分类和形态。<b>只回填，不会替你提交</b>，填完过一遍再存。</p>
@@ -1170,6 +1201,10 @@
                 <button type="button" class="ai-fill-cover-btn" id="adminAiFillCoverBtn">用网站图片做封面</button>
                 <span>网站图片未必是首页首屏，建议换成作者给的截图</span>
               </div>
+            </div>
+            <div class="ai-fill-pane" id="adminAiFillPaneGh" hidden>
+              <p class="ai-fill-tip">贴 GitHub 仓库链接（或「用户名/仓库」），自动读仓库名、简介、官网和 README 开头段落，回填名字 / 一句话介绍 / 作品介绍 / 官网 / 源码仓库。<b>只回填，不会替你提交</b>，读不到就手动补。</p>
+              <input type="text" id="adminAiFillGh" maxlength="500" placeholder="https://github.com/用户名/仓库" autocomplete="off" />
             </div>
             <div class="ai-fill-actions">
               <button type="button" class="btn-primary" id="adminAiFillGo">识别并回填</button>
@@ -1199,10 +1234,10 @@
           <div class="field" id="adminAnonField">
             <label>匿名发布</label>
             <div class="os-picker" id="anonPicker">
-              <label class="os-opt"><input type="radio" name="anonymous" value="0" /><span>实名（署名作者）</span></label>
+              <label class="os-opt"><input type="radio" name="anonymous" value="0" checked /><span>实名（署名作者）</span></label>
               <label class="os-opt"><input type="radio" name="anonymous" value="1" /><span>匿名（代传，可被认领）</span></label>
             </div>
-            <p class="cat-hint" id="adminAnonHint">匿名后前台统一显示「匿名」，作品无归属、开放认领，真正的作者可提交证据认领走；后台仍可见并编辑。新建作品默认匿名。</p>
+            <p class="cat-hint" id="adminAnonHint">匿名后前台统一显示「匿名」，作品无归属、开放认领，真正的作者可提交证据认领走；后台仍可见并编辑。新建作品默认实名，要代传再点匿名。</p>
           </div>
         </div>
         <div class="field">
@@ -2028,19 +2063,62 @@
       selectTab(first.dataset.tab);
       return true;
     }
-    // 顶部「当前管理员」：站长标全部权限，名单管理员标拿到几个模块
+    // 顶部「当前管理员」：站长标全部权限，名单管理员标拿到几个模块；
+    // 代看视角（站长切进来的）标「站长视角」并给切回按钮，站长本人给「切换视角」下拉
     function paintWho() {
-      const el = $('adminWho');
-      if (!el) return;
-      if (!ADMIN_ME) { el.style.display = 'none'; return; }
+      const wrap = $('adminWhoWrap'), el = $('adminWho');
+      if (!wrap || !el) return;
+      if (!ADMIN_ME) { wrap.style.display = 'none'; return; }
       const mods = Array.isArray(ADMIN_ME.modules) ? ADMIN_ME.modules : [];
       const assignable = mods.filter(m => !m.ownerOnly);
       const mine = (ADMIN_ME.perms || []).filter(k => assignable.some(m => m.key === k));
-      el.textContent = ADMIN_ME.isOwner
-        ? (ADMIN_ME.name === '站长' ? '当前管理员：站长（全部权限）' : `当前管理员：${ADMIN_ME.name}（站长 · 全部权限）`)
-        : `当前管理员：${ADMIN_ME.name}（${mine.length}/${assignable.length} 个模块）`;
-      el.style.display = '';
+      const viewing = ADMIN_ME.viewingAs || '';
+      el.textContent = viewing
+        ? `当前管理员：${viewing}（站长视角）`
+        : (ADMIN_ME.isOwner
+          ? (ADMIN_ME.name === '站长' ? '当前管理员：站长（全部权限）' : `当前管理员：${ADMIN_ME.name}（站长 · 全部权限）`)
+          : `当前管理员：${ADMIN_ME.name}（${mine.length}/${assignable.length} 个模块）`);
+      const list = Array.isArray(ADMIN_ME.impersonatable) ? ADMIN_ME.impersonatable : [];
+      $('restoreIdBtn').style.display = viewing ? '' : 'none';
+      $('switchIdBtn').style.display = (!viewing || list.length) && list.length ? '' : 'none';
+      wrap.style.display = 'inline-flex';
     }
+
+    // ---- 站长视角切换：切进某个管理员身份看后台，切回 / 再切别人都由服务端 root 票兜着 ----
+    function buildIdMenu() {
+      const list = (ADMIN_ME && Array.isArray(ADMIN_ME.impersonatable)) ? ADMIN_ME.impersonatable : [];
+      $('idMenu').innerHTML = '<div class="idm-head">切到谁（权限所见即所得）</div>' + (list.length
+        ? list.map(a => `
+            <button class="idm-item" data-u="${esc(a.username)}">
+              <b>${esc(a.username)}</b>
+              <span>${esc(a.nickname || '')}${Number.isFinite(a.perms) ? ` · ${a.perms} 个模块` : ''}</span>
+            </button>`).join('')
+        : '<div class="idm-empty">名单里还没有其他管理员</div>');
+    }
+    async function switchIdentity(username, restore) {
+      try {
+        await api('/api/admin/identity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(restore ? { action: 'restore' } : { action: 'view', username })
+        });
+        location.reload();   // 整页重载：菜单裁剪、待办角标、顶部身份全部按新身份重来
+      } catch (e) { toast(e.message || '切换失败'); }
+    }
+    $('switchIdBtn').addEventListener('click', e => {
+      e.stopPropagation();
+      const m = $('idMenu');
+      if (m.style.display === 'none') { buildIdMenu(); m.style.display = ''; }
+      else m.style.display = 'none';
+    });
+    $('idMenu').addEventListener('click', e => {
+      const b = e.target.closest('.idm-item');
+      if (b) switchIdentity(b.dataset.u, false);
+    });
+    $('restoreIdBtn').addEventListener('click', () => switchIdentity('', true));
+    document.addEventListener('click', e => {
+      if (!e.target.closest('#adminWhoWrap')) $('idMenu').style.display = 'none';
+    });
 
     // 登录态失效了（比如服务端改过 ADMIN_KEY）→ 退回登录框，顺手清掉旧 cookie
     function backToLogin(msg) {
@@ -2095,12 +2173,15 @@
       }
     }
 
-    // ---- 流量构成 tab：从哪来 / 什么设备 / 第一眼落在哪（近 7 天） ----
+    // ---- 流量构成 tab：从哪来 / 什么设备 / 第一眼落在哪（近24小时 / 7 天 / 30 天 / 累计） ----
     // 数据是 /api/track 顺带记的画像维度，和 PV/UV 同一批人、同一套口径：
     // 排除名单里的身份、单日刷量过多的身份都不计入，所以站长自己刷不会把这三块带偏。
     // 和外宣渠道看板的区别：那边是「我们主动投的 ?fr= 链接」，这边是「自然来路」——
     // 外宣链接落地通常没有 referrer，会落在「直接访问」里，两个数别互相印证。
     const DEV_LABEL = [['mobile', '手机'], ['desktop', '电脑'], ['wechat', '微信内'], ['tablet', '平板'], ['unknown', '未知 UA'], ['bot', '爬虫'], ['mini', '小程序']];
+    // 访问人数（UV，去重）/ 访问次数（PV，每次打开都算）二选一，默认人数；选择记在本地
+    let trMode = 'uv';
+    try { if (localStorage.getItem('dm_tr_mode') === 'pv') trMode = 'pv'; } catch {}
     async function loadTraffic() {
       try {
         // loadStats 刚拉过就直接复用；否则自己拉一份（切 tab / 点刷新都走这里）
@@ -2115,23 +2196,28 @@
       const refs = Array.isArray(t.refs) ? t.refs : [];
       const land = Array.isArray(t.landings) ? t.landings : [];
       const W = t.windows || {};
-      const w1 = W.d1 || {}, w7 = W.d7 || {}, w30 = W.d30 || {}, wAll = W.all || {};
+      // 近24小时 = 滚动窗口（此刻往前 24 小时）；老服务端没有 h24 档时退回「昨天」
+      const w1 = W.h24 || W.d1 || {}, w7 = W.d7 || {}, w30 = W.d30 || {}, wAll = W.all || {};
       const devs1 = w1.devs || {}, devs7 = w7.devs || t.devs || {}, devs30 = w30.devs || {}, devsAll = wAll.devs || {};
+      const duv1 = w1.devsUv || {}, duv7 = w7.devsUv || {}, duv30 = w30.devsUv || {}, duvAll = wAll.devsUv || {};
       const keepDays = t.retentionDays || 90;
-      const num = (a, b, c, d) => `<span class="tr-3"><b>${a || 0}</b><i>${b || 0}</i><i>${c || 0}</i><i>${d || 0}</i></span>`;
+      const isUv = trMode === 'uv';
+      // 人数档：老数据没有访客集合（次数 > 0 但人数 = 0）时显示「—」，别让人误读成 0
+      const val = (u, p) => isUv ? ((u || 0) ? u : (p ? '—' : 0)) : (p || 0);
+      const num = (a, b, c, d) => `<span class="tr-3"><b>${a}</b><i>${b}</i><i>${c}</i><i>${d}</i></span>`;
       const visits = w7.visits != null ? w7.visits : (t.visits || 0);
       if (!refs.length && !land.length && !visits) {
         panel.innerHTML = '<div class="empty">还没有流量数据。等有真人访问之后，这里会按来源、设备、落地页排出来。</div>';
         return;
       }
-      // 全局最大值：来源 / 落地页 / 设备 三列共用一把尺，条长短才有可比性
+      // 全局最大值：来源 / 落地页 / 设备 三列共用一把尺，条长短才有可比性（人数 / 次数各量各的）
       const gMax = Math.max(
-        ...refs.map(x => x.cAll || x.count || 0),
-        ...land.map(x => x.cAll || x.count || 0),
-        ...DEV_LABEL.map(([k]) => devsAll[k] || 0),
+        ...refs.map(x => isUv ? (x.uAll || 0) : (x.cAll || x.count || 0)),
+        ...land.map(x => isUv ? (x.uAll || 0) : (x.cAll || x.count || 0)),
+        ...DEV_LABEL.map(([k]) => isUv ? (duvAll[k] || 0) : (devsAll[k] || 0)),
         1
       );
-      // 一行：名称 + 占比条（按累计）+ 四档数字（昨天 / 近 7 天 / 近 30 天 / 累计）
+      // 一行：名称 + 占比条 + 四档数字（近24小时 / 近 7 天 / 近 30 天 / 累计）
       // 名称带 url 时渲染成链接（来源榜点名字直达对方站点），落地页/设备行没有 url 保持纯文本
       const row = (name, c1, c7, c30, cAll, tag, dim, url) => {
         const label = url
@@ -2156,46 +2242,56 @@
         const list = pagesByHost[host] || [];
         if (!list.length) return '';
         return '<div class="ps-subs">' + list.slice(0, 6).map(p => p.url
-          ? `<div class="ps-sub"><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" title="打开来路页面（新窗口）&#10;${esc(p.name)}">${esc(p.name)}</a><b title="累计从这个页面打开的次数">${p.cAll || 0}</b></div>`
-          : `<div class="ps-sub"><span title="单日明细链接过多时溢出合并，不指向具体页面">${esc(p.name)}</span><b>${p.cAll || 0}</b></div>`
+          ? `<div class="ps-sub"><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" title="打开来路页面（新窗口）&#10;${esc(p.name)}">${esc(p.name)}</a><b title="${isUv ? '累计从这个页面来的人数（去重）' : '累计从这个页面打开的次数'}">${val(p.uAll, p.cAll)}</b></div>`
+          : `<div class="ps-sub"><span title="单日明细链接过多时溢出合并，不指向具体页面">${esc(p.name)}</span><b>${val(p.uAll, p.cAll)}</b></div>`
         ).join('') + '</div>';
       };
       const refsBody = refs.length
-        ? refs.map(x => row(x.name, x.c1 || 0, x.c7 != null ? x.c7 : (x.count || 0), x.c30, x.cAll || x.count || 0,
+        ? refs.map(x => row(x.name, val(x.u1, x.c1), val(x.u7, x.c7), val(x.u30, x.c30), val(x.uAll, x.cAll),
             x.friend ? '<span class="ps-tag" title="这个域名在后台友情链接列表里">友链</span>' : '', false, x.url) + subRows(x.name)).join('')
         : '<div class="sk-empty">还没有站外来路</div>';
       const refsHtml = refsBody + subRows('(其他链接)');   // 溢出桶没有归属域名，单独挂在来源列末尾
       const landHtml = land.length
-        ? land.map(x => row(x.label ? '作品 · ' + x.label : x.path, x.c1 || 0, x.c7 != null ? x.c7 : (x.count || 0), x.c30, x.cAll || x.count || 0, '', false)).join('')
+        ? land.map(x => row(x.label ? '作品 · ' + x.label : x.path, val(x.u1, x.c1), val(x.u7, x.c7), val(x.u30, x.c30), val(x.uAll, x.cAll), '', false)).join('')
         : '<div class="sk-empty">还没有落地页数据</div>';
       const devHtml = DEV_LABEL
         .filter(([k]) => (devsAll[k] || 0) > 0 || (devs7[k] || 0) > 0)
-        .map(([k, label]) => row(label, devs1[k] || 0, devs7[k] || 0, devs30[k] || 0, devsAll[k] || 0, '', (k === 'bot' || k === 'mini')))
+        .map(([k, label]) => row(label, val(duv1[k], devs1[k]), val(duv7[k], devs7[k]), val(duv30[k], devs30[k]), val(duvAll[k], devsAll[k]), '', (k === 'bot' || k === 'mini')))
         .join('') || '<div class="sk-empty">还没有设备数据</div>';
       const span = wAll.since ? `数据自 ${wAll.since.slice(5).replace('-', '/')} 起 · 共 ${wAll.days || 0} 天 · ` : '';
-      const legend = '<i class="tr-legend">昨天 / 7 天 / 30 天 / 累计</i>';
+      const legend = '<i class="tr-legend">近24小时 / 7 天 / 30 天 / 累计</i>';
+      const metric = isUv ? '访问人数（去重）' : '打开次数';
       panel.innerHTML = `
         <div class="promo-src">
-          <h4>流量构成<span class="tr-desc">${span}网页访问（昨天 / 7 天 / 30 天 / 累计）<b>${w1.visits || 0}</b> / <b>${visits}</b> / <b>${w30.visits || 0}</b> / <b>${wAll.visits || 0}</b> 次（不含小程序）。下面三列都是<b>打开次数</b>：同一人反复打开会重复累计，<b>不是去重后的人数（UV）</b>；排除名单与单日刷量过多的身份不计入；标「友链」的是页脚友情链接域名；外宣链接没有 referrer 会算「直接打开」。来源域名下缩进列出<b>具体来路页面</b>（2026-11-15 起记录）。</span></h4>
+          <h4>流量构成<span class="tr-switch"><button type="button" class="tr-mode${isUv ? ' on' : ''}" data-mode="uv" title="同一访客窗口内来多次只算 1 人">访问人数</button><button type="button" class="tr-mode${!isUv ? ' on' : ''}" data-mode="pv" title="每次打开都算一次（PV 口径）">访问次数</button></span><span class="tr-desc">${span}网页访问（近24小时 / 7 天 / 30 天 / 累计）<b>${val(w1.uv, w1.visits)}</b> / <b>${val(w7.uv, w7.visits)}</b> / <b>${val(w30.uv, w30.visits)}</b> / <b>${val(wAll.uv, wAll.visits)}</b> ${isUv ? '人' : '次'}（不含小程序）。近24小时是<b>滚动窗口</b>（此刻往前 24 小时），7 天 / 30 天按自然日算。下面三列都是<b>${metric}</b>：${isUv ? '同一访客窗口内反复来只算 1 人；' : '同一人反复打开会重复累计；'}2026-11-16 起才记人数口径，之前的日子人数显示「—」；排除名单与单日刷量过多的身份不计入；标「友链」的是页脚友情链接域名；外宣链接没有 referrer 会算「直接打开」。来源域名下缩进列出<b>具体来路页面</b>（2026-11-15 起记录）。</span></h4>
           <div class="tr-grid">
             <div class="tr-col">
-              <h5 title="每次打开页面记一次，同一人反复打开会重复累计（PV 口径），不是去重人数；域名下方缩进显示具体来路页面">来源（打开次数）${legend}</h5>
+              <h5 title="${isUv ? '窗口内从这个来源来过的去重访客数' : '每次打开页面记一次，同一人反复打开会重复累计（PV 口径），不是去重人数'}；域名下方缩进显示具体来路页面">来源（${metric}）${legend}</h5>
               ${refsHtml}
             </div>
             <div class="tr-col">
-              <h5 title="每次打开页面记一次，同一人反复打开会重复累计（PV 口径），不是去重人数；小程序和爬虫也各按打开次数计">设备（打开次数）${legend}</h5>
+              <h5 title="${isUv ? '窗口内用这种设备访问过的去重访客数' : '每次打开页面记一次，同一人反复打开会重复累计（PV 口径），不是去重人数'}；小程序和爬虫也各按${isUv ? '人数' : '打开次数'}计">设备（${metric}）${legend}</h5>
               ${devHtml}
             </div>
             <div class="tr-col">
-              <h5 title="每次打开只记落地的那一屏，站内继续点的页面不算；同样是次数不是人数">落地页（打开次数，只记第一屏）${legend}</h5>
+              <h5 title="${isUv ? '窗口内第一屏落在这个页面的去重访客数' : '每次打开只记落地的那一屏，站内继续点的页面不算；同样是次数不是人数'}">落地页（${metric}，只记第一屏）${legend}</h5>
               ${landHtml}
             </div>
           </div>
           <div class="tr-foot">
-            <span title="没有 referrer 的访问：直接输网址、书签、微信或 App 内打开、复制粘贴链接">直接打开 ${num(w1.direct, w7.direct, w30.direct, wAll.direct)}</span>
-            <span>站内跳转 ${num(w1.inner, w7.inner, w30.inner, wAll.inner)}</span>
+            <span title="没有 referrer 的访问：直接输网址、书签、微信或 App 内打开、复制粘贴链接">直接打开 ${num(val(w1.directUv, w1.direct), val(w7.directUv, w7.direct), val(w30.directUv, w30.direct), val(wAll.directUv, wAll.direct))}</span>
+            <span>站内跳转 ${num(val(w1.innerUv, w1.inner), val(w7.innerUv, w7.inner), val(w30.innerUv, w30.inner), val(wAll.innerUv, wAll.inner))}</span>
           </div>
         </div>`;
+      // 人数 / 次数切换：只重画这一块，不动别的 tab
+      panel.querySelectorAll('.tr-mode').forEach(btn => {
+        btn.onclick = () => {
+          if (btn.dataset.mode === trMode) return;
+          trMode = btn.dataset.mode;
+          try { localStorage.setItem('dm_tr_mode', trMode); } catch {}
+          renderTraffic(lastStats);
+        };
+      });
     }
 
     // ---- 外链点击 tab（2026-11-12）----
@@ -3743,6 +3839,12 @@
     }
 
     // 后台收件箱：作者就精选 / 消息发起的回复会话（双向）
+    // 会话头里的作者名：站长可点（弹「送灯火」），名单管理员是纯文字 —— 送灯火只有站长能发。
+    function replyWhoHtml(t) {
+      const name = esc(t.authorName || t.authorId);
+      if (!(ADMIN_ME && ADMIN_ME.isOwner) || !t.authorId) return '@' + name;
+      return `<span class="reply-au" data-uid="${esc(t.authorId)}" data-uname="${esc(t.authorName || t.authorId)}" title="点作者名给 TA 送灯火（只有站长能送）">@${name}</span>`;
+    }
     let repliesTimer = null;
     async function loadReplies() {
       if (repliesTimer) { clearInterval(repliesTimer); repliesTimer = null; }
@@ -3756,7 +3858,7 @@
         if (!threads.length) { panel.innerHTML = '<div class="empty">还没有会话。作者从消息面板「给站长留言」私信，或就精选 / 消息回复后，会在这里出现。</div>'; return; }
         panel.innerHTML = `<div class="replies-head">作者回复（私信 / 精选 / 消息往来）· 共 ${threads.length} 个会话</div>` + threads.map(t => `
           <div class="reply-thread" data-thread="${t.id}">
-            <div class="reply-thread-head">${t.workTitle ? '「' + esc(t.workTitle) + '」 · ' : ''}@${esc(t.authorName || t.authorId)}${t.unread ? ` <span class="tag warn">${t.unread} 未读</span>` : ''}</div>
+            <div class="reply-thread-head">${t.workTitle ? '「' + esc(t.workTitle) + '」 · ' : ''}${replyWhoHtml(t)}${t.unread ? ` <span class="tag warn">${t.unread} 未读</span>` : ''}</div>
             <div class="reply-msgs">
               ${t.messages.map(m => `<div class="rmsg rmsg-${m.from}"><b>${m.from === 'admin' ? '管理员' : esc(m.fromName || '作者')}</b>：${esc(m.text)} <span class="rtime">${new Date(m.at).toLocaleString('zh-CN')}</span></div>`).join('')}
             </div>
@@ -3766,6 +3868,13 @@
             </div>
           </div>`).join('');
         threads.forEach(t => { if (t.unread) api('/api/admin/replies/' + t.id + '/read', { method: 'POST' }).catch(() => {}); });
+        // 点作者名 = 给 TA 送灯火：与作品列表点作者名共用同一个弹窗（余额现查、附言必填）
+        panel.querySelectorAll('.reply-au').forEach(el => {
+          el.onclick = () => {
+            if (!(ADMIN_ME && ADMIN_ME.isOwner)) return toast('只有站长能送灯火');
+            openPointsModal({ uid: el.dataset.uid, uname: el.dataset.uname, take: false, from: 'replies' });
+          };
+        });
         panel.querySelectorAll('[data-reply-send]').forEach(btn => {
           btn.onclick = async () => {
             const tid = btn.dataset.replySend;
@@ -3819,6 +3928,13 @@
       return esc(name) + (tag ? ` <span class="row-intro">${esc(tag)}</span>` : '');
     }
     function rowHtml(w) {
+      // 关键词直接摊在列表行里：站长不用逐件点「编辑」才知道搜索词是什么。
+      // keywords 是实际生效的那组（没存过就按标题/简介现算），keywordsRaw 用来区分谁填的：
+      // null = 系统自动配的、数组 = 作者/站长自己存过的（含 [] 刻意清空）。
+      const kws = Array.isArray(w.keywords) ? w.keywords : [];
+      const kwLine = kws.length
+        ? `<div class="row-kw" title="${esc(kws.join('、'))}">关键词${w.keywordsRaw === null ? '（自动）' : ''}：${esc(kws.join('、'))}</div>`
+        : `<div class="row-kw">关键词：无${Array.isArray(w.keywordsRaw) ? '（已清空，搜索只靠标题/简介）' : '（没配到词）'}</div>`;
       return `
           <div class="row" data-row="${w.id}">
             <div class="row-main">
@@ -3854,6 +3970,7 @@
                 ${w.aiReview && w.aiReview.pass === true && w.status === 'pending' ? '<span style="color:#2e7d32">· AI 初审通过（等人工复核）</span>' : ''}
                 ${w.link ? `· <a href="${esc(w.link)}" target="_blank" rel="noopener" class="row-link" title="${esc(w.link)}">${esc(shortUrl(w.link))}</a>` : ''}
                 ${w.repo ? `· <a href="${esc(w.repo)}" target="_blank" rel="noopener" class="row-link repo" title="源码：${esc(w.repo)}">源码：${esc(shortUrl(w.repo, 30))}</a>` : ''}</div>
+              ${kwLine}
             </div>
             <div class="row-actions">
               <button class="btn btn-ghost btn-sm" data-act="edit" data-id="${w.id}">编辑</button>
@@ -3953,6 +4070,7 @@
           </label>`;
         const head = `<div class="form-inline" style="border-bottom:1px solid var(--border)">
             <button class="btn btn-primary" id="newWorkBtn">＋ 新建作品</button>
+            <button class="btn btn-ghost" id="mdImportBtn" title="一份 md 清单批量建成多件作品，统一用默认封面">md 一键导入</button>
             <span style="color:var(--muted);font-size:12px">${countTxt}${!q && status === 'offline' ? ' · 点「查看」核对内容后「恢复上架」，作品会立刻回到首页和榜单（浏览/点赞/灯火数据都保留）' : ''}</span>
             ${anonChk}
             ${nav}
@@ -4166,6 +4284,252 @@
       }).catch(err => {
         list.innerHTML = `<div class="empty" style="padding:14px">${esc(err.message)}</div>`;
       });
+    }
+
+    // ---- md 一键导入：一份 md 清单批量建作品（2026-11-16）----
+    // 与服务端 parseMdImport 一一对应；这段示例同时用作「下载模板」的内容。
+    const MD_IMPORT_SAMPLE = `# 我的作品清单（这一行只是标题，可以删）
+
+## 星空邮局
+一句话: 把心愿写成信，寄给未来的自己
+链接: https://example.com
+形态: 网站
+分类: 生活助手
+作者:
+关键词: 写信, 心愿, 治愈
+介绍:
+  一个把心愿寄给未来的小角落。**写下**此刻的心情，选一个时间寄出去。
+  - 支持定时寄信
+  - 支持匿名树洞
+
+## 拾光清单
+一句话: 帮人整理待办的小程序
+形态: 小程序
+分类: 效率工具, 生活助手
+作者: 管理员
+定位: 一款按精力分配任务的待办清单
+介绍: 打开就能记，支持语音快速记录和按精力排序。
+`;
+
+    function openMdImport() {
+      const mask = document.createElement('div');
+      mask.className = 'modal-mask';
+      mask.style.display = 'flex';
+      const box = document.createElement('div');
+      box.className = 'modal';
+      box.style.cssText = 'max-width:840px;width:100%;max-height:88vh;display:flex;flex-direction:column';
+      box.innerHTML = `
+        <h2>md 一键导入</h2>
+        <p style="color:var(--muted);font-size:13px;margin:5px 0 12px;line-height:1.65">
+          一份 md 清单，一次建成多件作品。<b>统一挂默认封面</b>，建完去作品列表逐条换成真实截图；
+          批量导入<b>不发灯火奖励</b>，也不会逐条给关注者发站内信。一次最多 100 件。
+        </p>
+        <details style="margin-bottom:10px">
+          <summary style="cursor:pointer;color:var(--primary);font-size:13px;font-weight:600">格式怎么写？点开看例子 ↓</summary>
+          <pre style="background:#f7f7fb;border:1px solid var(--border);border-radius:9px;padding:10px 12px;font-size:12px;line-height:1.65;overflow:auto;margin:9px 0 6px;max-height:220px">${esc(MD_IMPORT_SAMPLE)}</pre>
+          <p style="font-size:12px;color:var(--muted);line-height:1.75;margin:6px 0">
+            <b>## 作品名字</b> 起一件；下面每行 <b>键: 值</b>（中英文键都认，中英文冒号都行）；没带键的行算介绍正文。<br>
+            常用键：<code>一句话 / 链接 / 官网 / 形态 / 分类 / 作者 / 关键词 / 介绍</code><br>
+            选填键：<code>定位 / 解决 / 适合谁 / 步骤 / 亮点 / 状态 / 阶段 / 收费 / 收费形式 / 解锁价 / 仓库 / 发布时间 / 匿名 / 暗号</code><br>
+            形态写「网站, 小程序」；分类写站里已有的名字（简写如「效率」也能对上「效率工具」，认不出的会在预览里提示）。
+          </p>
+          <button type="button" class="btn btn-ghost btn-sm" id="mdTplBtn">↓ 下载空白模板</button>
+        </details>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+          <label class="btn btn-ghost btn-sm" style="cursor:pointer;position:relative;overflow:hidden">
+            上传 .md 文件<input type="file" id="mdFile" accept=".md,.markdown,.txt,text/markdown,text/plain" style="position:absolute;left:-9999px" />
+          </label>
+          <span style="flex:1;font-size:12px;color:var(--muted)" id="mdFileName">也可以直接把 md 粘在下面</span>
+        </div>
+        <details id="mdGuide" open style="margin-bottom:10px;border:1px solid var(--border);border-radius:9px;padding:8px 10px;flex-shrink:0">
+          <summary style="cursor:pointer;color:var(--primary);font-size:13px;font-weight:600">按字段填写（字段名固定，只填后面；形态 / 分类点选）</summary>
+          <div style="max-height:39vh;overflow:auto;padding-top:9px">
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 10px">
+              <label style="font-size:12px;color:var(--muted)">作品名字 *<input id="mgName" maxlength="60" placeholder="例：星空邮局" style="display:block;width:100%;box-sizing:border-box;margin-top:3px" /></label>
+              <label style="font-size:12px;color:var(--muted)">一句话 *<input id="mgTag" maxlength="100" placeholder="它帮谁做什么" style="display:block;width:100%;box-sizing:border-box;margin-top:3px" /></label>
+              <label style="font-size:12px;color:var(--muted)">链接<input id="mgLink" placeholder="https://..." style="display:block;width:100%;box-sizing:border-box;margin-top:3px" /></label>
+              <label style="font-size:12px;color:var(--muted)">作者<input id="mgAuthor" placeholder="留空默认管理员" style="display:block;width:100%;box-sizing:border-box;margin-top:3px" /></label>
+              <div style="font-size:12px;color:var(--muted)">形态（点选，第一个是主形态）<div id="mgTypes" class="type-picker" style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px"></div></div>
+              <label style="font-size:12px;color:var(--muted)">分类（下拉选一个）<select id="mgCats" style="display:block;width:100%;box-sizing:border-box;margin-top:3px"><option value="">选一个主分类</option></select></label>
+              <label style="font-size:12px;color:var(--muted)">关键词<input id="mgKeywords" placeholder="逗号分隔，选填" style="display:block;width:100%;box-sizing:border-box;margin-top:3px" /></label>
+              <label style="font-size:12px;color:var(--muted)">阶段<select id="mgStage" style="display:block;width:100%;box-sizing:border-box;margin-top:3px"><option value="">已经上线</option><option value="审核中">审核中</option><option value="还在做">还在做 / 预告</option></select></label>
+              <label style="font-size:12px;color:var(--muted);grid-column:1/-1">收费形式<select id="mgPaid" style="display:block;width:100%;box-sizing:border-box;margin-top:3px"><option value="">免费</option>${Object.keys(PAID_MODELS).map(k => `<option value="${esc(PAID_MODELS[k])}">${esc(PAID_MODELS[k])}</option>`).join('')}</select></label>
+            </div>
+          </div>
+          <label style="display:block;font-size:12px;color:var(--muted);margin-top:7px">介绍<textarea id="mgIntro" rows="2" placeholder="介绍一下这件作品……" style="display:block;width:100%;box-sizing:border-box;margin-top:3px"></textarea></label>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:7px">
+            <button type="button" class="btn btn-ghost btn-sm" id="mgAdd">＋ 加到下面的 md 清单</button>
+            <span id="mgTip" style="font-size:12px;color:var(--muted)">填好一件点一下，接着填下一件；也可以直接在下面手写 / 上传。</span>
+          </div>
+        </details>
+        <textarea id="mdText" rows="6" spellcheck="false" placeholder="## 作品名字&#10;一句话: 它帮谁做什么&#10;链接: https://...&#10;形态: 网站&#10;分类: 效率工具&#10;介绍: 介绍一下这件作品……" style="width:100%;box-sizing:border-box;font-family:ui-monospace,Consolas,monospace;font-size:12.5px;line-height:1.6;resize:vertical"></textarea>
+        <div style="display:flex;gap:8px;align-items:center;margin:10px 0">
+          <button type="button" class="btn btn-primary" id="mdParseBtn">解析预览</button>
+          <span style="flex:1;font-size:12px;color:var(--muted);line-height:1.5" id="mdStatus"></span>
+        </div>
+        <div id="mdPreview" style="overflow:auto;min-height:48px;max-height:42vh;display:flex;flex-direction:column;gap:6px"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+          <button type="button" class="btn btn-ghost" id="mdCancel">取消</button>
+          <span style="flex:1"></span>
+          <button type="button" class="btn btn-primary" id="mdGo" disabled>确认导入</button>
+        </div>`;
+      mask.appendChild(box);
+      document.body.appendChild(mask);
+
+      const $m = id => box.querySelector('#' + id);
+      const mdText = $m('mdText'), mdPreview = $m('mdPreview'), mdStatus = $m('mdStatus');
+      const mdGo = $m('mdGo'), mdParseBtn = $m('mdParseBtn');
+      let parsed = null;
+      const status = (msg, kind) => {
+        mdStatus.textContent = msg || '';
+        mdStatus.style.color = kind === 'err' ? '#b42318' : kind === 'ok' ? '#1a7f56' : 'var(--muted)';
+      };
+      const close = () => mask.remove();
+      $m('mdCancel').addEventListener('click', close);
+      mask.addEventListener('mousedown', e => { if (e.target === mask) close(); });
+
+      // 引导填写：形态 / 分类从站内接口拉，点选后拼成 md 追加到下面的清单
+      const mgTip = $m('mgTip');
+      const mgChip = (name, label, on) =>
+        `<label class="type-opt"><input type="checkbox" value="${esc(name)}"${on ? ' checked' : ''} /><span>${esc(label)}</span></label>`;
+      (async () => {
+        try {
+          const meta = await api('/api/type-meta');
+          $m('mgTypes').innerHTML = (Array.isArray(meta) ? meta : [])
+            .map((t, i) => mgChip(t.name, (t.icon ? t.icon + ' ' : '') + t.name, i === 0)).join('');
+        } catch { $m('mgTypes').innerHTML = mgChip('Web', '🌐 Web', true); }
+        try {
+          const cats = ((await api('/api/categories')) || []).filter(c => c !== '全部');
+          $m('mgCats').innerHTML = '<option value="">选一个主分类</option>'
+            + cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+        } catch { /* 保留「选一个主分类」占位 */ }
+      })();
+      $m('mgAdd').addEventListener('click', () => {
+        const v = id => ($m(id).value || '').trim();
+        const name = v('mgName'), tag = v('mgTag');
+        if (!name) { mgTip.style.color = '#b42318'; mgTip.textContent = '先写作品名字'; $m('mgName').focus(); return; }
+        const types = [...$m('mgTypes').querySelectorAll('input:checked')].map(i => i.value);
+        const cats = v('mgCats') ? [v('mgCats')] : [];
+        const pm = v('mgPaid');
+        const lines = ['## ' + name];
+        if (tag) lines.push('一句话: ' + tag);
+        if (v('mgLink')) lines.push('链接: ' + v('mgLink'));
+        if (types.length) lines.push('形态: ' + types.join(', '));
+        if (cats.length) lines.push('分类: ' + cats.join(', '));
+        if (v('mgAuthor')) lines.push('作者: ' + v('mgAuthor'));
+        if (v('mgKeywords')) lines.push('关键词: ' + v('mgKeywords'));
+        if (v('mgStage')) lines.push('阶段: ' + v('mgStage'));
+        lines.push('收费: ' + (pm ? '是' : '否'));
+        if (pm) lines.push('收费形式: ' + pm);
+        if (v('mgIntro')) lines.push('介绍: ' + v('mgIntro'));
+        mdText.value = (mdText.value.trim() ? mdText.value.replace(/\s*$/, '') + '\n\n' : '')
+          + lines.join('\n') + '\n';
+        parsed = null; mdGo.disabled = true; mdGo.textContent = '确认导入'; mdPreview.innerHTML = '';
+        ['mgName', 'mgTag', 'mgLink', 'mgAuthor', 'mgKeywords', 'mgIntro'].forEach(id => { $m(id).value = ''; });
+        $m('mgTypes').querySelectorAll('input').forEach((i, idx) => { i.checked = idx === 0; });
+        $m('mgCats').value = '';
+        mgTip.style.color = '#1a7f56';
+        mgTip.textContent = '「' + name + '」已加进清单，共 '
+          + (mdText.value.match(/^## /gm) || []).length + ' 件；点「解析预览」核对';
+      });
+
+      $m('mdTplBtn').addEventListener('click', () => {
+        const blob = new Blob(['\ufeff' + MD_IMPORT_SAMPLE], { type: 'text/markdown;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = '造梦橱窗-作品导入模板.md';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      });
+      $m('mdFile').addEventListener('change', e => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        if (f.size > 500000) { status('文件太大了（上限 500KB）', 'err'); return; }
+        const rd = new FileReader();
+        rd.onload = () => {
+          mdText.value = String(rd.result || '');
+          $m('mdFileName').textContent = f.name;
+          parsed = null; mdGo.disabled = true; mdGo.textContent = '确认导入';
+          mdPreview.innerHTML = '';
+          status('文件读好了，点「解析预览」看认出几件');
+        };
+        rd.onerror = () => status('文件读取失败，直接粘贴内容也行', 'err');
+        rd.readAsText(f, 'utf-8');
+      });
+      mdText.addEventListener('input', () => {
+        if (!parsed) return;
+        parsed = null; mdGo.disabled = true; mdGo.textContent = '确认导入';
+        status('内容改过了，重新点「解析预览」');
+      });
+
+      mdParseBtn.addEventListener('click', async () => {
+        const md = mdText.value.trim();
+        if (md.length < 10) { status('至少写一条完整的作品再解析', 'err'); return; }
+        mdParseBtn.disabled = true;
+        status('正在解析…');
+        try {
+          const d = await api('/api/admin/works/import-md', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ md: md, dryRun: true })
+          });
+          parsed = d;
+          const warnN = d.items.filter(x => x.warnings && x.warnings.length).length;
+          mdPreview.innerHTML = d.items.map(it => `
+            <div style="border:1px solid var(--border);border-radius:10px;padding:9px 11px;background:${(it.warnings || []).length ? '#fffaf3' : '#fff'}">
+              <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+                <b style="font-size:13.5px">${it.index}. ${esc(it.name)}</b>
+                <span style="font-size:12px;color:var(--muted)">${esc(it.tag)}</span>
+                <span style="flex:1"></span>
+                <span style="font-size:11px;color:var(--muted)">第 ${it.line} 行 · ${esc(it.status)} / ${esc(it.stage)}</span>
+              </div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:5px;display:flex;gap:10px;flex-wrap:wrap">
+                <span>形态：${esc((it.types || []).join(' / ') || 'Web')}</span>
+                <span>分类：${esc((it.categories || []).join(' / ') || '默认')}</span>
+                <span>作者：${esc(it.author)}</span>
+                <span>介绍 ${it.introLen || 0} 字</span>
+                ${it.paid ? `<span>收费：${esc(it.paid.model)}${it.paid.lampPrice ? ' ' + esc(it.paid.lampPrice) + '盏' : ''}</span>` : ''}
+                ${it.quickLook ? `<span>一眼看懂 ${it.quickLook} 项</span>` : ''}
+                ${(it.keywords || []).length ? `<span>词：${esc(it.keywords.join(' / '))}</span>` : ''}
+              </div>
+              ${(it.warnings || []).length ? `<div style="font-size:11.5px;color:#8a5a00;margin-top:6px;line-height:1.6">⚠ ${it.warnings.map(esc).join('；')}</div>` : ''}
+            </div>`).join('');
+          status(`认出 ${d.total} 件${(d.errors || []).length ? '，另有 ' + d.errors.length + ' 处格式提示' : ''}${warnN ? '，' + warnN + ' 件有提醒（上面黄字）' : ''}。核对后点右边确认。`, 'ok');
+          mdGo.disabled = false;
+          mdGo.textContent = `确认导入 ${d.total} 件`;
+        } catch (err) {
+          parsed = null; mdGo.disabled = true;
+          status(err.message || '解析失败', 'err');
+        } finally {
+          mdParseBtn.disabled = false;
+        }
+      });
+
+      mdGo.addEventListener('click', async () => {
+        if (!parsed) return;
+        if (!confirm(`确认导入 ${parsed.total} 件作品？\n\n· 统一挂默认封面，之后在作品列表逐条换真实截图\n· 不发灯火奖励、不逐条发站内信\n· 形态含 Web 却没写链接的会被跳过`)) return;
+        mdGo.disabled = true;
+        status('正在写入作品库…');
+        try {
+          const d = await api('/api/admin/works/import-md', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ md: mdText.value })
+          });
+          notifySite();
+          box.innerHTML = `
+            <h2>导入完成</h2>
+            <p style="font-size:14px;line-height:1.7">成功 <b style="color:#1a7f56">${d.ok}</b> 件${(d.failed || []).length ? `，跳过 <b style="color:#b42318">${d.failed.length}</b> 件` : ''}。共识别 ${d.total} 件。</p>
+            ${(d.created || []).length ? `<div style="font-size:12.5px;line-height:1.9;max-height:30vh;overflow:auto;border:1px solid var(--border);border-radius:9px;padding:8px 12px">${d.created.map(x => `✓ ${esc(x.title)} <span style="color:var(--muted)">${esc(x.id)}</span>`).join('<br>')}</div>` : ''}
+            ${(d.failed || []).length ? `<div style="font-size:12.5px;line-height:1.9;color:#b42318;max-height:20vh;overflow:auto;border:1px solid #f3c6c2;border-radius:9px;padding:8px 12px;margin-top:8px">${d.failed.map(x => `✗ 第 ${x.line} 行「${esc(x.name || '未命名')}」：${esc(x.error)}`).join('<br>')}</div>` : ''}
+            <p style="font-size:12.5px;color:var(--muted);line-height:1.7;margin-top:12px">作品都用了默认封面：<b>全部作品 → 编辑</b>，把真实截图放到作品图片第 1 张就会自动变成封面。</p>
+            <div style="display:flex;gap:8px;margin-top:14px"><span style="flex:1"></span><button type="button" class="btn btn-primary" id="mdDone">完成</button></div>`;
+          box.querySelector('#mdDone').addEventListener('click', () => { close(); loadWorks(curStatus, curPage); loadStats(); });
+          toast(`导入成功 ${d.ok} 件`);
+        } catch (err) {
+          status(err.message || '导入失败，可重试', 'err');
+          mdGo.disabled = false;
+        }
+      });
+      mdText.focus();
     }
 
     // ---- 新建 / 编辑弹窗 ----
@@ -4505,7 +4869,7 @@
     // 不能按 name 直接赋值，必须走 adminSetTypes / adminSetCats 这两个入口。
     const aiFillEls = {
       box: $('adminAiFill'), toggle: $('adminAiFillToggle'), body: $('adminAiFillBody'),
-      text: $('adminAiFillText'), url: $('adminAiFillUrl'), go: $('adminAiFillGo'),
+      text: $('adminAiFillText'), url: $('adminAiFillUrl'), gh: $('adminAiFillGh'), go: $('adminAiFillGo'),
       status: $('adminAiFillStatus'), overwrite: $('adminAiFillOverwrite'),
       cover: $('adminAiFillCover'), coverBtn: $('adminAiFillCoverBtn')
     };
@@ -4527,7 +4891,7 @@
       el.classList.add('ai-fill-flash');
     }
     function setAiFillMode(mode) {
-      aiFillMode = mode === 'url' ? 'url' : 'text';
+      aiFillMode = mode === 'url' ? 'url' : (mode === 'gh' ? 'gh' : 'text');
       document.querySelectorAll('.ai-fill-tab').forEach(b => {
         const on = b.dataset.aimode === aiFillMode;
         b.classList.toggle('active', on);
@@ -4535,8 +4899,10 @@
       });
       $('adminAiFillPaneText').hidden = aiFillMode !== 'text';
       $('adminAiFillPaneUrl').hidden = aiFillMode !== 'url';
-      aiFillEls.go.textContent = aiFillMode === 'url' ? '读取网站并填表' : '识别并回填';
+      $('adminAiFillPaneGh').hidden = aiFillMode !== 'gh';
+      aiFillEls.go.textContent = aiFillMode === 'url' ? '读取网站并填表' : (aiFillMode === 'gh' ? '读取仓库并填表' : '识别并回填');
     }
+    const aiFillActiveInput = () => aiFillMode === 'gh' ? aiFillEls.gh : (aiFillMode === 'url' ? aiFillEls.url : aiFillEls.text);
     // 每次打开弹窗复位：不然上一条作品的原文和状态会留在框里，容易误以为是这次的识别结果
     function resetAiFill() {
       aiFillMode = 'text';
@@ -4544,6 +4910,7 @@
       adminTypesTouched = false;
       aiFillEls.text.value = '';
       aiFillEls.url.value = '';
+      aiFillEls.gh.value = '';
       aiFillEls.overwrite.checked = false;
       aiFillEls.cover.hidden = true;
       aiFillEls.body.hidden = true;
@@ -4613,14 +4980,14 @@
       aiFillEls.body.hidden = !open;
       aiFillEls.box.classList.toggle('is-open', open);
       aiFillEls.toggle.setAttribute('aria-expanded', String(open));
-      if (open) (aiFillMode === 'text' ? aiFillEls.text : aiFillEls.url).focus();
+      if (open) aiFillActiveInput().focus();
     });
     document.querySelectorAll('.ai-fill-tab').forEach(btn => btn.addEventListener('click', () => {
       setAiFillMode(btn.dataset.aimode);
       aiFillStatusText('');
       aiFillEls.cover.hidden = true;
       aiFillPendingCover = null;
-      (aiFillMode === 'text' ? aiFillEls.text : aiFillEls.url).focus();
+      aiFillActiveInput().focus();
     }));
     aiFillEls.coverBtn.addEventListener('click', () => {
       if (!aiFillPendingCover) return;
@@ -4637,20 +5004,135 @@
         toast('已把网站图片放在第 1 张当封面，建议换成作者给的截图');
       }).catch(() => toast('封面读取失败，请手动上传'));
     });
+    // ---- GitHub 仓库预览（2026-11-16）----
+    // 走服务端接口 /api/admin/github/preview，不在浏览器直连 GitHub：
+    // 实测浏览器出口 IP 会被 GitHub 限流（403），Node 服务端正常，线上服务器也通。
+    // 只认 github.com，正则写死域名，防止拼出别的请求目标。
+    // 仓库名和 README 大标题常常不一样（例：bigjpg / Upscayl Web），默认取仓库名，
+    // 状态栏同时报出 README 标题，站长想换就自己改「作品名字」框。
+    function parseGithubRepo(raw) {
+      const s = String(raw || '').trim().replace(/\.git$/i, '');
+      let m = s.match(/^https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?:[/?#].*)?$/i);
+      if (!m) m = s.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
+      return m ? { owner: m[1], repo: m[2] } : null;
+    }
+    async function githubExtract(raw) {
+      if (!parseGithubRepo(raw)) throw new Error('链接不像 GitHub 仓库，填完整地址或「用户名/仓库」');
+      const r = await fetch('/api/admin/github/preview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: raw })
+      });
+      const g = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(g.error || '读取 GitHub 失败');
+      return {
+        repoUrl: g.repoUrl,
+        repoName: g.repoName,
+        readmeTitle: g.readmeTitle,
+        about: g.about || '',
+        homepage: g.homepage || '',
+        readmeOk: !!g.readmeOk,
+        parseDegraded: !!g.parseDegraded,
+        d: {
+          name: g.repoName,
+          summary: g.summary || '',
+          site: g.site ? { url: g.site } : null,
+          categories: g.categories || [],
+          types: g.types || [],
+          keywords: g.keywords || []
+        }
+      };
+    }
+    // GitHub 补全后顺手把「定位句 + 一眼看懂四项」也填上（复用后台现有的 AI 帮写端点）。
+    // 两条底线跟手点按钮时一样：介绍太短不发请求（没依据模型只会编，宁可留空）；
+    // 已有内容不静默覆盖（站长改过的框保住）。四项端点自带出处校验，引不到原文的一律丢掉。
+    async function githubEnrichQuicklook() {
+      const title = adminWorkTitle();
+      const intro = (workForm.prompt && workForm.prompt.value || '').trim();
+      if (title.length < 2 || intro.length < ADMIN_AI_MIN_INTRO) return { ok: false, why: 'intro-short' };
+      const cats = adminSelectedCats(), types = adminSelectedTypes();
+      try {
+        // 定位句先出，再把结果喂给四项（四项端点的 prompt 会带上定位句，更准）
+        let positioning = (workForm.positioning && workForm.positioning.value || '').trim();
+        if (!positioning) {
+          const pd = await adminAiPost('/api/ai/positioning', {
+            title, prompt: intro, category: cats[0] || '', types
+          });
+          positioning = String(pd.positioning || pd.text || '').trim();
+          if (positioning && workForm.positioning && !workForm.positioning.value.trim()) {
+            workForm.positioning.value = positioning;
+            workForm.positioning.dispatchEvent(new Event('input', { bubbles: true }));
+            aiFillFlash(workForm.positioning);
+          }
+        }
+        const qd = await adminAiPost('/api/ai/quicklook', {
+          title, prompt: intro, positioning, category: cats[0] || '', types
+        });
+        // adminSetQuickLook 会连定位句一起覆盖：只传四项，保住上面刚填的定位句
+        const four = {};
+        ['problem', 'audience', 'steps', 'diff'].forEach(k => { if (qd[k] != null) four[k] = qd[k]; });
+        const filled = Object.values(four).some(v => Array.isArray(v) ? v.length : !!String(v).trim());
+        if (filled) { adminSetQuickLook(four); aiFillFlash($('adminQuickLook')); }
+        return { ok: true, filled };
+      } catch (_) { return { ok: false, why: 'ai-error' }; }
+    }
+
     aiFillEls.go.addEventListener('click', async () => {
       const isUrl = aiFillMode === 'url';
+      const isGh = aiFillMode === 'gh';
       const text = aiFillEls.text.value.trim();
       const url = aiFillEls.url.value.trim();
-      if (isUrl ? !url : text.length < 8) {
-        aiFillStatusText(isUrl ? '先填作品网址' : '至少写 8 个字再识别', 'err');
-        (isUrl ? aiFillEls.url : aiFillEls.text).focus();
+      const gh = aiFillEls.gh.value.trim();
+      if (isGh ? !gh : (isUrl ? !url : text.length < 8)) {
+        aiFillStatusText(isGh ? '先贴 GitHub 仓库链接' : (isUrl ? '先填作品网址' : '至少写 8 个字再识别'), 'err');
+        aiFillActiveInput().focus();
         return;
       }
       aiFillEls.go.disabled = true;
-      aiFillStatusText(isUrl ? '正在读取网站…' : '正在识别…');
+      aiFillStatusText(isGh ? '正在读取 GitHub 仓库…' : (isUrl ? '正在读取网站…' : '正在识别…'));
       aiFillEls.cover.hidden = true;
       aiFillPendingCover = null;
       try {
+        if (isGh) {
+          const g = await githubExtract(gh);
+          aiFillApply(g.d);
+          const overwrite = !!(aiFillEls.overwrite && aiFillEls.overwrite.checked);
+          // GitHub 仓库一定是开源：先勾开源露出「源码仓库地址」栏，再填 repo
+          const osOn = workForm.querySelector('input[name="openSource"][value="1"]');
+          if (osOn && !osOn.checked) { osOn.checked = true; osOn.dispatchEvent(new Event('change', { bubbles: true })); }
+          if (workForm.repo && (!overwrite || !String(workForm.repo.value || '').trim())) {
+            workForm.repo.value = g.repoUrl;
+            workForm.repo.dispatchEvent(new Event('input', { bubbles: true }));
+            aiFillFlash(workForm.repo);
+          }
+          // 一句话介绍：README 简介前 20 字，只填空栏（不抢 adminSplitTitle 的拆分结果）
+          if (workForm.wtag && !String(workForm.wtag.value || '').trim()) {
+            const tag = String(g.d.summary || '').slice(0, 20);
+            if (tag) { workForm.wtag.value = tag; workForm.wtag.dispatchEvent(new Event('input', { bubbles: true })); aiFillFlash(workForm.wtag); }
+          }
+          // 关键词：aiFillApply 不管胶囊编辑器，这里单独补（只填空、不抢站长手动配的词）
+          if (!adminKwTouched && !adminKwList.length && Array.isArray(g.d.keywords) && g.d.keywords.length) {
+            adminKwSet(g.d.keywords);
+            workForm.dispatchEvent(new Event('input', { bubbles: true }));
+            aiFillFlash($('adminKwChips'));
+          }
+          // 定位句 + 一眼看懂四项：介绍够长才自动补（有依据才生成，避免瞎编）
+          aiFillStatusText('基础信息已回填，正在补「定位句 / 一眼看懂」…');
+          const enriched = await githubEnrichQuicklook();
+          const notes = [];
+          if (g.readmeTitle && g.readmeTitle !== g.repoName) notes.push(`README 标题是「${g.readmeTitle}」，这里默认填了仓库名「${g.repoName}」，想换就在「作品名字」里改。`);
+          if (g.about && g.d.summary !== g.about) notes.push(`仓库 About：${g.about}`);
+          if (!g.homepage) notes.push('仓库没填 Website，官网留空自己补。');
+          if (!g.readmeOk) notes.push('README 没读到简介，简介用的是仓库 About，重点核对。');
+          if (g.parseDegraded) notes.push('AI 解析没连上，分类/形态/关键词是本地词表粗识别，重点核对。');
+          if (enriched.ok && enriched.filled) notes.push('定位句和「一眼看懂」已按 README 原文补好（引不到原文的项留空）。');
+          else if (enriched.why === 'intro-short') notes.push('README 简介太短，定位句和「一眼看懂」没自动生成——没依据硬写只会编，介绍写长点再点上面的 AI 帮写。');
+          else notes.push('定位句 / 一眼看懂没自动生成，可到下面对应栏手点 AI 帮写。');
+          if (notes.length) {
+            aiFillEls.status.textContent += ' ' + notes.join('');
+            aiFillEls.status.className = 'ai-fill-status is-warn';
+          }
+          return;
+        }
         const r = await fetch(isUrl ? '/api/work/parse-url' : '/api/work/parse', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(isUrl ? { url } : { text })
@@ -4658,8 +5140,8 @@
         const d = await r.json().catch(() => ({}));
         if (!r.ok) { aiFillStatusText(d.error || '识别失败，请手动填写', 'err'); return; }
         aiFillApply(d);
-      } catch {
-        aiFillStatusText('网络异常，识别没成功，请手动填写', 'err');
+      } catch (e) {
+        aiFillStatusText(isGh ? (e && e.message ? e.message : '读取 GitHub 失败，请手动填写') : '网络异常，识别没成功，请手动填写', 'err');
       } finally {
         aiFillEls.go.disabled = false;
       }
@@ -5344,6 +5826,9 @@
     async function openEditor(id) {
       editingId = id || null;
       workForm.reset();
+      // 按形态的链接框是 JS 动态渲染的，不受 form.reset() 管；先塞空值，
+      // 让随后 adminSetTypes/restoreDraft 的渲染不会把上一件作品的链接带进新建表单
+      adminPendingLinkValues = {};
       // 回填长标题时临时放宽过 maxlength（见 adminFillTitle），新建前恢复建议上限
       if (workForm.wname) workForm.wname.maxLength = 20;
       if (workForm.wtag) workForm.wtag.maxLength = 20;
@@ -5365,7 +5850,7 @@
       await loadCatOptions(w ? (Array.isArray(w.categories) && w.categories.length ? w.categories : [w.category].filter(Boolean)) : []);
       setFormRadio('openSource', w ? (w.openSource === true ? '1' : '0') : '0');
       setPaidFromWork(w);
-      setFormRadio('anonymous', w ? (w.anonymous === true ? '1' : '0') : '1');
+      setFormRadio('anonymous', w ? (w.anonymous === true ? '1' : '0') : '0');   // 新建默认实名，省得每次手动点；编辑保持原状
       syncAnonAuthorState();
       $('repoField').style.display = getFormRadio('openSource') === '1' ? 'block' : 'none';
       // 展示阶段 + 「一眼看懂」五件套：新建走默认值（已上线 / 全部留空），编辑按作品现状回填
@@ -5993,6 +6478,7 @@
 
     panel.addEventListener('click', async e => {
       if (e.target.id === 'newWorkBtn') { openEditor(null); return; }
+      if (e.target.id === 'mdImportBtn') { openMdImport(); return; }
       // 「操作」下拉：hover 已能展开，这里兜触屏/键盘 —— 点一下开合；点到行内其他位置先收起
       const moreBtn = e.target.closest('.act-more-toggle');
       if (moreBtn) {
@@ -6316,8 +6802,12 @@
             投票需登录、账号注册满 ${d.minAgeH} 小时，一人一票可改。判错了在这里「结案并恢复」，票数会一并清零。
           </div>
           <div style="display:flex;gap:8px;margin:10px 0 14px;flex-wrap:wrap;align-items:center">
-            <input id="juryFlagId" placeholder="粘贴作品 ID" style="max-width:220px" />
+            <span style="position:relative;display:inline-block">
+              <input id="juryFlagId" placeholder="搜作品名，或粘贴作品 ID" style="max-width:220px" autocomplete="off" />
+              <div id="juryFlagSug" hidden style="position:absolute;top:100%;left:0;right:0;z-index:30;background:#fff;border:1px solid var(--line,#e5e7eb);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);max-height:240px;overflow:auto;margin-top:4px"></div>
+            </span>
             <button class="btn btn-primary btn-sm" id="juryFlagBtn">手动贴标 · 交给众判</button>
+            <span id="juryFlagPicked" style="font-size:12px;color:#6b7280"></span>
             <span style="font-size:12px;color:#6b7280">贴标不会立刻下架，只是把「疑似推广」挂出来让站内用户投</span>
           </div>
           ${cases.length ? cases.map(c => {
@@ -6356,13 +6846,68 @@
           }).join('') : '<div class="empty">还没有案件：详情页有人投第一票，或上面手动贴标</div>'}
         `;
 
-        // 手动贴标：输入作品 ID 直接开案
+        // 手动贴标：输入框既支持搜作品名（联想下拉，选中回填 ID），也支持直接粘贴作品 ID
+        const flagInput = $('juryFlagId'), flagSug = $('juryFlagSug'), flagPicked = $('juryFlagPicked');
+        let flagSugTimer = 0, flagSugSeq = 0;
+        const flagSugClose = () => { flagSug.hidden = true; flagSug.innerHTML = ''; };
+        flagInput.addEventListener('input', () => {
+          flagPicked.textContent = '';
+          clearTimeout(flagSugTimer);
+          const q = flagInput.value.trim();
+          if (!q) { flagSugClose(); return; }
+          flagSugTimer = setTimeout(() => {
+            const seq = ++flagSugSeq;
+            fetch('/api/works?q=' + encodeURIComponent(q) + '&pageSize=6', { cache: 'no-store' })
+              .then(r => r.json())
+              .then(d => {
+                if (seq !== flagSugSeq) return;   // 过期请求：字可能已经改了，别拿旧结果盖新的
+                const items = Array.isArray(d.items) ? d.items : [];
+                if (!items.length) {
+                  flagSug.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:#6b7280">没搜到叫这个的（已下架的作品搜不到，可直接粘贴 ID）</div>';
+                  flagSug.hidden = false;
+                  return;
+                }
+                flagSug.innerHTML = items.map(w => {
+                  const an = w.anonymous ? '匿名' : (w.authorName || w.author || '');
+                  return `<button type="button" class="jury-sug-item" data-wid="${esc(w.id)}" data-wtitle="${esc(w.title || '')}"
+                    style="display:block;width:100%;text-align:left;padding:7px 10px;border:0;background:none;cursor:pointer;font-size:13px;line-height:1.5"
+                    onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='none'">
+                    <b>${esc(w.title || '')}</b>${an ? `<i style="font-style:normal;color:#9ca3af;margin-left:6px;font-size:12px">@${esc(an)}</i>` : ''}
+                    <i style="font-style:normal;color:#d1d5db;margin-left:6px;font-size:11px">${esc(w.id)}</i></button>`;
+                }).join('');
+                flagSug.hidden = false;
+              })
+              .catch(() => { if (seq === flagSugSeq) flagSugClose(); });
+          }, 250);
+        });
+        flagSug.addEventListener('mousedown', e => {   // mousedown：抢在输入框 blur 之前选中
+          const b = e.target.closest('.jury-sug-item');
+          if (!b) return;
+          e.preventDefault();
+          flagInput.value = b.dataset.wid;
+          flagPicked.textContent = '已选中《' + b.dataset.wtitle + '》';
+          flagSugClose();
+        });
+        flagInput.addEventListener('keydown', e => { if (e.key === 'Escape') flagSugClose(); });
+        // 全局只挂一次：loadJury 每次重渲染都会重建下拉，按 id 找当前元素，避免监听器越积越多
+        if (!window.__jurySugDocBound) {
+          window.__jurySugDocBound = true;
+          document.addEventListener('click', e => {
+            const sug = document.getElementById('juryFlagSug');
+            const input = document.getElementById('juryFlagId');
+            if (sug && input && !sug.hidden && !sug.contains(e.target) && e.target !== input) {
+              sug.hidden = true; sug.innerHTML = '';
+            }
+          });
+        }
         $('juryFlagBtn').onclick = async () => {
-          const id = ($('juryFlagId').value || '').trim();
-          if (!id) { toast('先填作品 ID'); return; }
+          const id = (flagInput.value || '').trim();
+          if (!id) { toast('先搜作品名或填作品 ID'); return; }
           try {
             await api('/api/admin/jury/' + encodeURIComponent(id) + '/flag', { method: 'POST' });
             toast('已贴标：详情页现在可以投票了');
+            flagPicked.textContent = '';
+            flagInput.value = '';
             loadJury();
           } catch (e) { toast(e.message); }
         };
@@ -7337,17 +7882,18 @@
 
     async function loadAds() {
       try {
-        const data = await api('/api/admin/ads');
+        const [data, disp] = await Promise.all([api('/api/admin/ads'), api('/api/admin/ad-display')]);
         AD_SLOTS = data.slots || [];
         AD_LIST = data.ads || [];
         AD_GATE = data.gate || {};
+        if (disp && disp.display) AD_DISPLAY = disp.display;
         // 两本账分开数：自营（站长挂的）留在本页，兑换来的推广单去「用户推广」页管
         const ownN = AD_LIST.filter(a => a.source !== 'redeem').length;
         const promoLiveN = AD_LIST.filter(a => a.source === 'redeem' && a.active !== false).length;
         panel.innerHTML = `
           <div class="hint" style="padding:16px 18px">
             广告位是页面里的固定空位：在这里挂上内容，前台对应位置就会显示；一个位置挂多支时，
-            <b>详情页 / 榜单页顶部每次随机挑选展示</b>（各家机会均等，不做顺序轮播；榜单页 PC 右栏一次竖排最多 5 条、详情页 PC 并排 2 条），
+            <b>详情页 / 榜单页顶部每次随机挑选展示</b>（各家机会均等，不做顺序轮播；榜单页 PC 右栏竖排条数在下方「推荐位同屏条数」里调、详情页 PC 并排 2 条），
             其余位置轮流播放或并列显示，没有广告的位置完全不占地方。<br />
             每条广告有两种形式：<b>图文</b>（图片铺底 + 标题文案，适合品牌曝光）、<b>纯文字</b>（浅色卡片只用文字，加载更快，适合公告/规则/站内提醒）。<br />
             PV = 被展示的次数（每次展示 +1）；UV = 去重访客（登录用户按账号、未登录按 IP，与站点 UV 口径一致）。
@@ -7365,12 +7911,39 @@
             </div>
           </div>
           ${adGateBoxHtml()}
+          ${adDisplayBoxHtml()}
           ${AD_SLOTS.map(adGroupHtml).join('')}`;
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
 
     // 展示频控：每个招商位「每人每天最多看到几次」。只作用于页脚 / 首页底部这类内容位，
     // 作者用灯火买的曝光位（首页顶部、第一格、详情、榜单）不受这里的限制。
+    // 推荐位同屏条数：灯火兑换的 rank 位在榜单 / 酒馆一次最多同屏几条，后台可配（data/ad-display.json）
+    let AD_DISPLAY = { rankTop: 4, rankSide: 3, barSide: 2 };
+
+    function adDisplayBoxHtml() {
+      const row = (key, label, tip) => `<label style="display:inline-flex;align-items:center;gap:8px;font-size:13px">
+          <span title="${esc(tip)}">${esc(label)}</span>
+          <input type="number" min="1" max="6" step="1" value="${esc(AD_DISPLAY[key] == null ? '' : AD_DISPLAY[key])}"
+            data-addisp="${esc(key)}" style="width:64px" />
+          <span style="color:#8a90a8">条</span>
+        </label>`;
+      return `<div class="ad-group" style="margin-bottom:14px">
+        <div class="ad-group-head">
+          <div class="grow">
+            <div class="ad-group-name">推荐位同屏条数<span class="tag">灯火兑换</span>
+              <button class="btn btn-primary btn-sm" data-addispsave style="margin-left:12px">保存</button></div>
+            <div class="ad-group-where">作者用灯火投的「推荐」在榜单 / 酒馆页一次最多同屏几条（同屏的每条都真实计费曝光）。改完保存即生效，不用重启。右栏窄，条数太大标题会被挤碎，建议 ≤4。</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px 26px;padding:2px 18px 16px">
+          ${row('rankTop', '星梦榜顶部通栏', '榜单页页头下方那条，PC 宽屏并排；900-1180 视口自动降到 3 条')}
+          ${row('rankSide', '星梦榜右栏竖排', '榜单页 PC 宽屏右栏的竖排卡列')}
+          ${row('barSide', '酒馆右栏竖排', '造梦酒馆页右栏，窄栏一律竖排不并排')}
+        </div>
+      </div>`;
+    }
+
     function adGateBoxHtml() {
       const row = (key, label, tip) => `<label style="display:inline-flex;align-items:center;gap:8px;font-size:13px">
           <span title="${esc(tip)}">${esc(label)}</span>
@@ -7633,6 +8206,25 @@
         if (t.dataset.adtoggle) {
           const data = await api('/api/admin/ads/' + id + '/toggle', { method: 'POST' });
           AD_LIST = data.ads; notifyAds(); return loadAds();
+        }
+        if (t.hasAttribute('data-addispsave')) {
+          const next = {};
+          ['rankTop', 'rankSide', 'barSide'].forEach(k => {
+            next[k] = Number(panel.querySelector(`[data-addisp="${k}"]`) && panel.querySelector(`[data-addisp="${k}"]`).value);
+          });
+          for (const k of Object.keys(next)) {
+            if (!Number.isInteger(next[k]) || next[k] < 1 || next[k] > 6) return toast('三个条数都要填 1-6 的整数');
+          }
+          t.disabled = true;
+          try {
+            const data = await api('/api/admin/ad-display', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(next)
+            });
+            AD_DISPLAY = (data && data.display) || AD_DISPLAY;
+            notifyAds();
+            toast('已保存：榜单通栏 ' + AD_DISPLAY.rankTop + ' 条 · 榜单右栏 ' + AD_DISPLAY.rankSide + ' 条 · 酒馆右栏 ' + AD_DISPLAY.barSide + ' 条');
+          } finally { t.disabled = false; }
         }
         if (t.dataset.adgatesave) {
           const key = t.dataset.adgatesave;
@@ -8923,13 +9515,14 @@
       box.innerHTML = html;
     }
 
-    // 统一的弹窗入口：用户行「送 / 扣灯火」和作品列表点作者名都走这里。
-    // target.points 有值就直接用；没有（作品列表）就查一次接口补上，失败也不挡操作。
+    // 统一的弹窗入口：用户行「送 / 扣灯火」、作品列表点作者名、「作者回复」点作者名都走这里。
+    // target.points 有值就直接用；没有（作品列表 / 私信页）就查一次接口补上，失败也不挡操作。
+    // target.name 缺省时（私信页只有账号名）用余额接口回的昵称补进「给谁送」那一行。
     function openPointsModal(target) {
       ptsTarget = target;
       ptBase = Number.isFinite(target.points) ? target.points : null;
       $('ptTitle').textContent = (target.take ? '从 @' + target.uname + ' 扣灯火' : '给 @' + target.uname + ' 送灯火');
-      $('ptWho').value = `@${target.name}（${target.uname}）`;
+      $('ptWho').value = target.name ? `@${target.name}（${target.uname}）` : `@${target.uname}`;
       $('ptDelta').value = 100;
       $('ptDeltaHint').textContent = target.take ? '填多少扣多少，扣到 0 为止，会计入对方账本' : '会计入对方账本，对方会收到站内消息通知';
       $('ptNote').value = '';
@@ -8938,7 +9531,12 @@
       setTimeout(() => $('ptDelta').focus(), 50);
       if (ptBase == null) {
         api('/api/admin/users/balance?id=' + encodeURIComponent(target.uid))
-          .then(r => { if (ptsTarget === target) { ptBase = r.points; renderPtBalance(); } })
+          .then(r => {
+            if (ptsTarget !== target) return;
+            ptBase = r.points;
+            if (!target.name && r.name) $('ptWho').value = `@${r.name}（${target.uname}）`;
+            renderPtBalance();
+          })
           .catch(() => {
             if (ptsTarget !== target) return;
             const box = $('ptBal');
@@ -8961,7 +9559,7 @@
       try {
         const r = await api('/api/admin/points', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: ptsTarget.uid, delta, note })
+          body: JSON.stringify({ userId: ptsTarget.uid, delta, note, fromReplies: ptsTarget.from === 'replies' })
         });
         const row = panel.querySelector(`#userList .row[data-uid="${ptsTarget.uid}"]`);
         if (row) row.querySelector('.pt-val').textContent = r.points;

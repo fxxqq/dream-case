@@ -1088,7 +1088,6 @@ function checkinCardHtml(ck) {
       ${arriveLine}
       <div class="ck-tip">本轮第 ${day}/${cycle} 天 · 一轮共 ${schedule.reduce((a, b) => a + b, 0)} 盏，断签从头记。攒的灯火可以换<span style="white-space:nowrap">「推荐」</span>的曝光位，也可以送给喜欢的作品，给作者点一盏灯。</div>
       ${ckAdHtml(ck)}
-      <div class="ck-promise">${ic('heart', 13)}<span>灯火只送不卖：签到、看广告、分享邀请都能免费拿，也没有付费买灯火的入口。</span></div>
     </div>`;
 }
 
@@ -1690,7 +1689,7 @@ function renderNoticeList() {
       : (noticeCat === 'all' && (NOTICE_TABS.find(t => t.key === noticeCatOf(n)) || {}).name);
     const catCls = own ? own.cls : noticeCatOf(n);
     return `
-    <div class="notice-item${n.read ? '' : ' is-unread'}${Number(n.delta || 0) > 0 ? ' is-plus' : (Number(n.delta || 0) < 0 ? ' is-minus' : '')}${clickable ? ' is-link' : ''}${hasThread ? ' has-thread' : ''}"${n.workId ? ` data-goto="${escapeHtml(n.workId)}"` : (n.link ? ` data-link="${escapeHtml(n.link)}"` : '')}${dmThread ? ` data-dm="${escapeHtml(dmThread)}"` : ''}>
+    <div class="notice-item${n.read ? '' : ' is-unread'}${Number(n.delta || 0) > 0 ? ' is-plus' : (Number(n.delta || 0) < 0 ? ' is-minus' : '')}${clickable ? ' is-link' : ''}${hasThread ? ' has-thread' : ''}"${n.workId ? ` data-goto="${escapeHtml(n.workId)}"` : (n.link ? ` data-link="${escapeHtml(n.link)}"` : '')}${n.kind ? ` data-kind="${escapeHtml(n.kind)}"` : ''}${dmThread ? ` data-dm="${escapeHtml(dmThread)}"` : ''}>
       <div class="notice-top">
         <span class="notice-title">${catName ? `<span class="nc-tag nc-${catCls}">${catName}</span>` : ''}${escapeHtml(n.title || '消息')}${clickable ? ' <span class="notice-go">查看 ›</span>' : ''}</span>
         ${n.muted ? '<span class="notice-mute">已屏蔽</span>' : ''}
@@ -1708,9 +1707,12 @@ function renderNoticeList() {
     };
   });
   // 带 workId 的消息（评论 / 提问 / 回复通知）点了直接打开对应作品详情
+  // 投放类消息（kind:'ad'）例外：落地是 /promote 的「我的投放」效果区——
+  // 这条消息说的是他自己那单推荐位上线/排队/投完，去看的应该是曝光/点击账本，不是作品详情
   box.querySelectorAll('.notice-item[data-goto]').forEach(el => {
     el.onclick = () => {
       closeNoticePanel();   // 顺手结掉当前分栏的已读：点了就是看过了
+      if (el.dataset.kind === 'ad') { goMyPromotions(); return; }
       openWork(el.dataset.goto);
     };
   });
@@ -3736,6 +3738,9 @@ const AD_GATE_SLOTS = ['home-bottom', 'footer'];
 const AD_GATE_KEY = 'dm_adgate';
 const AD_GATE_GUEST_DAYS = 3;   // 游客累计到访满 3 天
 let AD_GATE_DAILY = { 'home-bottom': 1, footer: 5 };   // 每天最多展示次数，按槽位分开记；会被 /api/ads 的 gate 覆盖
+// rank 槽三个容器的同屏条数（后台「广告位」页可配，/api/ads 的 display 下发，2026-11-16 起）：
+// rankTop = 星梦榜顶部通栏 / rankSide = 星梦榜右栏竖排 / barSide = 酒馆右栏竖排；拿不到就用这组默认值
+let AD_DISPLAY = { rankTop: 4, rankSide: 3, barSide: 2 };
 const AD_GATE_GUEST_ONLY = ['home-bottom'];              // 只有这些位对游客设「到访满 3 天」门槛
 
 function adGatePass(slot) {
@@ -3913,6 +3918,12 @@ function applyAdsData(data) {
     Object.keys(AD_GATE_DAILY).forEach(k => {
       const v = Number(data.gate[k]);
       if (Number.isFinite(v) && v >= 0) AD_GATE_DAILY[k] = v;
+    });
+  }
+  if (data && data.display && typeof data.display === 'object') {
+    Object.keys(AD_DISPLAY).forEach(k => {
+      const v = Math.round(Number(data.display[k]));
+      if (v >= 1) AD_DISPLAY[k] = v;
     });
   }
 }
@@ -4142,11 +4153,28 @@ function renderAdSlot(el, slot, opts = {}) {
   if (!el) return;
   // 这个槽位的渲染参数要记在节点上：关广告（renderAdSlot 只带 slot 重渲染）和
   // renderAllAdSlots 整页刷都不传 opts，不记下来散座栏的单张上限就丢了。
-  // HTML 里也可以直接写 data-ad-maxcols / data-ad-stack（榜单右栏竖排 5 条用的就是这个），首次渲染记进 _adOpts
+  // HTML 里也可以直接写 data-ad-maxcols / data-ad-stack（榜单右栏竖排 3 条用的就是这个），首次渲染记进 _adOpts
   if (opts.maxCols == null && el.dataset && el.dataset.adMaxcols) opts.maxCols = Number(el.dataset.adMaxcols) || undefined;
   if (opts.stack == null && el.dataset && el.dataset.adStack) opts.stack = true;
   if (opts.maxCols != null || opts.stack) el._adOpts = { maxCols: opts.maxCols, stack: opts.stack };
   else if (el._adOpts) opts = el._adOpts;
+  // rank 槽三个容器按身份取后台配的条数（data/ad-display.json → /api/ads display）：
+  // data-ad-stack（星梦榜右栏）→ rankSide；data-ad-rail=bar（酒馆右栏）→ barSide；
+  // 都没有（星梦榜顶部通栏）→ rankTop，仍按视口在 4/3 里收着（900-1180 降 3）。
+  // 右栏容器窄，并排会把标题挤碎，配置几条都一律竖排。
+  if (slot === 'rank') {
+    const key = opts.stack ? 'rankSide' : ((el.dataset && el.dataset.adRail) === 'bar' ? 'barSide' : 'rankTop');
+    const conf = Math.round(Number(AD_DISPLAY[key]));
+    if (conf >= 1) {
+      if (key === 'rankTop') {
+        opts.maxCols = Math.min(conf, window.innerWidth >= 1180 ? 4 : 3);
+      } else {
+        opts.maxCols = conf;
+        opts.stack = true;
+      }
+      el._adOpts = { maxCols: opts.maxCols, stack: !!opts.stack };
+    }
+  }
   clearInterval(el._adTimer);           // 重新渲染前先停掉旧的轮播
   el._adTimer = null;
   // 详情位特殊：点开的是自己的作品时不展示（给自己推自己的广告很怪）
@@ -4227,12 +4255,12 @@ function renderAdSlot(el, slot, opts = {}) {
     } else if (slot === 'rank' && list.length > 1 && window.innerWidth > 900) {
       // rank 位（榜单页顶部 + 榜单右栏 + 酒馆散座栏共用）。条数策略（2026-11-12 站长拍板）：
       // 榜单页顶部通栏 PC 宽屏一次并排 2-4 条（视口 ≥1180 放 4 条，900-1180 放 3 条，1 条退回通栏；
-      // 窄屏仍是单条，避免撑高首屏）；榜单页右栏（data-ad-maxcols=5）竖排最多 5 条；
+      // 窄屏仍是单条，避免撑高首屏）；榜单页右栏（data-ad-maxcols=3）竖排最多 3 条（2026-11-16 由 5 改 3）；
       // H5 / 小程序口径不动。并排/竖排的每条都真实可见 → 一次浏览给 N 家各扣一次额度，
       // 同屏条数就是消耗倍率。
       // 竖排（酒馆右栏 maxCols=2、榜单右栏 stack）：窄容器里并排会把标题挤碎，改走 .ad-stack，
       // 每条仍各自独立曝光/关闭；榜单页主容器宽，照旧并排
-      const maxCols = Math.min(opts.maxCols || (window.innerWidth >= 1180 ? 4 : 3), 5);
+      const maxCols = Math.min(opts.maxCols || (window.innerWidth >= 1180 ? 4 : 3), 6);
       const want = Math.min(maxCols, list.length);
       const pick = mine ? [mine] : [];
       const rest = list.filter(a => !mine || a.id !== mine.id).slice();
@@ -4747,7 +4775,8 @@ function imgFullKey(e) {
   else if (e.key === 'ArrowRight') imgFullShow(galState.idx + 1);
 }
 // 精选入选理由：告诉用户「它为什么被选进来」，而不是只丢一堆数据。
-// 后端按 分数 = 获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 访客×2 逐项算，
+// 后端按 分数 = 获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 访客×2 + 回访加分逐项算，
+// （回访加分 = 打开次数×0.1 ＋ 回访天数×0.1，同一人各最多 10、合计最多 +2；它进总分但不进下面这个理由挑选）
 // 哪个乘完权重最大就给哪个徽章（tip/fav/like/cmt/uv）；全零走 new。
 // （edit「编辑精选」已停用：后台手选不再进这 20 个名额，这一格留给老缓存兜底）
 const FEAT_REASONS = {
@@ -4771,8 +4800,10 @@ function featAuthorHtml(w) {
   return `<span class="feat-author" title="作者 ${escapeHtml(name)}">${avaChip(w)}<span class="fa-name">${escapeHtml(name)}</span></span>`;
 }
 
-// 「本周精选」一行最多 20 个：按近 7 天综合分严格降序取前 20（2026-11-15 改回纯算法），
-// `.feat-no` 的序号 = 名次，第 1 张就是最高分；不设互动门槛、不按作者去重、不洗牌、不夹手选。
+// 「本周精选」一行最多 20 个：按近 7 天综合分严格取前 20 入选（2026-11-15 纯算法），
+// 展示顺序每天洗一次牌、当天固定（2026-11-16 改口径，服务端 featuredDayList 出榜，
+// 前端按接口给的顺序原样画）；`.feat-no` 的序号 = 当天排位，不是分数名次。
+// 不设互动门槛、不按作者去重、不夹手选。
 // 卡上的数据是累计口径（打开次数 / 看过人数都是全历史），近 7 天数据只用于选谁进来；
 // 精选卡版式：首页「本周精选」和发现页共用（点击开详情由调用方绑定）
 function featCardHtml(w, i) {
@@ -6027,6 +6058,158 @@ function isFullView() {
   return new URLSearchParams(location.search).get('full') === '1';
 }
 
+// ---------- 完整页（?full=1）右侧动作栏 ----------
+// SSR 只出骨架（seo.js 的 railHtml）：登录态、已赞/已收藏、是否自己的作品这些
+// 访客相关的状态 SSR 不知道，这里拉一份 /api/works/:id 补——与详情弹窗同接口同口径。
+// 动作全部复用既有链路，不另起炉灶：收藏 toggleFav、点赞与卡片扇面同一个接口、
+// 送灯火 openWorkTipPanelHook（卡片直送同一套面板）、屏蔽 askBlockWork、
+// 举报弹窗 reportForm（提交时读 state.currentWork.id，开弹窗前先补上）。
+// 评论：评论 UI 只在详情弹窗里有一份（9678 起那套），这里借道 openWork 打开它，
+// 不再复制一份评论渲染——两份源迟早打架。
+let seoRailWork = null;
+function bindSeoRail() {
+  const rail = $('seoRail');
+  if (!rail) return;
+  const id = rail.dataset.work || '';
+  if (!id) return;
+  // 文案 span 有专门的类名（sr-txt）：按钮里第一个 span 是图标，querySelector('span') 会误取
+  const label = btn => btn.querySelector('.sr-txt');
+  const likeBtn = rail.querySelector('[data-seo-like]');
+  const favBtn = rail.querySelector('[data-fav]');
+  const cmtBtn = rail.querySelector('[data-seo-cmt]');
+  const tipBtn = rail.querySelector('[data-seo-tip]');
+  const blockBtn = rail.querySelector('[data-seo-block]');
+  const repBtn = rail.querySelector('[data-seo-report]');
+
+  // 状态补齐：失败不拦互动（未登录也有匿名本机已赞标记可兜底）
+  fetch(`/api/works/${encodeURIComponent(id)}`, { cache: 'no-store' })
+    .then(r => r.json())
+    .then(w => {
+      if (!w || w.error) return;
+      seoRailWork = w;
+      if (likeBtn) {
+        const liked = state.user ? w.liked === true : localStorage.getItem('liked:' + id) === '1';
+        likeBtn.classList.toggle('active', liked);
+        if (label(likeBtn)) label(likeBtn).textContent = liked ? '已赞' : '点赞';
+      }
+      if (w.owned) {
+        // 自己的作品：与详情弹窗口径一致，不给点赞/收藏/送灯火/屏蔽（举报留着）
+        [likeBtn, favBtn, tipBtn, blockBtn].forEach(b => { if (b) b.style.display = 'none'; });
+      }
+    })
+    .catch(() => {});
+  if (favBtn) favBtn.classList.toggle('active', isFav(id));
+
+  // 点赞：与卡片扇面（bindCardNode）同一接口、同一本机已赞标记
+  if (likeBtn) likeBtn.addEventListener('click', async () => {
+    if (likeBtn.disabled) return;
+    const on = !likeBtn.classList.contains('active');
+    likeBtn.disabled = true;
+    try {
+      const res = await fetch(`/api/works/${encodeURIComponent(id)}/like`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ on })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(data.error || '操作失败', undefined, 'err'); return; }
+      if (data.self) { showToast('不能给自己的作品点赞', undefined, 'err'); return; }
+      const now = data.liked === true;
+      likeBtn.classList.toggle('active', now);
+      if (label(likeBtn)) label(likeBtn).textContent = now ? '已赞' : '点赞';
+      try {
+        if (now) localStorage.setItem('liked:' + id, '1');
+        else localStorage.removeItem('liked:' + id);
+      } catch { /* 隐私模式写不进就算了 */ }
+      showToast(now ? '已点赞' : '已取消点赞', undefined, 'ok');
+    } catch {
+      showToast('网络异常，请稍后再试', undefined, 'err');
+    } finally {
+      likeBtn.disabled = false;
+    }
+  });
+
+  // 收藏：toggleFav 里已含未登录弹登录、失败回滚；paintFavButtons 按 data-fav 全站刷
+  if (favBtn) favBtn.addEventListener('click', async e => {
+    e.stopPropagation();
+    const added = await toggleFav(id);
+    if (added === null) return;
+    paintFavButtons(id);
+    showToast(added ? '已加入收藏' : '已取消收藏', undefined, 'ok');
+  });
+
+  // 评论：进详情弹窗（评论列表 + 回复只在那一份）
+  if (cmtBtn) cmtBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    openWork(id);
+  });
+
+  // 送灯火：与卡片直送同一套面板（setupDetailActions 注入的 hook）
+  if (tipBtn) tipBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!state.user) { openAuth('login'); return; }
+    if (!openWorkTipPanelHook) { showToast('页面还没准备好，刷新一下再试', undefined, 'err'); return; }
+    openWorkTipPanelHook(id);
+  });
+
+  // 屏蔽：与卡片「不再看这个作品」同一个确认弹窗
+  if (blockBtn) blockBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    askBlockWork(id, rail.dataset.bwTitle || '', blockBtn);
+  });
+
+  // 举报：reportForm 的提交读 state.currentWork.id（详情弹窗那条链路），
+  // 完整页没开过弹窗时先补一份最小上下文再开举报弹窗
+  if (repBtn) repBtn.addEventListener('click', async e => {
+    e.stopPropagation();
+    // 与详情弹窗的「投诉」同口径：不设登录门槛（接口按 IP 限频），匿名也能提交
+    if (!seoRailWork || seoRailWork.error) {
+      try { seoRailWork = await (await fetch(`/api/works/${encodeURIComponent(id)}`, { cache: 'no-store' })).json(); } catch { /* 拿不到就用骨架数据顶 */ }
+    }
+    state.currentWork = (seoRailWork && !seoRailWork.error) ? seoRailWork : { id, title: rail.dataset.title || '' };
+    showModal(reportModal);
+  });
+}
+
+// 完整页图片轮播：SSR 把封面 + 宣传图全写进 DOM，这里接管成一次看一张
+// （左右箭头 / 圆点 / 手机横划）。不自动播放——都是静态截图，自动切反而看不清。
+// 脚本没跑起来时 CSS 保持原来的平铺，爬虫也能读全所有 <img>。
+function bindSeoGallery() {
+  const box = document.querySelector('#seoContent .seo-gallery[data-seo-carousel]');
+  if (!box || box.dataset.bound === '1') return;
+  const slides = Array.from(box.querySelectorAll('.sg-slide'));
+  if (slides.length < 2) return;
+  box.dataset.bound = '1';
+  const dots = Array.from(box.querySelectorAll('.sg-dot'));
+  const count = box.querySelector('.sg-count');
+  let idx = 0;
+  const show = n => {
+    idx = (n + slides.length) % slides.length;
+    slides.forEach((s, i) => s.classList.toggle('show', i === idx));
+    dots.forEach((d, i) => { d.classList.toggle('on', i === idx); d.setAttribute('aria-current', i === idx ? 'true' : 'false'); });
+    if (count) count.textContent = `${idx + 1} / ${slides.length}`;
+  };
+  const prev = box.querySelector('[data-sg-prev]');
+  const next = box.querySelector('[data-sg-next]');
+  if (prev) prev.addEventListener('click', () => show(idx - 1));
+  if (next) next.addEventListener('click', () => show(idx + 1));
+  dots.forEach((d, i) => d.addEventListener('click', () => show(i)));
+  // 横划才切图，纵向滚页面不拦
+  let tx = 0, ty = 0;
+  box.addEventListener('touchstart', e => {
+    const t = e.changedTouches && e.changedTouches[0];
+    if (t) { tx = t.clientX; ty = t.clientY; }
+  }, { passive: true });
+  box.addEventListener('touchend', e => {
+    const t = e.changedTouches && e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - tx, dy = t.clientY - ty;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) show(idx + (dx < 0 ? 1 : -1));
+  }, { passive: true });
+  box.classList.add('carousel-on');
+  show(0);
+}
+
 // 服务端预渲染的内容块：只有「整页 SSR」那种（挂在 <main> 上）才需要清掉。
 // 落在 #homeView 内的 SSR 区块是首页常驻的「最新收录」栏目，必须保留——
 // 真人与爬虫共用同一份 HTML，切到别的视图时它会随 homeView 一起隐藏。
@@ -7157,6 +7340,8 @@ function route() {
     if (isFullView() && seoEl && seoEl.dataset.full === '1') {
       $('homeView').style.display = 'none';
       document.body.classList.remove('on-work');
+      bindSeoRail();   // 完整页右侧动作栏：骨架是 SSR 的，互动在这里补
+      bindSeoGallery(); // 作品图轮播：SSR 平铺，这里收成一次一张
       updateNavActive();
       return;
     }
@@ -7354,17 +7539,19 @@ function authorBadgesHtml(badges) {
     </button>`
   ).join('');
 }
-// 数据看板的六个格子：作品 / 获赞 / 被收藏 / 访客 / 点亮人数 / 评论。
-// 2026-11-14 一度收成四格（只留作品/获赞/访客/点亮），站长看到截图说「这个样式挺好的呀」——
-// 六格带图标、带竖分隔线才是他要的信息密度，撤掉的两项在「作品数据」面板里有，但一眼能看到更好。看板恢复六格。
+// 数据看板的六个格子（2026-11-16 重排）：作品 / 关注 / 获赞 / 被收藏 / 点亮人数 / 访客。
+// 「评论」换成「关注」：评论数在「作品数据」面板里本来就有，看板上重复；关注数（followers）是
+// 唯一「人级」的认可，站长要求靠前，所以紧跟作品排第二。三项作品互动按由轻到重连在一起，
+// 访客只是流量、不是认可，挪到最后。11-14 一度收成四格，站长说「这个样式挺好的呀」——
+// 六格带图标、带竖分隔线才是他要的信息密度，别再砍。
 // 结构固定，加载态只把数字换成「–」，高度不变（避免数据回来时整块往上跳）
 const AUTHOR_STAT_CELLS = [
   { ico: 'edit', label: '作品', key: 'total' },
+  { ico: 'person', label: '关注', key: 'followers', tip: '有多少人关注了这位作者；关注后他发新作品会在站内消息里提醒你' },
   { ico: 'heart', label: '获赞', key: 'totalLikes' },
   { ico: 'fav', label: '被收藏', key: 'totalFavs' },
-  { ico: 'eye', label: '访客', key: 'totalUv', tip: '各作品访客合计：同一人看多件会重复计入' },
   { ico: 'lamp', label: '点亮人数', key: 'totalTips', tip: '送过灯火的人数，同一人多笔只算一人' },
-  { ico: 'chat', label: '评论', key: 'totalComments' }
+  { ico: 'eye', label: '访客', key: 'totalUv', tip: '各作品访客合计：同一人看多件会重复计入' }
 ];
 function authorStatGridHtml(d) {
   return AUTHOR_STAT_CELLS.map(c =>
@@ -8012,9 +8199,19 @@ async function loadAuthor(name) {
     }
     // 有昵称就显示昵称（地址栏是 /u/id，链接不会失效）
     const shown = data.displayName || name;
+    // 星梦期刊前三荣誉（定稿期）：名字后逐期列出「周榜第N期第X名」，多期折成 +N，完整名单 hover 看。
+    // 进行中的期不贴（服务端只给 phase=closed），名次定了才是真荣誉，不会隔天就错。
+    const jr = Array.isArray(data.journalRanks) ? data.journalRanks : [];
+    const jrLabel = x => `${x.type === 'week' ? '周' : '月'}榜第${x.no}期第${x.rank}名`;
+    const jrTip = jr.map(jrLabel).join('、');
+    const jrHtml = jr.length
+      ? jr.slice(0, 4).map(x => `<i class="jrn-rank-tag" title="星梦期刊 ${escapeHtml(jrLabel(x))}">${escapeHtml(jrLabel(x))}</i>`).join('') +
+        (jr.length > 4 ? `<i class="author-tag-more" title="星梦期刊前三：${escapeHtml(jrTip)}">+${jr.length - 4}</i>` : '')
+      : '';
     // 荣誉标签（含自动颁发的 GitHub 勋章）：名字旁挂胶囊
     $('authorName').innerHTML = '@' + escapeHtml(shown) +
-      (Array.isArray(data.tags) ? data.tags.map(t => `<i class="author-tag${t === GH_BADGE_TAG ? ' gh' : ''}" title="${t === GH_BADGE_TAG ? 'GitHub 优质原创作者勋章' : '站点荣誉标签'}">${escapeHtml(t)}</i>`).join('') : '');
+      (Array.isArray(data.tags) ? data.tags.map(t => `<i class="author-tag${t === GH_BADGE_TAG ? ' gh' : ''}" title="${t === GH_BADGE_TAG ? 'GitHub 优质原创作者勋章' : '站点荣誉标签'}">${escapeHtml(t)}</i>`).join('') : '') +
+      jrHtml;
     // 头像：有图就盖上去，图挂了自动露出底下的首字母（不再留一块空白）
     paintAvatar($('authorAvatar'), shown, data.avatar);
     setTitle(`@${shown} 的作品`);
@@ -8186,7 +8383,7 @@ const RANK_PERIODS = [
 // 带「榜」字时多出 10 个字宽，最后一个「访客榜」被挤出屏幕、整行要横滑，行高也被撑起来。
 // hint 是选这个维度后显示在胶囊下方的计分说明（与小程序榜单页同款文案）
 const RANK_BYS = [
-  { value: 'hot', label: '综合', hint: '获赞×5 ＋ 收藏×8 ＋ 评论×3 ＋ 灯火人数×10 ＋ 访客×2（访客按人去重，一个人只算一次）' },
+  { value: 'hot', label: '综合', hint: '获赞×5 ＋ 收藏×8 ＋ 评论×3 ＋ 灯火人数×10 ＋ 访客×2 ＋ 回访加分（访客按人去重，一个人只算一次；同一人最多再 +2）' },
   { value: 'likes', label: '点赞', hint: '按点赞数排序，同一人重复点赞只算一次' },
   { value: 'favs', label: '收藏', hint: '按收藏数排序，收藏需要登录账号' },
   { value: 'tips', label: '灯火', hint: '按送过灯火的人数排序：同一人多笔只算 1 人，人数打平比灯火总额' },
@@ -8312,6 +8509,8 @@ function rankRowHtml(w, i) {
   const age = workAgeText(w) ? `<span class="rank-age">${workAgeText(w)}</span>` : '';
   // 高光榜：首次进榜 7 天内的作品标「新晋」，右侧副行换成高光区间（哪几天、用了几天）
   const entry = w.isNewEntry && rankH5.period === 'peak' ? '<span class="rk-new">新晋</span>' : '';
+  // 总榜新作加成：服务端只给系数 >1 的作品带 newBoost，前端挂角标提醒「排序占了便宜，分数没涨」
+  const boost = w.newBoost ? '<span class="rk-new" title="上架 14 天内的新作加成：首 7 天 ×1.3、8–14 天 ×1.15，只影响总榜排序，不改变分数">新作加成</span>' : '';
   const feat = w.featured ? '<span class="rk-tag">精选</span>' : '';
   // 高光榜副行：区间 + 天数分两行（窄屏 10px 下「高光 2026-10-28~11-03 · 7 天」会把标题挤没）
   const sub = rankH5.period === 'peak' && w.peakFrom
@@ -8322,7 +8521,7 @@ function rankRowHtml(w, i) {
       <span class="rk-num${top}">${i + 1}</span>
       ${cover}
       <div class="rk-main">
-        <div class="rk-title-line"><span class="rk-title">${escapeHtml(rkName)}</span>${age}${isNew}${entry}</div>
+        <div class="rk-title-line"><span class="rk-title">${escapeHtml(rkName)}</span>${age}${isNew}${entry}${boost}</div>
         ${rkIntro ? `<div class="rk-intro">${escapeHtml(rkIntro)}</div>` : ''}
         <div class="rk-meta-line"><span class="rk-sub">${escapeHtml(w.authorName || '匿名')} · ${escapeHtml(w.type || '')}</span><span class="rk-tags"><span class="rk-tag">${escapeHtml(w.category)}</span>${feat}</span></div>
       </div>
@@ -8370,12 +8569,12 @@ const BY_SHORT = { hot: '综合', likes: '点赞', favs: '收藏', tips: '打赏
 const BY_SCORE_LABEL = { hot: '热度', likes: '获赞', favs: '收藏', tips: '灯火', pv: '访问', uv: '访客' };
 // 图例一句话说明跟着排序走：选什么排序，下面就解释什么
 const BY_LEGEND = {
-  hot: '综合分 = 获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 访客人数×2',
+  hot: '综合分 = 获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 访客人数×2 + 回访加分（同一人最多再 +2）',
   likes: '按累计获赞数排序：作品上架以来收到的点赞，同一身份只计 1 次',
   favs: '按累计被收藏数排序：作品上架以来被收藏的次数',
   tips: '按送过灯火的人数排序：同一人多笔只算 1 人，人数打平比灯火总额；送灯火 = 为作品投票，每位送过的朋友折 10 分进综合分',
   pv: '按访问次数排序：所选周期内详情页被打开的次数，同一个人反复打开也会累加；访问次数只做展示，计分用的是访客人数',
-  uv: '按访客人数排序：所选周期内有多少人打开过详情页，一个人只算 1 个；综合分里的访客分就是它 ×2（网页 / 小程序 / App 同一套认人规则）'
+  uv: '按访客人数排序：所选周期内有多少人打开过详情页，一个人只算 1 个；综合分里的访客分就是它 ×2，反复回来看还会攒一点回访加分（打开次数×0.1＋回访天数×0.1，同一人各最多 10，最多再 +2 分）（网页 / 小程序 / App 同一套认人规则）'
 };
 // weekhot 已下线不再出现在选项里，但 SHORT/HINT/byLegend 三处保留映射：
 // 老分享链接 /rank?period=weekhot 打开时，标签和图例仍能正常显示而不是显示 undefined
@@ -8384,24 +8583,28 @@ const PERIOD_HINT = {
   weekhot: '本周热榜 · 近 7 天有互动的作品，老作品也能上榜',
   week: '新作周榜 · 近 7 天上架',
   month: '新作月榜 · 近 30 天上架',
-  all: '总榜 · 全部作品',
+  all: '总榜 · 全部作品（上架 14 天内的新作有排序加成）',
   peak: '高光榜 · 每件作品最亮的 7 天，高光时刻永久留档'
 };
 // 图例一句话说明跟着「排序 + 周期」走（weekhot 分支仅剩旧链接会用到）
 function byLegend(by, period) {
   if (period === 'weekhot') {
-    if (by === 'hot') return '本周热度 = 本周获赞×5 + 本周收藏×8 + 本周评论×3 + 本周灯火人数×10 + 本周访客×2';
+    if (by === 'hot') return '本周热度 = 本周获赞×5 + 本周收藏×8 + 本周评论×3 + 本周灯火人数×10 + 本周访客×2 + 回访加分（同一人最多再 +2）';
     if (by === 'likes') return '按本周新增获赞排序（点赞时间戳自 2026-11-07 起记录，之前的赞不参与）';
     if (by === 'favs') return '按本周新增被收藏数排序';
     if (by === 'tips') return '按本周送过灯火的人数排序：同一人多笔只算 1 人，人数打平比灯火总额';
   }
   if (period === 'peak') {
-    if (by === 'hot') return '高光分 = 窗口获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 窗口访客×2，取上架以来最亮的连续 7 天';
+    if (by === 'hot') return '高光分 = 窗口获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 窗口访客×2 + 回访加分（同一人最多再 +2），取上架以来最亮的连续 7 天';
     if (by === 'likes') return '按最佳窗口内的获赞数排序（不足 7 天按实际天数算）';
     if (by === 'favs') return '按最佳窗口内的被收藏数排序';
     if (by === 'tips') return '按最佳窗口内送过灯火的人数排序：同一人多笔只算 1 人，人数打平比灯火总额';
     if (by === 'pv') return '按最佳窗口内的访问次数排序';
     if (by === 'uv') return '按最佳窗口内的独立访客数排序，同一人只算 1 个';
+  }
+  if (period === 'all') {
+    if (by === 'hot') return '综合分 = 获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 访客人数×2 + 回访加分（同一人最多再 +2）。总榜排序对上架 14 天内的新作有加成：首 7 天 ×1.3、8–14 天 ×1.15，只影响排序，行上显示的仍是真实综合分';
+    return BY_LEGEND[by] || BY_LEGEND.hot;
   }
   return BY_LEGEND[by] || BY_LEGEND.hot;
 }
@@ -8544,7 +8747,7 @@ async function loadRank(period, by, limit, type, cat) {
         <div class="rank-no rank-no-${w.rank <= 3 ? w.rank : 'n'}">${w.rank}</div>
         <img src="${imgUrl(w.thumb, 400)}" alt="" loading="lazy" />
         <div class="rank-main">
-          <div class="rank-title">${escapeHtml(rkName)}${ageTxt ? `<span class="rank-age">${ageTxt}</span>` : ''}${w.isNew ? '<span class="rank-fresh" title="今天刚上架的作品">今日上新</span>' : ''}${w.isNewEntry && rankState.period === 'peak' ? '<span class="rank-fresh" title="首次进入高光榜前 20，7 天内显示">新晋</span>' : ''}</div>
+          <div class="rank-title">${escapeHtml(rkName)}${ageTxt ? `<span class="rank-age">${ageTxt}</span>` : ''}${w.isNew ? '<span class="rank-fresh" title="今天刚上架的作品">今日上新</span>' : ''}${w.isNewEntry && rankState.period === 'peak' ? '<span class="rank-fresh" title="首次进入高光榜前 20，7 天内显示">新晋</span>' : ''}${w.newBoost ? '<span class="rank-fresh" title="上架 14 天内的新作加成：首 7 天 ×1.3、8–14 天 ×1.15，只影响总榜排序，不改变这里显示的分数">新作加成中</span>' : ''}</div>
           ${rkIntro ? `<div class="rank-intro">${escapeHtml(rkIntro)}</div>` : ''}
           <div class="rank-meta">${escapeHtml(typeText(w))} · ${escapeHtml(aname(w))} · ${escapeHtml(rankCatsText(w))}${rankState.period === 'peak' && w.peakFrom ? ` · <span title="这件作品最亮的 7 天">高光 ${peakRangeTxt(w.peakFrom, w.peakTo)} · ${w.peakDays} 天</span>` : ''}</div>
         </div>
@@ -8553,7 +8756,7 @@ async function loadRank(period, by, limit, type, cat) {
           <span class="${cur === 'favs' ? 'on' : ''}" title="被收藏数">${ic('star')} ${w.favs || 0}</span>
           ${w.commentCount ? `<span title="评论与提问数">${ic('chat')} ${w.commentCount}</span>` : ''}
           <span class="${cur === 'tips' ? 'on' : ''}" title="打赏人数：累计有多少个不同用户送过灯火，同一人多笔只算 1 人${cur === 'tips' ? '（排序依据）' : ''}">${ic('lamp')} ${w.tipsTippers || 0}</span>
-          ${cur === 'hot' ? `<span class="on" title="综合分 = 获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 访客人数×2；灯火按送过的人数算，同一人送多笔只算 1 人；访客按人去重——登录按账号、小程序按设备、网页和 App 按本机标识，一个人只算 1 个，反复刷新不加分，系数 2 是各项最低的（点开看一眼比点赞、收藏轻得多）；同一身份只能赞一次，匿名评论不计分">${ic('bolt')} ${w.hotScore || 0}</span>` : ''}
+          ${cur === 'hot' ? `<span class="on" title="综合分 = 获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 访客人数×2，另有回访加分（打开次数×0.1＋回访天数×0.1，同一人各最多 10 次 / 10 天，最多再 +2 分）；灯火按送过的人数算，同一人送多笔只算 1 人；访客按人去重——登录按账号、小程序按设备、网页和 App 按本机标识，一个人只算 1 个，反复刷新不加分，系数 2 是各项最低的（点开看一眼比点赞、收藏轻得多）；同一身份只能赞一次，匿名评论不计分">${ic('bolt')} ${w.hotScore || 0}</span>` : ''}
           <span class="${cur === 'pv' ? 'on' : ''}" title="访问次数：本周期详情页被打开的次数，同一个人反复打开也会累加（排序依据）">${ic('bars')} ${w.pv || 0}</span>
           <span class="${cur === 'uv' ? 'on' : ''}" title="访问人数：本周期有多少人打开过这件作品的详情页，同一个人只算 1 个（排序依据）">${ic('person')} ${w.uv || 0}</span>
         </div>
@@ -8603,11 +8806,18 @@ function jrnCN(dateStr) {
   const p = String(dateStr || '').split('-');
   return p.length === 3 ? Number(p[1]) + ' 月 ' + Number(p[2]) + ' 日' : String(dateStr || '');
 }
-// 状态文案：进行中的一期写「还剩几天截稿」
+// 状态文案：进行中的一期写「还剩几天截稿」；出刊后攒分中的一期写「攒分中」
 function jrnLeftText(live) {
   if (!live) return '';
+  if (live.phase === 'closing') return '攒分中';
   if (live.status !== 'live' || !live.daysLeft) return '已截稿';
   return live.daysLeft > 1 ? '还剩 ' + live.daysLeft + ' 天截稿' : '今晚截稿';
+}
+// 「攒分中」胶囊的悬停提示（2026-11-16）：名次是暂定的，上架不满 7 天的作品分数还在涨，
+// 不解释一句读者会以为榜单算错了。日期取 finalAt，没有就不报日子。
+function jrnGrowTip(it) {
+  const when = it.finalAt ? '终榜 ' + jrnCN(it.finalAt) + ' 0 点落定' : '攒满 7 天后落定';
+  return '名次暂定：上架不足 7 天的作品，分数依旧能涨。' + when;
 }
 
 async function loadJournalRack(force) {
@@ -8659,7 +8869,7 @@ function jrnPastHtml(d) {
         return `<button type="button" class="jrn-item" data-jno="${it.no}">
           ${ch && ch.thumb ? `<img src="${imgUrl(ch.thumb, 400)}" alt="" loading="lazy" />` : '<span class="jrn-item-noimg">休刊</span>'}
           <span class="jrn-item-main">
-            <b>第 ${it.no} 期<i>${jrnRange(it.from, it.to)}</i></b>
+            <b>第 ${it.no} 期<i>${jrnRange(it.from, it.to)}${it.phase === 'closing' ? ' · 攒分中' : ''}</i></b>
             <em>${ch ? escapeHtml(ch.title) : '这一期没有新作品上架'}</em>
           </span>
           ${ch ? `<span class="jrn-item-score">${ch.score}</span>` : ''}
@@ -8708,9 +8918,15 @@ function renderJournalRack() {
 function journalSheetHtml(it) {
   const isMonth = it.type === 'month';
   const live = it.status === 'live';
+  const closing = it.phase === 'closing';   // 出刊后攒分中：名次暂定，最晚上架的作品还没攒满 7 天
   const st = it.stats || {};
   const ch = it.champion;
   const list = (it.list || []).slice(0, 20);
+  // 前三名灯火：金额由服务端随期次下发（JOURNAL_PRIZE），前端不另抄一份价目；
+  // 只显示「定稿且真发得出去」的那几个名次（无账号 / 站长自己的作品不发，存档里 skip 掉了）
+  const prizeConf = Array.isArray(it.prize) ? it.prize : [];
+  const prizeOf = {};
+  (it.prizes || []).forEach(p => { if (p && !p.skip && p.points) prizeOf[p.rank] = p.points; });
   const bits = [];
   if (it.works) bits.push(it.works + ' 件新作品上架');
   if (st.likes) bits.push(st.likes + ' 个赞');
@@ -8728,24 +8944,30 @@ function journalSheetHtml(it) {
          <div class="jrn-cover-text">
            <span class="jrn-cover-label">本期榜首</span>
            <h3>${escapeHtml(ch.title)}</h3>
-           <p>${ch.anonymous ? '匿名' : '@' + escapeHtml(ch.author)} · ${ch.score} 分</p>
+           <p>${ch.anonymous ? '匿名' : '@' + escapeHtml(ch.author)} · ${ch.score} 分${closing ? '（暂定）' : ''}</p>
          </div>
        </div>`
     : `<div class="jrn-cover is-empty"><div class="jrn-cover-text"><span class="jrn-cover-label">本期</span><h3>这一期没有新作品上架</h3><p>期刊照常出刊，位置先空着</p></div></div>`;
-  const rows = list.map(e => `
+  const rows = list.map(e => {
+    // 攒分中的一期：上架还不满 7 天的作品分数还会涨，行内标出来，读者心里有数
+    const grow = closing && Date.now() < (Date.parse(e.createdAt) || 0) + 7 * 86400000;
+    return `
       <li class="jrn-row" data-jwork="${e.id}">
         <span class="jrn-row-no${e.rank <= 3 ? ' is-top' : ''}">${e.rank}</span>
         <img src="${imgUrl(e.thumb, 400)}" alt="" loading="lazy" />
         <span class="jrn-row-main"><b>${escapeHtml(e.title)}</b><em>${e.anonymous ? '匿名' : '@' + escapeHtml(e.author)}</em></span>
-        <span class="jrn-row-score"><b>${e.score}</b><i>${e.likes} 赞 · ${e.favs} 藏 · ${e.uv} 访客</i></span>
-      </li>`).join('');
+        <span class="jrn-row-score"><b>${e.score}</b><i>${e.likes} 赞 · ${e.favs} 藏 · ${e.uv} 访客${grow ? ' · 攒分中' : ''}</i>${prizeOf[e.rank] ? `<em class="jrn-prize">+${prizeOf[e.rank]} 灯火</em>` : ''}</span>
+      </li>`;
+  }).join('');
   return `<div class="jrn-issue">
       <div class="jrn-issue-top">
         <span class="jrn-issue-kind">星梦期刊 · ${isMonth ? '月榜' : '周榜'}</span>
-        <span class="jrn-issue-badge${live ? ' is-live' : ''}">${live ? '本期进行中' : '已出刊'}</span>
+        <span class="jrn-issue-badge${live ? ' is-live' : ''}"${closing ? ` data-tip="${jrnGrowTip(it)}"` : ''}>${live ? (closing ? '攒分中' : '本期进行中') : '已出刊'}</span>
       </div>
       <div class="jrn-issue-no">第 ${it.no} 期</div>
-      <div class="jrn-issue-date">${jrnRange(it.from, it.to)}${live ? ' · ' + jrnLeftText(it) : ' · ' + jrnCN(it.publishAt) + '出刊'}</div>
+      <div class="jrn-issue-date">${jrnRange(it.from, it.to)}${live
+        ? ' · ' + (closing ? '终榜 ' + jrnCN(it.finalAt) + ' 0 点落定' : jrnLeftText(it))
+        : ' · ' + jrnCN(it.publishAt) + '出刊'}</div>
       ${cover}
       <p class="jrn-lede">${lede}</p>
       <div class="jrn-figures">
@@ -8760,7 +8982,7 @@ function journalSheetHtml(it) {
         <span>${it.next ? '下一期：第 ' + it.next.no + ' 期 · ' + jrnRange(it.next.from, it.next.to) : '下一期正在收稿'}</span>
         <button type="button" class="btn-ghost" data-jrank="${isMonth ? 'month' : 'week'}">去看${isMonth ? '月榜' : '周榜'} ›</button>
       </div>
-      <p class="jrn-note">计分与榜单同一套：获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 访客×2，只算这一期内的增量；截稿即定稿，之后不再改写名次。</p>
+      <p class="jrn-note">计分与榜单同一套：获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 访客×2 + 回访加分（打开次数×0.1＋回访天数×0.1，同一人各最多 10，最多再 +2 分）。每件作品只计<b>上架后头 7 天</b>的增量——周日上架的窗口会跨过截稿点往后面借几天，同样攒满 7 天，谁也不吃亏。出刊时的名次是暂定的，攒满 7 天落定；定稿后不再改写名次。${prizeConf.length ? `前三名有灯火：冠军 ${prizeConf[0]} 盏、亚军 ${prizeConf[1]} 盏、季军 ${prizeConf[2]} 盏，<b>定稿当天发放</b>（暂定榜期间名次还会变，先不发）。` : ''}</p>
     </div>`;
 }
 
@@ -8895,7 +9117,7 @@ function renderQuickLook(w) {
     ? `<dl class="ql-dl">${rows.map(([k, v]) => `<div><dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd></div>`).join('')}</dl>`
     : '';
   const ol = steps.length
-    ? `<div class="ql-steps"><span class="ql-steps-title">上手${steps.length === 3 ? '三' : ''}步</span>
+    ? `<div class="ql-steps"><span class="ql-steps-title">${steps.length === 3 ? '上手三步' : '上手步骤'}</span>
         <ol>${steps.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ol></div>`
     : '';
   box.innerHTML = `<div class="ql-head"><span class="ql-badge"><span class="ico">${ic('search')}</span> 一眼看懂</span></div>${dl}${ol}`;
@@ -10113,12 +10335,13 @@ function setupUploadForm() {
   const aiFillBody = $('aiFillBody');
   const aiFillText = $('aiFillText');
   const aiFillUrl = $('aiFillUrl');
+  const aiFillGh = $('aiFillGh');
   const aiFillGo = $('aiFillGo');
   const aiFillStatus = $('aiFillStatus');
   const aiFillOverwrite = $('aiFillOverwrite');
   const aiFillCover = $('aiFillCover');
   const aiFillCoverBtn = $('aiFillCoverBtn');
-  if (aiFillBox && aiFillToggle && aiFillBody && aiFillGo && aiFillText && aiFillUrl) {
+  if (aiFillBox && aiFillToggle && aiFillBody && aiFillGo && aiFillText && aiFillUrl && aiFillGh) {
     let aiMode = 'text';
     let pendingCover = null;
     const aiStatus = (msg, kind) => {
@@ -10131,28 +10354,41 @@ function setupUploadForm() {
       void el.offsetWidth;              // 强制重排，连续识别时动画能重播
       el.classList.add('ai-fill-flash');
     };
-    aiFillToggle.addEventListener('click', () => {
-      const open = aiFillBody.hidden;
-      aiFillBody.hidden = !open;
-      aiFillBox.classList.toggle('is-open', open);
-      aiFillToggle.setAttribute('aria-expanded', String(open));
-      if (open) (aiMode === 'text' ? aiFillText : aiFillUrl).focus();
-    });
-    document.querySelectorAll('.ai-fill-tab').forEach(btn => btn.addEventListener('click', () => {
-      aiMode = btn.dataset.aimode;
+    // 页签顺序：网址 / GitHub 仓库 / 粘贴介绍；默认仍停在「粘贴介绍」（站里原来的习惯）
+    const activeInput = () => aiMode === 'gh' ? aiFillGh : (aiMode === 'url' ? aiFillUrl : aiFillText);
+    const setMode = (mode, doFocus) => {
+      aiMode = mode === 'gh' ? 'gh' : (mode === 'url' ? 'url' : 'text');
       document.querySelectorAll('.ai-fill-tab').forEach(b => {
-        const on = b === btn;
+        const on = b.dataset.aimode === aiMode;
         b.classList.toggle('active', on);
         b.setAttribute('aria-selected', String(on));
       });
       $('aiFillPaneText').hidden = aiMode !== 'text';
       $('aiFillPaneUrl').hidden = aiMode !== 'url';
-      aiFillGo.textContent = aiMode === 'url' ? '读取网站并填表' : '识别并回填';
+      $('aiFillPaneGh').hidden = aiMode !== 'gh';
+      aiFillGo.textContent = aiMode === 'url'
+        ? (parseGithubRepo(aiFillUrl.value.trim()) ? '读取仓库并填表' : '读取网站并填表')
+        : (aiMode === 'gh' ? '读取仓库并填表' : '识别并回填');
       aiStatus('');
       aiFillCover.hidden = true;
       pendingCover = null;
-      (aiMode === 'text' ? aiFillText : aiFillUrl).focus();
+      if (doFocus) activeInput().focus();
+    };
+    aiFillToggle.addEventListener('click', () => {
+      const open = aiFillBody.hidden;
+      aiFillBody.hidden = !open;
+      aiFillBox.classList.toggle('is-open', open);
+      aiFillToggle.setAttribute('aria-expanded', String(open));
+      if (open) activeInput().focus();
+    });
+    document.querySelectorAll('.ai-fill-tab').forEach(btn => btn.addEventListener('click', () => {
+      setMode(btn.dataset.aimode, true);
     }));
+    // 网址框里贴的是 GitHub 仓库 → 按钮文案跟着变，别让人点了才发现走的是仓库通道
+    aiFillUrl.addEventListener('input', () => {
+      if (aiMode !== 'url') return;
+      aiFillGo.textContent = parseGithubRepo(aiFillUrl.value.trim()) ? '读取仓库并填表' : '读取网站并填表';
+    });
     // 把服务端的候选值写进表单；网址模式额外填网站地址，并把 og:image 留给用户自己决定要不要当封面
     const applyFill = d => {
       const overwrite = !!(aiFillOverwrite && aiFillOverwrite.checked);
@@ -10234,6 +10470,65 @@ function setupUploadForm() {
         showToast('已把网站图片加为首图（封面），建议换成首页截图', undefined, 'ok');
       }).catch(() => showToast('封面读取失败，请手动上传', undefined, 'err'));
     });
+    // ---- GitHub 仓库读取（2026-11-16，与后台同一套口径）----
+    // 走服务端 /api/work/github-preview 代取：浏览器直连 GitHub API 会被出口 IP 限流（403），
+    // 后台 20:3x 已经踩过一次。只认 github.com，正则写死域名，防止拼出别的请求目标。
+    // 名字默认取仓库名，README 大标题不一样只在状态栏报出来，作者自己改。
+    function parseGithubRepo(raw) {
+      const s = String(raw || '').trim().replace(/\.git$/i, '');
+      let m = s.match(/^https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?:[/?#].*)?$/i);
+      if (!m) m = s.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
+      return m ? { owner: m[1], repo: m[2] } : null;
+    }
+    // 后台那套「定位句 / 一眼看懂」不在这里自动跑：前台本来就有单独的 AI 帮写按钮，
+    // 一次点击连发三个模型请求既慢又费额度，作者想补自己点更清楚。
+    function applyGithub(g) {
+      const overwrite = !!(aiFillOverwrite && aiFillOverwrite.checked);
+      applyFill({
+        name: g.repoName || '',
+        summary: g.summary || '',
+        site: g.site ? { url: g.site } : null,
+        categories: g.categories || [],
+        types: g.types || [],
+        keywords: g.keywords || [],
+        degraded: !!g.parseDegraded
+      });
+      // 一句话介绍：README 简介前 20 字，只填空栏（不抢 splitWorkTitle 的拆分结果）
+      if (form.wtag && !String(form.wtag.value || '').trim()) {
+        const tag = String(g.summary || '').slice(0, 20);
+        if (tag) {
+          form.wtag.value = tag;
+          form.wtag.dispatchEvent(new Event('input', { bubbles: true }));
+          flash(form.wtag);
+        }
+      }
+      // 官网取仓库 About 里的 Website，不拿仓库地址顶替（没填就留空让作者补）
+      if (g.site && form.site && (overwrite || !String(form.site.value || '').trim())) {
+        form.site.value = g.site;
+        form.site.dispatchEvent(new Event('input', { bubbles: true }));
+        flash(form.site);
+      }
+      // GitHub 仓库＝公开源码：先勾开源露出源码地址栏（change 会触发 updateRepoField），再填仓库
+      const osOn = form.querySelector('input[name="openSource"][value="1"]');
+      if (osOn && !osOn.checked) {
+        osOn.checked = true;
+        osOn.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (form.repo && (overwrite || !String(form.repo.value || '').trim())) {
+        form.repo.value = g.repoUrl || '';
+        form.repo.dispatchEvent(new Event('input', { bubbles: true }));
+        flash(form.repo);
+      }
+      const notes = [];
+      if (g.readmeTitle && g.readmeTitle !== g.repoName) notes.push(`README 标题是「${g.readmeTitle}」，这里默认填了仓库名「${g.repoName}」，想换就改「作品名字」。`);
+      if (g.about && g.summary !== g.about) notes.push(`仓库 About：${g.about}`);
+      if (!g.homepage) notes.push('仓库没填 Website，官网留空自己补。');
+      if (!g.readmeOk) notes.push('README 没读到简介，简介用的是仓库 About，重点核对。');
+      if (g.parseDegraded) notes.push('AI 解析没连上，分类/形态/关键词是本地词表粗识别，重点核对。');
+      notes.push('已按开源填好源码仓库，不想标开源可以改回去。');
+      aiFillStatus.textContent += ' ' + notes.join(' ');
+      aiFillStatus.className = 'ai-fill-status is-warn';
+    }
     // ---- 读取进度卡：已用秒数 + 步骤清单 + 顶部细进度条 ----
     // 接口是一次性返回、拿不到真实进度，所以步骤推进按典型耗时模拟：
     // 网址模式下抓网页通常几秒内完成，之后主要在等 AI；收到响应立刻全部打勾。
@@ -10249,11 +10544,18 @@ function setupUploadForm() {
     };
     const startProgress = (mode, url) => {
       if (!aiProgress || !aiProgressSteps) return;
-      const steps = mode === 'url'
-        ? ['抓取网页，读标题与描述', 'AI 提取名字、介绍与分类', '整理关键词与封面候选']
-        : ['AI 识别介绍文字', '提取名字、简介与分类'];
+      const isGh = mode === 'gh';
+      const steps = isGh
+        ? ['读取仓库信息与 README', 'AI 提取名字、介绍与分类', '整理关键词与源码地址']
+        : (mode === 'url'
+          ? ['抓取网页，读标题与描述', 'AI 提取名字、介绍与分类', '整理关键词与封面候选']
+          : ['AI 识别介绍文字', '提取名字、简介与分类']);
       let host = '';
       if (mode === 'url' && url) { try { host = new URL(url).hostname; } catch { host = ''; } }
+      if (isGh) {
+        const m = parseGithubRepo(url);
+        host = m ? m.owner + '/' + m.repo : '';
+      }
       aiProgressTitle.textContent = host ? 'AI 正在读取 ' + host : 'AI 正在识别介绍';
       aiProgressSteps.innerHTML = steps.map(s =>
         '<li><span class="dot" aria-hidden="true"></span><span>' + s + '</span></li>').join('');
@@ -10263,7 +10565,7 @@ function setupUploadForm() {
         li.classList.toggle('is-active', idx === i);
       });
       mark(0);
-      const step2At = mode === 'url' ? 2500 : Infinity; // 第 1 步完成的估算时间
+      const step2At = mode === 'url' || isGh ? 2500 : Infinity; // 第 1 步完成的估算时间
       const t0 = Date.now();
       let advanced = false;
       aiProgressTime.textContent = '已用 0 秒';
@@ -10285,31 +10587,41 @@ function setupUploadForm() {
       setTimeout(stopProgress, 650);
     };
     aiFillGo.addEventListener('click', async () => {
-      const isUrl = aiMode === 'url';
       const text = aiFillText.value.trim();
       const url = aiFillUrl.value.trim();
-      if (isUrl ? !url : text.length < 8) {
-        aiStatus(isUrl ? '先填作品网址' : '至少写 8 个字再识别', 'err');
-        (isUrl ? aiFillUrl : aiFillText).focus();
+      const gh = aiFillGh.value.trim();
+      // 「从网址读取」里贴的是 GitHub 仓库链接 → 直接改走仓库通道。
+      // 拿 GitHub 的前端渲染页面当普通网页抓，只会抓回一堆导航文字，读不到简介。
+      const urlIsGh = aiMode === 'url' && !!parseGithubRepo(url);
+      const isGh = aiMode === 'gh' || urlIsGh;
+      const payloadUrl = isGh ? (aiMode === 'gh' ? gh : url) : url;
+      if (isGh ? !payloadUrl : (aiMode === 'url' ? !url : text.length < 8)) {
+        aiStatus(aiMode === 'gh' ? '先贴 GitHub 仓库链接' : (aiMode === 'url' ? '先填作品网址' : '至少写 8 个字再识别'), 'err');
+        activeInput().focus();
         return;
       }
       aiFillGo.disabled = true;
-      aiStatus(isUrl ? '正在读取网站…' : '正在识别…');
-      startProgress(aiMode, url);
+      aiStatus(isGh ? '正在读取 GitHub 仓库…' : (aiMode === 'url' ? '正在读取网站…' : '正在识别…'));
+      startProgress(isGh ? 'gh' : aiMode, payloadUrl);
       aiFillCover.hidden = true;
       pendingCover = null;
       try {
-        const r = await fetch(isUrl ? '/api/work/parse-url' : '/api/work/parse', {
+        const endpoint = isGh ? '/api/work/github-preview' : (aiMode === 'url' ? '/api/work/parse-url' : '/api/work/parse');
+        const body = isGh ? { url: payloadUrl } : (aiMode === 'url' ? { url } : { text });
+        const r = await fetch(endpoint, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(isUrl ? { url } : { text })
+          body: JSON.stringify(body)
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) { stopProgress(); aiStatus(d.error || '识别失败，请手动填写', 'err'); return; }
         finishProgress();
-        applyFill(d);
-      } catch {
+        if (isGh) {
+          applyGithub(d);
+          if (urlIsGh) aiFillStatus.textContent += ' 这个地址是 GitHub 仓库，已按仓库信息回填。';
+        } else applyFill(d);
+      } catch (e) {
         stopProgress();
-        aiStatus('网络异常，识别没成功，请手动填写', 'err');
+        aiStatus((isGh && e && e.message) ? e.message : '网络异常，识别没成功，请手动填写', 'err');
       } finally {
         aiFillGo.disabled = false;
       }
@@ -10771,6 +11083,9 @@ function setupUploadForm() {
     $('formHint').style.display = state.user ? 'block' : 'none';
     $('authorField').style.display = state.user ? 'none' : 'block';
     form.reset();
+    // 按形态的链接框是 JS 动态渲染的，form.reset() 管不到；先塞空值，
+    // 让随后 setSelectedTypes/restoreDraft 的渲染不会把上一份投稿的链接带进新表单
+    pendingLinkValues = {};
     // 回填长标题时临时放宽过 maxlength（见 fillWorkTitle），新投稿前恢复建议上限
     if (form.wname) form.wname.maxLength = 20;
     if (form.wtag) form.wtag.maxLength = 20;
@@ -11194,7 +11509,7 @@ function setupUploadForm() {
       hint.textContent = v === 'lamp'
         ? '灯火解锁：访客要先花灯火解锁，才看得到网页链接、下载链接和小程序码。卡片上会标「N 盏解锁」。'
         : v === '1'
-          ? '需要付费：卡片上打「付费」标记，下方可选具体收费形式——部分免费 / 会员专享 / 单篇购买 / 订阅制 / 一次买断 / 试用后付费（拿不准就选「形式不定」）。站内不代收钱，费用结算在你自己那边。'
+          ? '需要付费：卡片上会标出具体收费形式——部分免费 / 会员专享 / 单篇购买 / 订阅制 / 一次买断 / 试用后付费（拿不准就选「形式不定」）。站内不代收钱，费用结算在你自己那边。'
           : '免费作品不显示任何收费标记，访客随时能在详情页给作者送灯火；想设门槛就选「需要灯火解锁」或「需要付费（形式可选）」。';
     }
   }
@@ -12548,6 +12863,13 @@ function setupDetailActions() {
   // 所以发送 / 出小程序码都以这个为准（详情弹窗进来的就是 state.currentWork 本身）
   let tipWorkTarget = null;
 
+  // 小程序看广告代送黄条文案：作品模式落「这件作品」，作者直送模式落「TA 的作品」。
+  // 直送面板没有挂作品，出码时现挑这位作者最热的一件——广告代送本来就是「为作品点灯」，
+  // 有主作品的灯火全额进作者账，和直送是同一个去向（2026-11-16 站长要求直送弹窗也带上）
+  const TMA_TXT_WORK = '不花自己的灯火：进小程序打开这件作品，看完一支视频广告，平台就代你送 50 盏（每天 3 次）';
+  const TMA_TXT_AUTHOR = '不花自己的灯火：进小程序打开 TA 的作品，看完一支视频广告，平台就代你送 50 盏（每天 3 次）';
+  const setTipMiniAdText = t => { const em = $('tipMiniAd') && $('tipMiniAd').querySelector('.tma-txt em'); if (em) em.textContent = t; };
+
   // 档位按钮：作品打赏和作者直送共用同一套
   const renderTipAmounts = () => {
     $('tipAmounts').innerHTML = TIP_AMOUNTS.map(a =>
@@ -12603,8 +12925,9 @@ function setupDetailActions() {
     tipAuthorTarget = uid;
     tipWorkTarget = null;
     tipSelAmount = 0;
-    // 直送模式没有作品可落，看广告代送那条黄条不出现（它是「进小程序打开这件作品」的引导）
-    $('tipMiniAd').style.display = 'none';
+    // 直送模式也亮「小程序看广告替送 50 盏」：没有作品可挂，点黄条时现挑 TA 最热的一件出码
+    $('tipMiniAd').style.display = '';
+    setTipMiniAdText(TMA_TXT_AUTHOR);
     $('tipPanelTitle').textContent = `给 @${shown} 送灯火`;
     $('tipNote').textContent = '灯火全额转到作者账上；每人每天给同一位作者最多送 50 盏（同一网络下也一样，最多分 5 笔）。';
     $('tipAuthorHome').style.display = 'none';
@@ -12620,8 +12943,9 @@ function setupDetailActions() {
     tipWorkTarget = w || null;
     // 居中弹窗：点「送灯火」立刻有反馈，不会再被当成点了没反应
     showModal(p);
-    // 看广告代送黄条只在作品打赏模式出现（作者直送模式没有作品可落，openAuthorTipPanel 会藏掉它）
+    // 看广告代送黄条两种模式都亮：作品模式挂当前作品，作者直送模式点黄条时现挑作品出码
     $('tipMiniAd').style.display = '';
+    setTipMiniAdText(TMA_TXT_WORK);   // 两种模式共用一条黄条，文案跟着模式切回来
     updateTipBalance();
     // 最近打赏名单（打开时拉一次），顺手校准总额（别人可能刚打赏过）
     try {
@@ -12660,13 +12984,14 @@ function setupDetailActions() {
     } catch { showToast('网络异常，请稍后再试', undefined, 'err'); }
   };
   $('tipClose').onclick = () => { hideModal($('tipPanel')); };
-  // 「小程序看广告替送 50 盏」入口：出一张直达这件作品详情页的小程序码（scene=w:<作品id>），
+  // 「小程序看广告替送 50 盏」入口：出一张直达作品详情页的小程序码（scene=w:<作品id>），
   // 用户扫码落在小程序详情页 → 底部「看广告替作品点灯」，平台代送不扣自己的余额。
+  // 作品模式落当前作品；作者直送模式没挂作品，现挑 TA 最热的一件落码（代送全额进作者账）。
   // 码取不到（微信未配置 / 接口抽风）就退回旧的通用小程序弹窗兜底。
   let tipMiniAdBusy = false;
   $('tipMiniAd').onclick = async () => {
     if (tipMiniAdBusy) return;
-    const w = tipWorkTarget || state.currentWork;
+    let w = tipWorkTarget || state.currentWork;
     const go = $('tipMiniAd').querySelector('.tma-go');
     if (go) go.textContent = '出码中…';
     tipMiniAdBusy = true;
@@ -12675,13 +13000,27 @@ function setupDetailActions() {
       const m = $('miniModal');
       if (m) showModal(m);
     };
+    if (!w && tipAuthorTarget) {
+      // 作者直送模式：面板不挂作品，现拉作者主页挑一件出码。按灯火数取最热的一件
+      //（灯火打平比点赞数），广告代送落在这件作品上、全额进作者账，与直送同一去向；
+      // 一件可见作品都没有（收起主页 / 空号）就退回通用小程序弹窗，让人自己进去找
+      try {
+        const r = await fetch('/api/authors/' + encodeURIComponent(tipAuthorTarget), { cache: 'no-store' });
+        const d = await r.json().catch(() => ({}));
+        const list = (d && d.works) || [];
+        w = list.slice().sort((a, b) =>
+          ((b.tipsTotal || 0) - (a.tipsTotal || 0)) || ((b.likes || 0) - (a.likes || 0)))[0] || null;
+      } catch { /* 拉不到就走下面的 fallback */ }
+    }
     if (!w) { fallback(); return; }
     try {
       const r = await fetch('/api/mini/tip-qr?workId=' + encodeURIComponent(w.id));
       const d = await r.json();
       if (!r.ok || !d.qr) throw new Error(d.error || 'no qr');
       hideModal($('tipPanel'));
-      openQrZoom(d.qr, '微信扫一扫，进小程序打开这件作品，看完一支广告就替 TA 送 50 盏');
+      openQrZoom(d.qr, tipWorkTarget
+        ? '微信扫一扫，进小程序打开这件作品，看完一支广告就替 TA 送 50 盏'
+        : '微信扫一扫，进小程序打开 TA 的作品，看完一支广告就替 TA 送 50 盏');
     } catch {
       fallback();
     } finally {
@@ -12907,14 +13246,14 @@ function setupDetailActions() {
     // 暗号输入框只在「这件作品设了暗号」时出现（服务端只回「有没有」，暗号本身不下发）
     const codeBox = $('claimCodeBox');
     if (codeBox) codeBox.style.display = w.claimCodeOn ? '' : 'none';
-    // 暗号认领额外奖励：站长给这件作品单独承诺的一笔，认领前先把「多少、为什么给」讲清楚，
-    // 别让作者认领完才发现多了一笔不知从哪来的灯火。没有这项就整块藏掉。
+    // 暗号认领额外奖励：站长给这件作品单独承诺的一笔，认领前先把「多少」讲清楚。
+    // 原因（如「微信好友」）不在弹窗里展示——弹窗任何访客都打得开，原因属于站长和作者的私下约定；
+    // 只在认领成功后的站内消息里说给认领者听（server.js finishCodeClaim 的 addNotice）。没有这项就整块藏掉。
     const bonusTip = $('claimBonusTip');
     if (bonusTip) {
       const b = (w.claimCodeOn && w.claimBonus && w.claimBonus.points > 0) ? w.claimBonus : null;
       if (b) {
         bonusTip.innerHTML = `填对暗号并认领成功，额外送 <b>${b.points} 盏灯火</b>`
-          + (b.reason ? `：${escapeHtml(b.reason)}` : '')
           + '（默认的上传奖励照发，这是另外加的一笔）';
         bonusTip.style.display = '';
       } else {
@@ -15596,7 +15935,7 @@ function promoBoardHtml(b) {
         <span class="pb-tot"><i>${fmt(t.clicks)}</i><small>次点击</small></span>
         ${t.ctr ? `<span class="pb-tot"><i>${t.ctr}%</i><small>点击率</small></span>` : ''}
         ${t.people ? `<span class="pb-tot"><i>${fmt(t.people)}</i><small>位访客</small></span>` : ''}
-        <small class="pb-tot-note">近 ${days} 天所有灯火投放加起来的成绩。曝光是作品被看到的次数，点击是有人真的点开，位访客按人去重。</small>
+        <small class="pb-tot-note">近 ${days} 天所有投放加起来的成绩。如果点击率一直上不去，不妨回头想想：这个方向是不是真的适合大众，产品本身还能怎么改。</small>
       </div>` : '';
   // 点击率只在样本够（bill ≥ minBill）时才挂在行上展示——点击榜按点击数排，会把「8 曝光 8 点击 = 100%」
   // 这种小样本行带进来（2026-11-13 knovum 实例），不设门槛的话「怎么选」的打平点对照就被假百分比污染
@@ -15658,7 +15997,16 @@ function promoBoardHtml(b) {
     <div class="promo-board" id="promoBoard">
       <div class="pb-head">
         <span class="pb-head-t"><span class="ico">${ic('rank')}</span> 投放效果榜 · 近 ${days} 天</span>
-        <small>真实访客数据，只算别人看的——投了就上这张榜</small>
+        <small>真实数据，只算别人看的</small>
+        <!-- 2026-11-16 站长要求：这块像上面两条一样加个 QA。标题行只留一句短的，
+             口径说明全部折进 summary，展开才看——榜头别摆一大段灰字 -->
+        <details class="pb-qa">
+          <summary>这个榜怎么算的？</summary>
+          <div class="pb-qa-a">
+            <p>近 ${days} 天里用灯火投过位的作品，按投放带来的真实效果排成三张榜：<b>曝光最多</b>、<b>点击最多</b>、<b>点击率最高</b>。三张切着看，每张榜下面写着这一榜的口径。</p>
+            <p>数字<b>只算别人看的</b>——自己刷不算，机器爬虫不算；<b>访客按人去重</b>，一个人看多少次都只算 1 个访客。点击率 = 点击 ÷ 曝光，<b>曝光满 ${minBill} 次才参与排名</b>，样本太小的百分比不算数。</p>
+          </div>
+        </details>
       </div>
       ${totalsHtml}
       <div class="pb-tabs" role="tablist" aria-label="投放效果榜分类">${tabs}</div>
@@ -15835,6 +16183,7 @@ function renderRedeem() {
   // 打平点本身是按扣费推的（1 灯火 1 次扣费曝光 / 30 灯火 1 次点击 → 3.3%），换到人次尺子要乘
   // 该位的 bill/pv（服务端 ctrScale，≈0.53）：100 人次曝光作者只为其中约 53 次付钱，所以
   // 打平点变成 1.7~1.8%。两个数同乘一个比例，比值不变——四个分支的判断结论跟改之前完全一样。
+  // 2026-11-16 位置：整条挪到第 2 步位置卡列表正下方（切位置当场看数值），第 3 步只留套餐选择。
   const ctrScale = cfg.ctrScale > 0 ? cfg.ctrScale : 0.55;
   const equivCtr = Math.round(1000 * (cfg.showPoints || 1) / (cfg.clickPoints || 30) * ctrScale) / 10;
   const equivCtrHits = Math.max(1, Math.round(equivCtr));
@@ -15856,14 +16205,24 @@ function renderRedeem() {
   // 投放期限（只有两个「首页第一格」独占位才有）：1..maxDays 天，默认给满额。
   // 天数不改价格——仍按次买，天数只决定这单最多挂多久；到期没投完的照样按原价退余额，
   // 所以选短了不亏灯火，只是把位置更早让给排队的人（独占位库存只有 1，这点很关键）。
+  // 2026-11-16 站长改版：全量 1..14 的按钮排两行太占地方，改成 1/3/5/7 四个预设档
+  // + 一个「自定义」输入格（1..maxDays 任意整数），一行 5 个正好。交互对齐套餐那排的
+  // rp-custom：输入实时改天数、只刷合计与提示行，不整版重绘（重绘会丢焦点）。
   const maxPickDays = cfg.maxDays || 14;
+  const dayPresets = [1, 3, 5, 7].filter(n => n <= maxPickDays);
+  const daysCustomOn = cfg.daysPick && !dayPresets.includes(redeemSel.days);
   const daysHtml = cfg.daysPick ? `
     <div class="redeem-days">
       <div class="rd-head"><b>投放期限</b><small>这单最多挂几天 · 从开始投放那天算起${occupied ? '，排队等待不算' : ''}</small></div>
-      <div class="rd-picks">${Array.from({ length: maxPickDays }, (_, i) => i + 1).map(n => `
+      <div class="rd-picks">${dayPresets.map(n => `
         <button type="button" class="redeem-day${n === redeemSel.days ? ' is-on' : ''}" data-rdays="${n}">
-          <b>${n} 天</b>${n === maxPickDays ? '<small>最长</small>' : ''}
-        </button>`).join('')}</div>
+          <b>${n} 天</b>
+        </button>`).join('')}
+        <label class="redeem-day rd-custom${daysCustomOn ? ' is-on' : ''}" title="自己填天数：1-${maxPickDays} 之间任意整数都行">
+          <b><input type="number" class="rd-input" inputmode="numeric" min="1" max="${maxPickDays}" value="${daysCustomOn && redeemSel.days ? redeemSel.days : ''}" placeholder="自定义" /></b>
+          <small>${daysCustomOn && redeemSel.days ? `${redeemSel.days} 天` : `1-${maxPickDays} 天`}</small>
+        </label>
+      </div>
       <p class="rd-tip">${occupied
         ? `你选的是<b>${redeemSel.days} 天</b>：现在先排队，<b>从轮到你那天</b>才开始算天数，等待期不占。`
         : `按次算钱不变，随时可以撤下，没用完的按原价退回；<b>${redeemSel.days} 天</b>后自动下线，剩下的灯火一起退回。`}</p>
@@ -15909,6 +16268,23 @@ function renderRedeem() {
     const comp = r.comp === true;   // 站长代投：不计费，没有额度进度
     const clickOnly = !comp && (r.views || 0) === 0 && (r.clicks || 0) > 0;   // 纯点击包：没有曝光额度
     const queued = r.status === 'queued';
+    // 真被点开的次数（2026-11-16 加）：曝光包没买点击额度，但广告确实会被人点，作者要看的就是这个。
+    // 次数与后台「累计点击」同一本账；人数 11-04 起才记，老单可能只有次数。没被点过就不占一行。
+    const realClk = comp ? 0 : (r.clicksReal || 0);
+    const realClkNote = realClk > 0
+      ? ` · 被点开 ${realClk} 次${r.clickPeople ? `（${r.clickPeople} 人）` : ''}` : '';
+    // 被访客主动关掉的人数 / 次数（2026-11-16 加）：与后台「关闭 N 人 / N 次」同一本账，
+    // 11-04 起才记录，更早的单子没有这份数据就不显示。关掉的人偏多时给一条软提示——
+    // 多半是同一批访客最近看到这条推荐太频繁、看腻了：只提建议，不影响正常投放。
+    const closePv = comp ? 0 : (r.closePv || 0);
+    const closeUv = comp ? 0 : (r.closeUv || 0);
+    const closeNote = closePv > 0 ? ` · 关闭 ${closeUv} 人 / ${closePv} 次` : '';
+    const closeRate = (r.uv || 0) > 0 ? closeUv / r.uv : 0;
+    // 触发条件（2026-11-16 站长定）：关闭 ≥3 人且占看到的人 ≥10%——门槛压低一点，
+    // 单量小时也能早点提醒到「可能投得太频繁」；没有「挡投放」的副作用，宁早勿晚。
+    const closeHint = (!comp && closeUv >= 3 && closeRate >= 0.1)
+      ? `<div class="ri-close-hint" title="「关闭」是访客点推荐卡右上角的 × 主动关掉的（2026-11-04 起记录）；关掉后 90 天内不再给这个人看">已有 <b>${closeUv} 位</b>访客主动关掉了这张推荐卡，约占看到的人的 <b>${Math.round(closeRate * 100)}%</b>。如果最近投得比较频繁，同一批人可能看腻了：不妨让作品歇几天再投，或换个封面 / 一句话试试。不影响正常投放，仅供参考。</div>`
+      : '';
     // 排队中：进度条一律 0，foot 写清排第几位、前一位什么时候空出来
     const pct = comp ? 0 : (queued ? 0 : (clickOnly
       ? Math.min(100, Math.round((r.clickUsed || 0) / r.clicks * 100))
@@ -15919,8 +16295,8 @@ function renderRedeem() {
       : (queued
       ? `排队第 ${r.queuePos || 1} 位 · 前面这一单投完自动开始（灯火已扣，不消耗）`
       : (clickOnly
-        ? `已点击 ${r.clickUsed || 0}/${r.clicks} 次`
-        : `已曝光 ${r.used}/${r.views} 次${r.clicks ? ` · 点击 ${r.clickUsed}/${r.clicks} 次` : ''}`));
+        ? `已点击 ${r.clickUsed || 0}/${r.clicks} 次${r.clickPeople ? `（${r.clickPeople} 人）` : ''}`
+        : `已曝光 ${r.used}/${r.views} 次${r.clicks ? ` · 点击 ${r.clickUsed}/${r.clicks} 次` : realClkNote}`));
     // 投放中：把「已消耗多少 / 撤下能退多少」直接写出来，花了和退的永远对得上账
     const canBack = comp ? 0 : (r.status === 'active' ? redeemRefundOf(r) : (queued ? (r.price || 0) : 0));
     const spent = comp ? 0 : Math.max(0, (r.price || 0) - canBack);
@@ -15938,8 +16314,9 @@ function renderRedeem() {
           <span class="ri-title">${escapeHtml(r.workTitle)}${comp ? '<i class="ri-ext" title="站长代投：不消耗灯火，到期自动下线">站长代投</i>' : ''}${r.extLink ? `<i class="ri-ext" title="${escapeHtml(r.link || '')}">外链 ↗</i>` : ''}</span>
           <span class="ri-status is-${st.cls}">${st.text}</span>
         </div>
-        <div class="ri-meta">${escapeHtml(r.slotName)} · ${progress}</div>
+        <div class="ri-meta">${escapeHtml(r.slotName)} · ${progress}${closeNote}</div>
         <div class="ri-bar"><span style="width:${pct}%"></span></div>
+        ${closeHint}
         <div class="ri-foot">
           <span>${foot}</span>
           <span class="ri-foot-btns">
@@ -15962,13 +16339,22 @@ function renderRedeem() {
       <button type="button" class="rh-link" id="promoStatsLink">看分享成绩与达人榜 →</button>
     </div>
     <div class="redeem-faq">
+      <!-- 2026-11-16 站长定调：讲「为什么有推荐位」立意（鼓励还在往前推的作者）放第一问，规则类问题排后面 -->
+      <details class="rfq-item">
+        <summary>为什么开发这个推荐功能？</summary>
+        <div class="rfq-a">
+          <p>为了让还在认真往前走的产品被看见。投放的位置<b>最长挂 14 天就会自动下架</b>，谁也不能买断一个坑——榜上永远是最近还在往前推的作品，新东西永远有位置。</p>
+          <p>愿意把作品放上全站人流量最大的位置，本身就说明这位作者<b>认可自己的产品、还想继续把它打磨得更好</b>。这个位置，就是给这样的人留的。</p>
+          <p>投完发现点击率不太理想？先别急着加量：那多半说明作品页还有能改的地方——回头<b>打磨打磨体验</b>，或者想想<b>有没有更好的新点子</b>。灯火一直在你账上，改好了随时带着更好的作品再来。</p>
+        </div>
+      </details>
       <details class="rfq-item">
         <summary>怎么获得灯火？</summary>
         <div class="rfq-a">
           <p>最省事的是<b>每天签到</b>：网页右上角「签到」、小程序「我的」页的签到卡，点一下就行。${scheduleLadder(ckSched)}，${ckDays} 天一共 <b>${ckSum} 盏</b>。断一天就从第 1 天重新开始，已经拿到的不倒扣。</p>
           <p>最快的一招是<b>把作品分享给朋友</b>：好友通过你的分享链接访问 <b>+1 盏</b>、<b>扫码打开 +3 盏</b>（每人每天只计一次）、注册 <b>+100 盏</b>。</p>
           <div class="rh-share-row"><span>一条分享链接就够：</span><button type="button" class="rh-share-btn" id="shareMyWork"><span class="ico">${ic('share')}</span> 去分享作品</button></div>
-          <p>投稿过审也有奖励（首件最多 +200 盏、之后每件 +50 盏），老账号绑定微信一次性 +300 盏。<b>不用充值。</b></p>
+          <p>投稿过审也有奖励（首件最多 +200 盏、之后每件 +50 盏），老账号绑定微信一次性 +300 盏。</p>
         </div>
       </details>
       <details class="rfq-item">
@@ -15986,9 +16372,12 @@ function renderRedeem() {
       ${worksHtml}
     </div>
     <div class="redeem-sec redeem-sec-slots">
-      <div class="redeem-sec-head">2. 选位置<span>${cfg.exclusive ? '这个位置全站只有一个，买到即独占；有人在投时排队等' : cfg.key === 'rank' ? '同一个位置多人买，PC 星梦榜右栏一次竖排最多 5 条同时曝光（手机一条），各家机会均等' : '同一个位置多人买，PC 一次并排 2-4 条同时曝光（手机一条），各家机会均等'}</span></div>
+      <div class="redeem-sec-head">2. 选位置<span>${cfg.exclusive ? '这个位置全站只有一个，买到即独占；有人在投时排队等' : cfg.key === 'rank' ? `同一个位置多人买，PC 星梦榜右栏一次竖排最多 ${((redeemData || {}).display || {}).rankSide || 3} 条同时曝光（手机一条），各家机会均等` : '同一个位置多人买，PC 一次并排 2-4 条同时曝光（手机一条），各家机会均等'}</span></div>
       ${adviceHtml}
       ${slotsHtml}
+      <!-- 2026-11-16 站长：把「怎么选」从第 3 步（套餐区）挪到位置卡列表正下方——里面的
+           打平点 / 实测点击率跟着所选位置变，切位置时当场看到数值变化，不用滚到套餐区再找 -->
+      ${modePickHtml}
       <div class="redeem-preview" aria-hidden="true">
         ${cfg.key === 'list-first' ? `
         <!-- 首页第一格：投放的是信息流原生卡（大封面+标题+推荐角标），预览要跟真实样式对上 -->
@@ -16063,7 +16452,6 @@ function renderRedeem() {
     <div class="redeem-sec">
       <div class="redeem-sec-head">3. 选套餐<span>先定按什么计费，再选买多少（次数可以自己填）· 下面是「${escapeHtml(cfg.name || '')}」的单价</span></div>
       ${modeHtml}
-      ${modePickHtml}
       ${packsHtml}
       ${daysHtml}
       <p class="rmode-note">${modeNote}</p>
@@ -16230,7 +16618,54 @@ function renderRedeem() {
       syncCustom();
     });
   });
-  // 投放期限（只有两个首页第一格有这排按钮）：只改天数，价格不动
+  // 投放期限（只有两个首页第一格有这排按钮）：预设档整版重绘没问题；「自定义」输入格
+  // 和上面自定义次数同一套交互——输入实时改天数、只刷提示行与合计，不整版重绘（重绘会丢焦点）；
+  // 失焦时把数字钳回 1..上限，清空了就把框里恢复成当前天数，别让人以为没填上。
+  body.querySelectorAll('.rd-input').forEach(el => {
+    const max = parseInt(el.max, 10) || 14;
+    const wrap = el.closest('.redeem-day');
+    const smallEl = wrap ? wrap.querySelector('small') : null;
+    const syncDays = () => {
+      const v = Math.round(parseFloat(el.value));
+      const valid = Number.isFinite(v) && v >= 1 && v <= max;
+      let onPreset = false;
+      body.querySelectorAll('[data-rdays]').forEach(b => {
+        const hit = valid && parseInt(b.dataset.rdays, 10) === v;
+        b.classList.toggle('is-on', hit);
+        if (hit) onPreset = true;
+      });
+      if (wrap) wrap.classList.toggle('is-on', valid && !onPreset);
+      if (smallEl && valid) smallEl.textContent = `${v} 天`;
+      if (valid) {
+        redeemSel.days = v;
+        const tip = body.querySelector('.rd-tip');
+        if (tip) {
+          const c = curSlotCfg();
+          const occ = !!c.exclusive && !!c.occupied && !c.occupiedMine;
+          tip.innerHTML = occ
+            ? `你选的是<b>${v} 天</b>：现在先排队，<b>从轮到你那天</b>才开始算天数，等待期不占。`
+            : `按次算钱不变，随时可以撤下，没用完的按原价退回；<b>${v} 天</b>后自动下线，剩下的灯火一起退回。`;
+        }
+        const foot = body.querySelector('.redeem-foot');
+        if (foot) {
+          foot.innerHTML = redeemFootHtml();
+          const go = $('redeemGo');
+          if (go) go.onclick = () => submitRedeem(go);
+        }
+      }
+    };
+    el.addEventListener('input', () => {
+      const v = Math.round(parseFloat(el.value));
+      if (!Number.isFinite(v) || v < 1) return;   // 删到一半的半截状态别误改天数
+      syncDays();
+    });
+    el.addEventListener('change', () => {
+      const v = Math.round(parseFloat(el.value));
+      if (!Number.isFinite(v) || v < 1) { el.value = redeemSel.days || ''; syncDays(); return; }
+      el.value = Math.max(1, Math.min(max, v));
+      syncDays();
+    });
+  });
   body.querySelectorAll('[data-rdays]').forEach(el => {
     el.onclick = () => {
       redeemSel.days = parseInt(el.dataset.rdays, 10) || 0;
@@ -16695,7 +17130,7 @@ async function cancelRedeem(id) {
   const spent = r ? Math.max(0, (r.price || 0) - back) : 0;
   const usedTxt = r && !r.comp && (r.views || 0) === 0 && (r.clicks || 0) > 0
     ? `已点击 ${r.clickUsed || 0} 次`
-    : `已曝光 ${r ? r.used || 0 : 0} 次${r && r.clicks ? ` · 已点击 ${r.clickUsed || 0} 次` : ''}`;
+    : `已曝光 ${r ? r.used || 0 : 0} 次${r && r.clicks ? ` · 已点击 ${r.clickUsed || 0} 次` : (r && r.clicksReal ? ` · 被点开 ${r.clicksReal} 次` : '')}`;
   // 站长代投单没有灯火往来，确认话术单独一套
   const msg = r && r.comp
     ? (queued ? '取消排队？\n\n这是站长代投的推荐，不涉及灯火，取消后轮到别人。' : '撤下这条推荐？\n\n这是站长代投的推荐（不消耗灯火），撤下后前台立即不再展示。')
@@ -19874,11 +20309,11 @@ window.addEventListener('resize', () => {
 // 状态全由 /api/tasks 现算（谁能领、领没领、额度多少），前端只负责画和跳转：
 // 以后调额度 / 加任务只改 server.js 的 taskBoardOf，不会出现「页面写 +200、实际只发 100」。
 let tasksBoard = null;   // 最近一次 /api/tasks 结果：接口挂了也能拿它铺一版，总比空白页强
-const TASK_ACT_TEXT = { pass: '去设置', gh: '去绑定', g: '去绑定', wx: '怎么绑', bar: '去发帖' };
+const TASK_ACT_TEXT = { pass: '去设置', gh: '去绑定', g: '去绑定', wx: '怎么绑', bar: '去发帖', invite: '去邀请' };
 const TASK_MORE = [
   { key: 'checkin', icon: 'checkin', name: '每日签到', sub: '连续签到攒得更多，断一天从头算' },
   { key: 'ad', icon: 'lamp', name: '小程序看广告', sub: '看一条激励视频，灯火直接进账' },
-  { key: 'invite', icon: 'share', name: '邀请朋友来收录', sub: '好友通过你的链接注册，两边都有灯火' },
+  { key: 'invite', icon: 'share', name: '邀请朋友来收录', sub: '好友注册两边都有灯火；他上架首件作品，你再拿 1000' },
   { key: 'star', icon: 'github', name: '更新 star 奖励', sub: '名下开源作品的 GitHub star 按 1:1 换灯火' },
   { key: 'upload', icon: 'edit', name: '投稿作品', sub: '过审上线就有灯火，还能上首屏' }
 ];
@@ -19900,8 +20335,8 @@ function tasksGuestHtml() {
     <div class="task-hero">
       <div class="task-hero-txt">
         <span class="task-kicker">任务中心</span>
-        <b class="task-hero-title">登录后开始做任务，最多 <em>550</em> 盏灯火等你领</b>
-        <p>把 GitHub、微信绑到账号上、把账号设置好，或者去酒馆发第一条帖子，都能一次性领灯火。</p>
+        <b class="task-hero-title">登录后开始做任务，账号任务最多 <em>550</em> 盏灯火等你领</b>
+        <p>把 GitHub、微信绑到账号上、把账号设置好，或者去酒馆发第一条帖子，都能一次性领灯火。邀请朋友来投稿还有一份更大的奖励，愿意带人就带，不带也不影响用。</p>
         <div class="task-guest-actions"><button type="button" class="task-btn" data-task-login>登录 / 注册</button></div>
       </div>
       <span class="task-hero-lamp">${ic('lamp')}</span>
@@ -19915,16 +20350,24 @@ function tasksGuestHtml() {
         ${row('chat', '发第一条帖子', 50, '去造梦酒馆说一句话，灯火立刻到账')}
       </ul>
     </div>
+    <div class="task-sec">
+      <div class="task-sec-head"><h3>邀请朋友</h3><span>每位朋友 +1000 盏，可累计</span></div>
+      <ul class="task-list">
+        ${row('share', '邀请朋友来投稿', 1000, '朋友从你的邀请链接注册并上架第一件作品，你得 1000 盏，他自己也有投稿奖励；同一位朋友只算一次')}
+      </ul>
+    </div>
     <p class="task-foot">账号奖励都是一次性的：同一个账号、同一个 GitHub / 微信号只发一次，解绑再绑不会重复发。酒馆发帖 / 回应的日常奖励每天限量（每天前 2 帖各 10 盏、回应前 5 条各 2 盏），被隐藏或删除的内容会按记录收回。灯火可以在「推荐」里换曝光位。</p>`;
 }
 
 function taskItemHtml(it) {
   const todo = it.state === 'todo';
+  // go = 可以一直做的事（邀请朋友投稿）：永远显示「去邀请」，没有「已完成」这一态
+  const go = it.state === 'go';
   const pill = it.points ? `<span class="task-pill">+${it.points} 盏</span>` : '';
   // doneText 服务端可以按任务给专属文案（如首帖的「已发过」），没给就走通用三态
   const doneText = it.doneText
     || (it.state === 'bound' ? '已绑定' : (it.state === 'legacy' ? '已设置' : '已完成'));
-  const right = todo
+  const right = (todo || go)
     ? `<button type="button" class="task-btn${it.action === 'wx' ? ' ghost' : ''}" data-task-act="${it.action}">${TASK_ACT_TEXT[it.action] || '去完成'}</button>`
     : `<span class="task-done${it.state === 'bound' || it.state === 'legacy' ? ' is-muted' : ''}">${it.state === 'done' ? ic('check') : ''}${doneText}</span>`;
   return `
@@ -19932,7 +20375,7 @@ function taskItemHtml(it) {
       <div class="task-row">
         <span class="task-ico" data-kind="${it.key}">${ic(it.icon || 'key')}</span>
         <div class="task-main">
-          <div class="task-title"><b>${escapeHtml(it.name || '')}</b>${todo ? pill : ''}</div>
+          <div class="task-title"><b>${escapeHtml(it.name || '')}</b>${(todo || go) ? pill : ''}</div>
           <p>${escapeHtml(it.desc || '')}</p>
         </div>
         ${right}
@@ -19959,9 +20402,11 @@ function taskItemHtml(it) {
 function tasksPageHtml(d) {
   const pv = d.providers || {};
   // 站点没开通的登录方式不列出来：点了也只会报「未配置」
-  const items = (Array.isArray(d.items) ? d.items : []).filter(it =>
-    it.key === 'setup' || it.key === 'firstpost'
+  const all = (Array.isArray(d.items) ? d.items : []).filter(it =>
+    it.key === 'setup' || it.key === 'firstpost' || it.key === 'refwork'
     || (it.key === 'github' && pv.github) || (it.key === 'wechat' && pv.wechat) || (it.key === 'google' && pv.google));
+  const items = all.filter(it => it.key !== 'refwork');   // 一次性的账号任务
+  const refItems = all.filter(it => it.key === 'refwork'); // 可以一直做的邀请任务，单独一段
   const claimable = Number(d.claimable || 0);
   const pts = Number(d.points || 0);
   const hero = claimable ? `
@@ -19999,11 +20444,16 @@ function tasksPageHtml(d) {
       <div class="task-sec-head"><h3>账号任务</h3><span>完成即到账</span></div>
       <ul class="task-list">${items.map(taskItemHtml).join('')}</ul>
     </div>
+    ${refItems.length ? `
+    <div class="task-sec">
+      <div class="task-sec-head"><h3>邀请朋友</h3><span>每位朋友 +1000 盏，可累计</span></div>
+      <ul class="task-list">${refItems.map(taskItemHtml).join('')}</ul>
+    </div>` : ''}
     <div class="task-sec">
       <div class="task-sec-head"><h3>更多赚灯火</h3><span>每天都能做</span></div>
       <ul class="task-more">${more}</ul>
     </div>
-    <p class="task-foot">账号奖励都是一次性的：同一个账号、同一个 GitHub / 微信号只发一次，解绑再绑不会重复发。酒馆发帖 / 回应的日常奖励每天限量，被隐藏或删除的内容会按记录收回。余额与明细见 <a href="/settings" data-nav>账号设置</a> 里的灯光明细。</p>`;
+    <p class="task-foot">账号奖励都是一次性的：同一个账号、同一个 GitHub / 微信号只发一次，解绑再绑不会重复发。邀请朋友投稿的 1000 盏按人头算，同一位朋友只发一次（作品得真的上线，草稿和待审不算）。酒馆发帖 / 回应的日常奖励每天限量，被隐藏或删除的内容会按记录收回。余额与明细见 <a href="/settings" data-nav>账号设置</a> 里的灯光明细。</p>`;
 }
 
 // 微信那条「怎么绑」：就地展开三步 + 小程序码，不弹新窗口（手机上多一层弹窗更容易丢）
@@ -20042,6 +20492,7 @@ function bindTasksPage(box) {
       if (act === 'gh') return openGhModal();
       if (act === 'g') return openGModal();
       if (act === 'bar') return navigate('/bar');
+      if (act === 'invite') return navigate('/invite');
       if (act === 'wx') {
         const item = btn.closest('.task-item');
         const panel = item && item.querySelector('[data-wx-steps]');
