@@ -3003,6 +3003,12 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   font-size: 11px; font-weight: 500; color: #8a5a12;
   background: #fff3d9; border-radius: 5px; padding: 1px 6px;
 }
+/* 高光窗口还在刷新（结束日=今天/昨天）的作品标「冲榜中」，青绿色区别于「新晋」橙 */
+.rank-live {
+  display: inline-block; margin-left: 8px; vertical-align: 1px;
+  font-size: 11px; font-weight: 500; color: #12705a;
+  background: #e2f5ee; border-radius: 5px; padding: 1px 6px;
+}
 .rank-legend { font-size: 12.5px; color: var(--muted); background: #f7f7fc; border-radius: 10px; padding: 9px 13px; margin-bottom: 12px; line-height: 1.6; }
 .rank-legend b { color: var(--text); }
 /* 移动端专属（PC 上一律隐藏，PC 版式不动）：小程序榜单同款周期分段器 / 类型 pill / 行尾大分数 */
@@ -3103,6 +3109,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   .rank-today-hint { margin-left: 0; width: 100%; }
   .rank-today-motto { margin-left: 0; white-space: normal; }
   .rank-fresh { margin-left: 6px; }
+  .rank-live { margin-left: 6px; }
 }
 
 /* 作者页（创作者档案卡）
@@ -5881,6 +5888,7 @@ a.board-row:hover:not(.is-me) { background: #f5f3ff; }
 .xp-pack { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; }
 .xp-name { color: var(--text); }
 .xp-price { font-weight: 700; color: var(--primary); white-space: nowrap; }
+.xp-bonus { font-style: normal; font-weight: 500; font-size: 10.5px; color: #b8791f; background: #fdf3e0; border-radius: 4px; padding: 1px 5px; margin-left: 5px; }
 .xp-tip { font-size: 12px; line-height: 1.7; color: var(--muted); margin: 0 0 10px; }
 .xp-go { font-size: 12px; padding: 6px 14px; }
 .redeem-empty {
@@ -7535,9 +7543,14 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .cp-work:hover { background: #ece6ff; }
 .cp-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 .cp-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-bottom: 4px; }
-.cp-replies { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: #faf9ff; max-height: 40vh; overflow-y: auto; }
-.cp-replies:has(.cp-empty) { background: none; padding: 0; max-height: none; overflow: visible; }
-.cp-empty { font-size: 12.5px; color: var(--muted); padding: 2px 0; }
+.cp-replies { display: flex; flex-direction: column; gap: 10px; margin: 10px 0 0; padding: 10px 12px; border-radius: 10px; background: #faf9ff; max-height: 40vh; overflow-y: auto; }
+/* 11-17：回应区改成作品评论同款楼层，标题与正文间距照 .comment-list/head 的口径 */
+.cp-replies-head { margin-bottom: 0; }
+.cp-replies .comment-item { gap: 8px; }
+.cp-replies .comment-meta { gap: 6px; }
+.cp-replies .comment-acts { gap: 8px; }
+.cp-replies:has(.cp-empty), .cp-replies:has(.comment-empty) { background: none; padding: 0; max-height: none; overflow: visible; }
+.cp-empty, .comment-empty { font-size: 12.5px; color: var(--muted); padding: 2px 0; }
 .cp-form { margin-top: 10px; }
 .cp-form input { font-size: 13px; padding: 9px 12px; }
 .id-hero { padding-bottom: 16px; border-bottom: 1px solid #eeeef6; }
@@ -7579,8 +7592,11 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
   padding: 14px; text-align: center; font-size: 12.5px; color: var(--muted);
   background: #fafafd; border-radius: 10px;
 }
-.id-item { padding: 10px 12px; border: 1px solid #eeeef6; border-radius: 10px; background: #fcfcff; }
-.id-item-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+/* 11-17：想法讨论统一成作品评论的「头像 + 正文」两栏楼层 */
+.id-item { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border: 1px solid #eeeef6; border-radius: 10px; background: #fcfcff; }
+.id-body { flex: 1; min-width: 0; }
+.id-item-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; min-width: 0; }
+.cmt-badge.claimer { color: #6c3fc4; background: #f6efff; border-color: #e6d8ff; }
 .id-kind-tag {
   flex: none; padding: 1px 7px; border-radius: 5px; font-size: 10.5px;
   background: #eeedfe; color: #534ab7;
@@ -7589,6 +7605,8 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .id-kind-tag.k-progress { background: #fdf0dc; color: #a2600a; }
 .id-item-author { font-size: 11.5px; color: #4a4c62; }
 .id-item-when { font-size: 11px; color: #a2a5b8; }
+.id-item-top b { font-size: 12px; color: var(--text); }
+.id-item-top > span:not(.id-kind-tag):not(.cmt-badge) { font-size: 11px; color: var(--muted); }
 .id-item-del, .id-item-report {
   margin-left: auto; border: 0; background: none; padding: 0 2px;
   font: inherit; font-size: 11px; color: #b1b3c4; cursor: pointer;
@@ -10004,6 +10022,7 @@ button.me-fav-empty { width: 100%; cursor: pointer; }
 /* H5 榜单行：上架天数比 PC 再小一号，跟着角标一起收着放 */
 .rk-title-line .rank-age { margin-left: 5px; font-size: 10.5px; flex: 0 0 auto; }
 .rk-new { flex: 0 0 auto; padding: 1px 5px; border-radius: 4px; background: #ffeee6; color: #e5751f; font-size: 9px; font-weight: 700; }
+.rk-live { background: #e2f5ee; color: #12705a; }
 .rk-sub { display: block; margin-top: 4px; color: #8a8fa3; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 /* 一句话简介：单独一行小一号浅灰，和加粗的名字区分开（2026-11-12 用户反馈） */
 .rk-intro { margin-top: 3px; color: #a2a6b8; font-size: 11px; line-height: 1.4; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

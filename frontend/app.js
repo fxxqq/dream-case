@@ -5202,6 +5202,21 @@ async function wanderResetSeen() {
   } catch { showToast('网络异常，稍后再试', undefined, 'err'); }
 }
 
+// 池模式翻完的页内出口：没看过的全在屏上了，给一条「从头再翻」（= 清空已看重推，
+// 与池空状态的文字链共用 wanderResetSeen），别让人翻到底只能刷新页面。
+// 同款样式复用随机翻翻的 .wander-foot；guard 防止并发/重复渲染时插两条。
+function mountWanderPoolFoot() {
+  const g = $('gallery');
+  if (!g || g.querySelector('.wander-foot')) return;
+  g.insertAdjacentHTML('beforeend', `
+    <div class="wander-foot">
+      <button class="btn-primary" id="wanderPoolAgain" type="button">从头再翻</button>
+      <span class="wander-foot-hint">这一轮逛完了</span>
+    </div>`);
+  const btn = $('wanderPoolAgain');
+  if (btn) btn.onclick = wanderResetSeen;
+}
+
 // 从随便逛逛切回最新（点筛选/搜索/收藏时调用——随便逛逛不认识这些筛选，硬套会货不对板）
 // 程序自己切的不写 dm_sort：这是「这次列表需要最新」，不是用户改了排序习惯
 function wanderBreakoutLatest() {
@@ -5386,6 +5401,7 @@ async function loadWanderIntoGallery(reset = true, force = true) {
       wanderBusy = false;
       state.hasMore = false;
       $('loadMore').style.display = 'none';
+      if (wanderMode === 'pool') mountWanderPoolFoot();
       return;
     }
     g.classList.toggle('list-mode', state.view === 'list');
@@ -5425,6 +5441,8 @@ async function loadWanderIntoGallery(reset = true, force = true) {
       state.hasMore = true;   // 随机翻翻：服务端洗牌按页发牌，翻到头会回空批次给「从头再翻」出口
     }
     $('loadMore').style.display = state.hasMore ? 'inline-block' : 'none';
+    // 池模式这一批是最后一批 → 挂「从头再翻」出口（随机翻翻有自己那套，别混）
+    if (wanderMode === 'pool' && !state.hasMore) mountWanderPoolFoot();
     // 计数文案跟着按钮一起收：翻完了就别再说「还有 80 件没逛过」——没看过的都在屏上，
     // 再配一条「已全部翻完」才不打架（滚下去曝光的递减也只在 hasMore 为真时才改写）
     $('workCount').textContent = wanderMode === 'pool'
@@ -8521,6 +8539,8 @@ function rankRowHtml(w, i) {
   const age = workAgeText(w) ? `<span class="rank-age">${workAgeText(w)}</span>` : '';
   // 高光榜：首次进榜 7 天内的作品标「新晋」，右侧副行换成高光区间（哪几天、用了几天）
   const entry = w.isNewEntry && rankH5.period === 'peak' ? '<span class="rk-new">新晋</span>' : '';
+  // 高光窗口还在最近刷新的作品标「冲榜中」；已有「新晋」角标的不重复挂
+  const live = w.peakLive && rankH5.period === 'peak' && !w.isNewEntry ? '<span class="rk-new rk-live" title="高光窗口最近还在刷新，分数持续更新中">冲榜中</span>' : '';
   // 总榜新作加成：服务端只给系数 >1 的作品带 newBoost，前端挂角标提醒「排序占了便宜，分数没涨」
   const boost = w.newBoost ? '<span class="rk-new" title="上架 14 天内的新作加成：首 7 天 ×1.3、8–14 天 ×1.15，只影响总榜排序，不改变分数">新作加成</span>' : '';
   const feat = w.featured ? '<span class="rk-tag">精选</span>' : '';
@@ -8533,7 +8553,7 @@ function rankRowHtml(w, i) {
       <span class="rk-num${top}">${i + 1}</span>
       ${cover}
       <div class="rk-main">
-        <div class="rk-title-line"><span class="rk-title">${escapeHtml(rkName)}</span>${age}${isNew}${entry}${boost}</div>
+        <div class="rk-title-line"><span class="rk-title">${escapeHtml(rkName)}</span>${age}${isNew}${entry}${live}${boost}</div>
         ${rkIntro ? `<div class="rk-intro">${escapeHtml(rkIntro)}</div>` : ''}
         <div class="rk-meta-line"><span class="rk-sub">${escapeHtml(w.authorName || '匿名')} · ${escapeHtml(w.type || '')}</span><span class="rk-tags"><span class="rk-tag">${escapeHtml(w.category)}</span>${feat}</span></div>
       </div>
@@ -8574,7 +8594,7 @@ async function loadRankListH5(reset) {
 // ---------- 榜单（PC）----------
 // PC 保持原来的综合分排行榜：形态 / 周期 / 排序维度 / 数量 四个下拉 + 排行榜行。
 // H5 移动端走上面那套小程序橱窗同款筛选栏（loadRankH5），两套互不影响，共用「今日动态」。
-const rankState = { period: 'peak', by: 'hot', limit: 20, type: '全部', cat: '全部' };
+const rankState = { period: 'peak', by: 'hot', limit: 30, type: '全部', cat: '全部' };
 // PC 排序下拉按钮上显示的是「排序：xxx」，不再带「按」字，避免「排序 按访问次数」读着别扭
 const BY_SHORT = { hot: '综合', likes: '点赞', favs: '收藏', tips: '打赏人数', pv: '访问次数', uv: '访问人数' };
 // 榜单行右侧（窄屏）只显示当前维度的一个大数字，label 跟着排序走
@@ -8759,7 +8779,7 @@ async function loadRank(period, by, limit, type, cat) {
         <div class="rank-no rank-no-${w.rank <= 3 ? w.rank : 'n'}">${w.rank}</div>
         <img src="${imgUrl(w.thumb, 400)}" alt="" loading="lazy" />
         <div class="rank-main">
-          <div class="rank-title">${escapeHtml(rkName)}${ageTxt ? `<span class="rank-age">${ageTxt}</span>` : ''}${w.isNew ? '<span class="rank-fresh" title="今天刚上架的作品">今日上新</span>' : ''}${w.isNewEntry && rankState.period === 'peak' ? '<span class="rank-fresh" title="首次进入高光榜前 20，7 天内显示">新晋</span>' : ''}${w.newBoost ? '<span class="rank-fresh" title="上架 14 天内的新作加成：首 7 天 ×1.3、8–14 天 ×1.15，只影响总榜排序，不改变这里显示的分数">新作加成中</span>' : ''}</div>
+          <div class="rank-title">${escapeHtml(rkName)}${ageTxt ? `<span class="rank-age">${ageTxt}</span>` : ''}${w.isNew ? '<span class="rank-fresh" title="今天刚上架的作品">今日上新</span>' : ''}${w.isNewEntry && rankState.period === 'peak' ? '<span class="rank-fresh" title="首次进入高光榜前 20，7 天内显示">新晋</span>' : ''}${w.peakLive && rankState.period === 'peak' && !w.isNewEntry ? '<span class="rank-live" title="高光窗口最近还在刷新，分数持续更新中">冲榜中</span>' : ''}${w.newBoost ? '<span class="rank-fresh" title="上架 14 天内的新作加成：首 7 天 ×1.3、8–14 天 ×1.15，只影响总榜排序，不改变这里显示的分数">新作加成中</span>' : ''}</div>
           ${rkIntro ? `<div class="rank-intro">${escapeHtml(rkIntro)}</div>` : ''}
           <div class="rank-meta">${escapeHtml(typeText(w))} · ${escapeHtml(aname(w))} · ${escapeHtml(rankCatsText(w))}${rankState.period === 'peak' && w.peakFrom ? ` · <span title="这件作品最亮的 7 天">高光 ${peakRangeTxt(w.peakFrom, w.peakTo)} · ${w.peakDays} 天</span>` : ''}</div>
         </div>
@@ -14587,12 +14607,24 @@ function chatPostById(id) {
   return hit && hit.post ? hit.post : null;
 }
 
+// 11-17：回应改成作品评论同款楼层——头像 + @昵称 + 作者角标 + 时间 + 回复，正文另起一行。
+// 酒馆回应是平铺的（没有楼中楼接口），「回复」= 把 @昵称 填进输入框，能接上话但不假装嵌套楼层。
 function chatRepliesHtml(p) {
   const list = (p && p.replies) || [];
-  if (!list.length) return '<div class="cp-empty">还没有回应——下面那句可以是你的</div>';
-  return list.map(r => `<div class="cc-reply">
-      <b>@${escapeHtml(r.author)}</b><span>${escapeHtml(r.text)}</span>
-      <small>${escapeHtml(wishWhen(r.at))}</small>
+  const head = `<div class="comments-head cp-replies-head">回应 <span>${list.length ? `(${list.length})` : ''}</span></div>`;
+  if (!list.length) return head + '<div class="comment-empty">还没有回应——下面那句可以是你的</div>';
+  return head + list.map(r => `<div class="comment-item" data-id="${escapeHtml(r.id)}">
+      ${avaHtml(r.author, r.avatar, 'comment-avatar', false, r.username || r.author)}
+      <div class="comment-body">
+        <div class="comment-meta">
+          <b>@${escapeHtml(r.author)}</b>${r.isAuthor ? '<span class="cmt-badge author">作者</span>' : ''}
+          <span>${formatDate(r.at)}</span>
+          <span class="comment-acts">
+            <button type="button" class="comment-reply" data-mention="${escapeHtml(r.author)}">回复</button>
+          </span>
+        </div>
+        <div class="comment-text">${escapeHtml(r.text)}</div>
+      </div>
     </div>`).join('');
 }
 
@@ -14947,6 +14979,12 @@ function setupWish() {
     if (btn.dataset.like) return chatLike(btn.dataset.like);
     if (btn.dataset.share) return copyChatLink(btn.dataset.share);
     if (btn.dataset.delChat) return deleteChat(btn.dataset.delChat);
+    // 回应楼层的「回复」：平铺结构做不了楼中楼，把 @昵称 填进输入框就能接话
+    if (btn.dataset.mention) {
+      const inp = $('cpInput');
+      if (inp) insertAtCaret(inp, '@' + btn.dataset.mention + ' ', 140);
+      return;
+    }
     if (btn.dataset.send) {
       const inp = $('cpInput');
       return sendChatReply(btn.dataset.send, inp, btn);
@@ -15099,16 +15137,22 @@ async function loadIdeaDiscussions() {
       box.innerHTML = '<div class="id-empty">还没有人补充。你的一句使用场景，可能就是创作者动手的理由。</div>';
       return;
     }
+    // 11-17：讨论也换成作品评论同款楼层——头像 + @昵称 + 身份角标 + 时间，正文另起一行；
+    // 原来「· 提出者 / 认领者」是纯文字，现在用 .cmt-badge，跟作品评论的「作者」角标一个语言。
     box.innerHTML = items.map(x => `<div class="id-item">
-      <div class="id-item-top">
-        <span class="id-kind-tag k-${x.kind}">${IDEA_DISCUSS_KIND_TEXT[x.kind] || '补充场景'}</span>
-        <span class="id-item-author">@${escapeHtml(x.author)}${x.isAuthor ? ' · 提出者' : (x.isClaimer ? ' · 认领者' : '')}</span>
-        <span class="id-item-when">${escapeHtml(wishWhen(x.createdAt))}</span>
-        ${x.mine
-          ? `<button type="button" class="id-item-del" data-ddel="${escapeHtml(x.id)}" title="删除">✕</button>`
-          : `<button type="button" class="id-item-report" data-dreport="${escapeHtml(x.id)}">举报</button>`}
+      ${avaHtml(x.author, x.avatar, 'comment-avatar', false, x.username || x.author)}
+      <div class="id-body">
+        <div class="id-item-top">
+          <span class="id-kind-tag k-${x.kind}">${IDEA_DISCUSS_KIND_TEXT[x.kind] || '补充场景'}</span>
+          <b>@${escapeHtml(x.author)}</b>
+          ${x.isAuthor ? '<span class="cmt-badge author">提出者</span>' : (x.isClaimer ? '<span class="cmt-badge claimer">认领者</span>' : '')}
+          <span>${formatDate(x.createdAt)}</span>
+          ${x.mine
+            ? `<button type="button" class="id-item-del" data-ddel="${escapeHtml(x.id)}" title="删除">✕</button>`
+            : `<button type="button" class="id-item-report" data-dreport="${escapeHtml(x.id)}">举报</button>`}
+        </div>
+        <p class="id-item-text">${escapeHtml(x.text)}</p>
       </div>
-      <p class="id-item-text">${escapeHtml(x.text)}</p>
     </div>`).join('');
   } catch {
     box.innerHTML = '<div class="id-empty">讨论加载失败，稍后再试</div>';
@@ -15152,7 +15196,8 @@ async function deleteIdeaDiscussion(did) {
 }
 
 function openIdeaReportMenu(btn, did) {
-  const item = btn.closest('.id-item');
+  // 11-17：楼层改成「头像 + .id-body」两栏，举报菜单要挂在正文栏里，挂 .id-item 会被 flex 挤到头像旁边
+  const item = btn.closest('.id-body') || btn.closest('.id-item');
   if (!item) return;
   const old = item.querySelector('.id-report-menu');
   if (old) { old.remove(); return; }
@@ -15892,7 +15937,7 @@ function xpaySectionHtml() {
   const packs = d.goods.map(g => `
     <div class="xp-pack">
       <span class="xp-name">${escapeHtml(g.name)}</span>
-      <span class="xp-price">¥${((g.priceFen || 0) / 100).toFixed(2)}</span>
+      <span class="xp-price">¥${((g.priceFen || 0) / 100).toFixed(2)}${(g.bonusPoints || 0) > 0 ? `<i class="xp-bonus">送 ${g.bonusPoints} 盏</i>` : ''}</span>
     </div>`).join('');
   return `
     <div class="redeem-sec xp-sec">

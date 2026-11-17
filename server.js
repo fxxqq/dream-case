@@ -5397,6 +5397,9 @@ function publicDiscussion(d, idea, user, admin) {
     kind: IDEA_DISCUSSION_KINDS.includes(d.kind) ? d.kind : 'scene',
     text: d.text,
     author: displayNameOf(d.author),
+    // 11-17：跟作品评论、散座回应同一套头像口径
+    username: d.author || '',
+    avatar: avatarUrlOf(userByName(d.author)),
     createdAt: d.createdAt,
     mine: !!(user && d.userId && d.userId === user.id) || !!admin,
     isAuthor: !!(idea.userId && d.userId && d.userId === idea.userId),
@@ -5764,15 +5767,23 @@ const ADMIN_PERMS = [
   { key: 'users',   label: '用户与灯火', desc: '用户列表、标签、重置密码、调灯火、灯火明细、主理人名单', tabs: ['users','points'] },
   { key: 'content', label: '内容运营', desc: '评论、造梦酒馆、造梦勋章：隐藏 / 删除 / 授勋', tabs: ['comments','ideas','badges'] },
   { key: 'review',  label: '审核处理', desc: '投诉、众判、认领申请、意见反馈、微信客服', tabs: ['reports','jury','claims','feedback','wxkf'] },
-  { key: 'data',    label: '数据查看', desc: '搜索词、行为流水、注册统计、推荐效果、流量构成、外链、用户推广', tabs: ['searchkw','behavior','regstats','redeem','traffic','outlinks','linkhealth','promos'] },
-  { key: 'config',  label: '站点配置', desc: '分类 / 形态 / 推荐位 / 广告 / 品牌 / 群发 / 作者回复 / 兑换码 / 友链 / 随便逛逛 / 开源收录', tabs: ['categories','types','tools','ads','brands','broadcast','replies','gift','friends','discover','opensub'] },
+  { key: 'data',    label: '数据查看', desc: '搜索词、行为流水、注册统计、推荐效果、流量构成、用户推广', tabs: ['searchkw','behavior','regstats','redeem','traffic','promos'] },
+  { key: 'config',  label: '站点配置', desc: '分类 / 形态 / 推荐位 / 广告 / 品牌 / 群发 / 作者回复 / 兑换码 / 友链', tabs: ['categories','types','tools','ads','brands','broadcast','replies','gift','friends'] },
+  // 四个独立小模块（2026-11-17 从 data / config 拆出）：给名单管理员只开「看」，
+  // 写操作（巡检 / 白名单 / 定时 / 开源收录审核 / 逛逛开关与加权）在统一闸门里只认站长，见 ADMIN_OWNER_WRITE_SEGS。
+  { key: 'discover',   label: '随便逛逛', desc: '首页随机推荐的曝光看板（只读）：模块开关 / 加权强度 / 手动加权只有站长', tabs: ['discover'] },
+  { key: 'outlinks',   label: '外链点击', desc: '站外链接点击统计（只读）', tabs: ['outlinks'] },
+  { key: 'linkhealth', label: '外链巡检', desc: '外链健康报告（只读）：发起巡检 / 白名单 / 定时设置只有站长', tabs: ['linkhealth'] },
+  { key: 'opensub',    label: '开源收录', desc: '开源收录列表（只读）：收录审核 / 分类管理 / star 结算只有站长', tabs: ['opensub'] },
   { key: 'admins',  label: '管理员管理', desc: '增删管理员、审批申请、分配权限 —— 只属于站长，不对外分配', tabs: ['admins'], ownerOnly: true },
   { key: 'deploy',  label: '部署实例', desc: '看还有哪些域名在跑同一套站', tabs: ['deploy'] },
 ];
 const ALL_PERM_KEYS = ADMIN_PERMS.map(p => p.key);
 const OWNER_ONLY_PERMS = ADMIN_PERMS.filter(p => p.ownerOnly).map(p => p.key);
-// 新增管理员（直接添加 / 通过申请）没显式指定权限时的默认值：审核类活最常用，勾错随时能改
-const NEW_ADMIN_DEFAULT_PERMS = ['works', 'content', 'review'];
+// 新增管理员（直接添加 / 通过申请）没显式指定权限时的默认值（2026-11-17 扩）：
+// 审核类活最常用；随便逛逛 / 外链点击 / 外链巡检 / 开源收录四个只读模块也默认带上——
+// 它们对名单管理员本来就是只读（写操作 ADMIN_OWNER_WRITE_SEGS 闸着），勾错也无风险
+const NEW_ADMIN_DEFAULT_PERMS = ['works', 'content', 'review', 'discover', 'outlinks', 'linkhealth', 'opensub'];
 // 接口一级路径 → 权限模块。挂在 /api/admin 下的每个资源都要在这里登记，
 // 漏登记的接口会被闸门直接拒绝（宁可挡住，也不让新接口悄悄对所有人开放）。
 const ADMIN_API_PERM = {
@@ -5781,18 +5792,21 @@ const ADMIN_API_PERM = {
   comments: 'content', ideas: 'content', 'idea-discussions': 'content', 'bar-posts': 'content', badges: 'content',
   reports: 'review', jury: 'review', claims: 'review', feedback: 'review', kf: 'review',
   'search-block': 'data', behavior: 'data', 'reg-stats': 'data', 'redeem-overview': 'data',
-  outlinks: 'data', 'link-health': 'data', 'baidu-push': 'data', 'promo-priority': 'data',
+  outlinks: 'outlinks', 'link-health': 'linkhealth', 'baidu-push': 'data', 'promo-priority': 'data',
   'promo-buyer': 'data',
   categories: 'config', types: 'config', tools: 'config', ads: 'config', 'ad-gate': 'config', 'ad-display': 'config',
   redemptions: 'config', gift: 'config', friends: 'config', 'friend-requests': 'config',
-  discover: 'config', broadcast: 'config', 'guest-notice': 'config', brands: 'config',
+  discover: 'discover', broadcast: 'config', 'guest-notice': 'config', brands: 'config',
   scenes: 'config',
-  replies: 'config', open: 'config', starsync: 'config', 'notify-old-comments': 'config',
+  replies: 'config', open: 'opensub', starsync: 'opensub', 'notify-old-comments': 'config',
   admins: 'admins',
   deploy: 'deploy', 'site-list': 'deploy',
   // /stats 是每个 tab 都要用的待办数，任何管理员都放行；session/login/apply 走免鉴权白名单
   stats: 'any'
 };
+// 这几个模块对名单管理员只开「看」：写操作（非 GET）一律只认站长（2026-11-17）。
+// 口径同「随便逛逛」只读化：前端藏按钮只是体验，闸门在这里；GET 看板按权限模块正常放行。
+const ADMIN_OWNER_WRITE_SEGS = new Set(['discover', 'link-health', 'open', 'starsync']);
 // 取 /api/admin 之后的一级路径段：'/api/admin/works/abc/approve' → 'works'
 function adminApiSeg(p) {
   const rest = String(p || '').split('?')[0].replace(/^\/api\/admin(?=\/|$)/, '');
@@ -6096,6 +6110,10 @@ app.use('/api/admin', (req, res, next) => {
   req.__adminAudited = true;
   if (adminIsOwner(req)) return next();
   const seg = adminApiSeg(req.originalUrl || req.url);
+  // 只读模块的写闸：随便逛逛 / 外链巡检 / 开源收录，管理员拿了权限也只能看
+  if (req.method !== 'GET' && ADMIN_OWNER_WRITE_SEGS.has(seg)) {
+    return res.status(403).json({ error: '这个模块管理员只读，写操作只有站长能做', permDenied: true });
+  }
   const need = ADMIN_API_PERM[seg];
   if (need === 'any') return next();
   if (!need) {
@@ -6357,6 +6375,11 @@ app.get('/api/admin/discover', requireAdmin, (req, res) => {
 });
 
 app.post('/api/admin/discover', requireAdmin, (req, res) => {
+  // 写操作只认站长（2026-11-17）：名单管理员哪怕拿到「站点配置」模块，随便逛逛也只读——
+  // 前端只是不渲染按钮，真正的闸门在这里；看板 GET 不受影响。
+  if (!adminIsOwner(req)) {
+    return res.status(403).json({ error: '「随便逛逛」的开关与加权只有站长能操作', permDenied: true });
+  }
   const body = req.body || {};
   // 开关与加权强度：k 只放大手动加权档位，k=0 时连手动加权也不生效（完全纯随机），没有第二套代码路径
   if (body.action === 'cfg') {
@@ -10304,7 +10327,8 @@ const POINTS_KIND_TEXT = {
   lamp_in: '作品被解锁',
   redeem: '换推荐位',
   refund: '推广撤回 / 到期退回',
-  test_recharge: '内测充值（模拟到账）'
+  test_recharge: '内测充值（模拟到账）',
+  xpay_bonus: '现金直购赠送'
 };
 
 // ---------- 内测充值（模拟到账，不走钱） ----------
@@ -11196,8 +11220,12 @@ function publicBarPost(p, req, user) {
         ? { id: w.id, title: w.title || '' } : null;
     })(),
     // 楼层只回最近 20 条：闲聊不是论坛，翻到第 100 楼的需求不存在
+    // 11-17：回应下发头像 / 账号名 / 作者标记，前端才能画成作品评论同款楼层
     replies: replies.slice(-20).map(r => ({
       id: r.id, author: displayNameOf(r.author || '匿名'), text: r.text || '', at: r.at,
+      username: r.author || '',
+      avatar: avatarUrlOf(userByName(r.author)),
+      isAuthor: !!(p.userId && r.userId && p.userId === r.userId),
       mine: !!(user && r.userId && r.userId === user.id)
     }))
   };
@@ -14332,6 +14360,16 @@ const XPAY_CONF = (() => {
 })();
 const XPAY_ENABLED = !!(XPAY_CONF.offerId && XPAY_CONF.appKey) || XPAY_CONF.mock;
 
+// 买曝光包赠灯火（2026-11-16）：合规上卖的是「N 次曝光」，灯火只是附赠品，不是商品——
+// 所以付款页永远不会出现「充值买灯火」，账本也不用拆成「送的 / 买的」两本。
+// 按实付金额折算（每 1 元赠 X 盏）：内测 1 分钱订单 floor 下来是 0 盏，天然防「1 分钱刷灯火」；
+// 正式价一改就自动给出赠品，不用逐档填。站长不想赠就把 XPAY_BONUS_PER_YUAN 设成 0（env 可覆盖）。
+const XPAY_BONUS_PER_YUAN = Number(process.env.XPAY_BONUS_PER_YUAN || 10);
+function xpayBonusOf(priceFen) {
+  if (!(XPAY_BONUS_PER_YUAN > 0)) return 0;
+  return Math.floor((Number(priceFen) || 0) * XPAY_BONUS_PER_YUAN / 100);
+}
+
 // 内测可见性（2026-11-16 站长定）：现金直购先只对「思绪到处飞」这个账号出现。
 // Web 的 /promote 与小程序 promote 页都读同一个 /api/xpay/goods 结果，两端天然一致；
 // 别只在前端藏 —— 下单与查单接口也一起拦，否则别人直接调接口就能买。
@@ -14352,10 +14390,10 @@ function xpayAllows(user) {
 // 真要在 iOS 测，把这一档临时改成 ≥100 分，测完走后台退款。
 // 只做曝光包、只做小程序位（internalOnly 无外链），id 同时是 MP 后台的道具 productId。
 const XPAY_GOODS = [
-  { id: 'zc_home_50',     slot: 'mini-home-first', views: 50,  days: 14, priceFen: 1, name: '首页第一格 · 50 次曝光',  desc: '小程序首页作品流第一张卡，展示 50 次，投放期最长 14 天' },
-  { id: 'zc_home_100',    slot: 'mini-home-first', views: 100, days: 14, priceFen: 1, name: '首页第一格 · 100 次曝光', desc: '小程序首页作品流第一张卡，展示 100 次，投放期最长 14 天' },
-  { id: 'zc_rankline_50', slot: 'mini-rank-line',  views: 50,  days: 14, priceFen: 1, name: '榜单+发现一行字 · 50 次曝光', desc: '星梦榜分段栏下方 + 发现页顶部两处轮展，展示 50 次' },
-  { id: 'zc_detail_100',  slot: 'mini-detail',     views: 100, days: 14, priceFen: 1, name: '作品详情页 · 100 次曝光', desc: '小程序详情页评论区上方一行，展示 100 次' }
+  { id: 'zc_home_50',     slot: 'mini-home-first', views: 50,  days: 14, priceFen: 1, name: '首页第一格 · 50 次曝光',  desc: '小程序首页作品流第一张卡，展示 50 次，投放期最长 14 天（站内等值 200 盏灯火）' },
+  { id: 'zc_home_100',    slot: 'mini-home-first', views: 100, days: 14, priceFen: 1, name: '首页第一格 · 100 次曝光', desc: '小程序首页作品流第一张卡，展示 100 次，投放期最长 14 天（站内等值 400 盏灯火）' },
+  { id: 'zc_rankline_50', slot: 'mini-rank-line',  views: 50,  days: 14, priceFen: 1, name: '榜单+发现一行字 · 50 次曝光', desc: '星梦榜分段栏下方 + 发现页顶部两处轮展，展示 50 次（站内等值 150 盏灯火）' },
+  { id: 'zc_detail_100',  slot: 'mini-detail',     views: 100, days: 14, priceFen: 1, name: '作品详情页 · 100 次曝光', desc: '小程序详情页评论区上方一行，展示 100 次（站内等值 100 盏灯火）' }
 ];
 function xpayGoodOf(id) { return XPAY_GOODS.find(g => g.id === String(id || '')) || null; }
 
@@ -14426,11 +14464,17 @@ function xpayDeliverOrder(order) {
   order.deliveredAt = Date.now();
   order.redemptionId = out.redemptionId;
   delete order.lastError;
+  // 赠品：只发一次（order.bonusPoints 落盘兜底，崩溃重试也不会重复送）
+  const bonus = xpayBonusOf(order.priceFen);
+  if (bonus > 0 && !order.bonusPoints) {
+    order.bonusPoints = bonus;
+    addPoints(order.uid, bonus, 'xpay_bonus', order.workId);
+  }
   saveXpayOrders();
   addNotice(order.uid, {
     kind: 'points',
     title: '现金订单已生效',
-    text: `你在小程序用 ¥${(order.priceFen / 100).toFixed(2)} 直购的推荐位已经上线（${order.views} 次曝光、最长 ${order.days} 天）。微信支付订单号 ${order.outTradeNo}，可在「推荐」里看实时曝光。`,
+    text: `你在小程序用 ¥${(order.priceFen / 100).toFixed(2)} 直购的推荐位已经上线（${order.views} 次曝光、最长 ${order.days} 天）${bonus > 0 ? '，另外赠送 ' + bonus + ' 盏灯火' : ''}。微信支付订单号 ${order.outTradeNo}，可在「推荐」里看实时曝光。`,
     workId: order.workId
   });
   return { ok: true, redemptionId: out.redemptionId, queued: out.queued, status: 'delivered' };
@@ -14456,7 +14500,8 @@ app.get('/api/xpay/goods', (req, res) => {
     enabled: on,
     mock: XPAY_CONF.mock,
     goods: on ? XPAY_GOODS.map(g => ({
-      id: g.id, name: g.name, desc: g.desc, priceFen: g.priceFen, slot: g.slot, views: g.views, days: g.days
+      id: g.id, name: g.name, desc: g.desc, priceFen: g.priceFen, slot: g.slot, views: g.views, days: g.days,
+      bonusPoints: xpayBonusOf(g.priceFen)
     })) : []
   });
 });
@@ -15471,6 +15516,13 @@ function peakIsNewEntry(id) {
   if (!seen) return false;
   return Date.now() - new Date(seen + 'T12:00:00').getTime() < PEAK_NEW_ENTRY_DAYS * 86400000;
 }
+// 高光窗口是否还在最近 24 小时滚动：结束日 = 今天或昨天 → 还在冲榜、分数持续更新；
+// 窗口停在过去（如 11-06）→ 高光已定格。前端据此挂「冲榜中」角标（新晋作品已有角标，不重复挂）。
+function peakIsLive(win) {
+  if (!win || !win.to) return false;
+  const diff = new Date(dateKey() + 'T12:00:00').getTime() - new Date(win.to + 'T12:00:00').getTime();
+  return diff >= 0 && diff <= 86400000;
+}
 // 高光榜排序比较（x、y 都是 peakWindowOf 的结果）：返回正数表示 x 排前面
 function peakCmpBy(x, y, by) {
   if (by === 'likes') return x.likes !== y.likes ? x.likes - y.likes : x.favs - y.favs;
@@ -15908,7 +15960,7 @@ app.get('/api/admin/badges/overview', requireAdmin, (req, res) => {
 app.get('/api/rank', (req, res) => {
   const period = ['week', 'month', 'all', 'weekhot', 'peak'].includes(req.query.period) ? req.query.period : 'week';
   const by = Object.prototype.hasOwnProperty.call(RANK_BY, req.query.by) ? req.query.by : 'hot';
-  const limit = Math.min(100, parseInt(req.query.limit) || 10);
+  const limit = Math.min(200, parseInt(req.query.limit) || 10);
   // 形态筛选（可选）：与首页 /api/works 同一口径，按 typesOf 命中才算
   const type = (req.query.type || '').trim();
   // 分类筛选（可选）：作品分类是多选（categories 1-3 个），命中任意一个就算；
@@ -16001,6 +16053,7 @@ app.get('/api/rank', (req, res) => {
           hotScore: best.score, likes: best.likes, favs: best.favs, tipsTippers: best.tippers,
           peakFrom: best.from, peakTo: best.to, peakDays: best.days,
           isNewEntry: peakIsNewEntry(w.id),
+          peakLive: peakIsLive(best),
           isNew: dateKey(new Date(w.createdAt)) === today
         };
       }

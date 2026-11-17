@@ -2032,6 +2032,10 @@
     }
 
     // ---- 权限裁剪（2026-11-15）----
+    // 名单管理员只读判定（2026-11-17）：随便逛逛 / 外链巡检 / 开源收录给管理员只开「看」，
+    // 写按钮（开关 / 加权 / 巡检 / 白名单 / 定时 / 收录审核）只留给站长；服务端统一闸门同步拦截。
+    // ADMIN_ME 还没回来时按可写渲染（网络抖动兜底，服务端会拦），与 tabAllowed 同一立场。
+    const adminReadOnly = () => !!(ADMIN_ME && ADMIN_ME.ok && !ADMIN_ME.isOwner);
     // tab 有没有权限：ADMIN_ME 还没回来 / 不是管理员 → 一律放行（前端只管体验，服务端才是闸门）
     function tabAllowed(tab) {
       if (!ADMIN_ME || !ADMIN_ME.ok) return true;
@@ -2652,7 +2656,7 @@
     }
 
     function lhReportHtml(rep) {
-      if (!rep) return '<div class="empty" style="padding:24px 0">还没有报告，点上面的「开始巡检」跑一轮。</div>';
+      if (!rep) return '<div class="empty" style="padding:24px 0">还没有报告' + (adminReadOnly() ? '。' : '，点上面的「开始巡检」跑一轮。') + '</div>';
       const groups = LH_LEVELS.map(([k, label, color]) => {
         const rows = (rep.results || []).filter(r => r.level === k);
         if (!rows.length) return '';
@@ -2710,6 +2714,7 @@
 
       const custom = base.custom || [];
       const builtin = base.builtin || [];
+      const ro = adminReadOnly();   // 名单管理员只读：发起巡检 / 定时 / 白名单增删不渲染，报告照看
 
       panel.innerHTML = `
         <div class="hint" style="padding-top:16px;line-height:1.7">
@@ -2719,7 +2724,7 @@
         </div>
 
         <div style="display:flex;gap:10px;align-items:center;margin:16px 0 8px">
-          <button class="btn btn-primary btn-sm" id="lhRun"${running ? ' disabled' : ''}>${running ? '巡检中…' : '开始巡检'}</button>
+          ${ro ? '' : `<button class="btn btn-primary btn-sm" id="lhRun"${running ? ' disabled' : ''}>${running ? '巡检中…' : '开始巡检'}</button>`}
           <span id="lhState" style="font-size:13px;color:#4b5563">${esc(stateTxt)}</span>
         </div>
         <div id="lhBarWrap" style="height:6px;background:rgba(31,35,48,.07);border-radius:99px;overflow:hidden;margin-bottom:6px${running ? '' : ';display:none'}">
@@ -2727,6 +2732,7 @@
         </div>
         <div id="lhLog" style="font-size:12px;color:#8b93a1${running ? '' : ';display:none'}">${running && job.log && job.log.length ? esc(job.log[job.log.length - 1]) : ''}</div>
 
+        ${ro ? '' : `
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 4px;padding:10px 12px;background:rgba(31,35,48,.03);border-radius:10px">
           <span style="font-size:13px;color:#4b5563">站内自动巡检</span>
           <button class="btn btn-ghost btn-sm" id="lhSchedToggle">${sched.auto ? '已开启' : '已关闭'}</button>
@@ -2736,7 +2742,7 @@
         </div>
         <div class="hint" style="padding:0 0 6px;line-height:1.6;font-size:12px">
           这个定时器跟着站点进程走，跟你的 WorkBuddy 账号、本地电脑都没关系——换账号、换机器也照跑。跑的是同一个脚本，报告照旧落在这里。
-        </div>
+        </div>`}
 
         <h4 style="margin-top:24px">报告内容</h4>
         <div style="display:flex;gap:8px;align-items:center;margin:8px 0 4px">
@@ -2751,13 +2757,13 @@
         </div>
         <div style="margin-bottom:10px">
           ${builtin.map(h => `<span class="tag" title="内置名单，写死在脚本里，页面删不掉" style="margin:0 6px 6px 0;opacity:.62">${esc(h)} · 内置</span>`).join('')}
-          ${custom.map(h => `<span class="tag" style="margin:0 6px 6px 0">${esc(h)}
-            <b data-lhdel="${esc(h)}" title="从白名单移除" style="cursor:pointer;color:#b3261e;margin-left:6px">×</b></span>`).join('')}
+          ${custom.map(h => `<span class="tag" style="margin:0 6px 6px 0">${esc(h)}${ro ? '' : `<b data-lhdel="${esc(h)}" title="从白名单移除" style="cursor:pointer;color:#b3261e;margin-left:6px">×</b>`}</span>`).join('')}
         </div>
+        ${ro ? '' : `
         <div style="display:flex;gap:8px;align-items:center">
           <input id="lhAddHost" placeholder="例如 example.com" style="max-width:240px" />
           <button class="btn btn-ghost btn-sm" id="lhAddBtn">加入白名单</button>
-        </div>`;
+        </div>`}`;
 
       const runBtn = $('lhRun');
       if (runBtn) runBtn.onclick = lhStartRun;
@@ -9807,6 +9813,9 @@
     // CTR 的分子分母都按人。模块展示还没开（env DISCOVER_ENABLED），开关与 k 在阶段 2 生效。
     // 分页状态：top / never 两个列表各自独立翻页；size=0 表示「全部」
     let __dscOv = null;
+    // 只读判定（2026-11-17）：随便逛逛的写操作（模块开关 / k / 手动加权 / 恢复推荐）只留给站长，
+    // 名单管理员即使拿到「随便逛逛」模块也只能看数据——按钮不渲染，服务端 POST 另有站长闸。
+    const __dscReadOnly = adminReadOnly;
     // 搜索关键词（跨三张表）：输入框在 panel 外面（#dscSearch），这里只存一份同步值，
     // 重绘 panel 时照它过滤。切 tab 不清空——跟作品列表的 workQuery 同一个口径。
     let __dscQ = '';
@@ -9844,7 +9853,7 @@
           <div class="row-title">${esc(r.title)} <span style="font-weight:400;color:var(--muted);font-size:12px">${esc(r.authorName || r.author || '')}</span> ${__dscManualTag(r.manual, r.noRec)}</div>
           <div class="row-meta" style="color:var(--muted)">曝光 ${r.n} 人 · 点进 ${r.clicks} 人 · CTR ${r.ctr}% · 最近 ${r.at ? new Date(r.at).toLocaleString('zh-CN', { hour12: false }) : '—'}</div>
         </div>
-        <div class="row-actions"><button class="btn btn-ghost btn-sm" data-dq="${esc(r.id)}" data-dlv="${r.noRec ? -9 : (r.manual || 0)}">${r.noRec ? '调整' : '加权'}</button></div>
+        ${__dscReadOnly() ? '' : `<div class="row-actions"><button class="btn btn-ghost btn-sm" data-dq="${esc(r.id)}" data-dlv="${r.noRec ? -9 : (r.manual || 0)}">${r.noRec ? '调整' : '加权'}</button></div>`}
       </div>`;
 
     async function loadDiscover() {
@@ -9860,6 +9869,7 @@
       const ov = __dscOv;
       if (!ov) return;
       const cfg = ov.cfg || {}, totals = ov.totals || {}, buckets = ov.buckets || {};
+      const ro = __dscReadOnly();
       const distRows = [
         ['0', '还没被任何人看到——观察重点，这一格应该随时间变小'],
         ['1-5', '刚起步'],
@@ -9889,6 +9899,7 @@
           取卡口径（2026-11-15 修订）：在访客没看过的作品里<b>等概率纯随机</b>，不再按曝光人数分桶；
           下面的 k 只作用于「手动加权」档位（修订说明见 docs/discover-spec-v1.md 顶部）。
         </div>
+        ${ro ? '' : `
         <div class="form-inline" style="align-items:center;border-bottom:1px solid var(--border)">
           <b style="font-size:14px">模块开关</b>
           <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="dscOn" ${cfg.on ? 'checked' : ''} /> 后台启用</label>
@@ -9897,7 +9908,7 @@
           <button class="btn btn-primary btn-sm" id="dscSave">保存</button>
           <span class="tag ${cfg.envEnabled ? 'ok' : 'warn'}">env DISCOVER_ENABLED ${cfg.envEnabled ? 'on' : 'off'}</span>
           <span style="color:var(--muted);font-size:12px">k 只放大手动加权：0 = 完全纯随机（手动加权也不生效）；0.3 → +2 档概率约 1.6 倍、−2 档约 0.4 倍；env 关掉时整段不渲染</span>
-        </div>
+        </div>`}
         <div class="form-inline" style="border-bottom:1px solid var(--border);flex-wrap:wrap">
           <span class="tag">在架作品 ${totals.works ?? 0}</span>
           <span class="tag">已被曝光 ${totals.exposed ?? 0}</span>
@@ -9918,7 +9929,7 @@
         </div>
         <div class="form-inline" style="border-bottom:1px solid var(--border);flex-wrap:wrap">
           <b style="font-size:14px">被曝光最多（${cnt(topHit, topTotal)} 件）</b>
-          <span style="color:var(--muted);font-size:12px">按曝光人数倒序${kw ? '；搜索时不分页，命中全列' : '，分页查看全部'}，可给任意一件加权</span>
+          <span style="color:var(--muted);font-size:12px">按曝光人数倒序${kw ? '；搜索时不分页，命中全列' : '，分页查看全部'}${ro ? '' : '，可给任意一件加权'}</span>
         </div>
         <div id="dscTopList"></div>
         <div id="dscTopPager" style="padding:8px 18px;border-bottom:1px solid var(--border)"></div>
@@ -9933,24 +9944,27 @@
           <span style="color:var(--muted);font-size:12px">推广 / 导流件放这里：随便逛逛彻底不推，首页列表、榜单、搜索照常；点「恢复」即回到推荐池</span>
         </div>
         <div id="dscBlockedList"></div>
+        ${ro ? '' : `
         <div class="form-inline" style="border-top:1px solid var(--border)">
           <b style="font-size:14px">手动加权</b>
           <span style="color:var(--muted);font-size:12px">在等概率随机的基础上提高/降低被抽中的机会；到期自动失效</span>
           <button class="btn btn-primary btn-sm" id="dscManualBtn" style="align-self:center;margin-left:auto">+ 手动加权</button>
-        </div>`;
+        </div>`}`;
 
-      $('dscManualBtn').onclick = () => openDscManual('', 0);
+      if (!ro) {
+        $('dscManualBtn').onclick = () => openDscManual('', 0);
 
-      $('dscSave').onclick = async () => {
-        try {
-          const r = await api('/api/admin/discover', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'cfg', on: $('dscOn').checked, k: Number($('dscK').value) })
-          });
-          if (r && r.error) return alert(r.error);
-          loadDiscover();
-        } catch (e) { alert(e.message || '保存失败'); }
-      };
+        $('dscSave').onclick = async () => {
+          try {
+            const r = await api('/api/admin/discover', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'cfg', on: $('dscOn').checked, k: Number($('dscK').value) })
+            });
+            if (r && r.error) return alert(r.error);
+            loadDiscover();
+          } catch (e) { alert(e.message || '保存失败'); }
+        };
+      }
 
       renderDscList('top');
       renderDscList('never');
@@ -9970,10 +9984,10 @@
             <div class="row-title">${esc(r.title)} <span style="font-weight:400;color:var(--muted);font-size:12px">${esc(r.authorName || r.author || '')}</span> <span class="tag warn">不推荐</span></div>
             <div class="row-meta" style="color:var(--muted)">设置于 ${r.at ? new Date(r.at).toLocaleString('zh-CN', { hour12: false }) : '—'} · ${r.until ? '到期 ' + new Date(r.until).toLocaleDateString('zh-CN') : '长期有效（手动解除）'}</div>
           </div>
-          <div class="row-actions">
+          ${__dscReadOnly() ? '' : `<div class="row-actions">
             <button class="btn btn-ghost btn-sm" data-dq="${esc(r.id)}" data-dlv="-9">调整</button>
             <button class="btn btn-ghost btn-sm" data-dsc-restore="${esc(r.id)}">恢复推荐</button>
-          </div>
+          </div>`}
         </div>`).join('')
         : `<div class="empty">${kw ? `没有匹配「${esc(kw)}」的不推荐作品。` : '还没有不推荐的作品。'}</div>`;
       el.querySelectorAll('[data-dq]').forEach(b => { b.onclick = () => openDscManual(b.dataset.dq, -9); });
@@ -10169,6 +10183,7 @@
       catch (e) { panel.innerHTML = '<div class="empty">加载失败：' + esc(e.message || e) + '</div>'; return; }
       const pending = d.pending || [], handled = d.handled || [];
       const cats = d.cats || [];
+      const ro = adminReadOnly();   // 名单管理员只读：收录审核 / 分类管理不渲染，列表照看
       const catName = id => { const c = cats.find(x => x.id === id); return c ? c.name : (id || ''); };
       const row = (s, doneMode) => `
         <div class="row">
@@ -10180,7 +10195,7 @@
             </div>
             <div class="row-meta">${esc(s.name || '')}${s.desc ? ' · ' + esc(s.desc) : ''}${s.contact ? ' · 联系：' + esc(s.contact) : ''}${s.cat ? ' · 分类：' + esc(catName(s.cat)) : ''}${s.catNew && s.catNew.name ? (s.status === 'pending' ? ' · <b>新分类：</b>' + esc(s.catNew.name) + (s.catNew.hint ? '（' + esc(s.catNew.hint) + '）' : '') + '，收录时创建' : ' · 新分类：' + esc(s.catNew.name) + '（已创建）') : ''} · 提交于 ${new Date(s.at).toLocaleString('zh-CN')}</div>
           </div>
-          ${doneMode ? '' : `<div class="row-actions">
+          ${(doneMode || ro) ? '' : `<div class="row-actions">
             <button class="btn btn-primary btn-sm" data-osub-approve="${esc(s.id)}">收录</button>
             <button class="btn btn-ghost btn-sm" data-osub-reject="${esc(s.id)}">忽略</button>
           </div>`}
@@ -10193,7 +10208,7 @@
             </div>
             <div class="row-meta">${esc(c.hint || '')}${c.custom ? ' · id: ' + esc(c.id) : ''}</div>
           </div>
-          ${c.custom ? `<div class="row-actions"><button class="btn btn-ghost btn-sm" data-cat-del="${esc(c.id)}" data-cat-name="${esc(c.name)}">删除</button></div>` : ''}
+          ${c.custom && !ro ? `<div class="row-actions"><button class="btn btn-ghost btn-sm" data-cat-del="${esc(c.id)}" data-cat-name="${esc(c.name)}">删除</button></div>` : ''}
         </div>`).join('');
       panel.innerHTML = `
         <div class="hint" style="padding:16px 18px;line-height:1.75">
@@ -10210,14 +10225,15 @@
           <b style="font-size:14px">分类（${cats.length}）</b>
           <span style="color:var(--muted);font-size:12px">内置 5 类不可删；删自定义分类时，里面的项目退回「打开就能用」</span>
         </div>
+        ${ro ? '' : `
         <div class="form-inline">
           <input id="openCatName" maxlength="20" placeholder="新分类名称，如：命令行工具" style="flex:4;min-width:180px" />
           <input id="openCatHint" maxlength="40" placeholder="一句说明，选填" style="flex:6;min-width:220px" />
           <button class="btn btn-primary" id="openCatAdd">新建分类</button>
-        </div>
+        </div>`}
         ${catRows}
       `;
-      $('openCatAdd').onclick = async () => {
+      if (!ro) $('openCatAdd').onclick = async () => {
         const name = $('openCatName').value.trim();
         if (!name) { $('openCatName').focus(); toast('先填分类名称'); return; }
         try {
@@ -10229,7 +10245,7 @@
           loadOpenSub();
         } catch (e) { toast(e.message); }
       };
-      panel.querySelectorAll('[data-cat-del]').forEach(btn => {
+      if (!ro) panel.querySelectorAll('[data-cat-del]').forEach(btn => {
         btn.onclick = async () => {
           if (!confirm(`删除分类「${btn.dataset.catName}」？里面已有的项目会退回「打开就能用」。`)) return;
           btn.disabled = true;
