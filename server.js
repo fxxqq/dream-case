@@ -16364,17 +16364,53 @@ function awardVeteranBadges() {
 }
 awardVeteranBadges();
 
+// 自动结算的勋章：人数按「现在真够格的人」算（2026-11-18）
+// 起因：站长截图「心有灵犀」写 4 人已获得，可线上绑了 GitHub 的账号有 19 个；「三件成窗」也只剩 1 个。
+// 根因是 badges.json 只在**这个用户自己打开勋章页**时才补录一条（computeBadges 里的懒补录），
+// 绝大多数够格的人从没点进 /medals，所以拿它当人数，等于在数「点过勋章页的人」。
+// 口径：
+//   · def.by 的手授类还是数 badges.json —— 「已授 N / 上限」说的是站长点过名的人头，不能拿够格人数替；
+//   · 其余自动结算的，数「够格人数」（badgeProgress 现算）。
+// 代价是每个账号都要跑一遍 badgeFacts（要扫作品/评论/访问，线上 279 个账号一次约 0.3s）。
+// 所以：缓存 5 分钟 + 启动后预热一次 + 每 5 分钟后台刷新一次，别让打开勋章页的那个人等这次全量扫描。
+// 勋章人数是慢变量，就算晚 5 分钟才反映出「刚绑了 GitHub」，也没人会为这个较真。
+let badgeAutoCountCache = { at: 0, counts: null };
+const BADGE_AUTO_COUNT_TTL = 5 * 60e3;
+function autoBadgeCounts(force) {
+  if (!force && badgeAutoCountCache.counts && Date.now() - badgeAutoCountCache.at < BADGE_AUTO_COUNT_TTL) {
+    return badgeAutoCountCache.counts;
+  }
+  const counts = {};
+  for (const u of users) {
+    if (!u || !u.id) continue;
+    let f;
+    try { f = badgeFacts(u); } catch { continue; }
+    for (const def of BADGE_DEFS) {
+      if (def.by) continue;                 // 手授类不走这条
+      let p;
+      try { p = badgeProgress(def.key, f); } catch { continue; }
+      if (p && p.ok) counts[def.key] = (counts[def.key] || 0) + 1;
+    }
+  }
+  badgeAutoCountCache = { at: Date.now(), counts };
+  return counts;
+}
+// 预热 + 定时刷新（失败了不影响请求，请求时还会再算）
+setTimeout(() => { try { autoBadgeCounts(true); } catch (e) { console.error('[badges] 人数预热失败：' + e.message); } }, 8000);
+setInterval(() => { try { autoBadgeCounts(true); } catch { /* 下一轮再说 */ } }, BADGE_AUTO_COUNT_TTL).unref();
+
 // 组装给前端的完整列表：state(on/doing/off) + 点亮时间 + 进度 + 申请状态 + 全站授予人数
 function computeBadges(user) {
   const f = user ? badgeFacts(user) : null;
-  // 授予人数按 badges.json 里真的记了时间的人头数：手授类勋章要拿它说明稀缺（「已授 12 / 50 人」），
-  // 别拿「够格的人数」代替——够格但没点亮的，卡片上还写着「待授予」，两个数对不上会让人怀疑。
-  const counts = {};
+  // 两类人数分开数：手授类用 badges.json 的真记录（说明稀缺：「已授 12 / 50 人」），
+  // 自动结算的用现算的够格人数（见上面 autoBadgeCounts 的口径说明）。
+  const handed = {};
   for (const rec of Object.values(badgeData.users)) {
-    for (const k in rec) if (rec[k]) counts[k] = (counts[k] || 0) + 1;
+    for (const k in rec) if (rec[k]) handed[k] = (handed[k] || 0) + 1;
   }
+  const auto = autoBadgeCounts();
   return BADGE_DEFS.map(def => {
-    const out = { ...def, count: counts[def.key] || 0 };
+    const out = { ...def, count: def.by ? (handed[def.key] || 0) : (auto[def.key] || 0) };
     if (!user) return { ...out, state: 'off' };
     const at = (badgeData.users[user.id] || {})[def.key];
     const p = badgeProgress(def.key, f);
