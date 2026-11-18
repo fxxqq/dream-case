@@ -2,7 +2,7 @@
  *
  * 用法（在两个 html 尾部引一次就够）：
  *   <div data-ad-gate="post">…被锁住的内容 / 按钮…</div>
- *   <script src="https://idea.v5pc.com/ad-gate.js" async></script>
+ *   <script src="https://zm94.com/ad-gate.js" async></script>
  *
  * 行为：拦掉这个区域里的点击 → 弹二维码 → 用户扫码进小程序看完广告 →
  *       这里自动轮询到「看完」就解锁，并把用户刚才那一下点击原样补回去。

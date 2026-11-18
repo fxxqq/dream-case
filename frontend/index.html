@@ -227,7 +227,7 @@
                 <circle cx="10" cy="14" r="1.05" fill="currentColor"/>
               </svg>
             </button>
-            <span class="feat-info-pop" role="tooltip">按近 7 天数据打分，取分数最高的 20 件入选：获赞 ×5 ＋ 收藏 ×8 ＋ 评论 ×3 ＋ 灯火人数 ×10 ＋ 访客 ×2（同一人只算 1 个访客、作者本人不计）· 全自动计算：不设互动门槛、不按作者分摊名额、不接受手动推荐 · 同分依次比访客、累计浏览 · 展示顺序每天随机重排一次、当天固定（左上角数字是当天排位，不是分数名次）· 卡上的打开/看过是累计数据</span>
+            <span class="feat-info-pop" role="tooltip">按近 7 天数据打分，取分数最高的一批作品入选（个数由站长调整）：获赞 ×5 ＋ 收藏 ×8 ＋ 评论 ×3 ＋ 灯火人数 ×10 ＋ 访客 ×2（同一人只算 1 个访客、作者本人不计）· 不设互动门槛、不按作者分摊名额 · 站长可增补个别作品（带统一的站长标签、不占分数名额），也可移出个别作品（由分数顺位递补）· 同分依次比访客、累计浏览 · 展示顺序每天随机重排一次、当天固定（左上角数字是当天排位，不是分数名次，站长增补的也参与重排）· 卡上的打开/看过是累计数据</span>
           </span>
           <div class="featured-nav">
             <button class="fn-btn" id="featPrev" aria-label="向左滑动" disabled>‹</button>
@@ -277,11 +277,23 @@
           <button class="st-btn" data-sort="hot">最热</button>
         </div>
         <div class="filter-row" id="filterRow"></div>
+        <!-- 记住开关紧跟筛选胶囊：它记住的就是左边这五项，别甩到最右让人摸不着头脑。
+             文案写清「筛选条件」+ 常驻说明，用户一眼知道记住的是什么、下次会怎样。 -->
+        <div class="remember-filters">
+          <label class="remember-filters-main" title="勾选后记住上方形态/场景/分类/开源/时间这五项筛选，下次打开仍按它们显示；不勾则每次刷新都回到全部">
+            <input type="checkbox" data-remember-filters><span>记住筛选条件</span>
+          </label>
+          <span class="remember-hint"></span>
+        </div>
       </div>
       <!-- H5 移动端专属：与微信小程序橱窗同款——一行 tab（形态/场景/分类/开源/时间/最新，2026-11-15 场景挪到形态后），点开在下方展开胶囊面板 -->
       <div class="fbar-wrap h5-only" id="filterWrap">
         <div class="fbar"></div>
         <div class="fbar-panel" hidden><div class="fbar-chips"></div></div>
+      </div>
+      <div class="remember-filters-h5 h5-only">
+        <label class="remember-filters-main"><input type="checkbox" data-remember-filters><span>记住筛选条件</span></label>
+        <span class="remember-hint"></span>
       </div>
 
       <!-- worksHead：收藏按钮的滚动锚点——从其他页点收藏会平滑滚到这里，直接看到「我的收藏」列表 -->
@@ -704,6 +716,8 @@
             </div>
             <!-- 入驻时间 + 常写分类：一句话交代「这位是谁」 -->
             <p class="author-meta" id="authorMeta"></p>
+            <!-- 个人介绍：作者自己填的 100 字纯文本，填了才出现，没填不占位 -->
+            <p class="author-bio" id="authorBio" hidden></p>
             <!-- 外部主页（GitHub / 知乎 / …）：填了才出现，没填不占位 -->
             <p class="author-links" id="authorLinks" hidden></p>
             <p class="author-stats" id="authorStats" hidden></p>
@@ -713,7 +727,7 @@
           <!-- 「编辑主页」：头像 / 昵称 / 个性地址三件事都在这一个弹层里，只有自己看得见 -->
           <button type="button" class="author-edit-btn" id="authorEditBtn" style="display:none">编辑主页</button>
         </div>
-        <!-- 数据看板（11-16 重排）：作品 / 关注 / 获赞 / 被收藏 / 点亮人数 / 访客，全部站内真实数据（与 SSR 版同口径，格子由 app.js 生成） -->
+        <!-- 数据看板（11-16 重排）：作品 / 粉丝 / 获赞 / 被收藏 / 点亮人数 / 访客，全部站内真实数据（与 SSR 版同口径，格子由 app.js 生成） -->
         <div class="author-stat-grid" id="authorStatGrid"></div>
         <!-- 四个功能入口：自己的主页才有。订单那种「我的X」在这里都是站内真实账本 -->
         <div class="author-acts" id="authorActs" style="display:none">
@@ -1782,7 +1796,7 @@
       </div>
       <div class="idea-done-body">
         <p class="idea-done-tip">把做好的作品链接贴进来（<code>/w/xxx</code> 或完整网址），这张想法卡就会变成「已实现」。</p>
-        <input id="ideaDoneInput" maxlength="200" autocomplete="off" placeholder="https://idea.v5pc.com/w/xxxx" />
+        <input id="ideaDoneInput" maxlength="200" autocomplete="off" placeholder="https://本站域名/w/xxxx" />
         <p class="idea-done-msg" id="ideaDoneMsg"></p>
         <div class="idea-done-actions">
           <button type="button" class="btn-ghost" id="ideaDoneCancel">取消</button>
@@ -1849,6 +1863,27 @@
     </div>
   </div>
 
+  <!-- 企业合作工具详情弹窗（作品流里那张工具卡点开的，不是作品详情） -->
+  <div class="modal-mask" id="toolModal" style="display:none">
+    <div class="modal tool-detail">
+      <button class="close-btn" id="closeToolDetail" title="关闭">✕</button>
+      <div class="td-top">
+        <span class="td-logo" id="tdLogo">?</span>
+        <div class="td-head">
+          <span class="td-flag" id="tdFlag">工具 · 企业认证</span>
+          <h2 class="td-name" id="tdName"></h2>
+          <p class="td-desc" id="tdDesc"></p>
+        </div>
+      </div>
+      <div class="td-body" id="tdBody"></div>
+      <p class="td-note">这是<b>企业合作产品</b>，不是站内作者做的作品——所以它没有作者、不进榜单和期刊、也不算进作品数。点「去官网看看」会在新标签页打开外部网站。</p>
+      <div class="td-acts">
+        <button type="button" class="btn" id="tdClose">先看看别的</button>
+        <a class="btn btn-primary" id="tdGo" href="#" target="_blank" rel="noopener nofollow sponsored">去官网看看 ↗</a>
+      </div>
+    </div>
+  </div>
+
   <!-- 作品详情弹窗 -->
   <div class="modal-mask" id="detailModal" style="display:none">
     <div class="modal detail">
@@ -1878,9 +1913,32 @@
         </div>
         <button class="claim-entry" id="claimEntry" style="display:none"></button>
 
+        <!-- 作者名片卡（2026-11-18，仿 php中文网档案块）：头像 + 名字 + 全量荣誉章 + 四格统计 + 关注按钮。
+             关注按钮从 headrow 挪进卡里（大按钮更像「对人的动作」，跟截图版式对齐）；
+             匿名 / 未认领作品整块隐藏，自己的作品显示统计但不出关注（换成「进我的主页」入口） -->
+        <div class="detail-author-card" id="detailAuthorCard" style="display:none">
+          <div class="dac-top">
+            <button type="button" class="dac-ava" id="dacAva" title="访问作者主页"></button>
+            <div class="dac-id">
+              <button type="button" class="dac-name" id="dacName" title="访问作者主页"></button>
+              <span class="dac-sub" id="dacSub"></span>
+            </div>
+            <span class="dac-cert" id="dacCert"></span>
+          </div>
+          <div class="dac-badges" id="dacBadges"></div>
+          <div class="dac-stats" id="dacStats"></div>
+          <button type="button" class="detail-follow dac-follow" id="dacFollow" style="display:none"></button>
+        </div>
+
         <!-- 作者管理条：自己的作品才显示。作品级管理动作（含兑换码）都收在这里，访客动作区只放互动/分享 -->
         <div class="owner-bar" id="ownerBar" style="display:none">
-          <span class="owner-bar-label"><i class="ico" data-ico="sparkle"></i> <span id="ownerBarText">这是你的作品</span></span>
+          <span class="owner-bar-label">
+            <span class="owner-bar-badge" aria-hidden="true"><i class="ico ob-ico-mine" data-ico="sparkle"></i><i class="ico ob-ico-admin" data-ico="shield"></i></span>
+            <span class="owner-bar-txt">
+              <span class="owner-bar-title" id="ownerBarText">这是你的作品</span>
+              <span class="owner-bar-sub" id="ownerBarSub" style="display:none">改动保存即生效，下架 / 删除请回后台</span>
+            </span>
+          </span>
           <div class="owner-bar-acts">
             <button class="owner-btn is-edit" id="editWork" title="修改作品信息、图片和链接"><i class="ico b-ico" data-ico="edit"></i> 编辑作品</button>
             <button class="owner-btn is-promo" id="ownerPromoBtn" title="用灯火把这件作品换到首页、榜单等推荐位"><i class="ico b-ico" data-ico="sparkle"></i> 推荐</button>
@@ -2212,7 +2270,7 @@
         <h2>用暗号认领作品</h2>
         <button class="close-btn" id="closeClaimByCode">✕</button>
       </div>
-      <p class="form-hint">每件作品的认领暗号都是站长单独发给对应作者的（10 位以内）。<b>填对提交后作品立即归你名下</b>，不用等审核；认领成功后这个暗号就作废了。</p>
+      <p class="form-hint">认领暗号由站长单独发给对应作者（10 位以内）。<b>填对提交后作品立即归你名下</b>，不用等审核；同一个暗号如果覆盖了你名下的好几件作品，会一次全部认领，之后这个暗号随即作废。</p>
       <form id="claimByCodeForm">
         <label>认领暗号<span class="label-sub">（站长发给你的作品专属暗号，不区分大小写）</span></label>
         <input type="text" name="code" maxlength="10" autocomplete="off" spellcheck="false"
@@ -2355,7 +2413,7 @@
            点击走 runAct。不是独占能力，只是站内已有入口的另一个更顺手的门。 -->
       <button type="button" class="bot-act" id="botAct">
         <i class="ico" data-ico="sparkle" id="botActIco"></i>
-        <span id="botActLabel">点亮今日</span>
+        <span id="botActLabel">自动签到</span>
       </button>
       <!-- 找找的第二扇门（2026-11-14）：通向第一屏那颗「说不清叫什么」的胶囊，同一个弹层、同一套 /api/find。
            只加门不加能力——找找是一次性检索、宁空勿糊弄，接不住闲聊，所以不并成对话式助手。 -->
@@ -2367,7 +2425,7 @@
       <a class="skin-fab" id="botSkinLink" href="/mascots">
         <i class="ico" data-ico="palette"></i>
         <span>换个形象</span>
-        <em id="botSkinName">灯火</em>
+        <em id="botSkinName">机器人</em>
       </a>
     </div>
     <div class="site-bot" id="siteBot" role="button" tabindex="0" aria-label="打开小助手" aria-expanded="false">
@@ -2426,8 +2484,12 @@
        形象库在 mascots.js（window.MASCOTS）；窗口里只留一个入口，挑形象去 /mascots。
        为什么搬出去：12 个形象塞进 264px 的窗口太小、还看不清动效，专门一页能放大看。
        默认形象改 DEFAULT_SKIN 这一个词；用户选过的存 localStorage（换设备回默认）。 */
-    var DEFAULT_SKIN = 'lamp';
+    /* 2026-11-17 改口径：形象要「领了才能用」——默认只有免费的「机器人」，
+       其余 11 个在 /mascots 各看一支激励视频才领得到，领到就记在账号上。
+       所以本地只存「用哪个」，领到哪几个的真账在服务端（/api/mascots/state 的 owned）。 */
+    var DEFAULT_SKIN = 'robot';
     var SKIN_KEY = 'dm_mascot';
+    var OWNED_KEY = 'dm_mascot_owned';   // 领到哪几个的缓存：真账在服务端，这里只给首屏和 bfcache 用
     var M = window.MASCOTS || {};
     var figure  = document.getElementById('botFigure');
     var avatar  = document.getElementById('botAvatar');
@@ -2466,20 +2528,6 @@
       if (typeof window.openAuth === 'function') window.openAuth('login');
       else actToast(what || '先登录一下');
     }
-    function copyLink(text){
-      var done = function(){ actToast('链接已复制，发给朋友就能打开', 'ok'); };
-      var fallback = function(){
-        try {
-          var ta = document.createElement('textarea');
-          ta.value = text; ta.style.cssText = 'position:fixed;top:-100px';
-          document.body.appendChild(ta); ta.select();
-          document.execCommand('copy'); ta.remove(); done();
-        } catch (e){ actToast('复制失败，地址栏里手动复制一下'); }
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText){
-        navigator.clipboard.writeText(text).then(done, fallback);
-      } else fallback();
-    }
 
     // 按当前形象刷新按钮：文案 / 图标 / 无障碍说明；熄灯与静音有「开/关两态」
     function refreshAct(){
@@ -2492,10 +2540,11 @@
         if (curSkin === 'moon' && document.documentElement.classList.contains('dm-night')) label = a.labelOff;
         if (curSkin === 'cloud' && document.documentElement.classList.contains('dm-quiet')) label = a.labelOff;
       }
-      /* 星星罐内测（2026-11-10）：罐里有攒好的星时，拿手事变「收星星」，收完自动换回「摇一颗星」。
+      /* 星星罐（2026-11-17 全量）：罐里有攒好的灯火时，拿手事变「收灯火」，收完自动换回「攒灯火」。
+         罐里记的是「波」（每在线 5 分钟 1 波），1 波 = 10 盏，展示统一按盏算。
          状态由心跳（updateJarUi）维护在 window.dmJarPending 上，这里只负责照着念。 */
       if (curSkin === 'jar' && window.dmJarPending > 0){
-        label = '收星星（' + window.dmJarPending + ' 颗）';
+        label = '收灯火（' + (window.dmJarPending * 10) + ' 盏）';
       }
       if (actLabelEl) actLabelEl.textContent = label;
       actBtn.setAttribute('title', a.hint || label);
@@ -2503,27 +2552,34 @@
       if (actIcoEl && window.Icons) actIcoEl.innerHTML = window.Icons.icon(a.ico || 'sparkle', 15);
     }
 
-    /* 十二件拿手事。共同约定：
+    /* 拿手事分发（2026-11-17 收敛）。共同约定：
        - 未登录的走 actNeedLogin（app.js 的登录框），不自己造表单
        - 网络失败给一句人话，不静默失败
        - 只在点击时才访问 window.doCheckin / openDmToOwner / ShareCard：
-         本段脚本在 app.js 之前执行，提前缓存会是 undefined */
+         本段脚本在 app.js 之前执行，提前缓存会是 undefined
+       - 现在只有四件真的能做：灯火（签到）、星星罐（攒灯火/收灯火）、机器人（找工具）、
+         八音盒（放音乐）；mascots.js 里标了 dev:true 的形象在 actBtn 那里就被拦下，
+         到不了这里。下线的动作文案在 mascots.js 的行内注释里留了旧款说明。 */
     var ACTS = {
-      /* 灯火：一键签到。doCheckin 自己处理「没登录 → 打开登录框」「今天签过了」 */
+      /* 灯火：点一下立刻签到。doCheckin 自己处理「没登录 → 打开登录框」「今天签过了」；
+         自动那份在下面的心跳里（在线满 5 分钟补签），拿手事只是把手动这扇门留在这。 */
       lamp: function(){
         if (typeof window.doCheckin === 'function') window.doCheckin();
         else actNeedLogin();
       },
-      /* 星星罐：内测期间罐子会随在线时长攒星（每 5 分钟 1 颗，一天 8 颗封顶）——
-         罐里有星先把星收了（点击到账 + 撒星动画），空罐才走原来的「摇一颗星」。
-         游客 / 非内测用户拿不到 pending，行为与原来完全一样。 */
+      /* 星星罐：专属福利——领到星星罐形象才开始攒（服务端认 share.json 的 mascots），
+         在线每 5 分钟攒 10 盏、一天 10 次共 100 盏封顶。罐里有先把灯火收了
+         （点击到账 + 撒星动画）。空罐时只报进度，不再「摇一件别人的作品」
+         （随机跳转对用户没什么用，2026-11-18 下线，接口 /api/mascot/star 一并撤了）。
+         游客 / 没领的拿不到 pending，只会看到「先领星星罐」。服务端回 lights（= 波 × 10）。 */
       jar: function(){
         if (window.dmJarPending > 0){
           fetch('/api/mascot/jar/collect', { method: 'POST', credentials: 'same-origin' })
             .then(function(r){ return r.json().catch(function(){ return null; }); })
             .then(function(d){
               if (d && d.ok){
-                actToast('从罐里收了 ' + d.reward + ' 颗星，+' + d.reward + ' 盏灯火', 'ok');
+                var got = d.lights || (d.reward || 0) * 10;
+                actToast('从罐里收了 ' + got + ' 盏灯火', 'ok');
                 jarStarFly(d.reward);
                 updateJarUi(d.jar);
               } else {
@@ -2534,36 +2590,9 @@
             .catch(function(){ actToast('网络有点慢，待会儿再收', 'err'); });
           return;
         }
-        fetch('/api/mascot/star', { credentials: 'same-origin' })
-          .then(function(r){ return r.ok ? r.json() : null; })
-          .then(function(d){
-            if (!d){ actToast('罐子卡住了，待会儿再摇', 'err'); return; }
-            if (!d.ok){
-              actToast(d.code === 'empty' ? '罐子里还只有你自己的星，等别人投进来' : '这回没摇出来，再摇一下', 'err');
-              return;
-            }
-            actToast('摇出一颗星：' + d.title, 'ok');
-            setTimeout(function(){ location.href = '/w/' + encodeURIComponent(d.id); }, 550);
-          })
-          .catch(function(){ actToast('网络有点慢，待会儿再摇', 'err'); });
-      },
-      /* 小门：随机推开一件作品——按最新列表随机，不按热度，小作品也有机会 */
-      door: function(){
-        fetch('/api/works?pageSize=48', { credentials: 'same-origin' })
-          .then(function(r){ return r.json(); })
-          .then(function(d){
-            var list = (d && d.items) || [];
-            if (!list.length){ actToast('门后面还没挂上作品'); return; }
-            var w = list[Math.floor(Math.random() * list.length)];
-            location.href = '/w/' + encodeURIComponent(w.id);
-          })
-          .catch(function(){ actToast('门卡住了，待会儿再推', 'err'); });
-      },
-      /* 羽毛笔：打开投稿编辑器；本地有草稿时 app.js 会自己续填（未登录会先弹登录） */
-      quill: function(){
-        var up = document.getElementById('openUpload');
-        if (up){ up.click(); return; }
-        location.href = '/';
+        if (window.dmJarDayDone){ actToast('今天攒满了，明天再来', 'ok'); return; }
+        var left = Number(window.dmJarNextIn) || 0;
+        actToast(left > 0 ? '罐子还在攒，下一颗星约 ' + Math.ceil(left / 60) + ' 分钟后好' : '罐子还在攒，待会儿再来看');
       },
       /* 机器人：直接聚焦搜索框，省掉滚回顶部再点一下 */
       robot: function(){
@@ -2573,68 +2602,6 @@
         try { q.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e){ q.scrollIntoView(); }
         try { q.focus({ preventScroll: true }); } catch (e){ q.focus(); }
         if (box){ box.classList.add('is-focus'); setTimeout(function(){ box.classList.remove('is-focus'); }, 1200); }
-      },
-      /* 月亮：熄灯。整页压暗一档（不碰布局、不挡点击），选择记在本机 */
-      moon: function(){
-        var on = document.documentElement.classList.toggle('dm-night');
-        try { localStorage.setItem('dm_night', on ? '1' : '0'); } catch (e) {}
-        actToast(on ? '灯灭了，页面暗一点，眼睛松一点' : '灯亮了', 'ok');
-        refreshAct();
-      },
-      /* 梦蝶：作品页上直接生成分享图；在首页/榜单这类没有具体作品的页面就复制链接 */
-      bfly: function(){
-        var m = location.pathname.match(/^\/w\/([A-Za-z0-9_-]+)/);
-        if (!m || !window.ShareCard){ copyLink(location.href); return; }
-        fetch('/api/works/' + encodeURIComponent(m[1]), { credentials: 'same-origin' })
-          .then(function(r){ return r.ok ? r.json() : null; })
-          .then(function(w){
-            if (w && w.id && window.ShareCard){ setPanel(false); window.ShareCard.open(w); }
-            else copyLink(location.href);
-          })
-          .catch(function(){ copyLink(location.href); });
-      },
-      /* 纸船：漂一件几乎没人看过的作品（后端按累计曝光取最少那一档随机） */
-      boat: function(){
-        fetch('/api/mascot/quiet', { credentials: 'same-origin' })
-          .then(function(r){ return r.ok ? r.json() : null; })
-          .then(function(d){
-            if (!d || !d.ok){ actToast('这会儿没有可漂的作品'); return; }
-            actToast('漂来一件：' + d.title + '（' + d.pv + ' 次浏览）', 'ok');
-            setTimeout(function(){ location.href = '/w/' + encodeURIComponent(d.id); }, 700);
-          })
-          .catch(function(){ actToast('水面有点乱，待会儿再放', 'err'); });
-      },
-      /* 云枕：静音五分钟——停掉全站动效（等于临时打开「减少动态效果」），再点提前醒 */
-      cloud: function(){
-        var root = document.documentElement;
-        var until = 0;
-        try { until = Number(localStorage.getItem('dm_quiet_until') || 0); } catch (e) {}
-        if (root.classList.contains('dm-quiet') && until > Date.now()){
-          root.classList.remove('dm-quiet');
-          try { localStorage.removeItem('dm_quiet_until'); } catch (e) {}
-          actToast('醒了，动效回来了', 'ok');
-          refreshAct();
-          return;
-        }
-        until = Date.now() + 5 * 60000;
-        root.classList.add('dm-quiet');
-        try { localStorage.setItem('dm_quiet_until', String(until)); } catch (e) {}
-        actToast('枕五分钟：动效先停下，到点自己醒', 'ok');
-        refreshAct();
-        setTimeout(function(){
-          var left = 0;
-          try { left = Number(localStorage.getItem('dm_quiet_until') || 0); } catch (e) {}
-          if (left && left <= Date.now()){
-            root.classList.remove('dm-quiet');
-            try { localStorage.removeItem('dm_quiet_until'); } catch (e) {}
-            refreshAct();
-          }
-        }, 5 * 60000 + 200);
-      },
-      /* 梦信：直接打开给站长留言（复用通知面板里那条私信通道） */
-      letter: function(){
-        if (typeof window.openDmToOwner === 'function'){ setPanel(false); window.openDmToOwner(); return; }
-        actToast('去右下角「消息」里找站长');
       },
       /* 八音盒：WebAudio 现场合成八个音，不请求任何音频文件 */
       box: function(){
@@ -2657,25 +2624,6 @@
           actToast('放一小段，听完就睡', 'ok');
           setTimeout(function(){ try { ac.close(); } catch (e) {} }, notes.length * 520 + 1500);
         } catch (e){ actToast('这台设备放不出声音'); }
-      },
-      /* 梦猫：撸一下掉颗星，台词轮着来，第 3 次和第 7 次有专属的 */
-      cat: function(){
-        var n = 0;
-        try { n = Number(localStorage.getItem('dm_cat_pats') || 0); } catch (e) {}
-        n += 1;
-        try { localStorage.setItem('dm_cat_pats', String(n)); } catch (e) {}
-        var lines = ['喵。', '呼噜呼噜…', '（翻了个身，尾巴扫了一下）', '梦里好像有你的作品', '再摸就咬你了（并没有）'];
-        var msg = lines[(n - 1) % lines.length];
-        if (n === 3) msg = '它记住你了：喵。';
-        if (n === 7) msg = '第七次了，它把最爱的梦话说给你听：慢慢来，都在。';
-        actToast(msg, n === 7 ? 'ok' : undefined);
-        var star = document.createElement('span');
-        star.className = 'cat-drop';
-        star.setAttribute('aria-hidden', 'true');
-        star.textContent = '★';
-        panel.appendChild(star);
-        setTimeout(function(){ star.remove(); }, 1000);
-        refreshAct();
       }
     };
 
@@ -2691,6 +2639,7 @@
       if (skinNameEl) skinNameEl.textContent = skin.name;   // 入口右侧显示当前名字
       bot.setAttribute('aria-label', '打开小助手（' + skin.name + '）');
       refreshAct();                                            // 拿手事跟着形象换
+      syncJarBadge();                                          // ✦ 角标只该亮在星星罐上，换形象时重新判一次
       if (remember){ try { localStorage.setItem(SKIN_KEY, id); } catch(e){} }
       bindEyes();
       if (remember && !reduce){
@@ -2702,29 +2651,40 @@
     function readSkin(){
       try { return localStorage.getItem(SKIN_KEY) || ''; } catch(e){ return ''; }
     }
+    // 领到哪几个：缓存（可能为 null＝这台设备还没问过服务端）
+    function readOwned(){
+      try {
+        var v = JSON.parse(localStorage.getItem(OWNED_KEY) || 'null');
+        return Array.isArray(v) ? v : null;
+      } catch(e){ return null; }
+    }
+    function ownedHas(id, owned){ return id === DEFAULT_SKIN || !!(owned && owned.indexOf(id) >= 0); }
+
     var bootSkin = readSkin();
-    applySkin(M[bootSkin] ? bootSkin : DEFAULT_SKIN, false);
-    /* 内测形象只有站长能用（2026-11-09）：本地留着 beta 形象、但当前不是站长，
-       就退回默认形象，并把本地记录改掉。只在「存的正好是 beta」时才问一次接口，
-       平时首页多一个请求都不发。
-       2026-11-10：12 个形象全部内测，没有「已开放」的可退——默认形象自己也是 beta，
-       它是普通用户能看见的那一个，所以兜底就直接落在它身上。 */
-    if (M[bootSkin] && M[bootSkin].beta){
+    var bootOwned = readOwned();
+    /* 本地存着的形象先用着——只有「缓存明确说这个不归我」时才一开始就落到默认形象上，
+       免得先闪一下别人的形象。缓存是空的（新设备）就先信本地，接口回来再校正。 */
+    var bootOk = M[bootSkin] && ownedHas(bootSkin, bootOwned);
+    applySkin(bootOk ? bootSkin : DEFAULT_SKIN, false);
+    /* 形象要「领了才能用」（2026-11-17）：只要本地存的不是默认形象，就问一次服务端对不对得上。
+       对不上（换设备、清过缓存、别人的旧记录）就退回机器人并把本地记录改掉。
+       同一个响应顺手把「我领了哪几个」缓存下来，给 pageshow 用。 */
+    if (M[bootSkin] && bootSkin !== DEFAULT_SKIN){
       fetch('/api/mascots/state', { credentials: 'same-origin' })
         .then(function(r){ return r.json(); })
         .then(function(s){
-          if (s && s.admin) return;
-          var ks = Object.keys(M), fb = '';
-          for (var i = 0; i < ks.length; i++){ if (!M[ks[i]].beta){ fb = ks[i]; break; } }
-          if (!fb) fb = M[DEFAULT_SKIN] ? DEFAULT_SKIN : ks[0];
-          if (fb && fb !== curSkin) applySkin(fb, true);
+          var owned = (s && Array.isArray(s.owned)) ? s.owned : [];
+          try { localStorage.setItem(OWNED_KEY, JSON.stringify(owned)); } catch(e){}
+          if (!ownedHas(bootSkin, owned)) applySkin(DEFAULT_SKIN, true);
         })
-        .catch(function(){});
+        .catch(function(){
+          if (!ownedHas(bootSkin, readOwned())) applySkin(DEFAULT_SKIN, true);
+        });
     }
     // 从 /mascots 挑完返回：bfcache 恢复的页面不会再执行一遍上面的初始化，这里补一次
     window.addEventListener('pageshow', function(){
       var s = readSkin();
-      if (s && s !== curSkin && M[s]) applySkin(s, false);
+      if (s && s !== curSkin && M[s] && ownedHas(s, readOwned())) applySkin(s, false);
     });
 
     // 旧版「窗口里挑形象」的 skinGrid 网格已随独立页 /mascots 下线。
@@ -2787,12 +2747,15 @@
     document.getElementById('botPanelClose').addEventListener('click', function(){ setPanel(false); });
 
     /* 形象专属动作：会跳走 / 开别的界面的先把面板收起来；
-       留在面板里玩的（撸猫掉星、熄灯、静音、放一段）不关，不然连反应都看不见 */
+       留在面板里玩的（放音乐）不关，不然连反应都看不见；
+       dev:true 的（功能开发中）给一句人话就停，不进分发 */
     if (actBtn) actBtn.addEventListener('click', function(e){
       e.stopPropagation();
       var id = curSkin || DEFAULT_SKIN;
-      if (!(M[id] && M[id].act)) return;
-      if (id !== 'cat' && id !== 'moon' && id !== 'cloud' && id !== 'box') setPanel(false);
+      var a = M[id] && M[id].act;
+      if (!a) return;
+      if (a.dev){ actToast('「' + M[id].name + '」的拿手事还在开发中，先试试灯火、星星罐或八音盒'); return; }
+      if (id !== 'box') setPanel(false);
       try { ACTS[id] && ACTS[id](); }
       catch (err){ actToast('这一步没走通，换条路试试'); }
     });
@@ -2835,11 +2798,14 @@
     /* 进页面 2.2s 挥一次手打招呼（reduced-motion 不挥；手机默认趴墙角，挥了也看不见，跳过） */
     if (!reduce && !isMobile) setTimeout(function(){ wave(2000); }, 2200);
 
-    /* ---------------- 在线心跳（2026-11-10，内测） ----------------
-       60 秒一次轻心跳，服务端用它干两件事（都走 data/beta.json 白名单，非内测用户空跑）：
-       ① 星星罐攒星：每在线 5 分钟长 1 颗，一天 8 颗封顶，罐攒满 6 颗亮「快收我」；
-       ② 在线满 5 分钟自动补今天这签（忘性大的人不用记得点「点亮今日」）。
-       罐里有星时：机器人头顶亮一颗 ✦ 角标；换到星星罐形象，拿手事自动变「收星星」。 */
+    /* ---------------- 在线心跳（2026-11-10 上线，2026-11-17 全量） ----------------
+       60 秒一次轻心跳，服务端用它干两件事（登录用户人人有，beta 白名单已撤）：
+       ① 星星罐攒灯火（专属福利，领了星星罐形象才开始）：每在线 5 分钟攒 1 波（= 10 盏），
+         一天 10 波（100 盏）封顶，罐攒满 6 波（60 盏）亮「快收我」；
+       ② 在线满 5 分钟自动补今天这签（忘性大的人不用记得点「自动签到」）。
+       角标口径（2026-11-18 修）：✦ 只亮在**星星罐**头顶，别的形象不亮——收灯火只有星星罐
+       的拿手事才做得到（refreshAct 里 curSkin === 'jar' 那段），挂在羽毛/月亮上就是个
+       点开也收不了的死胡同。换到星星罐时 applySkin 会重新同步一次。 */
     var beatTimer = null;
     function beatOnce(){
       fetch('/api/mascot/beat', { method: 'POST', credentials: 'same-origin' })
@@ -2854,15 +2820,24 @@
         })
         .catch(function(){});
     }
-    function updateJarUi(j){
-      window.dmJarPending = (j && j.pending) || 0;
-      if (window.dmJarPending > 0){
+    /* 头顶那颗 ✦（2026-11-18）：只有当前形象是星星罐、且罐里有待收的灯火时才亮。
+       为什么不再跟着所有形象亮：收灯火只写在星星罐的拿手事里（ACTS.jar），换成羽毛/月亮时
+       点亮着 ✦、点开面板却是「接着写」，等于挂了个点进去收不了的提示。 */
+    function syncJarBadge(){
+      var on = curSkin === 'jar' && window.dmJarPending > 0;
+      if (on){
         bot.classList.add('dm-jar-ready');
-        bot.setAttribute('title', '星星罐里有 ' + window.dmJarPending + ' 颗星，打开小助手收一下');
+        bot.setAttribute('title', '星星罐攒了 ' + (window.dmJarPending * 10) + ' 盏灯火，点开小助手收一下');
       } else {
         bot.classList.remove('dm-jar-ready');
         if (bot.getAttribute('title') && bot.getAttribute('title').indexOf('星星罐') === 0) bot.removeAttribute('title');
       }
+    }
+    function updateJarUi(j){
+      window.dmJarPending = (j && j.pending) || 0;
+      window.dmJarDayDone = !!(j && j.dayDone);
+      window.dmJarNextIn = (j && j.nextStarIn) || 0;
+      syncJarBadge();                 // 角标跟形象绑着，这里只负责按最新存量重画
       if (curSkin === 'jar') refreshAct();
     }
     /* 收星动画：几颗 ✦ 从机器人头顶飘起来散掉（reduced-motion 不撒） */

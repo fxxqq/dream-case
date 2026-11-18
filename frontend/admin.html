@@ -88,12 +88,14 @@
     .tr-col .ps-bar { min-width:18px; }
     /* 「友链」徽标挂在数字右侧 */
     .ps-tag { flex:none; font-size:10px; line-height:1.7; padding:0 6px; border-radius:99px; background:#e7f8ec; color:var(--ok); }
-    /* 来源明细：每个来源域名下展开「从那个站的哪个页面跳进来」的具体链接 */
+    /* 来源明细：每个来源域名下展开「从那个站的哪个页面跳进来」的具体链接，右侧同样四档数字（与主行对齐） */
     .ps-subs { margin:0 0 6px; padding:2px 0 2px 16px; border-left:2px solid #ececf6; display:flex; flex-direction:column; gap:3px; }
     .ps-sub { display:flex; align-items:center; gap:8px; font-size:11.5px; line-height:1.4; }
-    .ps-sub a { color:#6a6a80; text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:72%; }
+    .ps-sub a { color:#6a6a80; text-decoration:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:54%; }
     .ps-sub a:hover { color:var(--primary); text-decoration:underline; }
-    .ps-sub b { margin-left:auto; flex:none; font-weight:600; color:#9a9ab0; font-size:11px; font-variant-numeric:tabular-nums; }
+    .ps-sub .tr-3 { margin-left:auto; flex:none; font-size:11px; }
+    .ps-sub .tr-3 b { min-width:22px; font-weight:600; color:#9a9ab0; }
+    .ps-sub .tr-3 i { min-width:30px; color:#b8b8c8; }
     .ps-sub span { color:#9a9ab0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     /* 外链点击 · 作品榜：标题/次数一行、条形一行、类型与时间一行，窄列里也不挤成一团 */
     .ol-wrow { padding:8px 0; border-top:1px dashed #eef0f7; }
@@ -308,6 +310,16 @@
     /* 名字 / 一句话介绍拆开展示：介绍小一号灰字，跟前台卡片口径一致 */
     .row-title .row-intro { font-weight:400; font-size:12px; color:var(--muted); }
     .row-meta { font-size:12px; color:var(--muted); }
+    /* 本周精选标签胶囊：与前台 style.css 的 .feat-reason 同一套值（含自动角标配色） */
+    .feat-reason { flex:none; font-size:10px; font-weight:600; line-height:1;
+      padding:3px 6px; border-radius:5px; white-space:nowrap; border:1px solid transparent; }
+    .feat-reason.is-pick { color:#5b5bd6; background:#eeedff; border-color:#ddd9ff; }
+    .feat-reason.is-like { color:#d6455b; background:#fff0f2; border-color:#ffd9e0; }
+    .feat-reason.is-fav { color:#c9740a; background:#fff6e5; border-color:#ffe3b3; }
+    .feat-reason.is-cmt { color:#0e7c86; background:#edfafb; border-color:#c9eef2; }
+    .feat-reason.is-tip { color:#b3409a; background:#fdf0fa; border-color:#f6d8ee; }
+    .feat-reason.is-uv { color:#2f7fd0; background:#eef7ff; border-color:#d3e8ff; }
+    .feat-reason.is-new { color:#2f9e6a; background:#eefaf3; border-color:#cfefdd; }
     .row-kw { font-size:12px; color:#6b5b95; margin-top:4px; cursor:help; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .row-meta .pvuv { color:#5b5bd6; font-variant-numeric:tabular-nums; cursor:help; }
     .row-meta .row-link { color:#5b5bd6; word-break:break-all; }
@@ -363,6 +375,13 @@
     select.tag.pm-prio.is-owner { background-color:#fff7e6; color:#d48806;
       background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 0h7L3.5 5z' fill='%23d48806'/%3E%3C/svg%3E"); }
     select.tag.pm-prio:disabled { opacity:.6; cursor:default; }
+    /* 投放单升降权（2026-11-18）：复用 pm-prio 的标签下拉外观，升权绿 / 降权红区分档位 */
+    select.tag.pm-prio.is-boost-up { background-color:#f0f9eb; color:#2e7d32;
+      background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 0h7L3.5 5z' fill='%232e7d32'/%3E%3C/svg%3E"); }
+    select.tag.pm-prio.is-boost-up:hover { background-color:#e2f2d9; }
+    select.tag.pm-prio.is-boost-down { background-color:#fff1f0; color:#c0392b;
+      background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5'%3E%3Cpath d='M0 0h7L3.5 5z' fill='%23c0392b'/%3E%3C/svg%3E"); }
+    select.tag.pm-prio.is-boost-down:hover { background-color:#ffe4e1; }
     /* 代投行里那行「这位投放者投过什么包、多少次」：次要信息，压成灰字 */
     .row-buyer { margin-top:3px; font-size:12px; color:var(--muted); }
     /* 代投弹窗选中作品后，作者的历史投放小卡 */
@@ -1046,11 +1065,10 @@
     <div class="header-inner">
       <span class="logo">✦ 造梦橱窗 · 后台</span>
       <span class="pv-banner" id="pvBanner" style="display:none">
-        <span class="pv-item"><em>今日</em><b id="pvToday">0</b> PV</span>
-        <span class="pv-item"><em>今日</em><b id="uvToday">0</b> UV</span>
-        <span class="pv-item" title="今日新增注册用户数"><em>今日注册</em><b id="usersToday">0</b> 人</span>
+        <span class="pv-item" title="小程序今日访问次数"><em>小程序</em><b id="miniPvToday">0</b> PV</span>
         <!-- 小程序渠道单独统计（不和网页 PV/UV 混算：手机 NAT 共享 IP，混进网页 UV 会失真） -->
-        <span class="pv-item" title="小程序今日访问次数 / 独立设备数"><em>小程序今日</em><b id="miniPvToday">0</b> 次 / <b id="miniUvToday">0</b> 人</span>
+        <span class="pv-item" title="小程序今日独立设备数"><em>小程序</em><b id="miniUvToday">0</b> UV</span>
+        <span class="pv-item" title="今日新增注册用户数"><em>今日注册</em><b id="usersToday">0</b> 人</span>
       </span>
       <a class="btn btn-ghost" href="/">返回网站</a>
       <span class="spacer"></span>
@@ -1113,6 +1131,7 @@
           <button class="tab" data-tab="all">全部作品</button>
           <button class="tab" data-tab="promos">用户推广</button>
           <button class="tab" data-tab="discover">随便逛逛</button>
+          <button class="tab" data-tab="featured">本周精选</button>
           <button class="tab" data-tab="opensub">开源收录</button>
           <button class="tab" data-tab="comments">评论管理</button>
           <button class="tab" data-tab="ideas">造梦酒馆</button>
@@ -1136,6 +1155,7 @@
           <button class="tab" data-tab="types">形态管理</button>
           <button class="tab" data-tab="tools">推荐位</button>
           <button class="tab" data-tab="ads">广告位</button>
+          <button class="tab" data-tab="promote">推广</button>
           <button class="tab" data-tab="brands">品牌橱窗</button>
           <button class="tab" data-tab="broadcast">群发通知</button>
           <button class="tab" data-tab="replies">作者回复</button>
@@ -2139,9 +2159,7 @@
     async function loadStats() {
       try {
         const s = await api('/api/admin/stats');
-        // 顶部 PV/UV 横幅（登录后常显，刷新数据时同步更新）
-        $('pvToday').textContent = s.pvToday || 0;
-        $('uvToday').textContent = s.uvToday || 0;
+        // 顶部横幅只看小程序渠道 + 注册（2026-11-18：网页 PV/UV 从横幅撤掉，数据仍在 /api/admin/stats 里）
         $('usersToday').textContent = s.usersToday || 0;
         // 小程序渠道：单独一桶，网页 PV/UV 不含这部分
         $('miniPvToday').textContent = s.miniPvToday || 0;
@@ -2234,7 +2252,7 @@
           ${num(c1, c7, c30, cAll)}${tag || ''}
         </div>`;
       };
-      // 来源明细链接：服务端按 host 归好组（与来源榜同名），每条是「对方站内具体页面 → 累计次数」。
+      // 来源明细链接：服务端按 host 归好组（与来源榜同名），每条是「对方站内具体页面」+ 四档数字（与主行同口径）。
       // 每个域名最多展开 6 条；明细数据 2026-11-15 起才记录，之前的日子聚合不出链接，只会少不会错。
       const refPages = Array.isArray(t.refPages) ? t.refPages : [];
       const pagesByHost = {};
@@ -2242,12 +2260,14 @@
         const h = p.host || '(其他链接)';
         (pagesByHost[h] = pagesByHost[h] || []).push(p);
       });
+      const subTip = isUv ? '近24小时 / 7 天 / 30 天 / 累计：从这个页面来的去重人数' : '近24小时 / 7 天 / 30 天 / 累计：从这个页面打开的次数';
+      const subNum = p => `<span class="tr-3" title="${subTip}"><b>${val(p.u1, p.c1)}</b><i>${val(p.u7, p.c7)}</i><i>${val(p.u30, p.c30)}</i><i>${val(p.uAll, p.cAll)}</i></span>`;
       const subRows = host => {
         const list = pagesByHost[host] || [];
         if (!list.length) return '';
         return '<div class="ps-subs">' + list.slice(0, 6).map(p => p.url
-          ? `<div class="ps-sub"><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" title="打开来路页面（新窗口）&#10;${esc(p.name)}">${esc(p.name)}</a><b title="${isUv ? '累计从这个页面来的人数（去重）' : '累计从这个页面打开的次数'}">${val(p.uAll, p.cAll)}</b></div>`
-          : `<div class="ps-sub"><span title="单日明细链接过多时溢出合并，不指向具体页面">${esc(p.name)}</span><b>${val(p.uAll, p.cAll)}</b></div>`
+          ? `<div class="ps-sub"><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" title="打开来路页面（新窗口）&#10;${esc(p.name)}">${esc(p.name)}</a>${subNum(p)}</div>`
+          : `<div class="ps-sub"><span title="单日明细链接过多时溢出合并，不指向具体页面">${esc(p.name)}</span>${subNum(p)}</div>`
         ).join('') + '</div>';
       };
       const refsBody = refs.length
@@ -2585,6 +2605,7 @@
       if (tab === 'types') return loadTypes();
       if (tab === 'tools') return loadTools();
       if (tab === 'ads') return loadAds();
+      if (tab === 'promote') return loadPromotions();
       if (tab === 'brands') return loadBrands();
       if (tab === 'promos') return loadPromos();
       if (tab === 'users') return loadUsers();
@@ -2598,6 +2619,7 @@
       if (tab === 'regstats') return loadRegStats();
       if (tab === 'redeem') return loadRedeemEffects();
       if (tab === 'discover') return loadDiscover();
+      if (tab === 'featured') return loadFeaturedAdmin();
       if (tab === 'opensub') return loadOpenSub();
       if (tab === 'traffic') return loadTraffic();
       if (tab === 'outlinks') return loadOutlinks();
@@ -3962,7 +3984,7 @@
                 ${w.paid ? `<span class="tag warn">付费${w.paidModel && PAID_MODELS[w.paidModel] ? ' · ' + PAID_MODELS[w.paidModel] : ''}</span>` : ''}
                 ${w.claimable ? `<span class="tag warn" title="${w.claimed ? '已开放认领，审核通过会转移归属' : '无归属作品（匿名投稿 / 后台代传）默认可认领'}">可认领</span>` : ''}
                 ${w.claimAuthorized ? `<span class="tag ok" title="站长已授权 @${esc(w.claimAuthorized)}：TA 登录后可一键认领，无需交证据、无需审核">已授权·@${esc(w.claimAuthorized)}</span>` : ''}
-                ${w.claimCode ? `<span class="tag ok" title="这件作品单独设置的认领暗号（≤10 位，不区分大小写）：作者填对当场归属，认领成功后自动作废">暗号·${esc(w.claimCode)}</span>` : ''}
+                ${w.claimCode ? `<span class="tag ok" title="这件作品单独设置的认领暗号（≤10 位，不区分大小写）：作者填对当场归属，认领成功后自动作废；同一暗号设在同一位作者的几件上时，填一次整批归属">暗号·${esc(w.claimCode)}</span>` : ''}
                 ${w.claimBonus && w.claimBonus.points ? `<span class="tag warn" title="作者填对暗号时，在默认上传奖励之外额外送 ${w.claimBonus.points} 盏灯火${w.claimBonus.reason ? '（' + esc(w.claimBonus.reason) + '）' : ''}；人工审核 / 授权认领不发这笔">认领+${w.claimBonus.points}盏</span>` : ''}
                 ${w.blockCount ? `<span class="tag warn" title="被 ${w.blockCount} 个账号屏蔽${w.blockOwnerCount ? `（其中站长 ${w.blockOwnerCount} 位，按 3 分计）` : ''}${w.blockShift ? ` · 首页「最新」已降 ${w.blockShift} 位` : ` · 权重不足 2 分，暂不降权`}">屏蔽 ${w.blockCount}${w.blockOwnerCount ? `（站长 ${w.blockOwnerCount}）` : ''}</span>` : ''}
               </div>
@@ -3990,7 +4012,7 @@
                   <button class="mi" data-act="feature" data-id="${w.id}">${w.featured ? '取消精选' : '设为精选'}</button>
                   <button class="mi" data-act="pin" data-id="${w.id}">${w.pinned ? '取消置顶' : '置顶'}</button>
                   <button class="mi" data-act="claimopen" data-id="${w.id}">${w.claimable ? '关闭认领' : '开放认领'}</button>
-                  <button class="mi" data-act="claimcode" data-id="${w.id}" title="给这件作品设一个单独的认领暗号（≤10 位），发给作者；TA 填对当场归属，无需交证据、无需审核；认领成功后暗号自动作废">${w.claimCode ? '改暗号' : '认领暗号'}</button>
+                  <button class="mi" data-act="claimcode" data-id="${w.id}" title="给这件作品设一个单独的认领暗号（≤10 位），发给作者；TA 填对当场归属，无需交证据、无需审核；认领成功后暗号自动作废。同一暗号设在同一位作者的几件作品上 = 作者填一次，这批一起归他">${w.claimCode ? '改暗号' : '认领暗号'}</button>
                   <button class="mi" data-act="anonymous" data-id="${w.id}">${w.anonymous ? '取消匿名' : '设为匿名'}</button>
                   <button class="mi" data-act="assign" data-id="${w.id}" title="把作品指定给站内某个账号名下">指定账号</button>
                   <button class="mi" data-act="merge" data-id="${w.id}" title="重复投稿合并：把这件的浏览/点赞/收藏/评论/打赏/访问统计并入另一件，然后删除它">合并</button>
@@ -6592,7 +6614,7 @@
           // 额外奖励只在「编辑作品」里改；这里只念一遍当前额度，免得改暗号时忘了它还存在
           const curBonus = w.claimBonus && w.claimBonus.points
             ? `额外奖励：${w.claimBonus.points} 盏${w.claimBonus.reason ? '（' + w.claimBonus.reason + '）' : ''}` : '额外奖励：未设';
-          const val = prompt(`「${w.title}」认领暗号\n给这件作品设一个 ≤10 位的暗号（不区分大小写、不能带空格），只发给这件作品的作者；\nTA 在前台认领弹窗里填对就当场归属，不用交证据、不用审核，认领成功后暗号自动作废。\n只对「开放认领、还没有归属」的作品生效。\n当前暗号：${cur || '无'}　${curBonus}\n（额外奖励去「编辑作品」那一栏改）\n留空并确定 = 清除暗号`, cur);
+          const val = prompt(`「${w.title}」认领暗号\n给这件作品设一个 ≤10 位的暗号（不区分大小写、不能带空格），只发给这件作品的作者；\nTA 在前台认领弹窗里填对就当场归属，不用交证据、不用审核，认领成功后暗号自动作废。\n同一作者有好几件要认领时，把同样的暗号分别设在每件上：作者填一次，这批一起归他（只认作者名相同的件）。\n只对「开放认领、还没有归属」的作品生效。\n当前暗号：${cur || '无'}　${curBonus}\n（额外奖励去「编辑作品」那一栏改）\n留空并确定 = 清除暗号`, cur);
           if (val === null) return;
           const code = val.trim();
           if (!code && !cur) return;
@@ -6847,6 +6869,8 @@
                 ${c.caseStatus === 'open' || c.caseStatus === 'removed'
                   ? `<button class="btn btn-ok btn-sm" data-jury-clear="${esc(c.id)}">${c.caseStatus === 'removed' ? '结案并恢复' : '结案清票'}</button>` : ''}
                 ${c.caseStatus !== 'open' ? `<button class="btn btn-sm" data-jury-flag="${esc(c.id)}">重新贴标</button>` : ''}
+                ${c.caseStatus !== 'open' && ADMIN_ME && ADMIN_ME.isOwner
+                  ? `<button class="btn btn-ghost btn-sm" data-jury-del="${esc(c.id)}" title="只删这条众判留档和票数：作品、评论、上架状态都不动（仅站长可用）" style="color:#a32d2d">删除记录</button>` : ''}
               </div>
             </div>`;
           }).join('') : '<div class="empty">还没有案件：详情页有人投第一票，或上面手动贴标</div>'}
@@ -6935,6 +6959,18 @@
             try {
               const r = await api('/api/admin/jury/' + encodeURIComponent(b.dataset.juryClear) + '/clear', { method: 'POST' });
               toast(r.restored ? '已结案并恢复上架' : '已结案，票数清零');
+              loadJury();
+            } catch (e) { toast(e.message); b.disabled = false; }
+          };
+        });
+        // 删记录（仅站长）：只清这条留档和票数，作品、评论、上下架状态都不动
+        panel.querySelectorAll('[data-jury-del]').forEach(b => {
+          b.onclick = async () => {
+            if (!confirm('只删这条众判记录：留档和票数一起清掉，作品本身、评论、当前上架/下架状态都不动。\n删掉不可恢复（同一件作品再有人投票会重新开一条）。确定删除？')) return;
+            b.disabled = true;
+            try {
+              await api('/api/admin/jury/' + encodeURIComponent(b.dataset.juryDel), { method: 'DELETE' });
+              toast('已删除这条众判记录');
               loadJury();
             } catch (e) { toast(e.message); b.disabled = false; }
           };
@@ -7716,6 +7752,101 @@
       }
     });
 
+    // ---- 推广（2026-11-17）：站长专属，四栏 + 认证 ----
+    // 产品名字 / 访问地址 / 账号 / 备注 / 认证（这个产品的联盟计划要不要企业资质）。不上前台、不进小程序；服务端整栏 requireOwner。
+    let PROMO_EDIT = null;
+    const PROMO_VERIFY_LABEL = { personal: '个人可申请', company: '需企业认证', '': '认证待确认' };
+    const promoVerifyTag = v => v === 'company'
+      ? '<span class="tag warn" title="这个产品的联盟计划只收企业主体">需企业认证</span>'
+      : (v === 'personal'
+        ? '<span class="tag ok" title="个人身份就能注册推广">个人可申请</span>'
+        : '<span class="tag" title="还没核对过注册要求">认证待确认</span>');
+    const promoTime = s => {
+      const t = Date.parse(s || '');
+      return t ? new Date(t).toLocaleString('zh-CN', { hour12: false }) : '—';
+    };
+    async function loadPromotions() {
+      try {
+        const list = await api('/api/admin/promotions');
+        if (PROMO_EDIT && !list.some(p => p.id === PROMO_EDIT)) PROMO_EDIT = null;
+        const editing = PROMO_EDIT ? list.find(p => p.id === PROMO_EDIT) : null;
+        panel.innerHTML = `
+          <div class="hint" style="margin:0"><b>推广</b> —— 只给站长自己记合作产品的清单：<b>产品名字 · 访问地址 · 账号 · 备注 · 认证</b>。「认证」记这个产品的推广计划要不要企业资质，个人注册不了的先标出来，别等注册到一半才发现。这里只做后台记录，不会展示到网站前台或小程序。</div>
+          <div class="form-inline">
+            <input id="pmName" maxlength="40" value="${editing ? esc(editing.name) : ''}" placeholder="产品名字 *，如：mole清理电脑" style="width:200px" />
+            <input id="pmUrl" maxlength="500" value="${editing ? esc(editing.url) : ''}" placeholder="访问地址 *，https://..." />
+            <input id="pmAccount" maxlength="100" value="${editing ? esc(editing.account || '') : ''}" placeholder="账号（选填）" style="width:160px" />
+            <input id="pmNote" maxlength="200" value="${editing ? esc(editing.note || '') : ''}" placeholder="备注（选填）" style="width:210px" />
+            <select id="pmVerify" style="width:130px">
+              ${['', 'personal', 'company'].map(v => `<option value="${v}"${(editing ? (editing.verify || '') : '') === v ? ' selected' : ''}>${PROMO_VERIFY_LABEL[v]}</option>`).join('')}
+            </select>
+            <button class="btn btn-primary" id="pmAddBtn">${editing ? '保存修改' : '新增推广'}</button>
+            ${editing ? '<button class="btn btn-ghost" id="pmCancelBtn">取消编辑</button>' : ''}
+          </div>
+          ` + (list.length ? list.map(p => `
+            <div class="row">
+              <div class="row-main">
+                <div class="row-title"><b>${esc(p.name)}</b> <a class="tag" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer" title="新窗口打开，不会把后台挤掉">打开 ↗</a>${promoVerifyTag(p.verify || '')}${PROMO_EDIT === p.id ? '<span class="tag ok">正在编辑</span>' : ''}</div>
+                <div class="row-meta">访问地址：${esc(p.url)}</div>
+                <div class="row-meta">账号：${p.account ? esc(p.account) : '—'} · 备注：${p.note ? esc(p.note) : '—'} · 添加于 ${promoTime(p.createdAt)}${p.updatedAt ? ' · 改于 ' + promoTime(p.updatedAt) : ''}</div>
+              </div>
+              <div class="row-actions">
+                <button class="btn btn-ghost btn-sm" data-promo-edit="${esc(p.id)}">编辑</button>
+                <button class="btn btn-danger btn-sm" data-promo-del="${esc(p.id)}">删除</button>
+              </div>
+            </div>`).join('') : '<div class="empty">还没有推广记录，先在上面填一条</div>');
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    panel.addEventListener('click', async e => {
+      if (e.target.id === 'pmCancelBtn') {
+        PROMO_EDIT = null;
+        loadPromotions();
+        return;
+      }
+      if (e.target.id === 'pmAddBtn') {
+        const name = $('pmName').value.trim();
+        const url = $('pmUrl').value.trim();
+        const account = $('pmAccount').value.trim();
+        const note = $('pmNote').value.trim();
+        const verify = $('pmVerify') ? $('pmVerify').value : '';
+        if (!name) return toast('请填产品名字');
+        if (!url) return toast('请填访问地址');
+        if (!/^https?:\/\/\S+$/i.test(url)) return toast('访问地址需以 http(s):// 开头');
+        try {
+          const editingId = PROMO_EDIT;
+          await api(editingId ? '/api/admin/promotions/update' : '/api/admin/promotions', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(editingId ? { id: editingId, name, url, account, note, verify } : { name, url, account, note, verify })
+          });
+          PROMO_EDIT = null;
+          toast(editingId ? '已保存' : '已新增');
+          loadPromotions();
+        } catch (err) { toast(err.message); }
+        return;
+      }
+      const editId = e.target.dataset.promoEdit;
+      if (editId) {
+        PROMO_EDIT = editId;
+        loadPromotions();
+        const inp = $('pmName');
+        if (inp) { inp.focus(); inp.select(); }
+        return;
+      }
+      const delId = e.target.dataset.promoDel;
+      if (delId) {
+        if (!confirm('删除这条推广？')) return;
+        try {
+          await api('/api/admin/promotions/delete', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: delId })
+          });
+          if (PROMO_EDIT === delId) PROMO_EDIT = null;
+          toast('已删除'); loadPromotions();
+        } catch (err) { toast(err.message); }
+      }
+    });
+
     // ---- 形态 ----
     let TYPE_ORDER = [];
     let TYPE_ICON_LIB = [];        // [{ key, label }]：可选的单色图标
@@ -7840,13 +7971,17 @@
             <input id="toolName" placeholder="工具名称" maxlength="40" />
             <input id="toolDesc" placeholder="一句话描述" maxlength="120" />
             <input id="toolUrl" placeholder="https://..." />
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;white-space:nowrap"><input type="checkbox" id="toolFeed" /> 进作品流</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;white-space:nowrap"><input type="checkbox" id="toolCert" /> 企业认证</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;white-space:nowrap"><input type="checkbox" id="toolPartner" /> 合作/返佣</label>
             <button class="btn btn-primary" id="addToolBtn">添加</button>
           </div>
-          <div class="hint">【功能备注】推荐位 = 手工维护的外部工具/资源推荐位，展示在<b>作品详情弹窗底部</b>（评论区下方，「同类工具推荐」卡片），前端最多取前 3 条展示，点击新窗口跳转外部链接。适合放工具联盟 / 返佣链接。注意和「广告位」「推荐」是两码事——广告位是站长在后台上线的投放位，「推荐」是作者用灯火兑换的自荐位，这里只是手动挂外部工具链接。数据存在 data/tools.json（active:false 的条目不展示）</div>
+          <div class="hint">【功能备注】推荐位 = 手工维护的外部工具/资源推荐位，默认展示在<b>作品详情弹窗底部</b>（评论区下方，「同类工具推荐」卡片），前端最多取前 3 条展示，点击新窗口跳转外部链接。适合放工具联盟 / 返佣链接。注意和「广告位」「推荐」是两码事——广告位是站长在后台上线的投放位，「推荐」是作者用灯火兑换的自荐位，这里只是手动挂外部工具链接。数据存在 data/tools.json（active:false 的条目不展示）<br />
+          <b>勾了「进作品流」</b>的条目会以「工具 · 企业认证」角标插在首页第 4 张卡后面（一次只随机展示一条），卡片底色偏冷、底脚写「去试试 ↗」，点击直接外跳、不套作品详情弹窗；它不进榜单、不进星刊计分、不进编年史，也不算进「共 N 件」。<b>勾了「合作/返佣」</b>的条目，底脚会多写一个「合作」，标明这是带返佣的推广链接。</div>
           ` + (list.length ? list.map(t => `
             <div class="row">
               <div class="row-main">
-                <div class="row-title">${esc(t.name)}</div>
+                <div class="row-title">${esc(t.name)}${t.feed ? '<span class="tag" style="background:#e6f3fa;color:#134f78">' + (t.cert ? '工具 · 企业认证' : '工具') + '</span>' : ''}${t.partner ? '<span class="tag warn">合作</span>' : ''}</div>
                 <div class="row-meta">${esc(t.desc || '')} · <a href="${esc(t.url)}" target="_blank" style="color:#5b5bd6">${esc(t.url)}</a></div>
               </div>
               <div class="row-actions"><button class="btn btn-danger btn-sm" data-tool="${t.id}">删除</button></div>
@@ -7862,7 +7997,12 @@
         try {
           await api('/api/admin/tools', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, desc: $('toolDesc').value.trim(), url })
+            body: JSON.stringify({
+              name, desc: $('toolDesc').value.trim(), url,
+              feed: !!($('toolFeed') && $('toolFeed').checked),
+              cert: !!($('toolCert') && $('toolCert').checked),
+              partner: !!($('toolPartner') && $('toolPartner').checked)
+            })
           });
           toast('已添加'); loadTools();
         } catch (err) { toast(err.message); }
@@ -8646,6 +8786,21 @@
           }</select>`
         : `<span class="tag${o.prio === 'owner' ? ' warn' : ''}" title="${esc(prioTip[o.prio || ''] || '')}">${esc(o.prioLabel || '跟随全局')}</span>`);
 
+      // 投放单升降权（2026-11-18）：买家单、代投单都能调。升权 ≈ 3 倍概率上场，降权 ≈ 1/3——
+      // 作品照常投、照常计费，只是不太显眼，适合「东西是真推广，但不好意思让朋友撤」的场合。
+      // 在投 / 排队中给下拉就地改；已结束的单只在设过档位时留个静态标，改了也没有下一次了。
+      const boostTip = {
+        up: '升权：同一个位里这条被挑中的概率约 3 倍，顺序展示的位也排前面',
+        '': '正常权重：和同位其他单机会均等',
+        down: '降权：同一个位里这条被挑中的概率约 1/3，排位靠后（照常计费，不用撤单）'
+      };
+      const boostTag = live
+        ? `<select class="tag pm-prio${o.boost === 'up' ? ' is-boost-up' : o.boost === 'down' ? ' is-boost-down' : ''}" data-pmboost="${esc(o.id)}" title="点一下改这条的投放权重：${esc(boostTip[o.boost || ''])}">${
+            [['', '正常权重'], ['up', '升权'], ['down', '降权']]
+              .map(([v, t]) => `<option value="${v}"${(o.boost || '') === v ? ' selected' : ''}>${t}</option>`).join('')
+          }</select>`
+        : (o.boost ? `<span class="tag${o.boost === 'down' ? ' warn' : ' ok'}" title="${esc(boostTip[o.boost])}">${o.boost === 'up' ? '升权' : '降权'}</span>` : '');
+
       // 投放者画像（服务端 promoBuyerMap 全历史聚合）：这位作者投过几单、什么包、多少次。
       // 每行都挂（付费单也挂）：同一件作品反复投的人不少，站长看一行就知道是常客还是头一次。
       const b = o.buyer;
@@ -8675,6 +8830,7 @@
             <span class="tag ${stCls}">${esc(stTxt)}</span>
             ${comp ? '<span class="tag ok" title="站长代投：不消耗作者灯火，不进消耗统计">站长代投</span>' : ''}
             ${prioTag}
+            ${boostTag}
             ${o.extLink ? '<span class="tag warn" title="点击跳作品登记的官网 / 下载页，不走站内详情">外链</span>' : ''}
             ${qPos ? `<span class="tag">排队第 ${qPos} 位</span>` : ''}
           </div>
@@ -8761,6 +8917,29 @@
             sel.value = back;
             sel.disabled = false;
             toast(err.message || '改优先级失败');
+          }
+        };
+      });
+
+      // 投放单升降权：就地改（服务端写 ad.boost + r.boost），改完重画整页让标签对齐
+      panel.querySelectorAll('[data-pmboost]').forEach(sel => {
+        sel.onchange = async () => {
+          const o = pmOrders.find(x => x.id === sel.dataset.pmboost);
+          const back = o ? (o.boost || '') : '';
+          const want = sel.value;
+          sel.disabled = true;
+          try {
+            const r = await api('/api/admin/redemptions/' + encodeURIComponent(sel.dataset.pmboost) + '/boost', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ boost: want })
+            });
+            notifyAds();
+            toast(`权重已改为「${r.boostLabel || '正常'}」` + (want ? '，前台下次刷新按新权重挑' : ''));
+            await loadPromos();
+          } catch (err) {
+            sel.value = back;
+            sel.disabled = false;
+            toast(err.message || '改权重失败');
           }
         };
       });
@@ -9274,6 +9453,9 @@
     }
 
     // ---- 标签编辑：行内小工具（渲染 + 贴/摘 + 标签库条） ----
+    // 企业认证专用标签（2026-11-17）：不进标签库，单独一行贴 / 摘，只有站长能操作（服务端同样闸着）。
+    // 贴标时必须填认证主体（公司全称），服务端存 u.cert，前台徽章悬停时显示。
+    const CERT_TAG = '企业认证';
     function tagsOf(row) {
       const u = usersCache.find(x => x.id === row.dataset.uid);
       return u ? (u.tags || []) : [];
@@ -9293,16 +9475,18 @@
       });
     }
 
-    async function setUserTags(row, tags) {
+    async function setUserTags(row, tags, certSubject) {
       const uid = row.dataset.uid;
       const uname = row.dataset.uname || '';
       try {
+        const body = { id: uid, tags };
+        if (tags.includes(CERT_TAG) && certSubject) body.certSubject = certSubject;
         const r = await api('/api/admin/users/tags', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: uid, tags })
+          body: JSON.stringify(body)
         });
         const u = usersCache.find(x => x.id === uid);
-        if (u) u.tags = r.tags;
+        if (u) { u.tags = r.tags; u.cert = r.cert || null; }
         syncRowTags(row);
         const ed = row.querySelector('.tags-editor');
         if (ed && ed.style.display !== 'none') renderTagsEditor(row);
@@ -9313,9 +9497,9 @@
     async function toggleUserTag(row, t) {
       const cur = tagsOf(row) || [];
       const next = cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t];
-      // 勋章不受「最多 6 个」限制（勋章 + 6 个手工标签）：它排在第一位，服务端清洗时也单独放行
+      // 勋章 / 企业认证不受「最多 6 个」限制（特殊标签 + 6 个手工标签）：它们排在最前，服务端清洗时也单独放行
       const badgeTag = ((usersCache.find(x => x.id === row.dataset.uid) || {}).ghBadge || {}).tag || '';
-      if (next.length > 6 && t !== badgeTag) { toast('一个用户最多贴 6 个标签'); return; }
+      if (next.length > 6 && t !== badgeTag && t !== CERT_TAG) { toast('一个用户最多贴 6 个标签'); return; }
       await setUserTags(row, next);
     }
 
@@ -9325,6 +9509,17 @@
       const u = usersCache.find(x => x.id === row.dataset.uid) || {};
       const gb = u.ghBadge || {};
       const badgeOn = !!gb.tag && cur.includes(gb.tag);
+      // 企业认证单独一行（2026-11-17）：像勋章一样不进标签库，这里点一下就贴 / 摘，
+      // 走的是同一个 /api/admin/users/tags，服务端存 u.cert 并单独发通知。
+      // 贴标必须填认证主体（公司全称）；名单管理员只读（服务端同样只认站长）。
+      const certOn = cur.includes(CERT_TAG);
+      const certRow = (!certOn && adminReadOnly())
+        ? ''
+        : `<div class="te-badge"><span class="te-label">企业认证（只有站长能贴 / 摘）：</span>`
+          + (certOn
+            ? `<button type="button" class="te-chip te-cert on" data-tag="${CERT_TAG}" title="主体：${esc((u.cert && u.cert.subject) || '?')} · 点击摘掉">已认证 · 点击摘掉</button>`
+            : `<input class="te-cert-subject" maxlength="40" placeholder="认证主体（公司全称），必填" /><button type="button" class="te-chip te-cert" data-tag="${CERT_TAG}">贴企业认证</button>`)
+          + `</div>`;
       // 勋章单独一行：不进标签库（防被改名/删除误伤），但这里点一下就颁发/摘掉，
       // 走的是同一个 /api/admin/users/tags，服务端认 GH_BADGE_TAG 会记档并单独发通知。
       const badgeRow = gb.tag
@@ -9333,7 +9528,7 @@
           + `${badgeOn ? '已颁发 · 点击摘掉' : (gb.pending ? '待确认 · 点击颁发' : '点击颁发')}</button>`
           + `${gb.pending && !badgeOn ? '<span class="te-pend">作者已收到「待确认」站内信</span>' : ''}</div>`
         : '';
-      ed.innerHTML = badgeRow +
+      ed.innerHTML = certRow + badgeRow +
         `<span class="te-label">荣誉标签（点击贴 / 摘，立即生效并通知本人）：</span>` +
         adminTaglib.map(t => `<button type="button" class="te-chip${cur.includes(t) ? ' on' : ''}" data-tag="${esc(t)}">${esc(t)}</button>`).join('') +
         `<input class="te-input" maxlength="20" placeholder="新标签名，回车添加" />` +
@@ -9427,6 +9622,24 @@
         const wasOpen = ed.style.display !== 'none';
         panel.querySelectorAll('.tags-editor').forEach(x => { x.style.display = 'none'; }); // 同时只开一个
         if (!wasOpen) { renderTagsEditor(row); ed.style.display = 'flex'; }
+        return;
+      }
+
+      // 编辑器里点「企业认证」：贴（先取主体输入框）/ 摘。必须在通用 te-chip 分支之前——
+      // 贴标要走自己的确认流程（主体必填），不能落到 toggleUserTag 的无脑贴/摘里
+      if (e.target.classList.contains('te-cert')) {
+        const row = e.target.closest('.row');
+        const cur = tagsOf(row) || [];
+        if (cur.includes(CERT_TAG)) {
+          if (!confirm(`摘掉 @${row.dataset.uname || ''} 的企业认证？\n作品卡片、详情页和作者主页上的认证徽章会一并撤下，并通知本人。`)) return;
+          await setUserTags(row, cur.filter(t => t !== CERT_TAG));
+        } else {
+          const input = row.querySelector('.te-cert-subject');
+          const subject = (input && input.value || '').trim();
+          if (!subject) { if (input) input.focus(); toast('先填认证主体（公司全称）'); return; }
+          if (!confirm(`给 @${row.dataset.uname || ''} 贴企业认证？\n认证主体：${subject}\n\n请确认已经人工核验过对方的营业执照等资质——徽章等于站方背书。`)) return;
+          await setUserTags(row, [...cur, CERT_TAG], subject);
+        }
         return;
       }
 
@@ -9700,9 +9913,11 @@
           <label style="display:flex;align-items:center;gap:6px"><input type="radio" name="bcCat" value="ad" /> 投放 / 广告位</label>
           <span class="hint" style="margin:0">用户可按板块屏蔽提示（账号设置 → 消息提示）：屏蔽后消息照样进铃铛、只是不再弹窗</span>
         </div>
-        <div class="hint">每人一条，计入对方消息列表（最多保留 50 条）。发送后不可撤回，发之前先确认文案。<br />重复发送同一条文案会自动去重：已收过的人不会再进铃铛，游客公告条也只更新原公告不重复挂；改了文案才算新公告。<br />消息按分栏归档：五个板块（系统 / 投放 / 灯火 / 消息 / 营销）用户都能在「账号设置 → 消息提示」里单独屏蔽提示——消息照样进铃铛（标「已屏蔽」）、只是不再弹窗；也可在铃铛弹窗切到某一栏后点底部「屏蔽本栏提示」。</div>
+        <div class="hint">每人一条，计入对方消息列表（最多保留 50 条）。发错了不用慌：发送后可在下方「发送记录」里一键撤回，用户铃铛里的同一条消息和游客公告条会一起收掉。<br />重复发送同一条文案会自动去重：已收过的人不会再进铃铛，游客公告条也只更新原公告不重复挂；改了文案才算新公告。<br />消息按分栏归档：五个板块（系统 / 投放 / 灯火 / 消息 / 营销）用户都能在「账号设置 → 消息提示」里单独屏蔽提示——消息照样进铃铛（标「已屏蔽」）、只是不再弹窗；也可在铃铛弹窗切到某一栏后点底部「屏蔽本栏提示」。</div>
         <div class="hint" style="margin-top:14px"><b>游客公告条</b>：未登录的访客没有铃铛收不到站内消息；勾选「游客也可见」会把同一条文案挂到站内页面顶部的公告条上，游客也能看到（访客自己点 ✕ 关掉后不再弹）。已挂出的公告可在下方下架。</div>
-        <div id="gnList" style="margin-top:8px"></div>`;
+        <div id="gnList" style="margin-top:8px"></div>
+        <div class="hint" style="margin-top:14px"><b>发送记录</b>：最近 50 次群发的账，发错了点「撤回」——用户铃铛里的这条消息和挂出的游客公告条会一起收掉；撤回过的记录标灰留底。重复发送同一条文案（自动去重）也各记一笔，撤回按 key 整批收。</div>
+        <div id="bcHistory" style="margin-top:8px"></div>`;
       async function refreshCount() {
         const scope = (panel.querySelector('input[name="bcScope"]:checked') || {}).value || 'with-works';
         try {
@@ -9721,8 +9936,8 @@
         if (!title && !text) return toast('标题和正文至少填一个');
         const n = $('bcCount').textContent;
         const tip = guest
-          ? `确定群发这条消息给 ${n} 位用户，并挂到游客公告条？发送后不可撤回。`
-          : `确定群发这条消息给 ${n} 位用户？发送后不可撤回。`;
+          ? `确定群发这条消息给 ${n} 位用户，并挂到游客公告条？发错了可以在下方发送记录里撤回。`
+          : `确定群发这条消息给 ${n} 位用户？发错了可以在下方发送记录里撤回。`;
         if (!confirm(tip)) return;
         try {
           const r = await api('/api/admin/broadcast', {
@@ -9736,10 +9951,47 @@
           $('bcText').value = '';
           if ($('bcGuest')) $('bcGuest').checked = false;
           loadGuestNoticeList();
+          loadBcHistory();
         } catch (err) { toast(err.message); }
       };
       // 游客公告条：已挂出的公告列表 + 下架
       loadGuestNoticeList();
+      // 发送记录 + 撤回
+      loadBcHistory();
+      async function loadBcHistory() {
+        const box = $('bcHistory');
+        if (!box) return;
+        try {
+          const r = await api('/api/admin/broadcast/history');
+          const items = r.items || [];
+          if (!items.length) { box.innerHTML = '<div class="hint">还没有群发记录。</div>'; return; }
+          const CAT_NAME = { announce: '系统', promo: '营销', ad: '投放' };
+          box.innerHTML = items.map(n => `
+            <div class="row" style="align-items:center;${n.recalledAt ? 'opacity:.55' : ''}">
+              <div class="row-main">
+                <div class="row-title">${esc(n.title || '(无标题)')}${n.recalledAt ? ' <span class="tag bad">已撤回</span>' : ''}${n.guest ? ' <span class="tag">含游客公告条</span>' : ''}</div>
+                <div class="row-meta">${esc(n.text || '')}</div>
+                <div class="row-meta">发出 ${n.sent || 0} 人${n.deduped ? `（${n.deduped} 人已收过跳过）` : ''} · ${CAT_NAME[n.cat] || n.cat || '系统'} · ${n.scope === 'all' ? '全部用户' : '仅有作品的用户'} · ${n.at ? esc(fmtDate(n.at)) : ''}${n.key ? ` · key: ${esc(n.key)}` : ''}</div>
+              </div>
+              <div class="row-actions">
+                ${n.recalledAt ? '' : `<button class="btn btn-ghost btn-sm" data-bc-recall="${esc(n.key)}" data-bc-title="${esc(n.title || '')}">撤回</button>`}
+              </div>
+            </div>`).join('');
+          box.querySelectorAll('[data-bc-recall]').forEach(btn => {
+            btn.onclick = async () => {
+              if (!confirm('撤回这条群发？所有用户铃铛里的这条消息' + (btn.dataset.bcTitle ? `「${btn.dataset.bcTitle}」` : '') + '会立刻删除，游客公告条（如有）一并下架。')) return;
+              try {
+                const rr = await api('/api/admin/broadcast/recall', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ key: btn.dataset.bcRecall, title: btn.dataset.bcTitle })
+                });
+                toast(`已撤回：删掉 ${rr.removed} 条站内消息${rr.guestRemoved ? '，下架 1 条游客公告' : ''}`);
+                loadBcHistory();
+              } catch (err) { toast(err.message); }
+            };
+          });
+        } catch { box.innerHTML = '<div class="hint">发送记录加载失败。</div>'; }
+      }
       async function loadGuestNoticeList() {
         const box = $('gnList');
         if (!box) return;
@@ -10173,6 +10425,238 @@
       });
       if (clr) clr.onclick = () => { inp.value = ''; apply(); inp.focus(); };
     })();
+
+    // ---- 本周精选（2026-11-17）----
+    // 出榜口径：分数前 N（N 站长可调 4~60）＋ 站长增补（不占分数名额）－ 站长移出（由分数顺位递补）；
+    // 展示顺序每天随机洗牌、当天固定，站长增补的同样参与洗牌、不排前面。
+    // 写操作仅站长：服务端 adminIsOwner 拦，名单管理员这里只读。
+    let __feat = null;
+    let __featLastQ = '';   // 增补框的搜索词：增补/撤销成功后面板整体重画，记住它重画完自动补一次搜索
+    async function loadFeaturedAdmin() {
+      panel.innerHTML = '<div class="empty">加载中…</div>';
+      try { __feat = await api('/api/admin/featured'); }
+      catch (e) { panel.innerHTML = '<div class="empty">加载失败：' + esc(e.message || e) + '</div>'; return; }
+      renderFeaturedAdmin();
+    }
+    async function __featPost(body, btn) {
+      if (btn) btn.disabled = true;
+      try {
+        await api('/api/admin/featured', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        __feat = await api('/api/admin/featured');
+        renderFeaturedAdmin();
+      } catch (e) {
+        if (btn) btn.disabled = false;
+        alert(e.message || '操作失败');
+      }
+    }
+    function renderFeaturedAdmin() {
+      if (!__feat) return;
+      const cfg = __feat.cfg || {}, colors = cfg.tagColors || {};
+      const tagDefault = cfg.tagDefaultText || '站长精选';
+      // 自动角标文案：与 server.js FEAT_REASONS_SSR / app.js 同一套字，key 来自接口的 featReason
+      const FEAT_REASON_TEXT = { like: '人气最高', fav: '收藏飙升', cmt: '话题热议', tip: '灯火最亮', uv: '本周热看', fresh: '最近新上', new: '新晋上榜', pick: '本周热门' };
+      const ro = adminReadOnly();
+      let selColor = cfg.tagColor || 'violet';
+      const chip = (k, text, extra) => {
+        const c = colors[k] || colors.violet || colors.blue;
+        return `<span class="feat-reason" style="color:${c.color};background:${c.bg};border-color:${c.border};${extra || ''}">${esc(text)}</span>`;
+      };
+      const listRows = (__feat.list || []).map(r => {
+        // 每件作品一个标签（2026-11-17 晚）：r.tag 是服务端解析好的内联样式，null = 还没单独设
+        const own = r.tag || null;
+        const tagKey = r.tagKey || cfg.tagColor || 'violet';
+        // 前台此刻真正展示的标签（2026-11-18）：单独标签 > 增补件默认标签 > 算法件自动角标
+        const shown = own ? chip(tagKey, own.text)
+          : (r.manual ? chip(cfg.tagColor || 'violet', cfg.tagText || tagDefault)
+          : `<span class="feat-reason is-${esc(r.featReason || 'new')}" title="按近 7 天数据自动变的角标">${esc(FEAT_REASON_TEXT[r.featReason] || '新晋上榜')}</span>`);
+        return `<div class="row">
+          <div class="row-main">
+            <div class="row-title">${esc(r.title)} <span style="font-weight:400;color:var(--muted);font-size:12px">${esc(r.author || '')}</span> ${r.manual ? '<span class="tag ok">站长增补</span>' : '<span class="tag">算法入选</span>'} ${shown}</div>
+            <div class="row-meta" style="color:var(--muted)">近 7 天综合分 ${r.score} · ID ${esc(r.id)} · ${own ? '单独标签' : (r.manual ? '用默认标签' : '自动角标')}</div>
+            ${ro ? '' : `<div class="feat-tag-ed" data-feat-taged="${esc(r.id)}" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 0 2px">
+              <input data-feat-tagtext="${esc(r.id)}" type="text" maxlength="8" value="${esc(own ? own.text : '')}" placeholder="最多 8 字，如：AI 写作" style="width:150px" />
+              <select data-feat-tagcolor="${esc(r.id)}">${Object.keys(colors).map(k => `<option value="${k}"${k === tagKey ? ' selected' : ''}>${esc(String(colors[k].name).replace(/（.*$/, ''))}</option>`).join('')}</select>
+              <button class="btn btn-primary btn-sm" data-feat-tagsave="${esc(r.id)}">保存标签</button>
+              <button class="btn btn-ghost btn-sm" data-feat-tagclear="${esc(r.id)}">清除（回落默认）</button>
+            </div>`}
+          </div>
+          ${ro ? '' : `<div class="row-actions">
+            <button class="btn btn-ghost btn-sm" data-feat-tagopen="${esc(r.id)}">${own ? '改标签' : '打标签'}</button>
+            <button class="btn btn-ghost btn-sm" data-feat-out="${esc(r.id)}">${r.manual ? '撤销增补' : '移出'}</button>
+          </div>`}
+        </div>`;
+      }).join('') || '<div class="empty">还没有作品入选</div>';
+      const addRows = (__feat.add || []).map(r => {
+        const own = (__feat.tags || {})[r.id];
+        return `<div class="row">
+          <div class="row-main">
+            <div class="row-title">${esc(r.title)} ${r.live ? '' : '<span class="tag warn">不在架上（自动失效）</span>'}${own ? ' ' + chip(own.color, own.text) : ''}</div>
+            <div class="row-meta" style="color:var(--muted)">ID ${esc(r.id)} · ${own ? '单独标签' : '用默认标签（可在下面「当前榜单」里打标签）'}</div>
+          </div>
+          ${ro ? '' : `<div class="row-actions"><button class="btn btn-ghost btn-sm" data-feat-unadd="${esc(r.id)}">撤销增补</button></div>`}
+        </div>`;
+      }).join('') || '<div class="row"><div class="row-main"><div class="row-meta" style="color:var(--muted)">还没有增补</div></div></div>';
+      const rmRows = (__feat.remove || []).map(r => `<div class="row">
+          <div class="row-main">
+            <div class="row-title">${esc(r.title)} ${r.live ? '' : '<span class="tag warn">不在架上</span>'}</div>
+            <div class="row-meta" style="color:var(--muted)">ID ${esc(r.id)} · 榜位由分数顺位递补，点「恢复」后重新按分数参与录取</div>
+          </div>
+          ${ro ? '' : `<div class="row-actions"><button class="btn btn-ghost btn-sm" data-feat-unremove="${esc(r.id)}">恢复</button></div>`}
+        </div>`).join('') || '<div class="row"><div class="row-main"><div class="row-meta" style="color:var(--muted)">没有移出过作品</div></div></div>';
+      const colorChips = Object.keys(colors).map(k => {
+        const c = colors[k];
+        return `<button type="button" class="btn btn-sm" data-feat-color="${k}" style="color:${c.color};background:${c.bg};border:1px solid ${c.border};${cfg.tagColor === k ? 'outline:2px solid var(--primary);outline-offset:1px;' : ''}">${esc(c.name)}</button>`;
+      }).join(' ');
+      panel.innerHTML = `
+        <div class="hint" style="padding:16px 18px;line-height:1.75">
+          首页「本周精选」的出榜配置。<strong>个数 N</strong> 只管算法部分收多少件；<strong>增补</strong>的作品直接进精选、不占 N 的名额（板块可以超过 N 件）；<strong>移出</strong>的作品由分数榜后一位自动递补。<br />
+          <strong>标签</strong>是「每件作品一个」：在下面「当前榜单」里点某件右边的「打标签」，就能单独给它写文字 + 选颜色，算法件打了标签也会盖掉自动角标。<strong>没单独打标签的</strong>，增补件用上面的「默认标签」，算法件照旧按数据自动变（人气最高 / 收藏飙升 / 最近新上…）。<br />
+          顺序照旧每天随机重排一次、当天固定——增补的不会排前面。增补 / 移出 / 标签都长期生效（按作品 ID 记着），作品下架后记录保留但自动失效。
+        </div>
+        ${ro ? '<div class="hint" style="padding:0 18px 12px">名单管理员只读：配置只有站长能改。</div>' : ''}
+        <div class="form-inline" style="border-bottom:1px solid var(--border)">
+          <b style="font-size:14px">精选个数</b>
+          <input id="featTop" type="number" min="${cfg.topMin}" max="${cfg.topMax}" value="${cfg.top}" style="width:70px" ${ro ? 'disabled' : ''} />
+          <span>件（${cfg.topMin} ~ ${cfg.topMax}，默认 20）</span>
+          ${ro ? '' : '<button class="btn btn-primary btn-sm" id="featTopSave">保存</button>'}
+        </div>
+        <div class="form-inline" style="border-bottom:1px solid var(--border);flex-wrap:wrap">
+          <b style="font-size:14px">默认标签</b>
+          <input id="featBadgeText" type="text" maxlength="8" value="${esc(cfg.tagText || '')}" placeholder="最多 8 个字，如：创意网站" style="width:180px" ${ro ? 'disabled' : ''} />
+          ${colorChips}
+          <span id="featBadgePrev">${chip(selColor, cfg.tagText || tagDefault)}</span>
+          ${ro ? '' : '<button class="btn btn-primary btn-sm" id="featBadgeSave">保存默认标签</button>'}
+          <span style="color:var(--muted);font-size:12px;flex-basis:100%">只给「没单独打标签的增补作品」兜底；要逐件打标签，去下面「当前榜单」点每件右边的「打标签」</span>
+        </div>
+        <div class="form-inline" style="border-bottom:1px solid var(--border);flex-wrap:wrap">
+          <b style="font-size:14px">增补作品</b>
+          <input id="featAddQ" type="text" placeholder="输入标题关键词或作品 ID 搜索" style="width:220px" ${ro ? 'disabled' : ''} autocomplete="off" />
+          ${ro ? '' : '<button class="btn btn-primary btn-sm" id="featAddBtn">增补进精选</button>'}
+          <span style="color:var(--muted);font-size:12px">增补不占分数名额，板块总数可以超过 N</span>
+        </div>
+        <div id="featSearchRes" style="border-bottom:1px solid var(--border)"></div>
+        <div id="featAddList" style="border-bottom:1px solid var(--border)"></div>
+        <div class="form-inline" style="border-bottom:1px solid var(--border)">
+          <b style="font-size:14px">已移出名单</b>
+          <span style="color:var(--muted);font-size:12px">这些作品分数再高也不进精选</span>
+        </div>
+        <div id="featRmList" style="border-bottom:1px solid var(--border)"></div>
+        <div class="form-inline">
+          <b style="font-size:14px">当前榜单（${(__feat.list || []).length} 件）</b>
+          <span style="color:var(--muted);font-size:12px">与前台一致；序号每天洗牌，这里的顺序不代表前台展示顺序</span>
+        </div>
+        <div id="featList"></div>`;
+
+      const listEl = id => { const el = document.getElementById(id); if (el) el.innerHTML = { featAddList: addRows, featRmList: rmRows, featList: listRows }[id] || ''; };
+      ['featAddList', 'featRmList', 'featList'].forEach(listEl);
+
+      const prevEl = $('featBadgePrev');
+      const paintPrev = () => {
+        const t = (($('featBadgeText') || {}).value || '').trim();
+        prevEl.innerHTML = chip(selColor, t || tagDefault);
+      };
+      if (!ro) {
+        $('featTopSave').onclick = e => __featPost({ action: 'top', n: Number($('featTop').value) }, e.target);
+        $('featAddBtn').onclick = e => {
+          const q = $('featAddQ').value.trim();
+          if (!q) return alert('填作品 ID 或标题关键词');
+          __featPost({ action: 'add', q }, e.target);
+        };
+        // ---- 增补搜索联想（11-17）：输入关键词 → search 接口出候选 → 结果行里直接点增补/撤销，
+        // 不用再先去查 ID；已增补/已在精选/在移出名单/不在架上都在结果里标清楚。----
+        const resEl = $('featSearchRes');
+        let __fsSeq = 0;        // 防抖+竞态：只有最后一次请求的结果才上屏
+        const paintRes = rs => {
+          if (!rs || !rs.length) { resEl.innerHTML = ''; return; }
+          resEl.innerHTML = rs.map(r => `<div class="row">
+            <div class="row-main">
+              <div class="row-title">${esc(r.title)} <span style="font-weight:400;color:var(--muted);font-size:12px">${esc(r.author || '')}</span>
+                ${r.inAdd ? '<span class="tag ok">已增补</span>' : ''}
+                ${(!r.inAdd && r.inPool) ? '<span class="tag ok">已在精选</span>' : ''}
+                ${r.inRemove ? '<span class="tag warn">在移出名单</span>' : ''}
+                ${r.live ? '' : '<span class="tag warn">不在架上</span>'}
+              </div>
+              <div class="row-meta" style="color:var(--muted)">ID ${esc(r.id)}</div>
+            </div>
+            <div class="row-actions">${r.inAdd
+              ? '<button class="btn btn-ghost btn-sm" data-feat-s-unadd="' + esc(r.id) + '">撤销增补</button>'
+              : (r.live
+                ? '<button class="btn btn-primary btn-sm" data-feat-s-add="' + esc(r.id) + '">增补进精选</button>'
+                : '<button class="btn btn-sm" disabled>不可增补</button>')}</div>
+          </div>`).join('');
+          resEl.querySelectorAll('[data-feat-s-add]').forEach(b => { b.onclick = () => __featPost({ action: 'add', id: b.dataset.featSAdd }, b); });
+          resEl.querySelectorAll('[data-feat-s-unadd]').forEach(b => { b.onclick = () => __featPost({ action: 'unadd', id: b.dataset.featSUnadd }, b); });
+        };
+        const doSearch = async () => {
+          const q = ($('featAddQ').value || '').trim();
+          const seq = ++__fsSeq;
+          if (!q) { __featLastQ = ''; paintRes(null); return; }
+          __featLastQ = q;
+          try {
+            const d = await api('/api/admin/featured', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'search', q })
+            });
+            if (seq !== __fsSeq) return;
+            paintRes(d.results || []);
+          } catch (e) { if (seq === __fsSeq) paintRes(null); }
+        };
+        const fsInp = $('featAddQ');
+        let __fsTimer = null;
+        fsInp.addEventListener('input', () => {
+          // 输入法组合中先不搜（同「随便逛逛搜索」的口径），上屏时 compositionend 再搜
+          if (fsInp.isComposing) return;
+          clearTimeout(__fsTimer);
+          __fsTimer = setTimeout(doSearch, 200);
+        });
+        fsInp.addEventListener('compositionend', () => { clearTimeout(__fsTimer); doSearch(); });
+        fsInp.addEventListener('keydown', e => { if (e.key === 'Escape') { clearTimeout(__fsTimer); paintRes(null); } });
+        if (__featLastQ) { fsInp.value = __featLastQ; doSearch(); }
+        $('featBadgeSave').onclick = e => __featPost({ action: 'tag', text: $('featBadgeText').value, color: selColor }, e.target);
+        panel.querySelectorAll('[data-feat-color]').forEach(b => {
+          b.onclick = () => {
+            selColor = b.dataset.featColor;
+            panel.querySelectorAll('[data-feat-color]').forEach(x => x.style.outline = x === b ? '2px solid var(--primary)' : 'none');
+            paintPrev();
+          };
+        });
+        $('featBadgeText').addEventListener('input', paintPrev);
+        panel.querySelectorAll('[data-feat-out]').forEach(b => { b.onclick = () => __featPost({ action: 'remove', q: b.dataset.featOut }, b); });
+        panel.querySelectorAll('[data-feat-unadd]').forEach(b => { b.onclick = () => __featPost({ action: 'unadd', id: b.dataset.featUnadd }, b); });
+        panel.querySelectorAll('[data-feat-unremove]').forEach(b => { b.onclick = () => __featPost({ action: 'unremove', id: b.dataset.featUnremove }, b); });
+        // ---- 逐件打标签（2026-11-17 晚）：点「打标签」展开/收起这一件的编辑条，保存后整块重画 ----
+        const tagEl = id => panel.querySelector('[data-feat-taged="' + id + '"]');
+        panel.querySelectorAll('[data-feat-tagopen]').forEach(b => {
+          b.onclick = () => {
+            const el = tagEl(b.dataset.featTagopen);
+            if (!el) return;
+            const open = el.style.display !== 'none';
+            el.style.display = open ? 'none' : 'flex';
+            if (!open) { const inp = el.querySelector('input'); if (inp) inp.focus(); }
+          };
+        });
+        panel.querySelectorAll('[data-feat-tagsave]').forEach(b => {
+          b.onclick = () => {
+            const id = b.dataset.featTagsave, el = tagEl(id);
+            const inp = el && el.querySelector('input'), sel = el && el.querySelector('select');
+            const text = ((inp && inp.value) || '').trim();
+            // 空文字 = 没标签，容易误当成「保存成功」；这里拦一下，要取消请走「清除」
+            if (!text) { if (inp) inp.focus(); alert('先写标签文字（最多 8 字）；想取消这件的标签请点「清除」'); return; }
+            __featPost({ action: 'tag', id, text, color: sel ? sel.value : undefined }, b);
+          };
+        });
+        panel.querySelectorAll('[data-feat-tagclear]').forEach(b => {
+          b.onclick = () => {
+            const id = b.dataset.featTagclear;
+            if (!confirm('清除这件作品的单独标签？\n（增补件会回到默认标签，算法件回到自动角标）')) return;
+            __featPost({ action: 'tag', id, text: '' }, b);
+          };
+        });
+      }
+    }
 
     // ---- 开源收录（/open 提交队列） ----
     // 前台「开源好物」页弹窗提交进这里：star>500 服务端已自动收录（不会出现在队列里），

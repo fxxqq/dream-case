@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="google-adsense-account" content="ca-pub-5526491839331555" />
 <meta name="robots" content="noindex,follow" />
 <title>换个形象 - 造梦橱窗</title>
 <link rel="icon" href="/favicon.svg" />
@@ -13,7 +14,11 @@
     本页不引 app.js，导航都是整页跳转，登录态由 /api/mascots/state 顺带给出。
   - 形象库只有一份：mascots.js（window.MASCOTS），与首页右下角小助手同一套数据。
   - 动效只有一份：mascots.css（首页 style.css 里的形象动效已抽到这里，两边共用）。
-  - 选择只存本机：localStorage['dm_mascot']，与首页小助手读的是同一个键。
+  - 领取口径（2026-11-17）：只有 free 的「机器人」白送，其余每个看一支激励视频才领得到。
+    广告不新造通道——POST /api/ad/ticket 出票 → 扫码进小程序 pages/adview 看完 → 票变成 done
+    → 这里调 POST /api/mascots/claim 把形象记到账号上。网页侧不认「用户说看完了」。
+  - 两个本地键：dm_mascot（当前用哪个，只记本机）、dm_mascot_owned（领到哪几个的缓存，
+    真账在服务端 share.json 的 mascots 字段，接口回来会覆盖）。
   - 页面不参与收录（私人偏好页），noindex。
 -->
 <link rel="stylesheet" href="/mascots.css" />
@@ -23,18 +28,23 @@
   --primary:#5b5bd6; --border:#e6e8f0; --soft:#f4f3ff;
 }
 *{box-sizing:border-box;margin:0;padding:0}
+/* 与主站 style.css 同一条规则：恒留滚动条槽位，短页/长页来回切时内容不横向抖 */
+html{scrollbar-gutter:stable}
 body{
   font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
   background:var(--bg); color:var(--text); line-height:1.6;
   -webkit-font-smoothing:antialiased;
 }
-.wrap{max-width:1000px;margin:0 auto;padding:28px 20px 60px}
+/* 容器宽度与主站 style.css 的 --page-max 同值（1260px）：头、内容、脚三条线对齐首页，
+   宽度只改这三处的 1260。2026-11-17 统一——原来这里写死 1000，比首页窄 260，
+   从首页点进来整页内容往中间一缩，像是另一个站。 */
+.wrap{max-width:1260px;margin:0 auto;padding:28px 20px 60px}
 
 /* ---------- 站头：与主站 .site-header 同款（/medals 已有一份，这里设成一样）
-   本页不引 app.js，导航是普通链接整页跳转；容器 1000px 与 .wrap 对齐，logo 和内容左边缘同一条线。
+   本页不引 app.js，导航是普通链接整页跳转；容器 1260px 与 .wrap 对齐，logo 和内容左边缘同一条线。
    ≤640px 跟随主站策略：顶级导航不摆，只留 logo 和登录/我的。 ---------- */
 .site-header{background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
-.sh-inner{max-width:1000px;margin:0 auto;padding:0 20px;height:60px;display:flex;align-items:center;gap:24px}
+.sh-inner{max-width:1260px;margin:0 auto;padding:0 20px;height:60px;display:flex;align-items:center;gap:24px}
 .logo{
   display:inline-flex;align-items:center;gap:8px;flex:none;
   font-size:18px;font-weight:700;color:var(--primary);text-decoration:none;letter-spacing:.2px;
@@ -119,7 +129,7 @@ body{
 }
 .btn-ghost:hover{border-color:#c3c4ee;color:var(--primary);background:#fbfaff;transform:translateY(-1px)}
 .btn-ghost:active{transform:none}
-/* 全部形象内测时，随机按钮置灰：普通用户没得换，别让人白点 */
+/* 只有一个形象可用时（还没领别的），随机按钮置灰：别让人白点 */
 .btn-ghost[disabled]{opacity:.5;cursor:default}
 .btn-ghost[disabled]:hover{border-color:var(--border);color:#4a5063;background:#fff;transform:none}
 
@@ -129,8 +139,11 @@ body{
 .list-hd .cnt{font-size:12px;color:var(--muted)}
 .list-hd .tip{margin-left:auto;font-size:11.5px;color:#a0a5b6}
 
+/* 一列下限 196：容器放宽到 1260 后，若仍按 158 会自动排成 6 列、每张卡只有 190 左右，
+   比首页作品卡（228）还窄。196 让 1220 的可用宽度只够 5 列（每列约 234），
+   和首页 5 列的观感对齐；窄屏自然降到 4/3 列，≤640px 固定 2 列。 */
 .grid{
-  display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));
   gap:12px;margin-top:14px;
 }
 .sk{
@@ -152,6 +165,9 @@ body{
    写在这里是为了让人知道换形象不只是换脸——选了它，面板第一条就是这件事。 */
 .sk .hk{display:block;font-size:11px;color:#6a63c9;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sk .hk b{font-weight:600}
+/* 「N 人已领取」（2026-11-18）：每个付费形象卡片上的一行小字，人数来自 /api/mascots/state。
+   机器人是免费默认形象不走领取，不给它画这一行。 */
+.sk .pc{display:block;font-size:10.5px;color:#a0a5b6;margin-top:2px;letter-spacing:.2px}
 .hero-info .hact{font-size:12.5px;color:#6a63c9;margin-top:8px}
 .hero-info .hact b{font-weight:600}
 .sk .tick{
@@ -160,19 +176,28 @@ body{
 }
 .sk.on .tick{display:grid}
 
-/* 内测形象：给用户看得见、点不动；站长自己点得动（他就是来看效果的） */
-.sk.lock{background:#fbfbfe;border-style:dashed;cursor:default}
-.sk.lock:hover{transform:none;box-shadow:none;border-color:var(--border);background:#fbfbfe}
-.sk.lock .site-bot{opacity:.72;filter:saturate(.8)}
-.sk.lock:hover .site-bot *{animation-play-state:paused}
-.beta{
+/* 未领取的形象（2026-11-17）：看得见、点得动——点开就是「看一支广告领取」，
+   但没领到之前选不了，右下角还是默认的机器人。
+   动画照旧只在该格悬停时跑，别让 11 个一起动。 */
+.sk.locked{background:#fbfbfe;border-style:dashed}
+.sk.locked:hover{border-color:#c3c4ee;background:#fdfdff}
+.sk.locked .site-bot{opacity:.66;filter:saturate(.7)}
+.sk.locked:hover .site-bot{opacity:.88;filter:none}
+/* 角标：未领取（琥珀）/ 默认免费（绿）/ 已领取（淡紫） */
+.lk{
   font-size:10px;letter-spacing:.4px;padding:1px 6px;border-radius:6px;
   color:#a8761c;background:#fff8e8;border:1px solid #f2e2bb;white-space:nowrap;
 }
-.sk .beta{position:absolute;top:8px;left:8px}
+.fr{
+  font-size:10px;letter-spacing:.4px;padding:1px 6px;border-radius:6px;
+  color:#2f7d5b;background:#effaf4;border:1px solid #cbe9d8;white-space:nowrap;
+}
+.sk .lk,.sk .fr{position:absolute;top:8px;left:8px}
 .hero-head{display:flex;align-items:center;gap:7px}
-.hero-head .beta{display:none}
-.hero-head .beta.on{display:inline-block}
+.hero-head .fr,.hero-head .lk{display:none}
+.hero-head .fr.on,.hero-head .lk.on{display:inline-block}
+.owned-cnt{font-size:12px;color:#8a8fa3;margin-top:4px}
+.owned-cnt b{color:#6a63c9;font-weight:600}
 
 /* ---------- 页面注脚（讲口径，不是站级页脚） + 轻提示 ---------- */
 .page-note{
@@ -187,7 +212,7 @@ body{
   flex:none;background:#f3f3f9;border-top:1px solid #dce0ea;
   color:var(--muted);font-size:13px;padding:28px 0 22px;margin-top:36px;
 }
-.ft-inner{max-width:1000px;margin:0 auto;padding:0 20px}
+.ft-inner{max-width:1260px;margin:0 auto;padding:0 20px}
 .ft-grid{display:flex;flex-wrap:wrap;gap:26px 52px;align-items:flex-start}
 .ft-brand{flex:1 1 250px;min-width:230px}
 .ft-name{display:block;font-size:16px;font-weight:700;color:var(--text);letter-spacing:.01em}
@@ -214,6 +239,55 @@ body{
   font-size:12.5px;opacity:0;pointer-events:none;transition:.22s;z-index:50;
 }
 .toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- 领取弹层：看一支广告换一个形象（2026-11-17） ----------
+   二维码是服务端出的（/api/qr/ad?t=票号），扫开进小程序 pages/adview 看激励视频；
+   那边把票核销成 done，这边轮询到 done 就调 /api/mascots/claim 记到账号上。
+   网页侧没有任何「我看完了」的信任：点了也只是查一次票。 */
+.claim-mask{
+  position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+  padding:20px;background:rgba(20,22,36,.56);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+}
+.claim-mask[hidden]{display:none}
+.claim-card{
+  position:relative;width:100%;max-width:344px;background:#fff;border-radius:18px;
+  padding:24px 22px 16px;text-align:center;box-shadow:0 20px 60px rgba(20,22,40,.26);
+  animation:claim-in .18s ease-out;
+}
+@keyframes claim-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+.claim-x{
+  position:absolute;top:8px;right:10px;width:30px;height:30px;border:0;background:none;
+  color:#a0a5b6;font-size:20px;line-height:1;cursor:pointer;font-family:inherit;
+}
+.claim-x:hover{color:var(--text)}
+.claim-art{width:96px;margin:0 auto 6px}
+.claim-art .site-bot{width:96px;margin:0 auto}
+.claim-art .site-bot *{animation-play-state:running}
+.claim-card h3{font-size:16.5px;font-weight:600;letter-spacing:.3px}
+.claim-sub{font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.75}
+.claim-qrwrap{margin:12px auto 0;width:196px;height:196px;border-radius:14px;background:#f5f6fb;display:grid;place-items:center;overflow:hidden}
+.claim-qrwrap[hidden]{display:none}
+.claim-qrwrap img{width:100%;height:100%;object-fit:contain;display:block}
+.claim-done{display:none;width:46px;height:46px;border-radius:50%;background:#12b76a;color:#fff;font-size:24px;line-height:46px;margin:14px auto 4px}
+.claim-card.is-done .claim-done{display:block}
+.claim-card.is-done .claim-qrwrap{display:none}
+.claim-msg{font-size:12px;color:#8a8fa3;min-height:17px;margin:10px 0 12px;line-height:1.7}
+.claim-msg.is-warn{color:#c2410c}
+.claim-btn{
+  display:block;width:100%;border:0;border-radius:11px;padding:12px 0;font-size:14.5px;font-weight:600;
+  background:var(--primary);color:#fff;cursor:pointer;font-family:inherit;transition:.16s;
+}
+.claim-btn:hover{background:#4f4fc4}
+.claim-btn[hidden]{display:none}
+.claim-btn[disabled]{background:#c7c9d9;cursor:default}
+.claim-btn2{
+  display:block;width:100%;border:0;background:none;color:#9aa0b8;font-size:12.5px;
+  padding:11px 0 3px;cursor:pointer;font-family:inherit;
+}
+.claim-btn2:hover{color:var(--muted)}
+@media(max-width:640px){
+  .claim-qrwrap{width:180px;height:180px}
+}
 
 /* 形象统一尺寸：本页不加载 style.css，这里补上 .site-bot 的基础盒模型 */
 .site-bot{display:block;width:64px;line-height:0}
@@ -268,7 +342,7 @@ body{
 <div class="wrap">
   <header class="hd">
     <h1>换个形象</h1>
-    <p class="sub">挑一个站在右下角陪你 · 每个都有自己的小动作和一件拿手事</p>
+    <p class="sub">默认只有机器人白送 · 其他每个看一支广告就能领 · 领到手记在账号上</p>
   </header>
 
   <section class="hero">
@@ -278,11 +352,12 @@ body{
     <div class="hero-info">
       <div class="hero-head">
         <span class="now">当前形象</span>
-        <span class="beta" id="heroBeta">内测中 · 仅你可选</span>
+        <span class="fr" id="heroTag"></span>
       </div>
-      <h2 id="heroName">灯火</h2>
-      <p class="quote" id="heroQuote">灯亮着，要帮忙吗？</p>
-      <p class="hact" id="heroAct">拿手事 · <b>点亮今日</b></p>
+      <h2 id="heroName">机器人</h2>
+      <p class="quote" id="heroQuote">嗨～需要帮忙吗？</p>
+      <p class="hact" id="heroAct">拿手事 · <b>找件工具</b></p>
+      <p class="owned-cnt" id="ownedCnt"></p>
       <div class="hero-acts">
         <button type="button" class="btn-ghost" id="randBtn">随机换一个</button>
         <a class="btn-ghost" href="/">回首页看效果</a>
@@ -293,7 +368,7 @@ body{
   <div class="list-hd">
     <h2>全部形象</h2>
     <span class="cnt" id="cnt"></span>
-    <span class="tip" id="listTip">点一下就换 · 悬停能看动效</span>
+    <span class="tip" id="listTip">点没领的，看一支广告就能领</span>
   </div>
   <section class="grid" id="grid" aria-label="形象列表"></section>
 
@@ -330,45 +405,62 @@ body{
     </div>
   </div>
 </footer>
+<div class="claim-mask" id="claimMask" hidden>
+  <div class="claim-card" id="claimCard" role="dialog" aria-modal="true" aria-labelledby="claimTitle">
+    <button class="claim-x" type="button" id="claimX" aria-label="关闭">×</button>
+    <div class="claim-art"><div class="site-bot"><div class="bot-figure" id="claimFigure"></div></div></div>
+    <h3 id="claimTitle">领取形象</h3>
+    <p class="claim-sub" id="claimSub"></p>
+    <div class="claim-done" aria-hidden="true">✓</div>
+    <div class="claim-qrwrap" id="claimQrWrap"><img id="claimQr" alt="小程序码" /></div>
+    <p class="claim-msg" id="claimMsg"></p>
+    <button class="claim-btn" type="button" id="claimOk">我已经看完了</button>
+    <button class="claim-btn2" type="button" id="claimCancel">先不要</button>
+  </div>
+</div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="/mascots.js"></script>
 <script>
 (function(){
   var M = window.MASCOTS || {};
-  var KEY = 'dm_mascot';
-  var DEFAULT = 'lamp';
+  var KEY = 'dm_mascot';              // 当前形象：只记本机（换设备跟着账号重新领的走）
+  var OWNED_KEY = 'dm_mascot_owned';  // 领到的形象：服务端 share.json 为准，这里只是首屏缓存
+  var DEFAULT = 'robot';              // 唯一白送的默认形象（2026-11-17 从「灯火」改成机器人）
   var ids = Object.keys(M);
   if (!ids.length) return;
+  // 机器人排第一（2026-11-18）：它是免费默认形象，放在第一格最顺理成章；其余保持 mascots.js 的原顺序。
+  // 只排本页展示顺序，mascots.js 的键顺序不动（首页面板和领取名单都还照原顺序走）。
+  ids.sort(function(a, b){ return (a === DEFAULT ? -1 : b === DEFAULT ? 1 : 0); });
+  var counts = {};                    // 每个形象多少人领过：服务端 share.json 实时数出来的（机器人恒 0）
+  var countsReady = false;            // 人数拿到没有：接口没回之前不画这一行，免得先闪一个错数
 
   // 站长标识由服务端注入（后台口令 cookie 换来的，前端读不到也不需要读）
   var ADMIN = document.documentElement.getAttribute('data-admin') === '1';
-  // 内测形象（mascots.js 里 beta:true）普通用户看得见、点不动，只有站长能选
-  function isBeta(id){ return !!(M[id] && M[id].beta); }
-  var pool = ids.filter(function(id){ return ADMIN || !isBeta(id); });   // 自己可选的池子
-  var userPool = ids.filter(function(id){ return !isBeta(id); });        // 用户可用的那几个
-  // 2026-11-10：12 个形象全部内测，userPool 是空的。普通用户没有可换的池子，
-  // 但要有一张「当前形象」当样例展示，否则 hero 区会空着。取默认形象，它自己也在内测。
-  var SHOW_FALLBACK = userPool[0] || (M[DEFAULT] ? DEFAULT : ids[0]);
+  // 领取口径：free:true 的白送；其余每个看一支广告才领得到，领到就记在账号上。
+  // 站长那边服务端直接回全量，所以下面 canUse 一律放行。
+  function isFree(id){ return !!(M[id] && M[id].free) || id === DEFAULT; }
+  var cachedOwned = null;
+  try { var cv = JSON.parse(localStorage.getItem(OWNED_KEY) || 'null'); if (Array.isArray(cv)) cachedOwned = cv; } catch(e){}
+  var owned = cachedOwned || [];
+  var ownReady = !!cachedOwned;       // 缓存里有答案就先照着画，接口回来再校正
+  var loggedIn = null;                // null = 还没问到
+  function canUse(id){ return ADMIN || isFree(id) || owned.indexOf(id) >= 0; }
 
   var heroFigure = document.getElementById('heroFigure');
   var heroName = document.getElementById('heroName');
   var heroQuote = document.getElementById('heroQuote');
   var heroAct = document.getElementById('heroAct');
-  var heroBeta = document.getElementById('heroBeta');
+  var heroTag = document.getElementById('heroTag');
+  var ownedCnt = document.getElementById('ownedCnt');
   var grid = document.getElementById('grid');
-  var toastEl = document.getElementById('toast');
   var cntEl = document.getElementById('cnt');
+  var listTip = document.getElementById('listTip');
+  var randBtn = document.getElementById('randBtn');
+  var footNote = document.getElementById('footNote');
+  var toastEl = document.getElementById('toast');
   var cells = [];
   var cur = '';
-
-  function read(){
-    var v = '';
-    try { v = localStorage.getItem(KEY) || ''; } catch(e){}
-    if (M[v] && (ADMIN || !isBeta(v))) return v;                 // 内测形象只认站长的
-    if (M[v] && !ADMIN){ try { localStorage.removeItem(KEY); } catch(e){} }
-    return SHOW_FALLBACK;
-  }
 
   var toastTimer = null;
   function toast(text){
@@ -376,6 +468,17 @@ body{
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 1800);
+  }
+
+  function cacheOwned(){
+    try { localStorage.setItem(OWNED_KEY, JSON.stringify(owned)); } catch(e){}
+  }
+
+  // 首屏：本地存着的形象（不一定是我的——可能是账号里领过、也可能是清过缓存）
+  function readStored(){
+    var v = '';
+    try { v = localStorage.getItem(KEY) || ''; } catch(e){}
+    return M[v] ? v : '';
   }
 
   function paint(id, save){
@@ -389,9 +492,11 @@ body{
       heroAct.innerHTML = a && a.label ? '拿手事 · <b>' + a.label + '</b>' : '';
       heroAct.style.display = a && a.label ? '' : 'none';
     }
-    // 角标文案分两种人：站长是「仅你可选」，普通用户是「暂未开放」（2026-11-10 全部形象内测）
-    heroBeta.className = 'beta' + (isBeta(id) ? ' on' : '');
-    heroBeta.textContent = ADMIN ? '内测中 · 仅你可选' : '内测中 · 暂未开放';
+    if (heroTag){
+      var free = isFree(id);
+      heroTag.className = (free ? 'fr' : 'lk') + ' on';
+      heroTag.textContent = free ? '默认 · 免费' : (ADMIN ? '站长可选' : '已领取');
+    }
     cells.forEach(function(c){
       var on = c.getAttribute('data-id') === id;
       c.classList.toggle('on', on);
@@ -404,66 +509,312 @@ body{
     }
   }
 
-  // 列表：一项一个按钮，键盘也能选（aria-pressed 表示当前选中）
-  ids.forEach(function(id){
-    var skin = M[id];
-    var locked = !ADMIN && isBeta(id);
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'sk' + (locked ? ' lock' : '');
-    b.setAttribute('data-id', id);
-    b.setAttribute('aria-pressed', 'false');
-    b.setAttribute('aria-label', (locked ? skin.name + '（内测中，暂不可选）' : '换成' + skin.name + '：' + skin.bubble));
-    if (locked) b.setAttribute('aria-disabled', 'true');
-    b.innerHTML =
-      (isBeta(id) ? '<span class=beta>内测中</span>' : '') +
-      '<span class=tick aria-hidden=true>✓</span>' +
-      '<span class=site-bot><span class=bot-figure>' + skin.svg + '</span></span>' +
-      '<span class=nm>' + skin.name + '</span>' +
-      '<span class=qt>' + skin.bubble + '</span>' +
-      (skin.act && skin.act.label ? '<span class=hk>拿手事 · <b>' + skin.act.label + '</b></span>' : '');
-    b.addEventListener('click', function(){
-      if (locked) { toast('「' + skin.name + '」内测中，站长测试完就开放'); return; }
-      if (id !== cur) paint(id, true);
-    });
-    grid.appendChild(b);
-    cells.push(b);
-  });
-
-  cntEl.textContent = ids.length + ' 个';
-  if (!ADMIN){
-    if (userPool.length){
-      document.getElementById('listTip').textContent = '内测中的还在测，先随机换一个';
-      document.getElementById('randBtn').textContent = '随机换一个';
-      document.getElementById('footNote').textContent =
-        '标着「内测中」的还在测，暂时只有站长能用；你现在用的这几个可以随机换，选择只记在这台设备上';
-    } else {
-      // 全部形象都在内测：没得换，把按钮说清楚，别让人白点
-      document.getElementById('listTip').textContent = '全部形象都在内测中';
-      var rb = document.getElementById('randBtn');
-      rb.textContent = '全部内测中';
-      rb.disabled = true;
-      rb.title = ids.length + ' 个形象都还在测，站长测完逐个开放';
-      document.getElementById('footNote').textContent =
-        ids.length + ' 个形象都在内测，暂时只有站长能选，站长测完会逐个开放；右下角先固定是默认的「灯火」';
-    }
-  } else {
-    document.getElementById('footNote').textContent =
-      '内测中的形象只有你能选（用户那边点不动）；选择只记在这台设备上，换设备回默认的「灯火」';
+  /* 卡片底部那行「N 人已领取」（2026-11-18 修）：原来是 `counts[id] ? … : ''`，
+     全站一个人都没领过的时候整行都不画——站长自己去看也看不见，以为没做。
+     现在的口径：
+       · 免费的默认形象（机器人）本来就不走领取，不画；
+       · 人数还没拿到（接口没回 / 挂了）也不画，免得先闪一个错数；
+       · 有 1 个人领了就照实写「N 人已领取」；
+       · 0 人时对普通访客不画（满屏「0 人已领取」很劝退），只给站长露一行「还没人领」好核数。 */
+  function claimLine(id){
+    if (isFree(id) || !countsReady) return '';
+    var n = counts[id] || 0;
+    if (n > 0) return '<span class=pc>' + n + ' 人已领取</span>';
+    return ADMIN ? '<span class=pc>还没人领</span>' : '';
   }
 
-  // 随机：用户只在开放的那几个里抽，站长在全部里抽；避开当前这个才像真的「换」
-  document.getElementById('randBtn').addEventListener('click', function(){
-    var src = ADMIN ? ids : pool;
-    if (src.length < 2) { toast('全部形象都在内测，等站长测完就开放'); return; }
+  // 列表：一项一个按钮，键盘也能选（aria-pressed 表示当前选中）
+  function renderGrid(){
+    grid.innerHTML = '';
+    cells = [];
+    ids.forEach(function(id){
+      var skin = M[id];
+      var locked = !ADMIN && !canUse(id);
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'sk' + (locked ? ' locked' : '');
+      b.setAttribute('data-id', id);
+      b.setAttribute('aria-pressed', 'false');
+      b.setAttribute('aria-label', locked
+        ? skin.name + '：还没领，点开看一支广告就能领'
+        : '换成' + skin.name + '：' + skin.bubble);
+      b.innerHTML =
+        (isFree(id) ? '<span class=fr>默认</span>' : (locked ? '<span class=lk>未领取</span>' : '')) +
+        '<span class=tick aria-hidden=true>✓</span>' +
+        '<span class=site-bot><span class=bot-figure>' + skin.svg + '</span></span>' +
+        '<span class=nm>' + skin.name + '</span>' +
+        '<span class=qt>' + skin.bubble + '</span>' +
+        (skin.act && skin.act.label ? '<span class=hk>拿手事 · <b>' + skin.act.label + '</b></span>' : '') +
+        claimLine(id);
+      b.addEventListener('click', function(){
+        if (locked){ openClaim(id); return; }
+        if (id !== cur) paint(id, true);
+      });
+      grid.appendChild(b);
+      cells.push(b);
+    });
+  }
+
+  var paidCount = ids.filter(function(id){ return !isFree(id); }).length;
+
+  function updateMeta(){
+    var got = ADMIN ? paidCount : owned.filter(function(x){ return M[x] && !isFree(x); }).length;
+    cntEl.textContent = ids.length + ' 个 · 已领 ' + got + ' / ' + paidCount;
+    if (ownedCnt){
+      ownedCnt.innerHTML = isFree(cur)
+        ? '默认形象免费 · 其余 ' + paidCount + ' 个各看一支广告就能领'
+        : '已领 <b>' + got + '</b> / ' + paidCount + ' 个 · 换下的形象还在，随时换回来';
+    }
+    if (listTip){
+      listTip.textContent = ADMIN ? '站长：全部可选'
+        : (loggedIn === false ? '领形象要先登录 · 领到的记在账号上' : '点没领的，看一支广告就能领');
+    }
+    var pool = ids.filter(canUse);
+    randBtn.disabled = pool.length < 2;
+    randBtn.textContent = pool.length < 2 ? '先领一个才能随机' : '随机换一个';
+    randBtn.title = pool.length < 2 ? '现在只有默认的机器人，领到第二个才能随机换' : '';
+    footNote.textContent = loggedIn === false
+      ? '默认的「机器人」免费，其余 ' + paidCount + ' 个各看一支广告就能领；领到的形象记在账号上，所以要先登录（不登录只能用默认的机器人）。'
+      : '默认的「机器人」免费，其余 ' + paidCount + ' 个各看一支广告就能领；领到的记在账号上（换设备也在），此刻选中的那个只记在这台设备。';
+  }
+
+  /* ---------------- 领取：出票 → 扫码进小程序看广告 → 回来凭票换形象 ---------------- */
+  var mask = document.getElementById('claimMask');
+  var claimCard = document.getElementById('claimCard');
+  var claimFigure = document.getElementById('claimFigure');
+  var claimTitle = document.getElementById('claimTitle');
+  var claimSub = document.getElementById('claimSub');
+  var claimQrWrap = document.getElementById('claimQrWrap');
+  var claimQr = document.getElementById('claimQr');
+  var claimMsg = document.getElementById('claimMsg');
+  var claimOk = document.getElementById('claimOk');
+  var pending = '', ticket = '', pollTimer = null, claimMode = 'watch';
+
+  /* 出过的票记在 localStorage（形象 id → 票号）：弹层关了、页面刷新了都还能续上。
+     不记的话，关一次弹层票就丢了——用户在小程序看完广告回来，这边已经另出一张新码，
+     旧票成了废票，等于白看一支广告还领不到。票本身 30 分钟过期，过期记录在这清掉。 */
+  var LS_CLAIM = 'dm-mascot-claim-tickets';
+  function claimMapRead(){
+    try { return JSON.parse(localStorage.getItem(LS_CLAIM) || '{}') || {}; } catch(e){ return {}; }
+  }
+  function claimMapWrite(map){
+    try { localStorage.setItem(LS_CLAIM, JSON.stringify(map)); } catch(e){}
+  }
+  function claimRecSave(id, tid, expireAt){
+    var m = claimMapRead();
+    m[id] = { ticket: tid, expireAt: Number(expireAt) || 0, at: Date.now() };
+    claimMapWrite(m);
+  }
+  function claimRecDrop(id){
+    var m = claimMapRead();
+    if (m[id]){ delete m[id]; claimMapWrite(m); }
+  }
+
+  function cmsg(text, warn){
+    claimMsg.textContent = text || '';
+    claimMsg.className = 'claim-msg' + (warn ? ' is-warn' : '');
+  }
+  function stopPoll(){ if (pollTimer){ clearTimeout(pollTimer); pollTimer = null; } }
+  function closeClaim(){
+    stopPoll();
+    mask.hidden = true;
+    claimCard.classList.remove('is-done');
+    pending = ''; ticket = '';
+  }
+
+  function openClaim(id){
+    pending = id; ticket = '';
+    claimCard.classList.remove('is-done');
+    claimFigure.innerHTML = M[id].svg;
+    claimTitle.textContent = '领取「' + M[id].name + '」';
+    claimOk.hidden = false; claimOk.disabled = false; claimOk.textContent = '我已经看完了';
+    claimQrWrap.hidden = false;
+    claimQr.removeAttribute('src');
+    cmsg('');
+    mask.hidden = false;
+    if (loggedIn === false){ guestState(); return; }   // 没登录：先给一条去登录的路，别白出一张码
+    if (tryResume(id)) return;                          // 上次出过还没过期的票：接着用，别另出一张
+    startTicket();
+  }
+
+  // 续票：localStorage 里还留着这张形象的票且没过期，就还原同一张码继续轮询
+  function tryResume(id){
+    var rec = claimMapRead()[id];
+    if (!rec || !rec.ticket) return false;
+    if (Number(rec.expireAt) <= Date.now()){ claimRecDrop(id); return false; }
+    ticket = rec.ticket;
+    claimQr.src = '/api/qr/ad?t=' + encodeURIComponent(ticket) + '&raw=1';
+    cmsg('接着上次那张码，看完自动认账，不用回来点按钮');
+    startPoll();
+    return true;
+  }
+
+  function guestState(){
+    claimMode = 'login';
+    claimQrWrap.hidden = true;
+    claimSub.textContent = '领到的形象记在账号上，得先登录一下。不登录只能用默认的机器人。';
+    claimOk.textContent = '去登录';
+  }
+
+  function startTicket(){
+    if (!pending) return;
+    claimMode = 'watch';
+    claimOk.hidden = false; claimOk.disabled = false; claimOk.textContent = '我已经看完了';
+    claimQrWrap.hidden = false;
+    claimSub.textContent = '用微信扫一扫（手机上可长按二维码识别），在小程序里看完这支广告，这个形象就归你了。';
+    cmsg('正在出码…');
+    fetch('/api/ad/ticket', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scene: 'mascot', site: location.hostname })
+    })
+      .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){ return { ok: r.ok, d: d || {} }; }); })
+      .then(function(res){
+        if (!res.ok || !res.d.id) throw new Error(res.d.error || '出码失败，稍后再试');
+        ticket = res.d.id;
+        claimQr.src = res.d.qr;
+        claimRecSave(pending, ticket, res.d.expireAt);
+        cmsg('看完自动认账，不用回来点按钮');
+        startPoll();
+      })
+      .catch(function(err){
+        cmsg((err && err.message) || '出码失败，稍后再试', true);
+        claimMode = 'retry';
+        claimOk.textContent = '重试';
+      });
+  }
+
+  function startPoll(){
+    stopPoll();
+    pollTimer = setTimeout(tick, 2500);
+  }
+
+  function tick(){
+    if (!ticket || mask.hidden) return;
+    fetch('/api/ad/ticket?id=' + encodeURIComponent(ticket), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function(r){
+        if (r.status === 404) return { expired: true };
+        return r.json().catch(function(){ return {}; });
+      })
+      .then(function(d){
+        if (d && d.expired){ ticket = ''; claimRecDrop(pending); cmsg('二维码过期了，正在重出一张…'); startTicket(); return; }
+        if (d && d.done){ doClaim(); return; }
+        pollTimer = setTimeout(tick, 2500);
+      })
+      .catch(function(){ pollTimer = setTimeout(tick, 4000); });
+  }
+
+  // 「我已经看完了」：只查一次票，查不到就说没看完——网页侧不认「用户说看完了」
+  function checkOnce(){
+    if (!ticket){ startTicket(); return; }
+    claimOk.disabled = true;
+    cmsg('正在确认…');
+    fetch('/api/ad/ticket?id=' + encodeURIComponent(ticket), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function(r){
+        if (r.status === 404) return { expired: true };
+        return r.json().catch(function(){ return {}; });
+      })
+      .then(function(d){
+        claimOk.disabled = false;
+        if (d && d.expired){ ticket = ''; claimRecDrop(pending); startTicket(); return; }
+        if (d && d.done){ doClaim(); return; }
+        cmsg('还没看完哦，把广告看到最后再回来', true);
+      })
+      .catch(function(){ claimOk.disabled = false; cmsg('网络有点慢，再点一下', true); });
+  }
+
+  function doClaim(){
+    if (!ticket || !pending) return;
+    stopPoll();
+    var id = pending;
+    claimOk.hidden = true;
+    cmsg('广告看完啦，正在领取…');
+    fetch('/api/mascots/claim', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id, ticket: ticket })
+    })
+      .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){ return { status: r.status, d: d || {} }; }); })
+      .then(function(res){
+        var d = res.d;
+        if (res.status === 409) claimRecDrop(id);   // 票被别的领取用掉了，这张记录没有再续的价值
+        if (Array.isArray(d.owned)){ owned = d.owned; cacheOwned(); }
+        if (res.status === 401){ loggedIn = false; renderGrid(); updateMeta(); guestState(); return; }
+        if (res.status >= 400) throw new Error(d.error || '领取没成功，稍后再试');
+        claimRecDrop(id);                            // 领到了：这张票彻底用完
+        if (counts[id] !== undefined) counts[id]++;  // 自己刚领的这笔也马上算进去，不用刷新
+        renderGrid();
+        paint(id, true);          // 领到就换上，不用再点一次
+        updateMeta();
+        claimCard.classList.add('is-done');
+        claimSub.textContent = '「' + M[id].name + '」领到了，已经给你换上。';
+        cmsg('');
+        setTimeout(closeClaim, 1100);
+      })
+      .catch(function(err){
+        cmsg((err && err.message) || '领取没成功，稍后再试', true);
+        ticket = '';
+        claimMode = 'retry';
+        claimOk.hidden = false; claimOk.disabled = false; claimOk.textContent = '再试一次';
+      });
+  }
+
+  claimOk.addEventListener('click', function(){
+    if (claimMode === 'login'){ location.href = '/?login=1'; return; }
+    if (claimMode === 'retry'){ ticket = ''; startTicket(); return; }
+    checkOnce();
+  });
+  document.getElementById('claimX').addEventListener('click', closeClaim);
+  document.getElementById('claimCancel').addEventListener('click', closeClaim);
+  mask.addEventListener('click', function(e){ if (e.target === mask) closeClaim(); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !mask.hidden) closeClaim(); });
+
+  // 回来自动补领：出过票、人也走了（关弹层/刷新/换页），在小程序看完广告再回来这个页面的，
+  // 开屏查一次存着的票，看完没领的就当场把弹层打开领掉——不用用户再点一遍那个形象。
+  function resumePending(){
+    var m = claimMapRead();
+    var keys = Object.keys(m).filter(function(k){ return M[k] && !canUse(k); });
+    if (!keys.length) return;
+    keys.sort(function(a,b){ return (Number(m[b].at) || 0) - (Number(m[a].at) || 0); });
+    var id = keys[0], rec = m[id];
+    if (!rec || !rec.ticket){ claimRecDrop(id); return; }
+    if (Number(rec.expireAt) <= Date.now()){ claimRecDrop(id); return; }
+    fetch('/api/ad/ticket?id=' + encodeURIComponent(rec.ticket), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function(r){ if (r.status === 404) return { expired: true }; return r.json().catch(function(){ return {}; }); })
+      .then(function(d){
+        if (d && d.expired){ claimRecDrop(id); return; }
+        if (d && d.done){
+          pending = id; ticket = rec.ticket; claimMode = 'watch';
+          claimCard.classList.remove('is-done');
+          claimFigure.innerHTML = M[id].svg;
+          claimTitle.textContent = '领取「' + M[id].name + '」';
+          claimOk.hidden = true; claimOk.disabled = false;
+          claimQrWrap.hidden = false;
+          claimQr.src = '/api/qr/ad?t=' + encodeURIComponent(ticket) + '&raw=1';
+          cmsg('广告看完啦，正在领取…');
+          mask.hidden = false;
+          doClaim();
+        }
+        // 还没看完：不动它，用户点回这个形象会续上同一张码
+      })
+      .catch(function(){});
+  }
+
+  // 随机：只在「我的那几个」里抽，避开当前这个才像真的「换」
+  randBtn.addEventListener('click', function(){
+    var pool = ids.filter(canUse);
+    if (pool.length < 2){ toast('先领一个别的形象，再来随机'); return; }
     var next = cur;
-    while (next === cur) next = src[Math.floor(Math.random() * src.length)];
+    while (next === cur) next = pool[Math.floor(Math.random() * pool.length)];
     paint(next, true);
+    updateMeta();
   });
 
   /* —— 站头登录区：跟 /medals 同一套说法 ——
      已登录：胶囊头像 + 昵称 → /me；未登录：「登录 / 注册」→ 首页带 login=1 回来直接弹登录框。
-     只问 /api/mascots/state（admin 本来就从这里来），不额外拉 /api/me，
+     登录态和「我领了哪几个」同一次请求拿回来（/api/mascots/state），不额外拉 /api/me，
      免得在一个纯偏好页上触发到访/签到那套逻辑。 */
   var authBox = document.getElementById('authBox');
   function esc(t){
@@ -471,20 +822,43 @@ body{
       return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
     });
   }
-  function renderAuth(loggedIn, name){
+  function renderAuth(ok, name){
     if (!authBox) return;
-    authBox.innerHTML = loggedIn
+    authBox.innerHTML = ok
       ? '<a class="sh-user" href="/me" title="我的主页"><span class="ico" data-ico="user"></span><b>' + esc(name || '我') + '</b></a>'
       : '<a class="sh-login" href="/?login=1">登录 / 注册</a>';
     if (window.Icons) Icons.hydrate(authBox);   // 后插的节点要手动水合
   }
+
+  // 首屏：先按本地缓存放着画，接口回来再校正（缓存里那个已经不归我了就退回机器人）
+  var bootSkin = readStored();
+  paint(bootSkin && (canUse(bootSkin) || !ownReady) ? bootSkin : DEFAULT, false);
+  renderGrid();
+  updateMeta();
   renderAuth(false, '');   // 先画登录入口，接口慢了也不留空位
+
   fetch('/api/mascots/state', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
     .then(function(r){ return r.json(); })
-    .then(function(d){ renderAuth(!!d.loggedIn, d.name || ''); })
-    .catch(function(){});
-
-  paint(read(), false);
+    .then(function(d){
+      loggedIn = !!d.loggedIn;
+      owned = Array.isArray(d.owned) ? d.owned : [];
+      counts = d.counts && typeof d.counts === 'object' ? d.counts : {};
+      countsReady = true;
+      ownReady = true;
+      cacheOwned();
+      renderAuth(loggedIn, d.name || '');
+      renderGrid();
+      paint(canUse(cur) ? cur : DEFAULT, false);   // 先重建列表再上色，不然「选中」勾会落空
+      updateMeta();
+      resumePending();                              // 上次看完没领的，回来当场补上
+    })
+    .catch(function(){
+      // 接口挂了：本地缓存说了算，至少别把页面卡成空白
+      ownReady = true;
+      renderGrid();
+      updateMeta();
+      resumePending();
+    });
 })();
 </script>
 </body>

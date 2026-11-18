@@ -31,6 +31,8 @@
 #   ./deploy-patch.sh rollback frontend/app.js 20261114-163000
 set -uo pipefail
 
+# 冒烟探针地址：只要打到同一套应用即可，跟站点对外口径无关（口径由服务器 pm2 的 SITE_ORIGIN 决定）。
+# 保留旧域名是因为本机 curl 走 schannel，对 zm94.com 的证书握手会失败，探针会误报 000 导致回滚。
 SITE_URL="${SITE_URL:-https://idea.v5pc.com}"
 PM2_APP="${PM2_APP:-ai-works}"
 KEEP_BAK="${KEEP_BAK:-10}"

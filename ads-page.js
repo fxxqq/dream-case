@@ -242,7 +242,7 @@ function register(deps) {
       </div>
       <div class="adv-showcase" aria-hidden="true">
         <div class="adv-showcase-pc">
-          <div class="adv-showcase-bar"><i></i><i></i><i></i><span>idea.v5pc.com</span></div>
+          <div class="adv-showcase-bar"><i></i><i></i><i></i><span>zm94.com</span></div>
           <span class="adv-slot-hi">01 · 首页头部横幅</span>
           <span class="adv-sk-line w60"></span>
           <span class="adv-sk-line w35"></span>

@@ -135,6 +135,7 @@ function head(opts) {
     keywords ? `<meta name="keywords" content="${esc(keywords)}" />` : '',
     `<meta name="robots" content="${robots}" />`,
     `<meta name="theme-color" content="#5b5bd6" />`,
+    `<meta name="google-adsense-account" content="ca-pub-5526491839331555" />`,
     canonical ? `<link rel="canonical" href="${esc(canonical)}" />` : '',
     `<link rel="icon" href="/favicon.svg" type="image/svg+xml" />`,
     `<link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />`,
@@ -333,7 +334,7 @@ function workArticle(base, w, trail, related = [], opts = {}) {
     <span class="seo-kw-title">关键词</span>
     ${kws.map(k => `<a href="/?q=${esc(encodeURIComponent(k))}">${esc(k)}</a>`).join('')}
   </div>` : '';
-  // 同分类优先、不足补同作者（见 server.js relatedWorksOf），标题不再写死「同类」
+  // 关键词重合优先、分类次之、不足补同作者（见 server.js relatedWorksOf），标题不再写死「同类」
   const relatedHtml = related.length ? `<section class="seo-related">
     <h2>相关作品</h2>
     <div class="gallery">${related.map(x => cardHtml(x, suffix)).join('')}</div>

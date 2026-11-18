@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="google-adsense-account" content="ca-pub-5526491839331555" />
 <meta name="robots" content="noindex,nofollow" />
 <title>造梦勋章 · 造梦橱窗</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -19,6 +20,8 @@
   --lamp:#f59e0b; --lamp-l:#ffd66b; --gold:#8a6d1f; --off:#b6bac8;
 }
 *{box-sizing:border-box;margin:0;padding:0}
+/* 与主站 style.css 同一条规则：恒留滚动条槽位，短页/长页来回切时内容不横向抖 */
+html{scrollbar-gutter:stable}
 body{
   font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
   background:var(--bg); color:var(--text); line-height:1.6;
@@ -26,7 +29,9 @@ body{
   /* 站头 / 页脚夹在中间：内容不足一屏时页脚也贴着底，不浮在半空 */
   display:flex; flex-direction:column; min-height:100vh;
 }
-.wrap{max-width:1000px;margin:0 auto;padding:28px 20px 60px;width:100%;flex:1 0 auto}
+/* 容器宽度与主站 style.css 的 --page-max 同值（1260px），头/内容/脚三条线对齐首页。
+   2026-11-17 统一：原来写死 1000，比首页窄 260，切页时内容区横向缩一下。 */
+.wrap{max-width:1260px;margin:0 auto;padding:28px 20px 60px;width:100%;flex:1 0 auto}
 
 /* 页内标题：返回箭头的活儿交给站头的 logo（点它回首页） */
 .hd{padding:8px 0 22px}
@@ -63,17 +68,21 @@ body{
 .card.on{border-color:rgba(245,158,11,.38);background:linear-gradient(180deg,#fffdf7,#fff 62%)}
 .card.on:hover{box-shadow:0 8px 22px rgba(245,158,11,.18)}
 
+/* 勋章图形：形状按层级区分（L1 圆形 / L2 六边形 / L3 锯齿徽章），SVG 画在 .mshape 里，
+   点亮态填层级渐变 + 内圈白环，未点亮是灰底灰环的同一形状剪影。 */
 .medal{
-  width:56px;height:56px;margin:0 auto 11px;border-radius:50%;
-  display:grid;place-items:center;transition:.2s;
+  width:56px;height:56px;margin:0 auto 11px;
+  display:grid;place-items:center;position:relative;transition:.2s;
 }
-.medal.on{
-  background:radial-gradient(circle at 32% 26%,var(--lamp-l),var(--lamp) 74%);
-  box-shadow:0 4px 14px rgba(245,158,11,.3),inset 0 0 0 3px rgba(255,255,255,.55);
+.medal .mshape{position:absolute;inset:0;width:100%;height:100%;display:block}
+.medal.on .mshape{filter:drop-shadow(0 4px 10px rgba(245,158,11,.35))}
+.medal.t-L2.on .mshape{filter:drop-shadow(0 4px 10px rgba(91,91,214,.35))}
+.medal.t-L3.on .mshape{filter:drop-shadow(0 4px 10px rgba(138,109,31,.35))}
+.medal .mico{
+  position:relative;width:26px;height:26px;fill:none;stroke:#fff;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;
 }
-.medal.off{background:#f1f2f7;box-shadow:inset 0 0 0 1px #e4e6ef}
-.medal svg{width:26px;height:26px;fill:none;stroke:#fff;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.medal.off svg{stroke:var(--off)}
+.medal.off .mico{stroke:var(--off)}
 
 .nm{font-size:13.5px;font-weight:600;letter-spacing:.2px}
 .off .nm{color:#5d6479}
@@ -87,6 +96,10 @@ body{
 .on .st{color:#b4740a;font-weight:500}
 /* 日期弱化成灰色元信息，别跟着状态字一起高亮，否则更像进度读数 */
 .on .st .dt{color:var(--muted);font-weight:400}
+/* 自动结算勋章的「多少人已获得」：贴在状态行下面的第三层元信息，弱化处理不抢戏。
+   手授类（b.by）不加——它们的 st 行里已经写了「已授 N[/上限] 人」，再来一行就重复了 */
+.own{font-size:10.5px;color:#a0a5b6;margin-top:2px;line-height:1}
+.off .own{color:#b6bac8}
 
 .load-tip{margin-top:36px;text-align:center;font-size:12.5px;color:var(--muted);padding:40px 0}
 
@@ -122,7 +135,7 @@ body{
 }
 .sheet.show{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
 .sheet .medal{width:72px;height:72px;margin-bottom:14px}
-.sheet .medal svg{width:34px;height:34px}
+.sheet .medal .mico{width:34px;height:34px}
 .sheet h3{font-size:16px;font-weight:600}
 .sheet .lvl{font-size:11.5px;color:var(--muted);margin-top:3px}
 .sheet .condbox{
@@ -166,10 +179,10 @@ body{
 
 /* —— 站头：/medals 是独立页（刻意不引 app.js / SPA 路由），所以这里手写一份轻量版，
    高度 60px、白底、底部 1px 线、导航胶囊高亮都跟主站 .site-header 对齐；
-   内层容器跟页面内容同为 1000px，logo 和左栏卡片才在同一条竖线上。
+   内层容器跟页面内容同为 1260px，logo 和左栏卡片才在同一条竖线上。
    ≤640px 跟随主站策略：顶级导航不摆（手机端站点靠底部 tab），只留 logo 和登录/我的。 —— */
 .site-header{background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
-.sh-inner{max-width:1000px;margin:0 auto;padding:0 20px;height:60px;display:flex;align-items:center;gap:24px}
+.sh-inner{max-width:1260px;margin:0 auto;padding:0 20px;height:60px;display:flex;align-items:center;gap:24px}
 .logo{
   display:inline-flex;align-items:center;gap:8px;flex:none;
   font-size:18px;font-weight:700;color:var(--primary);text-decoration:none;letter-spacing:.2px;
@@ -225,7 +238,7 @@ body{
   flex:none;background:#f3f3f9;border-top:1px solid #dce0ea;
   color:var(--muted);font-size:13px;padding:28px 0 22px;margin-top:36px;
 }
-.ft-inner{max-width:1000px;margin:0 auto;padding:0 20px}
+.ft-inner{max-width:1260px;margin:0 auto;padding:0 20px}
 .ft-grid{display:flex;flex-wrap:wrap;gap:26px 52px;align-items:flex-start}
 .ft-brand{flex:1 1 250px;min-width:230px}
 .ft-name{display:block;font-size:16px;font-weight:700;color:var(--text);letter-spacing:.01em}
@@ -273,6 +286,18 @@ body{
 <script src="/icons.js"></script>
 </head>
 <body>
+<!-- 勋章渐变：全页共用一份 defs，形状路径按层级取色（L1 金 / L2 紫 / L3 金棕） -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <linearGradient id="mg-L1" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#ffd66b"/><stop offset="1" stop-color="#f59e0b"/>
+  </linearGradient>
+  <linearGradient id="mg-L2" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#9a9af5"/><stop offset="1" stop-color="#5b5bd6"/>
+  </linearGradient>
+  <linearGradient id="mg-L3" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#d4a531"/><stop offset="1" stop-color="#8a6d1f"/>
+  </linearGradient>
+</defs></svg>
 <!-- 站头：与主站同款（logo / 导航 / 登录态）。本页不引 app.js，导航是普通链接整页跳转，
      登录态由下面的 load() 顺带从 /api/me/badges 拿到后填入 #authBox。 -->
 <header class="site-header">
@@ -411,16 +436,49 @@ const stateText = b => {
   return g ? tail + ' · ' + g : tail;
 };
 const pct = b => b.state === 'on' ? 100 : (b.state === 'doing' ? Math.min(100, Math.round(b.now / b.goal * 100)) : 0);
-const iconSvg = k => '<svg viewBox="0 0 24 24"><path d="' + ICONS[k] + '"/></svg>';
+const iconSvg = k => '<svg class="mico" viewBox="0 0 24 24"><path d="' + ICONS[k] + '"/></svg>';
+
+/* —— 勋章形状：按层级给三种剪影，都是 64×64 viewBox、以 (32,32) 为中心 ——
+   L1 圆形（梦的开始，最朴素）；L2 六边形（橱窗陈列，有棱角）；L3 锯齿徽章（造梦者名录，像金属徽章）。
+   锯齿用 12 个外凸圆弧拼成，半径 27 保证最高点不超出画布。 */
+const SHAPE = {
+  L1: 'M32 3a29 29 0 1 1 0 58 29 29 0 1 1 0-58Z',
+  L2: 'M32 2 58 17 58 47 32 62 6 47 6 17Z'
+};
+SHAPE.L3 = (() => {
+  const R = 27, n = 12, step = 2 * Math.PI / n;
+  const rr = (2 * R * Math.sin(Math.PI / n) * 0.62).toFixed(2);
+  let d = '';
+  for (let i = 0; i <= n; i++) {
+    const a = i * step - Math.PI / n;
+    const x = (32 + R * Math.cos(a)).toFixed(2), y = (32 + R * Math.sin(a)).toFixed(2);
+    d += (i ? 'A' + rr + ' ' + rr + ' 0 0 1 ' : 'M') + x + ' ' + y + ' ';
+  }
+  return d + 'Z';
+})();
+
+/* 一枚完整的图形 = 形状剪影（点亮填层级渐变 / 未点亮灰底）+ 同形状内缩 0.8 倍的细环 + 居中图标 */
+function medalInner(b) {
+  const on = b.state === 'on';
+  const tier = TIERS.find(t => t.key === b.t);
+  const d = SHAPE[tier.key];
+  const fill = on ? 'url(#mg-' + tier.key + ')' : '#eef0f6';
+  const ring = on ? 'rgba(255,255,255,.6)' : '#dde0ec';
+  return '<svg class="mshape" viewBox="0 0 64 64" aria-hidden="true">' +
+    '<path d="' + d + '" fill="' + fill + '"/>' +
+    '<path d="' + d + '" fill="none" stroke="' + ring + '" stroke-width="2" stroke-linejoin="round" transform="translate(32 32) scale(.8) translate(-32 -32)"/>' +
+    '</svg>' + iconSvg(b.icon);
+}
 
 function cardHtml(b, i) {
   const tier = TIERS.find(t => t.key === b.t);
   return '<button class="card ' + (b.state === 'on' ? 'on' : 'off') + '" style="animation-delay:' + (i * 28) + 'ms" data-i="' + BADGES.indexOf(b) + '">' +
-    '<div class="medal ' + (b.state === 'on' ? 'on' : 'off') + '">' + iconSvg(b.icon) + '</div>' +
+    '<div class="medal t-' + b.t + ' ' + (b.state === 'on' ? 'on' : 'off') + '">' + medalInner(b) + '</div>' +
     '<div class="nm">' + b.name + '</div>' +
     '<div class="cd">' + b.cond + '</div>' +
     '<div class="bar"><i style="width:' + pct(b) + '%;background:' + tier.color + '"></i></div>' +
     '<div class="st">' + stateText(b) + '</div>' +
+    (!b.by && b.count ? '<div class="own">' + b.count + ' 人已获得</div>' : '') +
   '</button>';
 }
 
@@ -466,7 +524,7 @@ function openSheet(i) {
     }
   }
   sheet.innerHTML =
-    '<div class="medal ' + (b.state === 'on' ? 'on' : 'off') + '">' + iconSvg(b.icon) + '</div>' +
+    '<div class="medal t-' + b.t + ' ' + (b.state === 'on' ? 'on' : 'off') + '">' + medalInner(b) + '</div>' +
     '<h3>' + b.name + '</h3>' +
     '<div class="lvl">' + tier.key + ' ' + tier.name + (b.by ? ' · ' + b.by + '授予' : ' · 自动结算') + '</div>' +
     '<div class="condbox"><span class="k">点亮条件</span><p>' + b.cond + '</p></div>' +
@@ -474,7 +532,8 @@ function openSheet(i) {
     '<div class="meta">' + (b.state === 'on'
       ? '获得时间 <b>' + b.at + '</b>'
       : (b.state === 'doing' ? '当前进度 <b>' + b.now + ' / ' + b.goal + '</b>' : '尚未达成')) + '</div>' +
-    (grantText(b) ? '<div class="meta">全站已授 <b>' + grantNum(b) + '</b> 人</div>' : '') +
+    (grantText(b) ? '<div class="meta">全站已授 <b>' + grantNum(b) + '</b> 人</div>'
+      : (b.count ? '<div class="meta">全站 <b>' + b.count + '</b> 人已获得</div>' : '')) +
     applyHtml +
     '<button class="close" id="closeBtn">关闭</button>';
   mask.classList.add('show');

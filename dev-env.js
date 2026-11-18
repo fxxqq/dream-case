@@ -22,7 +22,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const DEFAULT_TARGET = process.env.DEV_PROD_ORIGIN || 'https://idea.v5pc.com';
+const DEFAULT_TARGET = process.env.DEV_PROD_ORIGIN || 'https://zm94.com';
 const FORCE = String(process.env.DEV_ENV || '').trim();   // DEV_ENV=1 强制开，=0 强制关
 const ENABLED = FORCE === '1' ? true
   : FORCE === '0' ? false

@@ -50,6 +50,42 @@ const GH_MEDAL =
 const hasGhBadge = tags => Array.isArray(tags) && tags.includes(GH_BADGE_TAG);
 const ghMedalHtml = tags => (hasGhBadge(tags) ? `<i class="gh-medal" title="${GH_BADGE_TAG}">${GH_MEDAL}</i>` : '');
 
+// 企业认证（2026-11-17）：站长人工核验营业执照后在后台贴的资质标签（CERT_TAG，不进标签库）。
+// 服务端存 u.cert = { subject, at }，作品载荷带 authorCert、作者接口带 cert。
+// 展示：详情弹窗 / 作者主页用蓝V胶囊（.author-tag.cert，盾形对勾 + 文字）；
+// 卡片 / 列表空间小，缩成无字小盾章（.cert-mini）。悬停显示认证主体与时间，点击不出弹层。
+const CERT_TAG = '企业认证';
+const CERT_SHIELD_PILL =
+  '<svg class="cert-shield" viewBox="0 0 16 16" aria-hidden="true">' +
+  '<path d="M8 1l2 2h3v3l2 2-2 2v3h-3l-2 2-2-2H3v-3L1 8l2-2V3h3l2-2z" fill="#fff"/>' +
+  '<path d="M5.2 8.2l2 2 3.6-4" stroke="#185FA5" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+  '</svg>';
+const CERT_SHIELD_MINI =
+  '<svg viewBox="0 0 16 16" aria-hidden="true">' +
+  '<path d="M8 1l2 2h3v3l2 2-2 2v3h-3l-2 2-2-2H3v-3L1 8l2-2V3h3l2-2z" fill="#185FA5"/>' +
+  '<path d="M5.2 8.2l2 2 3.6-4" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>' +
+  '</svg>';
+function certTip(cert) {
+  return cert && cert.subject
+    ? `企业认证 · 已核验主体：${cert.subject}${cert.at ? '（' + String(cert.at).slice(0, 10) + ' 核验）' : ''}`
+    : '企业认证 · 已核验';
+}
+const certPillHtml = (cert) => `<i class="author-tag cert" title="${escapeHtml(certTip(cert))}">${CERT_SHIELD_PILL}${escapeHtml(CERT_TAG)}</i>`;
+const certMiniHtml = (cert) => (cert && cert.subject ? `<i class="cert-mini" title="${escapeHtml(certTip(cert))}">${CERT_SHIELD_MINI}</i>` : '');
+
+// 荣誉标签圆章（2026-11-17）：标签从长胶囊改成小圆章，文字全部收进悬停提示（title + aria-label），
+// 章面只留一枚图案。不同类型的认证配不同图案（data-ti 供 CSS 换图标），认不出的回落金星章。
+// 按关键词认，不按全等：后台贴的老标签是「github优质原创作者」这种小写写法，全等匹配会漏。
+const tagBadgeKind = (t) => /github/i.test(t) ? 'gh'
+  : /体验官/.test(t) ? 'thumb'
+  : /奖|赛|冠军|榜|第[\d一二三四五六七八九十]+名/.test(t) ? 'cup'
+  : /元老|创始/.test(t) ? 'crown'
+  : 'star';
+const tagBadgeHtml = (t) => {
+  const kind = tagBadgeKind(t);
+  return `<i class="author-tag${kind === 'gh' ? ' gh' : ''}" data-ti="${kind}" aria-label="${escapeHtml(t)}" title="${escapeHtml(t)}">${escapeHtml(t)}</i>`;
+};
+
 let CATEGORIES = ['全部'];
 let SCENES = [];   // 场景（上班干活/学习充电/过日子…）：{ key, name, desc, count }，来自 /api/scene-meta，只含已配置且有作品的
 let typeCounts = {}, catCounts = {}, totalWorks = 0; let osCounts = { open: 0, closed: 0 }; // 筛选下拉选项的计数
@@ -81,13 +117,80 @@ function syncSortToggle() {
     b.classList.toggle('active', b.dataset.sort === state.sort));
 }
 
+// ---------- 筛选条件记忆（dm_filters，由「记住我的选择」开关控制） ----------
+// 形态 / 场景 / 分类 / 开源 / 时间：只有用户勾选了筛选行的「记住我的选择」才落盘，
+// 没勾就是「这一次看看」，刷新回到全部。开关自身也记本机（dm_filters_remember），
+// 勾过下次打开还是勾着；取消勾选会删掉已存的筛选，下次打开就是干净的「全部」。
+// 搜索时程序自动复位筛选永远不写这条记忆，跟开关无关。
+const FILTERS_KEY = 'dm_filters';
+const REMEMBER_KEY = 'dm_filters_remember';
+const FILTER_KEYS = ['type', 'scene', 'category', 'openSource', 'range'];
+function readRemember() {
+  try { return localStorage.getItem(REMEMBER_KEY) === '1'; } catch { return false; }  // 默认不勾
+}
+function readSavedFilters() {
+  const out = {};
+  if (!readRemember()) return out;   // 开关没勾：不理旧记忆（用户可能刚取消勾选）
+  try {
+    const saved = JSON.parse(localStorage.getItem(FILTERS_KEY) || 'null');
+    if (saved && typeof saved === 'object') {
+      FILTER_KEYS.forEach(k => {
+        const v = saved[k];
+        // 分类/场景是后台下发的，初始化时还没加载完，没法按选项白名单校验；
+        // 这里挡住非字符串和超长脏值，显示时一律走 escapeHtml。
+        if (typeof v !== 'string' || !v.length || v.length > 30) return;
+        // 静态档位按白名单校验，别让手改的脏值把手机 tab 显示成「undefined」
+        if (k === 'type' && !TYPES.includes(v)) return;
+        if (k === 'openSource' && !['全部', '开源', '闭源'].includes(v)) return;
+        if (k === 'range' && !['全部', '近3天', '近7天', '近30天'].includes(v)) return;
+        out[k] = v;
+      });
+    }
+  } catch { /* 隐私模式 / 老版本脏数据：按没记过处理 */ }
+  return out;
+}
+const SAVED_FILTERS = readSavedFilters();
+function saveFilters() {
+  if (!state.rememberFilters) return;   // 没勾「记住我的选择」：本次筛选只在当前会话生效
+  const cur = {};
+  FILTER_KEYS.forEach(k => { cur[k] = state[k]; });
+  try { localStorage.setItem(FILTERS_KEY, JSON.stringify(cur)); } catch { /* 存不了不影响本次会话 */ }
+  // 筛选只在「最新/最热」下生效，随便逛逛不认筛选；点筛选时已 breakout 到最新，
+  // 顺手把这个排序也记下来，否则刷新后 sorting 回到随便逛逛，记住的筛选看着有、列表却不按它走。
+  if (state.sort !== 'wander') saveSort(state.sort);
+}
+// 勾选/取消「记住我的选择」：开关状态自己也要记，否则下次打开又变回未勾、用户以为没记住。
+// 取消时把已存的筛选删掉——下次打开是真·没记忆，不是「关着但还留着旧选择」。
+function setRememberFilters(on) {
+  state.rememberFilters = !!on;
+  try {
+    if (on) localStorage.setItem(REMEMBER_KEY, '1');
+    else { localStorage.removeItem(REMEMBER_KEY); localStorage.removeItem(FILTERS_KEY); }
+  } catch { /* 隐私模式存不了，本次会话内照样按开关走 */ }
+  syncRememberToggle();
+  if (on) saveFilters();   // 勾上时把当前选择一并记下来，不用再点一次筛选
+}
+function syncRememberToggle() {
+  document.querySelectorAll('[data-remember-filters]').forEach(el => {
+    if (el.type === 'checkbox') el.checked = state.rememberFilters;
+    else el.classList.toggle('active', state.rememberFilters);
+  });
+  // 常驻说明：把「记住的是什么」直接写出来，别让用户猜。勾上后换成确认态。
+  document.querySelectorAll('.remember-hint').forEach(el => {
+    el.textContent = state.rememberFilters
+      ? '已记住上方筛选 · 下次打开照旧'
+      : '下次打开仍保持上方筛选';
+  });
+}
+
 const state = {
   sort: readSavedSort(),   // 默认随便逛逛：随机推荐（docs/discover-spec-v1.md）；点过最新/最热则按记忆来
-  type: '全部',
-  category: '全部',
-  scene: '全部',      // 场景筛选：全部 / work / study / life / create / relax / family（key 由 /api/scene-meta 下发）
-  openSource: '全部', // 是否开源筛选：全部 / 开源 / 闭源（后端 os=open|closed，可见性不受影响）
-  range: '全部',      // 发布时间筛选：全部 / 近3天 / 近7天 / 近30天
+  rememberFilters: readRemember(),   // 「记住我的选择」开关，默认关
+  type: SAVED_FILTERS.type || '全部',
+  category: SAVED_FILTERS.category || '全部',
+  scene: SAVED_FILTERS.scene || '全部',      // 场景筛选：全部 / work / study / life / create / relax / family（key 由 /api/scene-meta 下发）
+  openSource: SAVED_FILTERS.openSource || '全部', // 是否开源筛选：全部 / 开源 / 闭源（后端 os=open|closed，可见性不受影响）
+  range: SAVED_FILTERS.range || '全部',      // 发布时间筛选：全部 / 近3天 / 近7天 / 近30天
   q: '',
   page: 1,
   hasMore: false,
@@ -118,6 +221,7 @@ const state = {
 // app.js 在 body 末尾同步加载，这里 DOM 已经齐了：先按记忆的排序点亮排序按钮，
 // 不等 route()/setupHeader()（中间还要 await 登录态），否则刷新时「随便逛逛」会先亮一下再跳走。
 try { syncSortToggle(); } catch { /* 排序按钮不在本页 DOM 上就算了，不影响首屏 */ }
+try { syncRememberToggle(); } catch { /* 首页才有的开关，别的页没有就算了 */ }
 
 // 从作品详情弹窗退回列表页时置为 true：列表 DOM 仍然完整，route() 不要重新拉取，
 // 否则已加载的分页会丢失、「展示更多」按钮重新出现，看起来像整页刷新
@@ -135,6 +239,11 @@ const BOOT = (() => {
     return el ? JSON.parse(el.textContent) : null;
   } catch { return null; }
 })();
+// 精选标签（2026-11-17，晚改「每件作品一个」）：接口里每件作品带 featTag = {text,color,bg,border}，
+// 有就画这一件自己的标签；没有的，增补件回落 FEAT_TAG（默认标签，留空字服务端兜「站长精选」），
+// 算法件照旧按数据自动出角标（人气最高/收藏飙升…）。首屏随 #dm-boot 直出，之后每次 /api/featured 都带回最新值。
+const FEAT_TAG_INIT = (BOOT && BOOT.featuredTag) || null;
+let FEAT_TAG = FEAT_TAG_INIT;
 // 卡片网格列数：4 / 5 / 6 由用户选（存本机），窄屏由 CSS 回落到响应式列数
 //
 // 2026-11-15 22:20：屏幕真放不下就不给这个选项。
@@ -193,6 +302,7 @@ function pageSizeOf(page = state.page) {
   return Math.max(1, base - promoCell);
 }
 const detailModal = $('detailModal');
+const toolModal = $('toolModal');
 const uploadModal = $('uploadModal');
 const submitChoiceModal = $('submitChoiceModal');
 const reportModal = $('reportModal');
@@ -398,6 +508,39 @@ function linkLabelOf(types) {
   for (const t of types) if (LINK_LABEL[t]) return LINK_LABEL[t].replace(/^[^A-Za-z\u4e00-\u9fa5]+/, '');
   return '访问作品';
 }
+// 按钮去重用的链接指纹（2026-11-17）：投稿里官网常写 https://x.com、Web 链接写 https://x.com/，
+// 字符串不等但其实是同一个地址，会并排冒出「官网」+「打开网站」两颗按钮。
+// 只抹平末尾斜杠 / 协议主机大小写 / 默认端口；query、hash 保留，免得把不同下载页误判成同一个。
+function canonLinkKey(u) {
+  const s = String(u || '').trim();
+  if (!s) return '';
+  try {
+    const x = new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s);
+    return x.protocol + '//' + x.host.toLowerCase() + x.pathname.replace(/\/+$/, '') + x.search + x.hash;
+  } catch { return s.replace(/\/+$/, ''); }
+}
+// 官方下载地址识别（2026-11-17）：下载链接落在官方应用商店，或与作品官网同域时，
+// 详情弹窗的访问/下载按钮上缀一枚「官方」小标签。第三方分发站（蒲公英 / fir / 网盘等）不标。
+const OFFICIAL_STORE_HOSTS = [
+  'apps.apple.com',              // App Store（iOS / macOS 应用共用）
+  'testflight.apple.com',        // TestFlight 内测
+  'play.google.com',             // Google Play
+  'apps.microsoft.com', 'store.microsoft.com',   // Microsoft Store
+  'chromewebstore.google.com', 'microsoftedge.microsoft.com', 'addons.mozilla.org', // 浏览器扩展官方商店
+  'appgallery.huawei.com', 'appgallery.cloud.huawei.com', 'app.mi.com', // 华为 / 小米应用商店
+  'sj.qq.com', 'myapp.com'       // 应用宝
+];
+function officialStoreOk(url, siteUrl) {
+  const hostOf = s => {
+    try { return new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s).hostname.toLowerCase().replace(/^www\./, ''); }
+    catch { return ''; }
+  };
+  const host = hostOf(url);
+  if (!host) return false;
+  if (OFFICIAL_STORE_HOSTS.some(base => host === base || host.endsWith('.' + base))) return true;
+  const site = hostOf(siteUrl);
+  return !!site && host === site;   // 与官网同域 = 作者官方自己的下载页
+}
 // 每个形态对应的访问按钮图标（按钮里用 SVG，不用 emoji）
 const LINK_ICON = {
   'Web': 'web', 'iOS': 'ios', 'Android': 'android', 'macOS': 'mac', 'Windows': 'win',
@@ -428,7 +571,7 @@ function renderLinkInputs(types, values) {
   if (nonMini.length === 1) {
     const t = nonMini[0], c = linkConfOf(t);
     $('linkLabel').textContent = c.label;
-    box.innerHTML = `<input type="text" name="link" data-ltype="${escapeHtml(t)}" maxlength="500"
+    box.innerHTML = `<input type="text" name="link" data-ltype="${escapeHtml(t)}" maxlength="500" autocomplete="off"
       placeholder="${escapeHtml(c.ph)}" value="${escapeHtml(prev[t] || '')}" />`;
   } else {
     $('linkLabel').textContent = '各平台链接（选填，哪个平台有就填哪个）';
@@ -436,7 +579,7 @@ function renderLinkInputs(types, values) {
       const c = linkConfOf(t);
       return `<div class="lpt-row">
         <span class="lpt-name">${typeIcoHtml(t)} ${escapeHtml(t)}</span>
-        <input type="text" name="link_${escapeHtml(t)}" data-ltype="${escapeHtml(t)}" maxlength="500"
+        <input type="text" name="link_${escapeHtml(t)}" data-ltype="${escapeHtml(t)}" maxlength="500" autocomplete="off"
           placeholder="${escapeHtml(c.ph.replace(' *', ''))}" value="${escapeHtml(prev[t] || '')}" />
       </div>`;
     }).join('');
@@ -1099,6 +1242,19 @@ function ckAdOnce(ck) {
   return Number(ar.each || ar.once || (Array.isArray(ar.schedule) ? ar.schedule[0] : 0)) || 30;
 }
 
+// 「看视频领灯火」整块可隐藏（2026-11-17）：点「不再显示」记在本机（localStorage），
+// 之后只留一行可恢复的小字——入口不能彻底消失，不然想用的人找不回来。
+const CK_AD_HIDDEN_KEY = 'dm_ck_ad_hidden';
+function ckAdHidden() {
+  try { return localStorage.getItem(CK_AD_HIDDEN_KEY) === '1'; } catch { return false; }
+}
+function setCkAdHidden(v) {
+  try {
+    if (v) localStorage.setItem(CK_AD_HIDDEN_KEY, '1');
+    else localStorage.removeItem(CK_AD_HIDDEN_KEY);
+  } catch { /* 隐私模式存不了：本次会话内照样生效，刷新后回原状 */ }
+}
+
 function ckAdHtml(ck) {
   const ar = (ck && ck.adReward) || {};
   const once = ckAdOnce(ck);
@@ -1108,6 +1264,13 @@ function ckAdHtml(ck) {
   const total = Number(ar.total) || once * limit;
   const sched = Array.isArray(ar.schedule) && ar.schedule.length ? ar.schedule : Array.from({ length: limit }, () => once);
   const done = left <= 0;
+  if (ckAdHidden()) {
+    // 隐藏态：整卡收成一行小字，还套着 .ck-ad 外壳（refreshCkAdBlock 按 .ck-ad 原地重画，外壳不能换名）
+    return `
+    <div class="ck-ad is-off">
+      <div class="ck-ad-off">「看视频领灯火」已隐藏 <button type="button" class="ck-ad-show" id="ckAdShow">显示回来</button></div>
+    </div>`;
+  }
   // 价目三格：已领的涂黑、下一个描橙边、最后一档上暖黄——和签到 7 天进度条一个思路，进度条本身就是价目表
   const step = (amt, i) => {
     if (!amt) return '';
@@ -1121,6 +1284,7 @@ function ckAdHtml(ck) {
         <span class="ck-ad-ico">${ic('fire', 15)}</span>
         <b>看视频领灯火</b>
         <span class="ck-ad-badge">${done ? '已领完' : `还剩 ${left} 次`}</span>
+        <button type="button" class="ck-ad-hide" id="ckAdHide" title="这块卡片收起后不再显示，可随时在这里恢复">不再显示</button>
       </div>
       <div class="ck-ad-sub">${done
         ? `每天 ${limit} 次都领完了，明天 0 点刷新`
@@ -1131,11 +1295,16 @@ function ckAdHtml(ck) {
     </div>`;
 }
 
-// 签到卡里的看广告按钮：未登录先去登录（灯火记在账号上），登录了才出码
+// 签到卡里的看广告按钮：未登录先去登录（灯火记在账号上），登录了才出码。
+// 顺带绑「不再显示 / 显示回来」这对开关：切换后按当前签到状态原地重画整块。
 function bindCkAdBtn(root) {
-  const b = (root || document).querySelector('#ckAdBtn');
-  if (!b) return;
-  b.onclick = () => { if (!state.user) openAuth('login'); else openCheckinAdQr(); };
+  const scope = root || document;
+  const b = scope.querySelector('#ckAdBtn');
+  if (b) b.onclick = () => { if (!state.user) openAuth('login'); else openCheckinAdQr(); };
+  const h = scope.querySelector('#ckAdHide');
+  if (h) h.onclick = () => { setCkAdHidden(true); refreshCkAdBlock((state.user && state.user.checkin) || {}); };
+  const s = scope.querySelector('#ckAdShow');
+  if (s) s.onclick = () => { setCkAdHidden(false); refreshCkAdBlock((state.user && state.user.checkin) || {}); };
 }
 
 // 看广告到账后把签到卡里那一块原地重画（弹窗开着时也顺带更新「还剩几次」）
@@ -1386,6 +1555,7 @@ async function loadMe() {
           slugNextAt: Number(data.slugNextAt || 0),
           slugEligible: data.slugEligible === true,
           links: Array.isArray(data.links) ? data.links : [],   // 我的链接（GitHub/知乎/…），作者主页档案行下面那排
+          bio: data.bio || '',   // 个人介绍：作者主页档案区那段纯文本
           hideWorks: data.hideWorks === true,   // 主页作品隐藏：别人打开 /u/xxx 只看得到档案
           noticePrefs: data.noticePrefs || { announce: true, cats: {} },   // 消息提示偏好（屏蔽后仍收消息、不弹窗）
           wechat: data.wechat || null,
@@ -1666,12 +1836,23 @@ function renderNoticeList() {
     ? `<div class="notice-muted-banner"><span>本栏提示已屏蔽——新消息不再弹窗提醒，但仍会进这个列表。</span><button type="button" class="nm-unmute">恢复提示</button></div>`
     : '';
   if (!items.length) {
+    // 营销栏空态垫一条示例「站长通知」：光秃秃一个喇叭图标看不出这栏以后会长什么样，
+    // 摆一张虚线框的样例卡片让人一眼看懂——它不是真消息（aria-hidden + pointer-events:none，点了没反应），
+    // 站长真发过群发后就被真实消息顶掉。
+    const demo = noticeCat === 'promo' ? `
+    <div class="notice-item notice-demo" aria-hidden="true">
+      <div class="notice-top">
+        <span class="notice-title"><span class="nc-tag nc-promo">营销</span>站长通知</span>
+        <span class="notice-time">示例</span>
+      </div>
+      <div class="notice-text">站里搞活动、上新工具或发优惠时，站长会在这里发通知——这条是摆样子的，正式通知发出来会出现在这里。</div>
+    </div>` : '';
     box.innerHTML = `${mutedBanner}
     <div class="notice-empty">
       <div class="ne-art"><i class="ico" data-ico="${tab.icon || 'bell'}" data-ico-size="24"></i><i class="ico ne-spark" data-ico="sparkle" data-ico-size="12"></i></div>
       <div class="ne-title">${tab.title || '这里还空着'}</div>
       ${tab.empty ? `<div class="ne-text">${tab.empty}</div>` : ''}
-    </div>`;
+    </div>${demo}`;
     bindNoticeMutedBanner(box);
     try { if (window.Icons && Icons.hydrate) Icons.hydrate(box); } catch { /* 图标脚本没加载就先裸占位 */ }
     return;
@@ -2081,6 +2262,10 @@ function dmRenderPolicy(policy) {
   const known = policy === 'known';
   btn.setAttribute('aria-checked', known ? 'true' : 'false');
   btn.classList.toggle('is-on', known);
+  // 开关的滑动视觉认的是内层 .ud-switch.is-on（按钮上的 is-on 只管文字变色），
+  // 只加在按钮上就会「接口存下了、看着没反应」
+  const sw = btn.querySelector('.ud-switch');
+  if (sw) sw.classList.toggle('is-on', known);
 }
 
 async function toggleDmPolicy() {
@@ -3212,7 +3397,7 @@ function cardHtml(w, opts = {}) {
         <div class="card-title">${escapeHtml(ctName)}</div>
         <div class="card-desc">${escapeHtml(ctIntro)}</div>
         <div class="card-meta">
-          <span class="card-author">${avaChip(w)}${ghMedalHtml(w.authorTags)}<span class="author-name">${escapeHtml(anamePlain(w))}</span></span>
+          <span class="card-author">${avaChip(w)}${ghMedalHtml(w.authorTags)}<span class="author-name">${escapeHtml(anamePlain(w))}</span>${certMiniHtml(w.authorCert)}</span>
           <span class="card-tags"><span class="card-cat">${escapeHtml(w.category)}</span>${osBadgeHtml(w)}</span>
         </div>
         ${opts.metricLabel ? `<div class="card-rank-metric"><span class="card-rank-metric-label">${escapeHtml(opts.metricLabel)}</span><b class="card-rank-metric-val">${opts.metricValue}</b></div>` : ''}
@@ -3239,7 +3424,7 @@ function listHtml(w) {
       <div class="row-main">
         <div class="row-title">${w.pinned ? '<span class="pin-badge row-pin">置顶</span>' : ''}<span class="row-name">${escapeHtml(ctName)}</span></div>
         ${ctIntro ? `<div class="row-intro">${escapeHtml(ctIntro)}</div>` : ''}
-        <div class="row-meta">${juryChip ? `${juryChip} · ` : ''}${escapeHtml(typeText(w))} · ${ghMedalHtml(w.authorTags)}${escapeHtml(aname(w))} · ${escapeHtml(w.category)}${w.openSource === true ? ` · <span class="ico">${ic('lock-open')}</span> 开源` : ''}${w.paidModel === 'lamp' && w.lampPrice ? ` · <span class="ico">${ic('lock')}</span> ${w.lampPrice} 盏解锁` : ''}${w.paid ? ` · <span class="ico">${ic('coin')}</span> ${escapeHtml(PAID_MODELS[w.paidModel] || '付费')}` : ''}</div>
+        <div class="row-meta">${juryChip ? `${juryChip} · ` : ''}${escapeHtml(typeText(w))} · ${ghMedalHtml(w.authorTags)}${escapeHtml(aname(w))}${certMiniHtml(w.authorCert)} · ${escapeHtml(w.category)}${w.openSource === true ? ` · <span class="ico">${ic('lock-open')}</span> 开源` : ''}${w.paidModel === 'lamp' && w.lampPrice ? ` · <span class="ico">${ic('lock')}</span> ${w.lampPrice} 盏解锁` : ''}${w.paid ? ` · <span class="ico">${ic('coin')}</span> ${escapeHtml(PAID_MODELS[w.paidModel] || '付费')}` : ''}</div>
       </div>
       <div class="row-stats">
         ${/* 四段全部常驻 DOM，0 值挂 is-zero（visibility:hidden 占位不显示）——
@@ -3311,7 +3496,12 @@ document.addEventListener('click', e => {
 
 function bindCardNode(el) {
   if (!el) return;
-  if (el.classList.contains('promo-card') || el.classList.contains('promo-row')) return;   // 推荐卡自己管点击
+  if (el.dataset.bound === '1') return;   // 幂等：同一节点可能被 bindCards 和首屏 mount 各绑一次，重复绑会让点赞点两次
+  el.dataset.bound = '1';
+  if (el.classList.contains('promo-card') || el.classList.contains('promo-row')) return;   // 老推广卡自己管点击
+  // 企业合作工具卡也自己管点击（mountToolCards 里弹工具详情）：它没有 data-id，
+  // 被当成作品卡绑上会去请求 /api/works/undefined，白弹一个「作品不存在」的报错
+  if (el.classList.contains('tool-card') || el.classList.contains('tool-row')) return;
   el.addEventListener('click', e => {
     if (e.target.dataset.fav || e.target.dataset.shareWork || e.target.closest('[data-likework]')) return;
     // 扇面里的每颗按钮（含触发器）都归 .card-actions 管，不能再让卡片顺手把详情打开
@@ -3853,7 +4043,7 @@ function closeAd(id) {
   if (a.slot === 'list-first') {
     // 关掉这条后还有剩余：原地重挂，从剩下的里随机挑一条补上；彻底空了才按新的 pageSize 重拉作品补满这一格
     if (state.page === 1 && isPlainListView() && !listPromoAds().length) loadWorks(true);
-    else mountListPromo();
+    else { mountListPromo(); mountToolCards(); }
   }
   showToast('已关闭这条广告，之后不再显示');
 }
@@ -3940,6 +4130,7 @@ async function loadAds() {
   }
   renderAllAdSlots();
   mountListPromo();   // 第一格宣传卡跟着广告数据一起刷新
+  mountToolCards();   // 工具卡同理：广告数据回来时列表可能已重挂过一次
 }
 
 function adHtml(a, opts) {
@@ -4080,7 +4271,8 @@ function observeAds(root) {
       entries.forEach(en => { if (en.isIntersecting) maybeReportAd(en.target); });
     }, { threshold: 0.5 });
   }
-  root.querySelectorAll('a.ad-card, .promo-card[data-ad]').forEach(el => adObserver.observe(el));
+  // 灯火自荐位渲染成正常作品卡后也带 data-ad（data-native-promo），一并纳入曝光埋点
+  root.querySelectorAll('a.ad-card, .promo-card[data-ad], .card[data-native-promo], .work-row[data-native-promo]').forEach(el => adObserver.observe(el));
 }
 
 // 推荐小条的缩略图兜底处理器已随白底小条样式一起下线（2026-11-10 统一走图文横幅，
@@ -4147,6 +4339,28 @@ function myAdPreview(slot, list) {
     // 自己关掉 / 已下线 / 额度用完的推荐不在 list 里，自然退回随机
     return list.find(a => a.id === p.id) || null;
   } catch { return null; }
+}
+
+// 投放单升降权（2026-11-18，后台「用户推广」逐单调）：升权 ≈ 3 倍概率被挑中，降权 ≈ 1/3。
+// 列表顺序服务端已按权重排好（升权在前，页脚/轮播/首页横幅这些顺序位直接受益）；
+// 随机挑的位（首页第一格 / 详情位 / 榜单位）走下面的加权概率。
+function adBoostWeight(a) {
+  return a && a.boost === 'up' ? 3 : a && a.boost === 'down' ? 1 / 3 : 1;
+}
+function weightedPick(list) {
+  if (!list || !list.length) return null;
+  if (list.length === 1) return list[0];
+  let sum = 0;
+  const ws = list.map(a => { const w = adBoostWeight(a); sum += w; return w; });
+  let r = Math.random() * sum;
+  for (let i = 0; i < list.length; i++) { r -= ws[i]; if (r <= 0) return list[i]; }
+  return list[list.length - 1];
+}
+// 加权不放回抽样：从 rest 里按权重挑一条并移除，返回它（详情位 / 榜单位的并排挑选用）
+function weightedSplice(rest) {
+  const a = weightedPick(rest);
+  rest.splice(rest.indexOf(a), 1);
+  return a;
 }
 
 function renderAdSlot(el, slot, opts = {}) {
@@ -4232,7 +4446,8 @@ function renderAdSlot(el, slot, opts = {}) {
     if (redeemList.length) list = redeemList;
   }
   if (slot === 'detail' || slot === 'rank') {
-    // 详情位 / 榜单+酒馆顶部：每次渲染随机挑，各家曝光机会均等。
+    // 详情位 / 榜单+酒馆顶部：每次渲染随机挑，各家曝光机会均等（站长单独设过升/降权的单
+    // 按权重加权，见 weightedPick；顺序展示的位则由服务端排好序，升权先露脸）。
     // 刻意不走等时轮播——轮播里第一条立刻展示先吃满曝光，排后面的可能一次都轮不到，
     // 同样灯火买到的额度消耗速度会差一大截。
     // 例外：刚兑换成功的作者，本机 10 分钟内优先看到自己那条（setMyAdPreview），
@@ -4246,11 +4461,11 @@ function renderAdSlot(el, slot, opts = {}) {
         const pick = mine ? [mine] : [];
         const rest = list.filter(a => !mine || a.id !== mine.id).slice();
         while (pick.length < 2 && rest.length) {
-          pick.push(rest.splice(Math.floor(Math.random() * rest.length), 1)[0]);
+          pick.push(weightedSplice(rest));
         }
         core = `<div class="ad-row2">${pick.map(a => adHtml(a, { compact: true })).join('')}</div>`;
       } else {
-        core = adHtml(mine || list[Math.floor(Math.random() * list.length)]);
+        core = adHtml(mine || weightedPick(list));
       }
     } else if (slot === 'rank' && list.length > 1 && window.innerWidth > 900) {
       // rank 位（榜单页顶部 + 榜单右栏 + 酒馆散座栏共用）。条数策略（2026-11-12 站长拍板）：
@@ -4265,7 +4480,7 @@ function renderAdSlot(el, slot, opts = {}) {
       const pick = mine ? [mine] : [];
       const rest = list.filter(a => !mine || a.id !== mine.id).slice();
       while (pick.length < want && rest.length) {
-        pick.push(rest.splice(Math.floor(Math.random() * rest.length), 1)[0]);
+      pick.push(weightedSplice(rest));
       }
       if (pick.length > 1) {
         // 竖排容器（酒馆右栏 / 榜单右栏）：.ad-stack 的 auto-fit（列宽下限 340px）在窄容器里天然退成单列，直接复用
@@ -4279,7 +4494,7 @@ function renderAdSlot(el, slot, opts = {}) {
         core = adHtml(pick[0], { compact: true });   // 单条不套 .ad-row2（那是两列 grid，一张卡会缩在半宽里）
       }
     } else {
-      core = adHtml(mine || list[Math.floor(Math.random() * list.length)]);
+      core = adHtml(mine || weightedPick(list));
     }
     // 条组下方带一行「我也想推荐自己的作品」小入口：看到别人上榜 → 自己也想排队，
     // 一路直达 /promote（未登录先弹登录）。这行不是广告，不参与计费与关闭。
@@ -4341,7 +4556,8 @@ function isPlainListView() {
 }
 
 // 首页第一格同时最多 5 条在投，但一次只显示一条（2026-11-11 站长拍板：不做自动轮播切换）：
-// 每次挂载随机挑一条（各家机会均等，与详情/榜单位同口径），浏览期间静止不动；
+// 每次挂载随机挑一条（各家机会均等，与详情/榜单位同口径；设过升/降权的单按权重加权），
+// 浏览期间静止不动；
 // 访客叉掉当前条后 closeAd 重跑 mountListPromo，从剩下的里再随机挑一条补上。
 // 返回过滤后、最多 LIST_FIRST_MAX 条在投推荐（作者自荐 redeem / 后台 admin）：
 // 过滤掉访客叉过的、7 天内看过≥3 次的、被永久屏蔽作品的。随便逛逛也走这里（它是普通列表视图）。
@@ -4369,10 +4585,25 @@ function listPromoAds() {
 // 兼容旧调用点（pageSize / 随便逛逛首屏等只需要「有没有」一个布尔）：随机返回一条，没有则 null。
 function listPromoAd() {
   const ads = listPromoAds();
-  return ads.length ? ads[Math.floor(Math.random() * ads.length)] : null;
+  return ads.length ? weightedPick(ads) : null;
 }
 
 function promoCardHtml(a) {
+  // 灯火自荐位在作品网格里「当成正常作品」（站长 2026-11-17 口径）：
+  // 服务端随广告下发了作品快照 work 时，直接用作品卡模板渲染，外观/交互跟旁边作品一致——
+  // 没有「推荐」角标、没有 ×、没有「我也想推荐 / 打开链接」。只在外层挂 data-ad 供
+  // 曝光/点击埋点用（后台照常扣投放额度，灯火的消耗口径不变），不加 promo-card 类，
+  // 于是 bindCardNode 会照常绑定点赞/收藏/分享/点开详情。
+  // 没有 work 的情况（运营广告 / 外链单 / 老缓存没带快照）走下面原推广卡分支，保持旧行为。
+  if (a.work && a.work.id) {
+    const html = state.view === 'list' ? listHtml(a.work) : cardHtml(a.work, {});
+    // 给根节点补上 data-ad（埋点）+ 标记（点击委托认它），只在根节点第一个标签上补一次。
+    // cardHtml/listHtml 模板开头有换行缩进，别用 ^ 锚点；根节点是唯一的
+    // <div class="card" …> / <div class="work-row" …>（其余是 card-img/card-body 等），
+    // 匹配到 class 的收尾引号后原样拼回，别把引号吃掉（否则整个标签属性错位）。
+    return html.replace(/<div class="(?:card|work-row)"/, m =>
+      m + ` data-ad="${escapeHtml(a.id)}" data-native-promo="1"`);
+  }
   // 推荐（积分兑换）：默认点开作品详情弹窗；外链单（extUrl）整卡当链接、新标签打开
   const internal = !a.extUrl && (!!a.workId || /^\/w\//.test(String(a.url || '')));
   const id = a.workId || String(a.url || '').split('/w/')[1] || '';
@@ -4423,6 +4654,107 @@ function promoCardHtml(a) {
     </${internal ? 'div' : 'a'}>`;   // 站内卡是 <div>，外链卡才是 <a>，别一律用 </a> 收尾
 }
 
+// ---------- 企业合作工具卡（2026-11-17）----------
+// 作品流里出现的「工具」卡：和作品卡同一套骨架，但角标、底色、底脚文案都不一样，
+// 一眼能看出它不是某位作者做的作品；点击直接外跳（新标签），不套作品详情弹窗。
+// 数据来自 /api/tools 里带 feed:true 的条目。它压根不是作品：不进榜单、不进期刊计分、
+// 不进编年史、不参与「共 N 件」，也不出现在作者主页/收藏/随便逛逛。
+function toolFeedItems() {
+  if (!isPlainListView()) return [];
+  return (state.tools || []).filter(t => t && t.feed && t.active !== false);
+}
+function toolFootText(t) {
+  return [t.cert ? '企业认证' : '', t.partner ? '合作' : ''].filter(Boolean).join(' · ') || '工具推荐';
+}
+function toolCardHtml(t) {
+  const letter = escapeHtml(String(t.name || '?').trim().slice(0, 1).toUpperCase());
+  const flag = t.cert ? '工具 · 企业认证' : '工具';
+  if (state.view === 'list') {
+    return `<a class="work-row tool-row" data-tool-id="${escapeHtml(t.id || '')}" href="${escapeHtml(t.url)}" target="_blank" rel="noopener nofollow sponsored">
+      <span class="row-thumb tool-thumb">${letter}</span>
+      <div class="row-main">
+        <div class="row-title"><span class="tool-row-flag">${flag}</span><span class="row-name">${escapeHtml(t.name)}</span></div>
+        ${t.desc ? `<div class="row-intro">${escapeHtml(t.desc)}</div>` : ''}
+        <div class="row-meta">${escapeHtml(toolFootText(t))} · 外部链接</div>
+      </div>
+      <span class="tool-go">去看看 →</span>
+    </a>`;
+  }
+  return `<a class="card tool-card" data-tool-id="${escapeHtml(t.id || '')}" href="${escapeHtml(t.url)}" target="_blank" rel="noopener nofollow sponsored">
+      <div class="card-img-wrap">
+        <div class="tool-head"><span class="tool-logo">${letter}</span></div>
+        <span class="tool-flag">${flag}</span>
+      </div>
+      <div class="card-body">
+        <div class="card-title">${escapeHtml(t.name)}</div>
+        ${t.desc ? `<div class="tool-desc">${escapeHtml(t.desc)}</div>` : ''}
+        <div class="card-meta tool-foot">
+          <span class="tool-tip">${escapeHtml(toolFootText(t))}</span>
+          <span class="tool-go">去看看 →</span>
+        </div>
+      </div>
+    </a>`;
+}
+
+// ---------- 工具详情弹窗（2026-11-17）----------
+// 作品流的工具卡点开先弹这个，而不是「嗖」一下把人甩到外站——用户以为是作品点进来，
+// 直接外跳会懵。弹窗里说清「这是什么 + 企业合作产品不是作品」，再由底部的按钮明确外跳。
+// 卡片本身仍是 <a href>：中键、Ctrl+点、右键复制链接照旧能用。
+let TD_CUR = null;
+function openToolDetail(t) {
+  if (!t || !toolModal) return;
+  TD_CUR = t;
+  const letter = String(t.name || '?').trim().slice(0, 1).toUpperCase();
+  $('tdLogo').textContent = letter;
+  $('tdFlag').textContent = t.cert ? '工具 · 企业认证' : '工具';
+  $('tdName').textContent = t.name || '';
+  $('tdDesc').textContent = t.desc || '';
+  const paras = String(t.detail || '').split(/\n+/).map(s => s.trim()).filter(Boolean);
+  $('tdBody').innerHTML = paras.length
+    ? paras.map(p => `<p>${escapeHtml(p)}</p>`).join('')
+    : `<p>${escapeHtml(t.desc || '')}</p>`;
+  const go = $('tdGo');
+  go.href = t.url || '#';
+  go.textContent = `去 ${t.name || '官网'} 看看 ↗`;
+  showModal(toolModal);
+}
+function closeToolDetail() {
+  if (!toolModal) return;
+  hideModal(toolModal);
+  TD_CUR = null;
+}
+// 插在「第三个以后」的随机一格（第 4..N 张卡后面，每次重挂重新随机）：不固定在第 5 格，
+// 免得用户摸出规律把它当固定广告位。多条候选时随机挑一条，各家机会均等。
+// 屏上作品不足 4 张（含「全站的作品你都看过了」空状态）时不插：孤零零一张工具卡
+// 挂在空列表/尾巴上，看着像凑数（2026-11-18 站长拍板）。
+// 2026-11-17 站长拍板：三种排序（随便逛逛/最新/最热）都插。原来只给最新/最热插，
+// 而「随便逛逛」才是默认排序，等于合作位几乎拿不到曝光。跟首屏推荐卡不冲突——那张在第 1 格。
+const TOOL_FEED_AFTER = 3;   // 最早插在第 3 张卡（0 起）后面 = 视觉第 4 格
+function mountToolCards() {
+  if (!gallery) return;
+  gallery.querySelectorAll('.tool-slot').forEach(n => n.remove());
+  const items = toolFeedItems();
+  if (!items.length) return;
+  const cards = gallery.querySelectorAll('.card, .work-row');
+  if (cards.length <= TOOL_FEED_AFTER) return;   // 看完了/作品太少：不插
+  const t = items[Math.floor(Math.random() * items.length)];
+  const wrap = document.createElement('div');
+  wrap.className = 'tool-slot';   // 不能复用 .promo-slot：mountListPromo 会 querySelector('.promo-slot') 把它一起删掉
+  wrap.innerHTML = toolCardHtml(t);
+  // 左键单击先弹「工具详情」，中键/Ctrl+点/右键另存链接还是浏览器原生行为
+  wrap.addEventListener('click', (e) => {
+    const a = e.target.closest('a.tool-card, a.tool-row');
+    if (!a) return;
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    openToolDetail(t);
+  });
+  const idx = TOOL_FEED_AFTER + Math.floor(Math.random() * (cards.length - TOOL_FEED_AFTER));
+  const anchor = cards[idx];
+  if (anchor && anchor.nextSibling) gallery.insertBefore(wrap, anchor.nextSibling);
+  else gallery.appendChild(wrap);
+}
+
 // 插到第一格（第一件是置顶作品时排它后面，别抢运营手动置顶的位）
 // 一次只显 1 条：多条在投时随机挑一条（各家机会均等），浏览期间静止不切换；
 // 访客叉掉当前条后 closeAd 重跑这里，从剩下的里再随机挑一条补上。
@@ -4448,6 +4780,12 @@ function mountListPromo() {
 // 首格推荐卡点击：站内卡点开作品详情；运营外链卡本身是 <a>，只记点击。
 function wirePromoClick(node) {
   if (!node) return;
+  // 正常作品卡形态的自荐位：点击/详情交给 bindCardNode，点击埋点走 document 全局委托
+  //（见 data-native-promo 那段），这里不重复挂，否则一次点击弹两遍详情。
+  if (node.dataset.nativePromo === '1') {
+    bindCardNode(node);   // 首屏这张挂载时可能晚于 loadWorks 的 bindCards，这里补绑（bindCardNode 幂等）
+    return;
+  }
   if (node.classList.contains('promo-ext')) {
     node.addEventListener('click', () => adTrack(node.dataset.ad, 'click'));
   } else {
@@ -4539,17 +4877,23 @@ function buildWanderBatchHtml(works, allowPromos) {
 
 function wireWanderPromo(node, a) {
   const id = a.workId || String(a.url || '').split('/w/')[1] || '';
-  node.removeAttribute('data-id');             // 推荐卡不是作品，别被 wander 曝光/去重/点进详情误当作品
   node.dataset.wired = '1';
-  if (node.classList.contains('promo-ext')) {
-    node.addEventListener('click', () => adTrack(node.dataset.ad, 'click'));   // 外链卡：整卡即链接
+  // 正常作品卡形态的自荐位：保留 data-id，让它跟真作品一样被点赞/收藏/点开详情；
+  // 点击埋点走 document 全局委托（data-native-promo），这里不挂 click、不拔 data-id。
+  if (node.dataset.nativePromo === '1') {
+    bindCardNode(node);   // 首屏 mountWanderPromo 晚于 bindCards，这里补绑（bindCardNode 幂等）
   } else {
-    node.addEventListener('click', e => {
-      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;   // 交给浏览器开新标签
-      e.preventDefault();
-      adTrack(node.dataset.ad, 'click');
-      if (id) openWork(id);                    // 站内作品：点开详情
-    });
+    node.removeAttribute('data-id');           // 老推广卡不是作品，别被 wander 曝光/去重/点进详情误当作品
+    if (node.classList.contains('promo-ext')) {
+      node.addEventListener('click', () => adTrack(node.dataset.ad, 'click'));   // 外链卡：整卡即链接
+    } else {
+      node.addEventListener('click', e => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;   // 交给浏览器开新标签
+        e.preventDefault();
+        adTrack(node.dataset.ad, 'click');
+        if (id) openWork(id);                  // 站内作品：点开详情
+      });
+    }
   }
   if (adObserver) adObserver.observe(node);
   else observeAds(document);
@@ -4559,7 +4903,7 @@ function wireWanderPromo(node, a) {
 }
 
 function wireWanderPromos(g) {
-  g.querySelectorAll('.promo-card, .promo-row').forEach(node => {
+  g.querySelectorAll('.promo-card, .promo-row, [data-native-promo]').forEach(node => {
     if (node.dataset.wired === '1') return;
     const a = (ADS || []).find(x => x.id === node.dataset.ad);
     if (a) wireWanderPromo(node, a);
@@ -4577,6 +4921,13 @@ document.addEventListener('click', e => {
     e.stopPropagation();
     closeAd(x.dataset.adClose);
     return;
+  }
+  // 灯火自荐位的「正常作品卡」形态：只记点击埋点，不拦事件、不开详情——
+  // 这张卡已经被 bindCardNode 当普通作品绑好了（点开详情 / 点赞 / 收藏 / 分享都走它）。
+  // 扇面里的按钮（点赞/收藏/分享/屏蔽）不算「点进广告」，排除掉免得刷点击额。
+  const native = e.target.closest && e.target.closest('[data-native-promo]');
+  if (native && native.dataset.ad && !e.target.closest('.card-actions')) {
+    adTrack(native.dataset.ad, 'click');
   }
   const a = e.target.closest && e.target.closest('a.ad-card');
   if (!a || !a.dataset.ad) return;
@@ -4791,6 +5142,11 @@ const FEAT_REASONS = {
   new: { text: '新晋上榜', cls: 'is-new', tip: '综合热度不错，本周新进入精选' }
 };
 function featReasonHtml(w) {
+  // 单件作品的独立标签优先（2026-11-17 晚：每件作品一个标签，与 server.js 的 ssrFeatReasonHtml 同一套内联样式，接管时不会闪）
+  const t = w.featTag && w.featTag.text ? w.featTag : (w.featManual && FEAT_TAG && FEAT_TAG.text ? FEAT_TAG : null);
+  if (t) {
+    return `<span class="feat-reason" style="color:${t.color};background:${t.bg};border-color:${t.border}" title="站长推荐">${escapeHtml(t.text)}</span>`;
+  }
   const r = FEAT_REASONS[w.featReason] || FEAT_REASONS.new;
   return `<span class="feat-reason ${r.cls}" title="${r.tip}">${r.text}</span>`;
 }
@@ -4800,10 +5156,11 @@ function featAuthorHtml(w) {
   return `<span class="feat-author" title="作者 ${escapeHtml(name)}">${avaChip(w)}<span class="fa-name">${escapeHtml(name)}</span></span>`;
 }
 
-// 「本周精选」一行最多 20 个：按近 7 天综合分严格取前 20 入选（2026-11-15 纯算法），
+// 「本周精选」一行 = 分数前 N（N 后台可调，默认 20）＋ 站长增补 − 站长移出（2026-11-17 扩站长自定），
 // 展示顺序每天洗一次牌、当天固定（2026-11-16 改口径，服务端 featuredDayList 出榜，
 // 前端按接口给的顺序原样画）；`.feat-no` 的序号 = 当天排位，不是分数名次。
-// 不设互动门槛、不按作者去重、不夹手选。
+// 不设互动门槛、不按作者去重；站长增补的位置同样参与洗牌，不排前面，
+// 角标按「独立标签 > 增补默认标签 > 自动角标」三级回落（见 featReasonHtml）。
 // 卡上的数据是累计口径（打开次数 / 看过人数都是全历史），近 7 天数据只用于选谁进来；
 // 精选卡版式：首页「本周精选」和发现页共用（点击开详情由调用方绑定）
 function featCardHtml(w, i) {
@@ -4874,7 +5231,11 @@ async function loadFeatured() {
   try {
     const data = await (await fetch('/api/featured', { cache: 'no-store' })).json();
     const list = Array.isArray(data.list) ? data.list : [];
-    const sig = list.map(w => w.id).join(',');
+    // 增补默认标签也进签名：后台换了默认标签文字/颜色时，就算榜单成员没变也要重画一次
+    if (data.tag !== undefined) FEAT_TAG = data.tag || null;
+    const tagSig = FEAT_TAG ? FEAT_TAG.text + '|' + FEAT_TAG.color : '';
+    // 每件作品的独立标签（featTag）同样进签名：只改某一件的标签也要重画
+    const sig = list.map(w => w.id + (w.featTag && w.featTag.text ? '~' + w.featTag.text + w.featTag.color : '')).join(',') + '|' + tagSig;
     if (sig === featuredSig) return;
     featuredSig = sig;
     const section = $('featuredSection');
@@ -5094,7 +5455,9 @@ let wanderMode = 'pool';
 // .work-row.promo-row，要排除——它走 adTrack 自己的曝光，绝不混进有机口径）。
 // 2026-11-10 修：此前所有地方只查 .card，手机列表模式的行卡曝光完全不上报，
 // 「加载更多」的追加去重也漏掉行卡，同名作品会重复渲染。
-const WANDER_CARD_SEL = '.card:not(.promo-card), .work-row:not(.promo-row)';
+// 灯火自荐位渲染成正常作品卡后，外观/交互都跟真作品一样，但仍带 data-native-promo：
+// 有机浏览数 / 发牌去重 / 首屏闸门都不该把它算成一张自然作品（它走 adTrack 自己的口径）。
+const WANDER_CARD_SEL = '.card:not(.promo-card):not([data-native-promo]), .work-row:not(.promo-row):not([data-native-promo])';
 
 let wanderPage = 0;
 let wanderRandSize = 0;                      // 随机翻翻全程共用的一屏张数（换 size 会让按页发牌漏项）
@@ -5107,8 +5470,8 @@ let wanderFoldGate = null;                     // Set<id>：本轮渲染首屏�
 let wanderFoldY = 0;                           // 建闸时的滚动位置：位移超过阈值才算「人真的滚了」
 const wanderPending = new Set();               // 待批量上报的曝光 ids
 const wanderSeen5m = new Map();                // id -> ts：同作品 5 分钟内只报一次
-// 「还有 N 件没逛过」实时口径（2026-11-10）：服务端只给「没看过的总数」（不再按批预扣），
-// 前端每真实看完一件就在本地减一，滚动时数字实时往下走；下次取数由服务端重新校准。
+// 「还有 N 件没逛过」口径（2026-11-17 改）：服务端发卡即记 delivered，left = 没发过的件数；
+// 前端只负责展示，不再本地递减（两套口径打架会让刷新后计数回弹）。
 let wanderTotal = 0;
 let wanderLeft = 0;
 const wanderRevisitIds = new Set();            // 服务端标过「重温」的 id：本就在已看名单，不该递减 left
@@ -5274,7 +5637,8 @@ function bindWanderClicks() {
     // 与 bindCards 同一套豁免：扇面里任何一颗按钮（收藏/分享/屏蔽/送灯火）都不是「点进详情」
     if (e.target.closest && e.target.closest('.card-actions')) return;
     const el = e.target.closest('.card, .work-row');
-    if (el && el.dataset.id) trackExpoClick(el.dataset.id);
+    // 自荐位虽长得像作品，但它的点进详情计在广告点击账上（adTrack），不混进有机点击
+    if (el && el.dataset.id && !el.dataset.nativePromo) trackExpoClick(el.dataset.id);
   }, true);
 }
 
@@ -5425,18 +5789,17 @@ async function loadWanderIntoGallery(reset = true, force = true) {
       releaseWanderFold();
     }
     if (reset) mountWanderPromo();   // 首屏最前面插首页第一格推荐卡（只插一张，其余全是正常作品）
+    if (reset) mountToolCards();     // 企业合作工具卡：随便逛逛也插（2026-11-17），随机落在第 3 张以后；看完了不插
     if (reset) easeGalleryShrink(ghBefore);   // 新一批比旧一批矮时把「缩上来」变成缓动，不抖
     $('listTitle').textContent = state.q ? `搜索「${state.q}」` : '全部作品';
     renderSearchDidYouMean(null);   // 随便逛逛不带关键词，别留着上一次搜索的「你是不是想搜」
     // 排序说明 ⓘ 2026-11-11（二次挪）：常驻挂在「全部作品」计数行（HTML 里随 workCount），
     // 不再按池模式显隐——它解释的排序规则在最新/最热下也成立（一键筛选/搜索会切回最新）。
-    // hasMore：left 是「没看过的总数」，屏上已有的没看过卡（含本批）都算已经发给他了——
-    // 两者相等就说明没看过的全在页面里，再点也只会拿到重复卡，按钮该收起来。
-    // 旧口径是「left > 本批张数」，每批都成立 → 按钮永远亮着，这是线上那个能一直点的根因。
+    // hasMore：left 是「还没发过的件数」（服务端发卡即记 delivered）。
+    // 屏上的卡都已发过、不再计入 left，所以 left>0 就说明还有没屏发的卡，按钮该继续亮。
+    // 旧口径 left > 屏上渲染数 是两套口径打架的产物，刷新后会误报「已全部翻完」。
     if (wanderMode === 'pool') {
-      const renderedUnseen = Array.from(g.querySelectorAll(WANDER_CARD_SEL))
-        .filter(el => el.dataset.id && !wanderRevisitIds.has(el.dataset.id)).length;
-      state.hasMore = wanderLeft > renderedUnseen;
+      state.hasMore = wanderLeft > 0;
     } else {
       state.hasMore = true;   // 随机翻翻：服务端洗牌按页发牌，翻到头会回空批次给「从头再翻」出口
     }
@@ -5503,15 +5866,9 @@ function wanderMarkSeen(id) {
   }
   wanderPending.add(id);
   if (!wanderFlushTimer) wanderFlushTimer = setTimeout(wanderFlushExpo, 300);
-  // 「还有 N 件没逛过」实时递减：真实看完一件减一件。重温卡本就在已看名单，不减；
-  // 每次取数服务端会按已看名单重算 left，本地数字最多飘一小段就被校准。
-  if (state.sort === 'wander' && wanderMode === 'pool' && !wanderRevisitIds.has(id) && wanderLeft > 0) {
-    wanderLeft--;
-    const wc = $('workCount');
-    // 翻完（按钮已收）时计数改成「已全部翻完」，往下滚别再改回「还有 N 件没逛过」
-    if (wc && state.hasMore) wc.textContent = `共 ${wanderTotal} 件 · 还有 ${wanderLeft} 件没逛过`;
-  }
-
+  // 「还有 N 件没逛过」不再本地递减（2026-11-17）：服务端发卡即记 delivered，
+  // 下次取数 left 直接少一批。此前本地减、服务端靠曝光名单算，两套口径打架——
+  // 加载更多靠 exclude 消耗整池却不写曝光，刷新后 DOM 一清就冒出旧 left。
 }
 function wanderFlushExpo() {
   wanderFlushTimer = null;
@@ -5764,6 +6121,7 @@ async function loadWorks(reset = true) {
     state.hasMore = !!data.hasMore;
     $('loadMore').style.display = state.hasMore ? 'inline-block' : 'none';
     if (reset) mountListPromo();   // 只在第一页插第一格宣传，加载更多不重复插
+    if (reset) mountToolCards();   // 企业合作工具卡（作品流里，但标了「工具 · 企业认证」）
   } catch {
     // 只剩「点灯」动画说明是首次加载就失败：清掉占位、给出空态，别让灯一直亮着转
     if ([...gallery.children].every(el => el.classList.contains('dm-load'))) gallery.innerHTML = '';
@@ -5982,9 +6340,12 @@ function renderFiltersPC() {
           // 下拉里显示的是场景名，传参要的是 key：按名字反查，查不到就回全部
           const hit = SCENES.find(s => s.name === opt.dataset.v);
           state.scene = hit ? hit.key : '全部';
-          wanderBreakoutLatest();   // 随便逛逛不认识筛选，点场景就切回最新（与 H5 同一口径）
         }
         else { state.category = opt.dataset.v; }
+        // 随便逛逛不认筛选：以前电脑上只有场景会切回最新，形态/分类/开源/时间点了像没生效。
+        // 五项统一切回最新（与手机端一致），再落筛选记忆，刷新后筛选才真能按记忆生效。
+        wanderBreakoutLatest();
+        saveFilters();
         closeAllDD();
         renderFilters();
         loadWorks();
@@ -6015,7 +6376,8 @@ function renderFiltersH5() {
     {
       kind: 'type', current: () => state.type, active: () => state.type !== '全部',
       text: () => state.type === '全部' ? '形态' : state.type,
-      options: () => asOpts(typeOpts), apply: v => { state.type = v; wanderBreakoutLatest(); }
+      // 五个筛选 tab 的 apply 都落一次 dm_filters（只记亲手点的；搜索自动复位不写）
+      options: () => asOpts(typeOpts), apply: v => { state.type = v; wanderBreakoutLatest(); saveFilters(); }
     },
     // （没有配置/没作品时整项不渲染，别留一个只有「全部场景」的空面板）
     ...(SCENES.length ? [{
@@ -6025,24 +6387,24 @@ function renderFiltersH5() {
       text: () => '场景',
       options: () => [{ value: '全部', label: '全部场景' }]
         .concat(SCENES.map(s => ({ value: s.key, label: s.name }))),
-      apply: v => { state.scene = v; wanderBreakoutLatest(); }
+      apply: v => { state.scene = v; wanderBreakoutLatest(); saveFilters(); }
     }] : []),
     {
       kind: 'category', current: () => state.category, active: () => state.category !== '全部',
       text: () => state.category === '全部' ? '分类' : state.category,
       options: () => asOpts(catOpts),
-      apply: v => { state.category = v; wanderBreakoutLatest(); }
+      apply: v => { state.category = v; wanderBreakoutLatest(); saveFilters(); }
     },
     {
       kind: 'os', current: () => state.openSource, active: () => state.openSource !== '全部',
       text: () => state.openSource === '全部' ? '开源' : state.openSource,
-      options: () => asOpts(['全部', '开源', '闭源']), apply: v => { state.openSource = v; wanderBreakoutLatest(); }
+      options: () => asOpts(['全部', '开源', '闭源']), apply: v => { state.openSource = v; wanderBreakoutLatest(); saveFilters(); }
     },
     {
       kind: 'range', current: () => state.range, active: () => state.range !== '全部',
       text: () => state.range === '全部' ? '时间' : RANGE_LABEL[state.range],
       options: () => RANGE_OPTS.map(v => ({ value: v, label: RANGE_LABEL[v] })),
-      apply: v => { state.range = v; wanderBreakoutLatest(); }
+      apply: v => { state.range = v; wanderBreakoutLatest(); saveFilters(); }
     },
     {
       kind: 'sort', current: () => state.sort, active: () => false,
@@ -7326,6 +7688,7 @@ function route() {
   // 「首页内容 + 底部挂着 /rank 的 SEO 作品榜单区块」的半路状态（用户真的撞见过）
   closeAllViews();
   const isWorkPage = path.startsWith('/w/');
+  if (!isWorkPage) detailScrollMemo.clear();   // 详情链路退出（关弹窗回列表）：滚动位置备忘作废，下次新开从头
   // 服务端渲染整页的静态页：/chronicle（编年史）、/rules（作品规范）、/install（安装到桌面）、/invite（邀请收录）、/column（精选专栏）——SPA 只负责藏首页、给标题
   const isChronicle = path === '/chronicle';
   const isColumn = path === '/column' || path.startsWith('/column/');
@@ -7569,15 +7932,17 @@ function authorBadgesHtml(badges) {
     </button>`
   ).join('');
 }
-// 数据看板的六个格子（2026-11-16 重排）：作品 / 关注 / 获赞 / 被收藏 / 点亮人数 / 访客。
-// 「评论」换成「关注」：评论数在「作品数据」面板里本来就有，看板上重复；关注数（followers）是
+// 数据看板的六个格子（2026-11-16 重排）：作品 / 粉丝 / 获赞 / 被收藏 / 点亮人数 / 访客。
+// 「评论」换成粉丝数（followers）：评论数在「作品数据」面板里本来就有，看板上重复；粉丝数是
 // 唯一「人级」的认可，站长要求靠前，所以紧跟作品排第二。三项作品互动按由轻到重连在一起，
 // 访客只是流量、不是认可，挪到最后。11-14 一度收成四格，站长说「这个样式挺好的呀」——
 // 六格带图标、带竖分隔线才是他要的信息密度，别再砍。
+// 标签写「粉丝」不写「关注」（11-17 站长点名）：页面上的「关注」是动作（关注按钮），
+// 统计格说的是人（谁在关注我），写「关注 0」容易被读成「我关注了 0 个人」。
 // 结构固定，加载态只把数字换成「–」，高度不变（避免数据回来时整块往上跳）
 const AUTHOR_STAT_CELLS = [
   { ico: 'edit', label: '作品', key: 'total' },
-  { ico: 'person', label: '关注', key: 'followers', tip: '有多少人关注了这位作者；关注后他发新作品会在站内消息里提醒你' },
+  { ico: 'person', label: '粉丝', key: 'followers', tip: '有多少人关注了这位作者；关注后他发新作品会在站内消息里提醒你' },
   { ico: 'heart', label: '获赞', key: 'totalLikes' },
   { ico: 'fav', label: '被收藏', key: 'totalFavs' },
   { ico: 'lamp', label: '点亮人数', key: 'totalTips', tip: '送过灯火的人数，同一人多笔只算一人' },
@@ -7917,9 +8282,10 @@ function openAuthorEditSheet() {
     { icon: 'user', label: '换个头像', sub: u.avatar ? '当前已有自定义头像' : '现在是名字首字母', on: openAvaModal },
     { icon: 'edit', label: '修改昵称', sub: u.nickname ? `现在叫「${u.nickname}」` : '还没设过昵称', on: openNickModal },
     { icon: 'link', label: '个性地址', sub: u.slug ? `/u/${u.slug}` : '把 /u/ 后面的编号换成好记的词', on: openSlugModal },
+    { icon: 'edit', label: '个人介绍', sub: u.bio ? u.bio.slice(0, 24) + (u.bio.length > 24 ? '…' : '') : '技能、擅长的事、兴趣爱好，写在主页上', on: openBioModal },
     { icon: 'globe', label: '我的链接', sub: ls.length ? ls.map(l => l.label).join(' / ') : 'GitHub、知乎、掘金… 填了才显示', on: openLinksModal },
-    { icon: 'eye', label: '主页作品', sub: u.hideWorks ? '已对访客隐藏：别人只看得到档案' : '公开：访客能看到你的全部作品', on: () => setHideWorks(u.hideWorks !== true) },
-    { icon: 'gear', label: '账号设置', sub: '密码、绑定、消息提醒', on: () => navigate('/settings') }
+    { icon: 'eye', label: '主页作品', sub: u.hideWorks ? '已对访客隐藏：别人只看得到档案' : '公开：访客能看到你的全部作品', on: () => setHideWorks(u.hideWorks !== true) }
+    // 账号设置不再放这里：编辑主页只管主页内容，密码/绑定/提醒走头像下拉或「全部功能」的账号设置
   ]);
 }
 
@@ -8029,6 +8395,74 @@ async function saveBandSkin(key) {
 // 「我的链接」：三个输入框，贴链接就行，展示文案由服务端按域名算（GitHub / 知乎 / 掘金 / V2EX / 微博）。
 // 为什么不是「每个平台一个框」：68 个账号里资料区目前只有入驻时间和分类，一次摆五个空框，
 // 大多数人只会填一个，剩下四个空着反而让弹层变长、显得没填完。三个通用槽位够用也收得住。
+// ---- 个人介绍（作者自己填，展示在 /u/ 档案区）----
+// 纯文本 100 字：桌面端 label 在左、输入框在右（截图的排版），手机端折成上下。
+let bioModalEl = null;
+const BIO_LIMIT = 100;
+function openBioModal() {
+  if (!state.user) { openAuth('login'); return; }
+  if (!bioModalEl) {
+    bioModalEl = document.createElement('div');
+    bioModalEl.className = 'modal-mask';
+    document.body.appendChild(bioModalEl);
+    bindMaskClose(bioModalEl, () => hideModal(bioModalEl));
+  }
+  const cur = state.user.bio || '';
+  bioModalEl.innerHTML = `
+    <div class="modal bio-modal">
+      <button type="button" class="close-btn" aria-label="关闭">×</button>
+      <h3 class="bio-title">个人介绍</h3>
+      <p class="bio-hint">写点技能、擅长的事、兴趣爱好——会出现在你的主页上，别人看得见。最多 100 字。</p>
+      <div class="bio-field">
+        <label class="bio-label" for="bioInput">个人介绍</label>
+        <div class="bio-box">
+          <textarea id="bioInput" class="bio-inp" maxlength="${BIO_LIMIT}" rows="4"
+            placeholder="请填写职业技能、擅长的事情、兴趣爱好等">${escapeHtml(cur)}</textarea>
+          <span class="bio-count" id="bioCount">${cur.length}/${BIO_LIMIT}</span>
+        </div>
+      </div>
+      <p class="bio-msg" id="bioMsg"></p>
+      <button type="button" class="btn-primary bio-save" id="bioSave">保存</button>
+    </div>`;
+  bioModalEl.querySelector('.close-btn').onclick = () => hideModal(bioModalEl);
+  const inp = bioModalEl.querySelector('#bioInput');
+  const count = bioModalEl.querySelector('#bioCount');
+  inp.oninput = () => { count.textContent = `${inp.value.length}/${BIO_LIMIT}`; };
+  bioModalEl.querySelector('#bioSave').onclick = () => submitBio(inp);
+  showModal(bioModalEl);
+  setTimeout(() => { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }, 60);
+}
+
+async function submitBio(inp) {
+  const box = bioModalEl;
+  if (!box) return;
+  const msg = box.querySelector('#bioMsg');
+  const btn = box.querySelector('#bioSave');
+  const say = (t, kind) => { msg.textContent = t || ''; msg.className = 'bio-msg' + (kind ? ' ' + kind : ''); };
+  const val = inp.value.trim();
+  if (val.length > BIO_LIMIT) { say(`最多 ${BIO_LIMIT} 个字`, 'err'); return; }
+  btn.disabled = true;
+  say('保存中…');
+  try {
+    const r = await fetch('/api/me/bio', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bio: val })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { say(d.error || '保存失败，稍后再试', 'err'); return; }
+    state.user.bio = d.bio || '';
+    hideModal(box);
+    showToast(val ? '个人介绍已更新' : '个人介绍已清空', undefined, 'ok');
+    // 在自己的主页上改的：档案区那段当场刷新，不必整页重载
+    if (location.pathname.startsWith('/u/')) loadAuthor(decodeURIComponent(location.pathname.slice(3)));
+  } catch {
+    say('网络异常，稍后再试', 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 let linksModalEl = null;
 function openLinksModal() {
   if (!state.user) { openAuth('login'); return; }
@@ -8178,6 +8612,9 @@ async function loadAuthor(name) {
   authorTabState.loading = true;   // 骨架期锁住 tab 切换：作品流还没就位，切过去只能看到空列表
   $('authorStatGrid').innerHTML = authorStatSkeletonHtml();
   $('authorMeta').innerHTML = '<span class="sk-line sk-au-meta" aria-hidden="true"></span>';
+  // 个人介绍：换人先收干净，别闪上一位作者的介绍
+  const bioEl = $('authorBio');
+  if (bioEl) { bioEl.hidden = true; bioEl.textContent = ''; }
   $('authorBadges').innerHTML = '';
   $('authorStats').hidden = true;
   $('authorJoin').style.display = 'none';
@@ -8238,9 +8675,11 @@ async function loadAuthor(name) {
       ? jr.slice(0, 4).map(x => `<i class="jrn-rank-tag" title="星梦期刊 ${escapeHtml(jrLabel(x))}">${escapeHtml(jrLabel(x))}</i>`).join('') +
         (jr.length > 4 ? `<i class="author-tag-more" title="星梦期刊前三：${escapeHtml(jrTip)}">+${jr.length - 4}</i>` : '')
       : '';
-    // 荣誉标签（含自动颁发的 GitHub 勋章）：名字旁挂胶囊
+    // 荣誉标签（含自动颁发的 GitHub 勋章）：名字旁挂小圆章，文字悬停看
     $('authorName').innerHTML = '@' + escapeHtml(shown) +
-      (Array.isArray(data.tags) ? data.tags.map(t => `<i class="author-tag${t === GH_BADGE_TAG ? ' gh' : ''}" title="${t === GH_BADGE_TAG ? 'GitHub 优质原创作者勋章' : '站点荣誉标签'}">${escapeHtml(t)}</i>`).join('') : '') +
+      (Array.isArray(data.tags) ? data.tags.map(t => t === CERT_TAG
+        ? certPillHtml(data.cert)
+        : tagBadgeHtml(t)).join('') : '') +
       jrHtml;
     // 头像：有图就盖上去，图挂了自动露出底下的首字母（不再留一块空白）
     paintAvatar($('authorAvatar'), shown, data.avatar);
@@ -8282,6 +8721,11 @@ async function loadAuthor(name) {
       $('authorStats').innerHTML = `作品 ${data.total} · 累计获赞 ${data.totalLikes} · 被收藏 ${data.totalFavs || 0}`;
     }
     $('authorMeta').innerHTML = authorMetaHtml(data);
+    // 个人介绍：作者自己填的纯文本，填了才显示（textContent 天然不解析 HTML）
+    if (bioEl) {
+      bioEl.textContent = data.bio || '';
+      bioEl.hidden = !data.bio;
+    }
     // 外部主页：访客和本人都看得到（关注不了作者，至少给个能追过去的地方）；没填就整行收起来
     const linksEl = $('authorLinks');
     if (linksEl) {
@@ -8553,7 +8997,7 @@ function rankRowHtml(w, i) {
       <span class="rk-num${top}">${i + 1}</span>
       ${cover}
       <div class="rk-main">
-        <div class="rk-title-line"><span class="rk-title">${escapeHtml(rkName)}</span>${age}${isNew}${entry}${live}${boost}</div>
+        <div class="rk-title-line">${entry}${live}<span class="rk-title">${escapeHtml(rkName)}</span>${age}${isNew}${boost}</div>
         ${rkIntro ? `<div class="rk-intro">${escapeHtml(rkIntro)}</div>` : ''}
         <div class="rk-meta-line"><span class="rk-sub">${escapeHtml(w.authorName || '匿名')} · ${escapeHtml(w.type || '')}</span><span class="rk-tags"><span class="rk-tag">${escapeHtml(w.category)}</span>${feat}</span></div>
       </div>
@@ -8731,6 +9175,14 @@ function rankCatsText(w) {
   const arr = Array.isArray(w.categories) && w.categories.length ? w.categories : (w.category ? [w.category] : []);
   return arr.join(' / ');
 }
+// 榜单形态文案（2026-11-17）：一件作品最多 6 个形态，全铺在 meta 行会把作者/分类挤出去。
+// 1–2 个照常列全；3 个及以上收成「首个 等 N 种」，完整清单挂 title 悬停看，既省地方又留信息。
+function rankTypeMeta(w) {
+  const ts = typesOf(w);
+  if (ts.length <= 2) return escapeHtml(ts.join(' · '));
+  const full = ts.map(t => escapeHtml(t)).join(' · ');
+  return `<span class="rk-types" title="${full}">${escapeHtml(ts[0])} 等 ${ts.length} 种</span>`;
+}
 
 async function loadRank(period, by, limit, type, cat) {
   if (period) rankState.period = period;
@@ -8779,9 +9231,9 @@ async function loadRank(period, by, limit, type, cat) {
         <div class="rank-no rank-no-${w.rank <= 3 ? w.rank : 'n'}">${w.rank}</div>
         <img src="${imgUrl(w.thumb, 400)}" alt="" loading="lazy" />
         <div class="rank-main">
-          <div class="rank-title">${escapeHtml(rkName)}${ageTxt ? `<span class="rank-age">${ageTxt}</span>` : ''}${w.isNew ? '<span class="rank-fresh" title="今天刚上架的作品">今日上新</span>' : ''}${w.isNewEntry && rankState.period === 'peak' ? '<span class="rank-fresh" title="首次进入高光榜前 20，7 天内显示">新晋</span>' : ''}${w.peakLive && rankState.period === 'peak' && !w.isNewEntry ? '<span class="rank-live" title="高光窗口最近还在刷新，分数持续更新中">冲榜中</span>' : ''}${w.newBoost ? '<span class="rank-fresh" title="上架 14 天内的新作加成：首 7 天 ×1.3、8–14 天 ×1.15，只影响总榜排序，不改变这里显示的分数">新作加成中</span>' : ''}</div>
+          <div class="rank-title">${w.isNewEntry && rankState.period === 'peak' ? '<span class="rank-fresh" title="首次进入高光榜前 20，7 天内显示">新晋</span>' : ''}${w.peakLive && rankState.period === 'peak' && !w.isNewEntry ? '<span class="rank-live" title="高光窗口最近还在刷新，分数持续更新中">冲榜中</span>' : ''}${escapeHtml(rkName)}${ageTxt ? `<span class="rank-age">${ageTxt}</span>` : ''}${w.isNew ? '<span class="rank-fresh" title="今天刚上架的作品">今日上新</span>' : ''}${w.newBoost ? '<span class="rank-fresh" title="上架 14 天内的新作加成：首 7 天 ×1.3、8–14 天 ×1.15，只影响总榜排序，不改变这里显示的分数">新作加成中</span>' : ''}</div>
           ${rkIntro ? `<div class="rank-intro">${escapeHtml(rkIntro)}</div>` : ''}
-          <div class="rank-meta">${escapeHtml(typeText(w))} · ${escapeHtml(aname(w))} · ${escapeHtml(rankCatsText(w))}${rankState.period === 'peak' && w.peakFrom ? ` · <span title="这件作品最亮的 7 天">高光 ${peakRangeTxt(w.peakFrom, w.peakTo)} · ${w.peakDays} 天</span>` : ''}</div>
+          <div class="rank-meta">${rankTypeMeta(w)} · ${escapeHtml(aname(w))} · ${escapeHtml(rankCatsText(w))}${rankState.period === 'peak' && w.peakFrom ? ` · <span title="这件作品最亮的 7 天">高光 ${peakRangeTxt(w.peakFrom, w.peakTo)} · ${w.peakDays} 天</span>` : ''}</div>
         </div>
         <div class="rank-score">
           <span class="${cur === 'likes' ? 'on' : ''}" title="获赞数">${ic('heart')} ${w.likes || 0}</span>
@@ -8955,10 +9407,11 @@ function journalSheetHtml(it) {
   const ch = it.champion;
   const list = (it.list || []).slice(0, 20);
   // 前三名灯火：金额由服务端随期次下发（JOURNAL_PRIZE），前端不另抄一份价目；
-  // 只显示「定稿且真发得出去」的那几个名次（无账号 / 站长自己的作品不发，存档里 skip 掉了）
+  // 按名次照标（2026-11-17 站长拍板）：奖额挂的是名次规则，不标反而让人疑惑
+  // 「第 1 名怎么没加 200」。站长作品 / 无账号那几笔实际不发灯火，只影响到账，不影响这里的标注。
   const prizeConf = Array.isArray(it.prize) ? it.prize : [];
   const prizeOf = {};
-  (it.prizes || []).forEach(p => { if (p && !p.skip && p.points) prizeOf[p.rank] = p.points; });
+  (it.prizes || []).forEach(p => { if (p && p.points) prizeOf[p.rank] = p.points; });
   const bits = [];
   if (it.works) bits.push(it.works + ' 件新作品上架');
   if (st.likes) bits.push(st.likes + ' 个赞');
@@ -9302,7 +9755,7 @@ async function submitJuryVote(vote) {
   }
 }
 
-// 相关作品：站内导流（同分类优先、不足补同作者，算法在服务端 relatedWorksOf）。
+// 相关作品：站内导流（关键词重合优先、分类次之、不足补同作者，算法在服务端 relatedWorksOf）。
 // 点一条直接换到那件作品的详情：push 让浏览器后退回到上一件，而不是一下关掉弹窗；
 // 换完把 .detail-info 滚回顶部，否则会停在上一件的评论区位置。
 function renderDetailRelated(w) {
@@ -9330,13 +9783,15 @@ function renderDetailRelated(w) {
         </span>
       </button>`).join('')}</div>`;
   box.querySelectorAll('[data-related]').forEach(el => {
-    el.onclick = () => {
-      openWork(el.dataset.related);
-      const scroller = document.querySelector('.detail-info');
-      if (scroller) scroller.scrollTop = 0;
-    };
+    // 滚动位置统一交给 openWork 处理：换作品回顶、回到看过的还原旧位置，这里别再手动清零
+    el.onclick = () => openWork(el.dataset.related);
   });
 }
+
+// 详情弹窗内换作品的滚动位置备忘（2026-11-17 用户反馈）：
+// 弹窗里从推荐位/相关作品点开另一件时，新作品从头看；按后退回到看过的那件时，
+// 还原上次离开时的滚动位置。弹窗整个关掉（回到列表页）就清空，下次新开一律从头。
+const detailScrollMemo = new Map();
 
 // 用 seq 令牌只让最后一次请求渲染，配合同 id 短窗去重，一次点击只压一条历史。
 let openWorkSeq = 0;
@@ -9344,6 +9799,7 @@ let openWorkLastClick = { id: '', at: 0 };
 const OPEN_WORK_DBLCICK_MS = 800;   // 同卡双击判定的窗口：两次点击间隔小于它就只算一次
 
 async function openWork(id, push = true, opts = {}) {
+  if (!id) return;   // 没有 id（比如被误绑的工具卡）就别去请求 /api/works/undefined 报「作品不存在」
   if (push) {
     // 弹窗已经开着同一件作品：再点不重开（不然又压一条历史，关一次又弹回来）
     if (state.currentWork && state.currentWork.id === id && detailModal.style.display === 'flex') return;
@@ -9353,6 +9809,12 @@ async function openWork(id, push = true, opts = {}) {
   }
   // 去重拦掉的调用不能走到这里自增 seq，否则在途的那次会被误判作废、弹窗一次都开不出来
   const seq = ++openWorkSeq;
+  // 进入前先记下「原来开的是哪件 + 弹窗是否开着 + 是否在详情链路上」：渲染完据此决定
+  // 回顶还是还原旧位置。后退回 /w/xxx 时 route() 已先把弹窗关了，得看 history.state.dm；
+  // 必须在下面 pushState 之前取，否则从列表新开也会被误判成详情链路内导航。
+  const prevId = state.currentWork ? state.currentWork.id : '';
+  const modalWasOpen = detailModal.style.display === 'flex';
+  const cameFromDetailChain = modalWasOpen || !!(history.state && history.state.dm === 'work');
   try {
     const w = await (await fetch('/api/works/' + id)).json();
     if (w.error) { showToast(w.error, undefined, 'err'); return; }
@@ -9392,10 +9854,55 @@ async function openWork(id, push = true, opts = {}) {
     // 勋章默认只露一枚，其余折成「+N」（2026-11-13）：三枚金胶囊并排会把作者名挤成配角。
     // 完整名单放 title，悬停可看；不另做展开交互——这行里已经有太多可点目标了。
     const aTags = w.authorTags || [];
-    const tagHtml = (t) => ` <i class="author-tag${t === GH_BADGE_TAG ? ' gh' : ''}" title="${t === GH_BADGE_TAG ? 'GitHub 优质原创作者勋章' : '站点荣誉标签'}">${escapeHtml(t)}</i>`;
+    const tagHtml = (t) => t === CERT_TAG
+      ? ` ${certPillHtml(w.authorCert)}`
+      : ` ${tagBadgeHtml(t)}`;
     $('detailAuthor').innerHTML = `${escapeHtml(aname(w))}` +
       (aTags.length ? tagHtml(aTags[0]) : '') +
       (aTags.length > 1 ? `<i class="author-tag-more" title="全部勋章：${escapeHtml(aTags.join('、'))}">+${aTags.length - 1}</i>` : '');
+
+    // 作者名片卡（2026-11-18，仿 php中文网档案块）：头像 + 名字 + 全量荣誉章 + 四格统计 + 关注按钮。
+    // 数据都在作品载荷里（详情接口专属的 authorAvatar/authorWorks/authorLikes/authorFavs/authorFollowers），
+    // 不再单独发请求。匿名 / 未认领作品整块隐藏；自己的作品不出关注按钮（名片下方的动作区本来就全是自己的管理条）。
+    const dac = $('detailAuthorCard');
+    if (dac) {
+      const dacShow = !!w.claimed && !w.anonymous && !!w.authorId;
+      dac.style.display = dacShow ? 'block' : 'none';
+      if (dacShow) {
+        const dacName = dname(w);
+        paintAvatar($('dacAva'), dacName, w.authorAvatar);
+        $('dacAva').title = w.owned ? '查看我的主页' : `访问 @${dacName} 的主页`;
+        const dacNameBtn = $('dacName');
+        dacNameBtn.textContent = dacName;
+        dacNameBtn.title = w.owned ? '查看我的主页' : `访问 @${dacName} 的主页`;
+        const dacGo = () => { hideModal(detailModal); navigate('/u/' + encodeURIComponent(w.authorId || w.author)); };
+        $('dacAva').onclick = dacGo;
+        dacNameBtn.onclick = dacGo;
+        // 副标题：站长没给「头衔」这类字段，先放作品归属一句话；有头衔字段后填这里
+        $('dacSub').textContent = '';
+        // 荣誉章：企业认证排最前（蓝V胶囊），其余标签逐个展开——作者名旁边那行只露一枚，这里看全量
+        $('dacBadges').innerHTML =
+          (w.authorCert ? certPillHtml(w.authorCert) : '') +
+          (aTags.filter(t => t !== CERT_TAG).map(t => tagBadgeHtml(t)).join(''));
+        $('dacBadges').style.display = (w.authorCert || aTags.length) ? 'flex' : 'none';
+        // 四格统计（口径与作者页一致：粉丝不写「关注」）
+        $('dacStats').innerHTML = [
+          ['作品', w.authorWorks || 0],
+          ['获赞', w.authorLikes || 0],
+          ['被收藏', w.authorFavs || 0],
+          ['粉丝', w.authorFollowers || 0]
+        ].map(([label, n]) => `<span class="dac-stat"><b>${fmtStatNum(n)}</b>${label}</span>`).join('');
+        // 关注按钮：大按钮放名片底部（原来贴在作者名后面的小胶囊就此退役）
+        const dacFollow = $('dacFollow');
+        const dacCanFollow = !w.owned && !!w.authorId && !(state.user && state.user.id === w.authorId);
+        // 游客也出按钮：toggleFollow 对未登录会自己弹登录框（与作者页同一套行为）
+        dacFollow.style.display = dacCanFollow ? 'flex' : 'none';
+        if (dacCanFollow) {
+          paintFollowBtn(dacFollow, w.authorFollowing === true, w.authorFollowers || 0);
+          dacFollow.onclick = () => toggleFollow(w.authorId, dacFollow);
+        }
+      }
+    }
 
     // 阶段横幅：预告 / 等平台上架审核的作品，先把「为什么现在点不了」讲清楚；
     // 作者自主下架的作品（仅作者本人能打开）给一条专属提示
@@ -9465,18 +9972,23 @@ async function openWork(id, push = true, opts = {}) {
       .map(t => ({ t, k: t, url: (w.links && w.links[t]) || '' }))
       .filter(e => e.url);
     if (!linkEntries.length && w.link) linkEntries.push({ t: null, k: 'link', url: w.link, miniIntro: miniOnly });
-    // 官网按钮：填了官网且没有和某个平台链接重复时，放在最前面
+    // 官网按钮：填了官网且没有和某个平台链接重复时，放在最前面。
+    // 末尾斜杠这种写法差异不算两个链接（canonLinkKey），重复时只留形态按钮（打开网站）
     const siteUrl = String(w.site || '').trim();
-    if (siteUrl && !linkEntries.some(e => e.url === siteUrl)) linkEntries.unshift({ t: null, k: 'site', url: siteUrl, site: true });
+    const siteKey = canonLinkKey(siteUrl);
+    if (siteKey && !linkEntries.some(e => canonLinkKey(e.url) === siteKey)) linkEntries.unshift({ t: null, k: 'site', url: siteUrl, site: true });
     // 每个按钮带动作标记：点了算「访问」还是「下载」，按形态自动判（iOS/Android/桌面端=下载，其余=访问）
     // 埋点后不影响跳转——target=_blank + keepalive，新标签打开时上报也能发出去
     // href 走 /out 出口网关：真实地址在服务端按作品数据现查，这里不暴露直链（nofollow/黑名单/点击留痕都在网关做）
     let linksHtml = linkEntries.map(e => {
       const act = actionOfType(e.t, e.site);
       const atype = e.site ? '官网' : (e.t || '作品链接');
+      // 官方下载标注：官网按钮本身就是官方入口不用重复标；小程序「了解详情」兜底也不是下载地址
+      const official = !e.site && !e.miniIntro && officialStoreOk(e.url, w.site);
+      const officialTag = official ? '<span class="official-flag" title="官方下载地址：来自官方应用商店或作者官网同域">官方</span>' : '';
       return `<a class="btn-link" target="_blank" rel="nofollow noopener" href="/out/${encodeURIComponent(w.id)}?k=${encodeURIComponent(e.k || '')}" data-act="${act}" data-atype="${escapeHtml(atype)}"><span class="ico b-ico">${ic(e.site ? 'globe' : (e.t && LINK_ICON[e.t]) || 'link')}</span> ${
         e.site ? '官网' : e.miniIntro ? '了解详情' : e.t ? escapeHtml((LINK_LABEL[e.t] || '访问作品').replace(/^[^A-Za-z\u4e00-\u9fa5]+/, '')) : escapeHtml(linkLabelOf(tl))
-      }</a>`;
+      }${officialTag}</a>`;
     }).join('');
     // 纯小程序、既没码也没介绍页：说明现状，别让详情页空着让人不知道点哪
     if (miniOnly && !w.qrcode && !linkEntries.length && !w.lampLocked) {
@@ -9719,7 +10231,7 @@ async function openWork(id, push = true, opts = {}) {
          </a>`).join('');
     } else $('detailTools').style.display = 'none';
 
-    // 站内相关作品（同分类优先、不足补同作者）：放在工具推荐位前面渲染，
+    // 站内相关作品（关键词重合优先、分类次之、不足补同作者）：放在工具推荐位前面渲染，
     // 数据来自 /api/works/:id 的 related，和 SSR 详情页共用同一份算法
     renderDetailRelated(w);
 
@@ -9762,16 +10274,10 @@ async function openWork(id, push = true, opts = {}) {
       if (canDm) dmBtn.onclick = () => openDmWith(w.authorId, dname(w));
     }
 
-    // 关注作者（2026-11-15）：和作者页同一个接口，按钮贴在作者名后面（下面那排动作胶囊已经 7 个了）
+    // 关注作者（2026-11-18）：挪进下方「作者名片卡」的大按钮里（见 renderDetailAuthorCard 段）。
+    // headrow 这颗小胶囊退役——同一屏两颗关注按钮会打架，名片卡里的更大更好点
     const followEl = $('detailFollow');
-    if (followEl) {
-      const canFollow = !w.owned && !!w.authorId && !(state.user && state.user.id === w.authorId);
-      followEl.style.display = canFollow ? 'inline-flex' : 'none';
-      if (canFollow) {
-        paintFollowBtn(followEl, w.authorFollowing === true, w.authorFollowers || 0);
-        followEl.onclick = () => toggleFollow(w.authorId, followEl);
-      }
-    }
+    if (followEl) followEl.style.display = 'none';
 
     // 自己的作品：数据区下方显示高亮管理条（编辑 / 下架 / 删除）；别人的作品：登录后可屏蔽，有账号的作者可拉黑
     // 站长账号看别人的作品：同样出这条（浅琥珀色），但只留「站长编辑」——
@@ -9782,7 +10288,10 @@ async function openWork(id, push = true, opts = {}) {
     ownerBar.style.display = (canManage || siteEdit) ? 'flex' : 'none';
     ownerBar.classList.toggle('is-admin', siteEdit);
     const barText = $('ownerBarText');
-    if (barText) barText.textContent = siteEdit ? '站长视角 · 可直接编辑这件作品' : '这是你的作品';
+    if (barText) barText.textContent = siteEdit ? '站长视角' : '这是你的作品';
+    // 站长视角补一行说明：说清「是在改别人的作品、改动立刻生效」，一行字一个按钮的条太空
+    const barSub = $('ownerBarSub');
+    if (barSub) barSub.style.display = siteEdit ? '' : 'none';
     // 自己的开源作品才给「更新 star」：详情页本来就有 star 徽章，入口放管理条里最顺手
     const dStarBtn = $('detailStarSync');
     if (dStarBtn) dStarBtn.style.display = (canManage && w.openSource === true) ? '' : 'none';
@@ -9792,7 +10301,7 @@ async function openWork(id, push = true, opts = {}) {
     const hideBtn = $('toggleHide');
     hideBtn.innerHTML = `<i class="ico b-ico">${ic('eye')}</i> ${w.hidden ? '重新上架' : '下架'}`;
     // 站长模式把这些作者专属动作收起来；切回自己的作品时要还原（openWork 会被反复调用）
-    $('editWork').innerHTML = `<i class="ico b-ico">${ic('edit')}</i> ${siteEdit ? '站长编辑' : '编辑作品'}`;
+    $('editWork').innerHTML = `<i class="ico b-ico">${ic('edit')}</i> ${siteEdit ? '编辑这件作品' : '编辑作品'}`;
     hideBtn.style.display = siteEdit ? 'none' : '';
     $('delWork').style.display = siteEdit ? 'none' : '';
     // 站长编辑入口回到顶部管理条里（站长视角条的右侧）：浅琥珀「站长编辑」，和作者自己的「编辑作品」同一颗按钮、同一套编辑器
@@ -9834,6 +10343,19 @@ async function openWork(id, push = true, opts = {}) {
     loadComments(w.id);
 
     showModal(detailModal);
+    // 滚动位置：弹窗内换作品 → 记下上一件滚到哪、回到看过的作品就还原；其余一律从头。
+    // prevId === id（登录态刷新/解锁后原地重开）不动滚动，别把用户正在看的位置掐回顶上。
+    const scroller = document.querySelector('.detail-info');
+    if (scroller) {
+      if (cameFromDetailChain && prevId && prevId !== id) {
+        detailScrollMemo.set(prevId, scroller.scrollTop);
+        const saved = detailScrollMemo.get(id);
+        scroller.scrollTop = typeof saved === 'number' ? saved : 0;
+      } else if (!cameFromDetailChain) {
+        scroller.scrollTop = 0;   // 从列表/直链新开（哪怕正好是上一件）：一律从头看
+      }
+      // 原地刷新（cameFromDetailChain 且 prevId === id：登录态刷新/解锁后重开），不动滚动
+    }
   } catch { showToast('作品加载失败', undefined, 'err'); }
 }
 
@@ -12768,6 +13290,13 @@ function setupDetailActions() {
     leaveDetailNav(true);
   };
   bindMaskClose(detailModal, () => $('closeDetail').click());
+  // 工具详情弹窗（作品流工具卡点开）：三个关闭口都收在这里
+  if ($('closeToolDetail')) $('closeToolDetail').onclick = closeToolDetail;
+  if ($('tdClose')) $('tdClose').onclick = closeToolDetail;
+  if (toolModal) bindMaskClose(toolModal, closeToolDetail);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && toolModal && toolModal.style.display === 'flex') closeToolDetail();
+  });
   $('galPrev').onclick = () => setDetailImage(galState.idx - 1);
   $('galNext').onclick = () => setDetailImage(galState.idx + 1);
   // 点大图全屏看：刚滑完翻图手势的那一下不算点击
@@ -13363,8 +13892,16 @@ function setupDetailActions() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) { showToast(data.error || '认领失败，请稍后再试', 6000, 'err'); return; }
         hideModal(claimByCodeModal);
-        showToast(`「${data.title}」认领成功，作品已归到你名下`
-          + (data.bonusPoints ? `，另有 ${data.bonusPoints} 盏暗号认领额外奖励到账` : ''), undefined, 'ok');
+        // 一个暗号可能覆盖同一位作者的几件作品（一次收录一批），服务端整批归属，
+        // 这里要说清「哪几件归了你」，别只报第一件的名字让人以为漏了。
+        const titles = (Array.isArray(data.titles) && data.titles.length) ? data.titles : [data.title || '作品'];
+        const many = titles.length > 1;
+        const head = many
+          ? titles.slice(0, 2).map(t => `「${t}」`).join('')
+            + (titles.length > 2 ? ` 等 ${titles.length} 件` : '') + '作品已认领成功，全部归到你名下'
+          : `「${titles[0]}」认领成功，作品已归到你名下`;
+        showToast(head + (data.bonusPoints ? `，另有 ${data.bonusPoints} 盏暗号认领额外奖励到账` : ''),
+          many ? 8000 : undefined, 'ok');
         loadMe();            // 顶部「我的作品」计数等跟着刷新
         openStats('data');   // 重开数据看板：刚认领的作品数据当场就能看见
       } catch { showToast('提交失败，请检查网络', undefined, 'err'); }
@@ -13851,26 +14388,59 @@ function barTextHtml(text) {
 }
 
 // 行渲染统一收 /api/bar/feed 给的 { kind, at, id, idea|post } 包装对象
+// 2026-11-17「大气版」：一行一条的论坛行改成宽松的内容卡片——头像 / 昵称 / 时间在顶上，
+// 正文独占中段（想法标题 17px、闲聊正文 15px 三行），计数与分享退到底部一条细线下面。
+// 数据仍分表、排序与翻页口径都没动，只是 DOM 换皮；事件全走 #wishList 上的委托。
+// 追更按钮（2026-11-17）：站长点名撤掉酒馆卡片上的「关注作者」，换成「追更这一帖」。
+// 追更 = 这条有回应就站内提醒，跟作者页那颗「关注」（他发新作品提醒你）是两码事，别混用接口。
+// 11-17 晚二次调整：追更从卡片右上角挪到底部动作栏，跟碰杯/回应/分享排一排。
+function barWatchLabel(watching, count) {
+  return `${ic('bell', 12)} <b>${watching ? '已追更' : '追更'}</b>${count ? `<span class="br-watch-num">${Number(count)}</span>` : ''}`;
+}
+function barWatchBtn(kind, id, watching, count, inModal) {
+  const cls = inModal ? 'cc-act br-watch' : 'br-stat br-stat-btn br-watch';
+  return `<button type="button" class="${cls}${watching ? ' is-on' : ''}" data-bar-watch="${escapeHtml(kind)}" data-bar-watch-id="${escapeHtml(id)}"
+    aria-pressed="${watching ? 'true' : 'false'}" title="${watching ? '已追更：这条有新回应会通知你，再点一下取消' : '追更后，这条有新回应会通知你'}">${barWatchLabel(watching, count)}</button>`;
+}
+function paintBarWatchBtn(btn, watching, count) {
+  if (!btn) return;
+  btn.classList.toggle('is-on', !!watching);
+  btn.setAttribute('aria-pressed', watching ? 'true' : 'false');
+  btn.title = watching ? '已追更：这条有新回应会通知你，再点一下取消' : '追更后，这条有新回应会通知你';
+  btn.innerHTML = barWatchLabel(watching, count);
+}
+// 11-17 酒馆 @作者可点：跳作者主页 /u/<id|账号名>（authorRef 由服务端下发，查无此人/匿名就还是纯文字，不给 404 链接）
+function brAuthorHtml(ref, name) {
+  const n = escapeHtml(name || '');
+  return ref
+    ? `<a class="br-name" href="/u/${encodeURIComponent(ref)}" data-nav title="看 ${n} 的主页">@${n}</a>`
+    : `<span class="br-name">@${n}</span>`;
+}
 function feedRowHtml(w) {
   if (w.kind === 'idea') {
     const i = w.idea;
     const id = escapeHtml(i.id);
     return `<div class="bar-row is-idea${i.status === 'done' ? ' is-done' : ''}" data-type="idea" data-id="${id}" data-at="${escapeHtml(w.at || i.createdAt || '')}">
-      <div class="br-line">
-        <span class="br-kind ${(BAR_TOPIC_META[i.topic] || {}).cls || 'br-kind-seek'}" title="想要的东西，等创作者来接">${escapeHtml(i.topic || '找工具')}</span>
-        <button type="button" class="br-title" data-open="${id}">${escapeHtml(i.title)}</button>
-      </div>
-      <div class="br-sub">
-        ${wishStatusHtml(i)}
-        <span class="br-meta">
-          <span class="br-author">@${escapeHtml(i.author)}</span>
-          <span class="br-when">${escapeHtml(wishWhen(i.createdAt))}</span>
-          <span class="br-acts">
-            <span class="br-stat" title="想要的人">${ic('thumb', 12)} ${i.wants || 0}</span>
-            <span class="br-stat" title="讨论数">${ic('chat', 12)} ${i.discussionCount || 0}</span>
-            ${i.mine ? `<button type="button" class="br-del" data-del="${id}" title="删掉这条">✕</button>` : ''}
-          </span>
-        </span>
+      <div class="br-card">
+        ${avaHtml(i.author, i.authorAvatar, 'br-ava', false, i.authorRef || i.author)}
+        <div class="br-content">
+          <div class="br-line">
+            <button type="button" class="br-title" data-open="${id}">${escapeHtml(i.title)}</button>
+          </div>
+          <div class="br-meta">
+            <span class="br-kind ${(BAR_TOPIC_META[i.topic] || {}).cls || 'br-kind-seek'}" title="想要的东西，等创作者来接">${escapeHtml(i.topic || '找工具')}</span>
+            ${brAuthorHtml(i.authorRef, i.author)}
+            <span class="br-when">${escapeHtml(wishWhen(i.createdAt))}</span>
+            ${wishStatusHtml(i)}
+            ${i.work ? `<a class="br-work" href="/w/${encodeURIComponent(i.work.id)}" title="看这条想法关联的作品">${ic('check-circle', 12)}<span class="br-work-t">${escapeHtml(i.work.title)}</span></a>` : ''}
+            <span class="br-acts">
+              <span class="br-stat" title="想要的人">${ic('thumb', 12)} ${i.wants || 0}</span>
+              <span class="br-stat" title="讨论数">${ic('chat', 12)} ${i.discussionCount || 0}</span>
+              ${barWatchBtn('idea', id, i.watching, i.watchCount)}
+              ${i.mine ? `<button type="button" class="br-del" data-del="${id}" title="删掉这条">✕</button>` : ''}
+            </span>
+          </div>
+        </div>
       </div>
     </div>`;
   }
@@ -13879,24 +14449,29 @@ function feedRowHtml(w) {
   const topicStart = p.topicStart != null ? !!p.topicStart : barIsTopicStart(p.text);
   const kind = barKindOf(p, topicStart);
   return `<div class="bar-row is-chat${topicStart ? ' is-topic' : ''}" data-type="chat" data-id="${id}" data-at="${escapeHtml(w.at || p.createdAt || '')}">
-      <div class="br-line">
-        <span class="br-kind ${kind.cls}" title="${escapeHtml(kind.title)}">${escapeHtml(kind.label)}</span>
-        <span class="br-title">${barTextHtml(p.text)}</span>
-      </div>
-      <div class="br-sub">
-        ${p.work ? `<a class="br-work" href="/w/${encodeURIComponent(p.work.id)}" title="看这条闲聊关联的作品">${ic('check-circle', 12)}<span class="br-work-t">${escapeHtml(p.work.title)}</span></a>` : ''}
-        <span class="br-meta">
-          <span class="br-author">@${escapeHtml(p.author)}</span>
-          <span class="br-when">${escapeHtml(wishWhen(p.createdAt))}</span>
-          <!-- 行首计数收编成按钮（2026-11-13）：碰杯数一点就是碰杯、回应数一点直接展开回应区，不用先展开再找下面的钮 -->
-          <span class="br-acts">
-            <button type="button" class="br-stat br-stat-btn br-stat-like${p.liked ? ' is-on' : ''}" data-like="${id}"
-              title="碰个杯，表示你有同感">${ic('heart', 12)} <b>${p.likes || 0}</b></button>
-            <button type="button" class="br-stat br-stat-btn" data-focus-reply="${id}"
-              title="看回应，点这儿打开这条帖子">${ic('chat', 12)} <b>${p.replyCount || 0}</b></button>
-            ${p.mine ? `<button type="button" class="br-del" data-del-chat="${id}" title="删掉这句">✕</button>` : ''}
-          </span>
-        </span>
+      <div class="br-card">
+        ${avaHtml(p.author, p.authorAvatar, 'br-ava', false, p.authorRef || p.author)}
+        <div class="br-content">
+          <div class="br-line">
+            <span class="br-title">${barTextHtml(p.text)}</span>
+          </div>
+          <div class="br-meta">
+            <span class="br-kind ${kind.cls}" title="${escapeHtml(kind.title)}">${escapeHtml(kind.label)}</span>
+            ${brAuthorHtml(p.authorRef, p.author)}
+            <span class="br-when">${escapeHtml(wishWhen(p.createdAt))}</span>
+            ${p.work ? `<a class="br-work" href="/w/${encodeURIComponent(p.work.id)}" title="看这条闲聊关联的作品">${ic('check-circle', 12)}<span class="br-work-t">${escapeHtml(p.work.title)}</span></a>` : ''}
+            <span class="br-acts">
+              <button type="button" class="br-stat br-stat-btn br-stat-like${p.liked ? ' is-on' : ''}" data-like="${id}"
+                title="碰个杯，表示你有同感">${ic('heart', 12)} <b>${p.likes || 0}</b></button>
+              <button type="button" class="br-stat br-stat-btn" data-focus-reply="${id}"
+                title="看回应，点这儿打开这条帖子">${ic('chat', 12)} <b>${p.replyCount || 0}</b></button>
+              ${barWatchBtn('post', id, p.watching, p.watchCount)}
+              <button type="button" class="br-stat br-stat-btn" data-share="${id}"
+                title="复制这条帖子的链接，发出去直接打开这条帖子">${ic('link', 12)} 分享</button>
+              ${p.mine ? `<button type="button" class="br-del" data-del-chat="${id}" title="删掉这句">✕</button>` : ''}
+            </span>
+          </div>
+        </div>
       </div>
     </div>`;
 }
@@ -14022,7 +14597,7 @@ function renderTopicBar() {
     note = '<span class="bt-search-none" data-none hidden></span>';
   }
   box.innerHTML = '<span class="bt-label">话题</span>' +
-    (searching ? `<input type="text" class="bt-search" placeholder="搜已有话题，回车进第一个" value="${escapeHtml(topicSearchQ)}">` : '') +
+    (searching ? `<input type="text" class="bt-search" autocomplete="off" placeholder="搜已有话题，回车进第一个" value="${escapeHtml(topicSearchQ)}">` : '') +
     chips + searchBtn + note +
     '<span class="bt-hint">写 #话题 加空格收尾，就能归到一起</span>';
   if (searching) wireTopicSearch(box);
@@ -14261,6 +14836,34 @@ async function chatLike(id) {
   } catch (e) { showToast(e.message, undefined, 'err'); }
 }
 
+// 追更 / 取消追更（11-17）：服务端回的是 publicIdea/publicBarPost，状态与人数只认它，
+// 前端不在两个 tab 里各自加减；行卡片和弹窗里的同款按钮一起对齐。
+async function toggleBarWatch(kind, id, btn) {
+  if (!state.user) { openAuth('login'); showToast('登录后才能追更'); return; }
+  if (!btn || btn.dataset.busy === '1') return;
+  btn.dataset.busy = '1';
+  const url = kind === 'idea'
+    ? `/api/ideas/${encodeURIComponent(id)}/watch`
+    : `/api/bar/posts/${encodeURIComponent(id)}/watch`;
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '操作失败');
+    const rowKind = kind === 'idea' ? 'idea' : 'chat';
+    const row = feedState.rows.find(x => x.id === id && x.kind === rowKind);
+    const item = row && (rowKind === 'idea' ? row.idea : row.post);
+    if (item) { item.watching = d.watching; item.watchCount = d.watchCount; }
+    if (kind === 'post' && chatModalId === id && chatModalData) {
+      chatModalData.watching = d.watching; chatModalData.watchCount = d.watchCount;
+    }
+    document.querySelectorAll(`.bar-row[data-id="${id}"] [data-bar-watch], #chatModalBody [data-bar-watch]`)
+      .forEach(b => paintBarWatchBtn(b, d.watching, d.watchCount));
+    showToast(d.watching ? '已追更，有新回应会通知你' : '已取消追更');
+  } catch (e) {
+    showToast(e.message || '网络不稳，稍后再试', undefined, 'err');
+  } finally { btn.dataset.busy = '0'; }
+}
+
 async function sendChatReply(id, input, btn) {
   const text = input.value.trim();
   if (!text) return;
@@ -14301,6 +14904,54 @@ async function deleteChat(id) {
     renderFeed();
     loadBarTags();   // 删掉的那句可能是某个话题里唯一一条，话题栏得跟着退场
   } catch (e) { showToast(e.message, undefined, 'err'); }
+}
+
+// 编辑自己说的这句（2026-11-17）：正文换输入框就地改，保存走 PUT /api/bar/posts/:id。
+// 只在弹窗里做——列表卡片本来就是两行截断的摘要，改完靠重画列表自然跟上。
+function editChat(id) {
+  if (chatModalId !== id) return;
+  chatEditing = true;
+  renderChatPost();
+  const ta = $('cpEditInput');
+  if (ta) {
+    // 原文里有 #标签 也照样能改；focus 放末尾，别让光标跳回开头
+    ta.focus();
+    try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch { /* 老环境无所谓 */ }
+  }
+}
+
+function cancelChatEdit() {
+  chatEditing = false;
+  renderChatPost();
+}
+
+async function saveChatEdit(id) {
+  const ta = $('cpEditInput');
+  if (!ta) return;
+  const text = ta.value.replace(/\s+/g, ' ').trim();
+  if (text.length < 2) return showToast('至少写两个字', undefined, 'err');
+  const btn = document.querySelector('#chatModalBody [data-edit-save]');
+  try {
+    if (btn) btn.disabled = true;
+    const r = await fetch(`/api/bar/posts/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || '保存失败');
+    chatEditing = false;
+    const row = feedState.rows.find(x => x.kind === 'chat' && x.id === id);
+    if (row) row.post = d;
+    if (chatModalId === id) chatModalData = d;
+    renderChatPost();
+    renderFeed();
+    loadBarTags();   // 正文里的 #话题 可能被改没 / 改出新话题，标签栏跟着走
+    showToast('已保存', undefined, 'ok');
+  } catch (e) {
+    showToast(e.message, undefined, 'err');
+    if (btn) btn.disabled = false;
+  }
 }
 
 // ---------- 统一发布入口：一颗加号，四条出路（2026-11-12） ----------
@@ -14386,6 +15037,8 @@ const BAR_TOPICS = ['闲聊', '安利', '找工具', '分享'];
 const BAR_TOPIC_DEFAULT = '闲聊';
 const BAR_TOPIC_MAX = 4;   // 自建主题上限，跟服务端 normalizeBarTopic 同口径
 let barTopic = BAR_TOPIC_DEFAULT;
+// 发布器展开/收起回调由 setupBarComposer 注册（11-17 收缩版），切主题时也要跟着判一次
+let cmpSyncOpenFn = null;
 
 // 自建主题只收字和数字：空格、#、标点一律剔掉（用户打了「找 工具」也算同一个）
 function barTopicClean(v) {
@@ -14420,6 +15073,7 @@ function setBarTopic(topic, opts = {}) {
       : '写 #话题 能归到一起 · 自己的帖子随时能删';
   }
   if (!opts.silent) { try { localStorage.setItem('dm_bar_topic', barTopic); } catch { /* 隐私模式 */ } }
+  if (cmpSyncOpenFn) cmpSyncOpenFn();
 }
 
 // 自建主题的输入态：＋自建 就地展开成 4 字输入框，回车确认、Esc 取消、失焦有内容就确认
@@ -14511,6 +15165,30 @@ function setupBarComposer() {
   $('chatInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitChat();
   });
+  // 11-17 发布器收缩版：平时一小条，点进正文（或已有内容/挂着关联作品/展开了关联输入）才展开成大框。
+  // blur 延 200ms 再判——关联输入框的 blur 自己 180ms 后才收，得排在它后面看最终状态
+  const cmpWrap = $('chatInput').closest('.cmp-wrap');
+  function cmpSyncOpen() {
+    if (!cmpWrap) return;
+    const chat = $('chatInput'), ref = $('chatWorkRef'), chip = $('chatRefChip');
+    const on = !chat.offsetParent ? false   // 主题切到「找工具」时闲聊表单整个隐藏，别硬撑着展开
+      : (document.activeElement === chat
+        || (ref && (document.activeElement === ref || (!ref.hidden && ref.value)))
+        || !!chat.value.trim()
+        || !!(chip && !chip.hidden));
+    cmpWrap.classList.toggle('cmp-open', on);
+  }
+  $('chatInput').addEventListener('focus', cmpSyncOpen);
+  $('chatInput').addEventListener('blur', () => setTimeout(cmpSyncOpen, 200));
+  $('chatInput').addEventListener('input', cmpSyncOpen);
+  const cmpRef = $('chatWorkRef');
+  if (cmpRef) {
+    cmpRef.addEventListener('focus', cmpSyncOpen);
+    cmpRef.addEventListener('blur', () => setTimeout(cmpSyncOpen, 200));
+    cmpRef.addEventListener('input', cmpSyncOpen);
+  }
+  cmpSyncOpen();
+  cmpSyncOpenFn = cmpSyncOpen;
   // 「＋ 话题」：不要求用户先学会语法，插一对 # 光标放中间；选中文字就直接裹上
   if ($('chatTagBtn')) $('chatTagBtn').onclick = insertChatTag;
   // 关联作品：平时收起（foot 上一个「🔗 关联作品」小按钮），点了才展开输入。
@@ -14562,7 +15240,7 @@ function setupBarComposer() {
   };
   // chip 上的 ✕：清空关联、收回输入框回到收起态
   const chipDel = $('chatRefChipDel');
-  if (chipDel) chipDel.onclick = () => chatRefReset(true);
+  if (chipDel) chipDel.onclick = () => { chatRefReset(true); cmpSyncOpen(); };
   // 联想面板用 mousedown 选词：先 preventDefault 留住输入框焦点，blur 不触发，选中不闪
   const rsPanel = $('refSuggest');
   if (rsPanel) rsPanel.addEventListener('mousedown', e => {
@@ -14601,6 +15279,8 @@ async function focusChatPost(id) {
 // 列表只留一行摘要（两行截断），全文、全部回应、回应输入框都在弹窗里；分享链接仍指向 ?p=。
 let chatModalId = '';
 let chatModalData = null;
+// 编辑态（2026-11-17）：只在弹窗里改自己的正文，进编辑态把 <p class="cp-text"> 换成输入框
+let chatEditing = false;
 
 function chatPostById(id) {
   const hit = feedState.rows.find(x => x.kind === 'chat' && x.id === id);
@@ -14617,7 +15297,7 @@ function chatRepliesHtml(p) {
       ${avaHtml(r.author, r.avatar, 'comment-avatar', false, r.username || r.author)}
       <div class="comment-body">
         <div class="comment-meta">
-          <b>@${escapeHtml(r.author)}</b>${r.isAuthor ? '<span class="cmt-badge author">作者</span>' : ''}
+          <b>${brAuthorHtml(r.username, r.author)}</b>${r.isAuthor ? '<span class="cmt-badge author">作者</span>' : ''}
           <span>${formatDate(r.at)}</span>
           <span class="comment-acts">
             <button type="button" class="comment-reply" data-mention="${escapeHtml(r.author)}">回复</button>
@@ -14638,23 +15318,34 @@ function renderChatPost() {
   const kind = barKindOf(p, topicStart);
   box.innerHTML = `
     <div class="cp-main">
-      <p class="cp-text">${barTextHtml(p.text)}</p>
-      ${p.work ? `<a class="cp-work" href="/w/${encodeURIComponent(p.work.id)}?full=1" target="_blank" rel="noopener" title="新开页面看这部作品的完整大图（2026-11-14 站长要求：点产品别在原地跳，新开全图页）">${ic('check-circle', 13)} ${escapeHtml(p.work.title)}</a>` : ''}
+      <div class="cp-head">
+        ${avaHtml(p.author, p.authorAvatar, 'br-ava cp-ava', false, p.authorRef || p.author)}
+        <span class="cp-byline"><b>${brAuthorHtml(p.authorRef, p.author)}</b><span class="br-when">${escapeHtml(wishWhen(p.createdAt))}${p.editedAt ? ' · 已编辑' : ''}</span></span>
+      </div>
       <div class="cp-meta">
         <span class="br-kind ${kind.cls}" title="${escapeHtml(kind.title)}">${escapeHtml(kind.label)}</span>
-        <span class="br-author">@${escapeHtml(p.author)}</span>
-        <span>${escapeHtml(wishWhen(p.createdAt))}</span>
       </div>
+      ${chatEditing ? `
+      <div class="cp-edit">
+        <textarea id="cpEditInput" maxlength="200" rows="3">${escapeHtml(p.text)}</textarea>
+        <div class="cp-edit-acts">
+          <button type="button" class="cc-send" data-edit-save="${id}">保存</button>
+          <button type="button" class="cc-act" data-edit-cancel="${id}">取消</button>
+        </div>
+      </div>` : `<p class="cp-text">${barTextHtml(p.text)}</p>`}
+      ${p.work ? `<a class="cp-work" href="/w/${encodeURIComponent(p.work.id)}?full=1" target="_blank" rel="noopener" title="新开页面看这部作品的完整大图（2026-11-14 站长要求：点产品别在原地跳，新开全图页）">${ic('check-circle', 13)} ${escapeHtml(p.work.title)}</a>` : ''}
       <div class="cp-acts">
         <button type="button" class="cc-act${p.liked ? ' is-on' : ''}" data-like="${id}"
-          title="碰个杯，表示你有同感">${ic('heart', 13)} 碰杯 <b>${p.likes || 0}</b></button>
+          title="碰个杯，表示你有同感">${ic('heart', 14)} 碰杯 <b>${p.likes || 0}</b></button>
+        ${barWatchBtn('post', id, p.watching, p.watchCount, true)}
         <button type="button" class="cc-act" data-share="${id}"
-          title="复制这条帖子的链接，发出去直接打开这条帖子">${ic('link', 13)} 分享</button>
+          title="复制这条帖子的链接，发出去直接打开这条帖子">${ic('link', 14)} 分享</button>
+        ${p.mine ? `<button type="button" class="cc-act" data-edit-chat="${id}" title="改一改自己说的这句">编辑</button>` : ''}
         ${p.mine ? `<button type="button" class="cc-act cc-del" data-del-chat="${id}" title="删掉自己说的这句">删除</button>` : ''}
       </div>
       <div class="cp-replies" id="cpReplies">${chatRepliesHtml(p)}</div>
       <div class="cc-form cp-form">
-        <input id="cpInput" maxlength="140" placeholder="接一句……说点有用的，别只发表情" />
+        <input id="cpInput" maxlength="140" autocomplete="off" placeholder="登录后参与讨论……" />
         <button type="button" class="cc-emoji" id="cpEmojiBtn" title="插入表情" aria-label="插入表情">😊</button>
         <button type="button" class="cc-send" data-send="${id}">回应</button>
       </div>
@@ -14685,6 +15376,7 @@ function openChatPost(id) {
   if (!p) return;
   chatModalId = id;
   chatModalData = p;
+  chatEditing = false;
   renderChatPost();
   showModal($('chatModal'));
   syncChatDeepLink(id);
@@ -14695,6 +15387,7 @@ function closeChatPost() {
   hideModal($('chatModal'));
   chatModalId = '';
   chatModalData = null;
+  chatEditing = false;
   syncChatDeepLink('');
 }
 
@@ -14805,6 +15498,8 @@ async function deleteWish(id) {
 
 function openWishDone(id) {
   ideaDoneId = id;
+  // 示例地址跟着当前域名走，换域名不用再改这里
+  try { $('ideaDoneInput').placeholder = location.origin + '/w/xxxx'; } catch { /* 忽略 */ }
   $('ideaDoneInput').value = '';
   $('ideaDoneMsg').textContent = '';
   showModal($('ideaDoneModal'));
@@ -14947,7 +15642,9 @@ function setupWish() {
     if (btn) {
       // 话题标签优先：它是行内的小胶囊，不能连带着把帖子弹窗叫起来
       if (btn.hasAttribute('data-tag')) return setBarTag(btn.dataset.tag);
+      if (btn.hasAttribute('data-bar-watch')) return toggleBarWatch(btn.dataset.barWatch, btn.dataset.barWatchId, btn);
       if (btn.dataset.open) openIdeaDetail(btn.dataset.open);
+      else if (btn.dataset.share) return copyChatLink(btn.dataset.share);
       else if (btn.dataset.like) return chatLike(btn.dataset.like);
       else if (btn.dataset.focusReply) return openChatPost(btn.dataset.focusReply);
       else if (btn.dataset.delChat) return deleteChat(btn.dataset.delChat);
@@ -14976,8 +15673,12 @@ function setupWish() {
     const btn = e.target.closest('button');
     if (!btn) return;
     if (btn.hasAttribute('data-tag')) { closeChatPost(); return setBarTag(btn.dataset.tag); }
+    if (btn.hasAttribute('data-bar-watch')) return toggleBarWatch(btn.dataset.barWatch, btn.dataset.barWatchId, btn);
     if (btn.dataset.like) return chatLike(btn.dataset.like);
     if (btn.dataset.share) return copyChatLink(btn.dataset.share);
+    if (btn.dataset.editChat) return editChat(btn.dataset.editChat);
+    if (btn.dataset.editSave) return saveChatEdit(btn.dataset.editSave);
+    if (btn.hasAttribute('data-edit-cancel')) return cancelChatEdit();
     if (btn.dataset.delChat) return deleteChat(btn.dataset.delChat);
     // 回应楼层的「回复」：平铺结构做不了楼中楼，把 @昵称 填进输入框就能接话
     if (btn.dataset.mention) {
@@ -16837,7 +17538,7 @@ let miniPeekModal = null;
 // 一张码的加载过程：先摆骨架（转圈 + 一句话），图真加载完了再亮出来。
 // 微信生码第一次要一两秒，对着一个白框干等会让人以为点坏了。
 // raw=1 让服务端直接吐图片，浏览器能缓存，同一个位第二次打开是瞬开。
-function loadPeekQr(block, key, head, again) {
+function loadPeekQr(block, key, head, again, uid) {
   const img = block.querySelector('img');
   const cap = block.querySelector('.mpk-cap');
   const skelText = block.querySelector('.mpk-skel span:last-child');
@@ -16855,9 +17556,13 @@ function loadPeekQr(block, key, head, again) {
     skelText.textContent = '这次没出来';
     cap.textContent = '生成失败，点这里重试';
     cap.classList.add('mpk-retry');
-    cap.onclick = () => loadPeekQr(block, key, head, true);
+    cap.onclick = () => loadPeekQr(block, key, head, true, uid);
   };
-  img.src = '/api/mini/peek-qr?slot=' + encodeURIComponent(key) + '&raw=1' + (again ? '&r=' + Date.now() : '');
+  // uid 是缓存钉子：ck-ad 的码按账号出（scene=ad:<uid>），换个账号登录后 URL 不变的话
+  // 浏览器会把上一个账号的码缓存回来（raw 图片缓存一周），带上 uid 让缓存各归各
+  img.src = '/api/mini/peek-qr?slot=' + encodeURIComponent(key)
+    + (uid ? '&u=' + encodeURIComponent(uid) : '')
+    + '&raw=1' + (again ? '&r=' + Date.now() : '');
 }
 
 function openMiniPeekQr(slot) {
@@ -16885,7 +17590,7 @@ function openMiniPeekQr(slot) {
   const s = slots.find(x => x.key === slot);
   // 合并槽（榜单 + 发现一行文字）两处都投：出两张码，一张直达星梦榜、一张直达发现页
   const targets = slot === 'mini-rank-line'
-    ? [{ key: 'mini-rank-line', label: '星梦榜页' }, { key: 'mini-feat-line', label: '发现页' }]
+    ? [{ key: 'mini-rank-line', label: '榜单页' }, { key: 'mini-feat-line', label: '发现页' }]
     : [{ key: slot, label: '' }];
   blocksBox.innerHTML = targets.map(() => `
     <div class="mpk-block">
@@ -16976,6 +17681,7 @@ function openPromoTopup(need, balance, left) {
 let ckAdModal = null;
 let ckAdTimer = null;
 let ckAdSeen = 0;
+let ckAdMiss = 0;   // 连着几轮没看到 used 变大；攒够约 90 秒弹一次排查提示（账号不对最常见）
 
 function stopCkAdPoll() {
   if (ckAdTimer) { clearInterval(ckAdTimer); ckAdTimer = null; }
@@ -17024,7 +17730,9 @@ function openCheckinAdQr() {
             <p class="mpk-cap"></p>
           </div>
           <p class="mpk-tip">微信扫一扫（在微信里打开本页则长按识别）。看完不用截图、也不用回来点按钮——这个窗口开着就会自己认账，余额和「还剩几次」一起变。</p>
+          <p class="ckad-acct">注意用<b>绑定过本站账号</b>的微信扫：如果这个微信绑的是别的账号（或现场建了新号），灯火会记到那边，这里不会到账。</p>
           <p class="ckad-state"></p>
+          <p class="ckad-late" style="display:none">等了一会儿还没到账？八成是扫码的微信绑的不是当前账号——去「账号设置 → 绑定微信」把当前微信绑上，再回来重新出一张码。</p>
         </div>
       </div>`;
     document.body.appendChild(ckAdModal);
@@ -17033,9 +17741,11 @@ function openCheckinAdQr() {
   }
   paintCkAdState(ar);
   showModal(ckAdModal);
-  loadPeekQr(ckAdModal.querySelector('.mpk-block'), 'ck-ad', '', false);
+  loadPeekQr(ckAdModal.querySelector('.mpk-block'), 'ck-ad', '', false, (state.user && state.user.id) || '');
+  ckAdModal.querySelector('.ckad-late').style.display = 'none';   // 新开一张码，上一轮的「没到账」排查提示收起来
   // 起点是「现在已用几次」，只认变大（跨天 / 多设备都安全）
   ckAdSeen = Number(ar.used || 0);
+  ckAdMiss = 0;
   stopCkAdPoll();
   ckAdTimer = setInterval(ckAdPoll, 4000);
 }
@@ -17048,7 +17758,18 @@ function ckAdPoll() {
       const a = d && d.adReward;
       if (!a) return;
       const used = Number(a.used) || 0;
-      if (used <= ckAdSeen) { paintCkAdState(a); return; }   // 顺带把冷启动时拿到旧额度的情况纠正过来
+      if (used <= ckAdSeen) {
+        paintCkAdState(a);   // 顺带把冷启动时拿到旧额度的情况纠正过来
+        // 一直没到账：多半是扫码的微信绑的不是当前账号，灯火记到那边去了
+        if (++ckAdMiss === 24) {
+          const late = ckAdModal.querySelector('.ckad-late');
+          if (late) late.style.display = '';
+        }
+        return;
+      }
+      ckAdMiss = 0;
+      const late = ckAdModal.querySelector('.ckad-late');
+      if (late) late.style.display = 'none';
       // 递增档（30/30/40）下「次数 × 单价」不再成立：按档位把这一段实实在在加出来
       const sched = Array.isArray(a.schedule) ? a.schedule : [30, 30, 40];
       const gained = sched.slice(ckAdSeen, used).reduce((s, v) => s + (Number(v) || 0), 0);
@@ -18867,6 +19588,13 @@ function setupHeader() {
     };
   });
 
+  // 「记住我的选择」开关：PC 筛选行右端 + H5 筛选栏下方两处共用同一状态。
+  // 用 onclick 赋值，setupHeader 重跑也不会重复绑。
+  document.querySelectorAll('[data-remember-filters]').forEach(el => {
+    el.onchange = () => setRememberFilters(el.checked);
+  });
+  syncRememberToggle();
+
   // 「收藏 / 喜欢」入口（2026-11-14）：头像下拉的两颗已撤，现在走「我的」tiles 和作者主页的
   // 「收藏 / 喜欢」tab（独立页 /favs、/likes 保留，入口函数见 toggleFavorites / toggleLiked）
 
@@ -19876,7 +20604,7 @@ function setupInstall() {
   }
 
   function openInstall() {
-    // 二维码指向当前站点地址：线上就是 https://idea.v5pc.com，扫码直达
+    // 二维码指向当前站点地址（取 location.origin），扫码直达
     const box = $('installQrBox');
     if (!box.dataset.done && typeof qrcode === 'function') {
       try {
@@ -20030,6 +20758,9 @@ async function init() {
   route();
   // 剩下的都是「补齐类」元数据：分类、工具清单、广告位，并行拉，回来后再刷新依赖它们的面板
   await Promise.all([loadCategories(), loadTools(), ensureAds()]);
+  // route() 在上一行之前就把首页列表拉完了，那时 state.tools 还是空的（工具卡只挂 0 条），
+  // 数据回来列表不会自己重挂 → 首屏永远看不到工具卡。这里补挂一次（mountToolCards 自己会先清旧槽位，重复调安全）。
+  mountToolCards();
   // 分类/形态选项补齐后重绘榜单筛选栏（H5 重绘 tab 栏，PC 只补形态下拉的数字）
   if (location.pathname === '/rank') { if (isH5View()) renderRankFilterBarH5(); else renderRankTypePanel(); }
   setupHeader();

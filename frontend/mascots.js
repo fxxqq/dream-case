@@ -6,27 +6,35 @@
  *
  * 约定：
  *   - viewBox 统一 0 0 120 132（机器人是老图 0 0 120 126，也照旧兼容）
- *   - 每项 { name 短名（切换器里显示）, bubble 招呼气泡, msg 窗口里那句话, svg, beta?, act? }
+ *   - 每项 { name 短名（切换器里显示）, bubble 招呼气泡, msg 窗口里那句话, svg, free?, act? }
  *   - act: { label 面板里那件「拿手事」, labelOff 可选（熄灯这种开/关两态的另一个名字）,
  *     ico 图标名（见 icons.js）, hint 无障碍说明 }。动作逻辑在 index.html 的 runAct 里，
  *     这里只描述「它是谁、它会什么」，保持本文件纯数据（/mascots 页也读同一份）。
  *     动作都不排他：每件拿手事都对应站内本来就有的入口，形象只是更顺手的那个门。
- *   - beta: true＝内测形象：/mascots 里标「内测中」，只有站长（后台口令登录过）能选，
- *     普通用户看见但点不动；不写就是已开放，用户可以随机换到（2026-11-09）
- *     2026-11-10：12 个形象全部标 beta，整库内测中——普通用户固定看默认的「灯火」，
- *     想真正开放某个形象，把那一项的 beta 删掉即可。
+ *   - 拿手事口径（2026-11-17）：只有三件是真能用的——灯火「自动签到」（在线满 5 分钟也自动补签）、
+ *     星星罐「攒灯火」（专属福利：领到星星罐才开始攒，在线每 5 分钟 10 盏、一天 10 次共 100 盏）、
+ *     八音盒「放音乐」；
+ *     机器人保留「找件工具」（默认形象得有个能点的）；其余形象一律标「功能开发中」，
+ *     点了只给一句提示。要恢复哪件，把它的 act 换回去、index.html 的 ACTS 补回分发即可。
+ *   - 开放口径（2026-11-17 改）：全部形象都开放，但默认只有 free:true 的「机器人」白送，
+ *     其余每个都要在 /mascots 看一支激励视频才领得到，领到手就记在账号上（服务端 share.json
+ *     的 mascots 字段）。原来那套 beta 内测标记随这次一起撤掉了，服务器只认「领没领」。
+ *     名单要和服务端 MASCOT_IDS 一致：加一项这里，server.js 那边也要加，否则领不了。
  *   - 通用动效类名：.m-float 悬浮 / .m-shadow 影子 / .m-eye 眨眼
  *   - 皮肤私有类名前缀：lam- 灯火、jar- 星星罐、moo- 月亮、bf- 梦蝶、door- 小门、quill- 羽毛笔、
  *     bt- 纸船、cl- 云枕、lt- 梦信、mb- 八音盒、ct- 梦猫
  *   - 加新形象只要在这里加一项，切换器会自动多出一格（顺序＝这个对象的键顺序）
  */
+/* 「功能开发中」的统一占位（2026-11-17）：dev:true 让首页面板点了只给一句提示，
+   不进动作分发；/mascots 页只读 label，也会照着标。要恢复哪件，换回它自己的 act
+   （旧文案看 git 历史即可），index.html 的 ACTS 再补回分发。 */
+var DEV_ACT = { label: '功能开发中', ico: 'clock', dev: true, hint: '这个形象的拿手事还在开发，先试试别的' };
 window.MASCOTS = {
 
   /* A 灯火小精灵：纸灯笼 + 火苗里的一双眼。站内积分就叫灯火，形象与货币同一个词。 */
   lamp: {
     name: '灯火',
-    beta: true,
-    act: { label: '点亮今日', ico: 'lamp', hint: '一键签到，领今天这盏灯火' },
+    act: { label: '自动签到', ico: 'lamp', hint: '点一下立刻签到领灯火；在线满 5 分钟也会自动补签' },
     bubble: '灯亮着，要帮忙吗？',
     msg: '灯亮着，我就在。要装到桌面，还是先进小程序逛逛？',
     svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
@@ -64,14 +72,13 @@ window.MASCOTS = {
 </svg>`
   },
 
-  /* B 星星罐：一颗星＝一件作品，讲的是「投稿＝往罐子里放一颗星」。
-     摇一颗星摇的是别人放进来的星（不含自己的，也不摇最新那批——那两个池子分别归「小门」和首页）。 */
+  /* B 星星罐：一颗星＝一波灯火，讲的是「在线＝往罐子里攒一颗星」。
+     「摇一颗星」（空罐随机跳旧作）已下线（2026-11-18）：攒灯火本身就有收的动作，随机跳转没用。 */
   jar: {
     name: '星星罐',
-    beta: true,
-    act: { label: '摇一颗星', ico: 'star', hint: '从全站摇一件作品，跳过自己那几件' },
+    act: { label: '攒灯火', ico: 'star', hint: '星星罐专属福利：领到它以后，在线每 5 分钟攒 10 盏、一天最多 10 次（100 盏）；攒好了点一下收' },
     bubble: '罐子里又多了颗星',
-    msg: '罐子里装着大家投的梦。摇一颗，去看看别人的？',
+    msg: '罐子里装着在线攒的灯火，攒好了点一下收。',
     svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
   <defs>
     <linearGradient id="jarG" x1="0" y1="0" x2="1" y2="1">
@@ -106,8 +113,7 @@ window.MASCOTS = {
   /* C 月亮小梦：戴靛蓝睡帽的圆月，最直白地说「梦」。 */
   moon: {
     name: '月亮',
-    beta: true,
-    act: { label: '熄灯', labelOff: '点灯', ico: 'bulb', hint: '把页面调暗一档，再点复原' },
+    act: DEV_ACT, // 旧款：熄灯（labelOff「点灯」）
     bubble: '夜深了，慢慢来',
     msg: '夜深了，慢慢来。要不要先把站装到桌面，明天一点就开？',
     svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
@@ -145,8 +151,7 @@ window.MASCOTS = {
   /* D 梦蝶：庄周梦蝶，翅膀一合一开就是「收起来 / 放出去」。 */
   bfly: {
     name: '梦蝶',
-    beta: true,
-    act: { label: '让它飞', ico: 'sharecard', hint: '生成分享图；在别的页面就复制链接' },
+    act: DEV_ACT, // 旧款：让它飞（作品页生成分享图，别处复制链接）
     bubble: '梦要飞出去',
     msg: '梦要飞出去，才有人看见。想先做哪一件？',
     svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
@@ -188,8 +193,7 @@ window.MASCOTS = {
   /* E 梦之门：拱形小门，点一下门扇真的开、暖光从门缝漏。 */
   door: {
     name: '小门',
-    beta: true,
-    act: { label: '推门进去', ico: 'shapes', hint: '随机推开一件作品，不看榜单' },
+    act: DEV_ACT, // 旧款：推门进去（随机一件作品）
     bubble: '门开着，进来坐',
     msg: '门开着。进来看看能做点什么。',
     svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
@@ -222,8 +226,7 @@ window.MASCOTS = {
   /* F 羽毛笔：笔尖划过落一颗星，把「创造」直接画出来。 */
   quill: {
     name: '羽毛笔',
-    beta: true,
-    act: { label: '接着写', ico: 'edit', hint: '打开投稿，接着上次的草稿写' },
+    act: DEV_ACT, // 旧款：接着写（打开投稿编辑器续草稿）
     bubble: '刚写完一句',
     msg: '刚写了一句。要接着写，还是先做点别的？',
     svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
@@ -250,8 +253,7 @@ window.MASCOTS = {
   /* H 纸船：一只折好的梦，放进水里就该漂出去看人。桅杆顶一颗星＝刚点上的灯火。 */
   boat: {
     name: '纸船',
-    beta: true,
-    act: { label: '放一只', ico: 'arrowout', hint: '漂一件几乎没人看过的作品' },
+    act: DEV_ACT, // 旧款：放一只（漂一件几乎没人看过的作品）
     bubble: '折好了，放它走',
     msg: '折好了，一艘一只梦。要装到桌面，还是先进小程序逛逛？',
     svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
@@ -283,8 +285,7 @@ window.MASCOTS = {
   /* I 云枕：一朵自己会呼吸的云，软到可以当枕头——「梦慢一点」的那层意思。 */
   cloud: {
     name: '云枕',
-    beta: true,
-    act: { label: '枕五分钟', labelOff: '醒来', ico: 'clock', hint: '暂停所有动效五分钟' },
+    act: DEV_ACT, // 旧款：枕五分钟（静音，labelOff「醒来」）
     bubble: '先枕一会儿',
     msg: '枕头软，梦慢一点。想先做哪一件？',
     svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
@@ -311,8 +312,7 @@ window.MASCOTS = {
   /* J 梦信：信纸自己往外探头，火漆是一颗星——「投出去才算数」的那层意思。 */
   letter: {
     name: '梦信',
-    beta: true,
-    act: { label: '写封信', ico: 'mail', hint: '直接给站长留一句话' },
+    act: DEV_ACT, // 旧款：写封信（给站长留言）
     bubble: '有封信，给你的',
     msg: '信写好了，差一个收件人。想先做哪一件？',
     svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
@@ -346,8 +346,7 @@ window.MASCOTS = {
   /* K 八音盒：摇一摇发条就有一小段曲子飘出来，梦是被哄睡的那段旋律。 */
   box: {
     name: '八音盒',
-    beta: true,
-    act: { label: '放一段', ico: 'bell', hint: '现场合成一小段旋律，不加载音频文件' },
+    act: { label: '放音乐', ico: 'bell', hint: '现场合成一小段旋律，不加载音频文件' },
     bubble: '给你放一小段',
     msg: '一曲放完，梦就续上了。想先做哪一件？',
     svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
@@ -376,8 +375,7 @@ window.MASCOTS = {
   /* L 梦猫：趴在梦上打盹的猫，尾巴一扫一扫——「别急，还没醒」的那层意思。 */
   cat: {
     name: '梦猫',
-    beta: true,
-    act: { label: '撸一下', ico: 'heart', hint: '掉一颗星，撸多了它会说梦话' },
+    act: DEV_ACT, // 旧款：撸一下（掉颗星 + 梦话）
     bubble: '喵…再睡五分钟',
     msg: '喵，刚梦见你的作品了。想先做哪一件？',
     svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
@@ -413,10 +411,11 @@ window.MASCOTS = {
 </svg>`
   },
 
-  /* G 原版机器人（Trae 风格）：留作兜底选项，用户想换回去随时换。 */
+  /* G 原版机器人（Trae 风格）：默认就是它，也是唯一不要广告的那个——没领过别的形象的人
+     看到的就是它，想换回去随时换（2026-11-17 起默认形象从「灯火」改成它）。 */
   robot: {
     name: '机器人',
-    beta: true,
+    free: true,
     act: { label: '找件工具', ico: 'search', hint: '直接搜站内作品' },
     bubble: '嗨～需要帮忙吗？',
     msg: '嗨，我是造梦小助手，这几件事都能帮你：',

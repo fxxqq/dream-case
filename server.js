@@ -30,6 +30,16 @@ const REVIEW_MODE = process.env.REVIEW_MODE === '1'; // 打开后新投稿需审
 // DATA_DIR / UPLOAD_DIR 允许用环境变量指到别处（跑自动化测试时用临时目录，别碰正式数据）
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, 'data');
 const UPLOAD_DIR = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : path.join(__dirname, 'uploads');
+// 正式站点域名：默认 zm94.com，线上用环境变量 SITE_ORIGIN / SITE_URL 覆盖。
+// 换域名只改环境变量 + Nginx，代码里不要再写死域名。
+const SITE_ORIGIN_DEFAULT = String(process.env.SITE_ORIGIN || process.env.SITE_URL || 'https://zm94.com')
+  .trim().replace(/\/+$/, '');
+// 过渡期并行域名：切到新域名后旧域名还会并行一段时间（外链、小程序旧版本仍指向它），
+// 白名单与互链识别都要同时认。旧域名正式下线后删掉这一行即可。
+const LEGACY_SITE_HOSTS = ['idea.v5pc.com'];
+const SITE_HOST_DEFAULT = (() => {
+  try { return new URL(SITE_ORIGIN_DEFAULT).hostname.toLowerCase().replace(/^www\./, ''); } catch { return 'zm94.com'; }
+})();
 
 // ---------- 进程级兜底：出问题要留痕，别静默重启 ----------
 // 之前没有这两处兜底：任何一个 async 路由漏了 catch，Node 20 会直接结束进程，
@@ -453,6 +463,12 @@ const savePromoPriority = () => writeJSON('promo-priority.json', promoPriorityCf
 // 存 ad.prio / r.prio；没存的老代投单跟随上面的全局投放权重，不回溯改写。
 const COMP_PRIO_MODES = ['user', 'tie', 'owner'];
 const COMP_PRIO_LABEL = { user: '让位买家', tie: '齐平随机', owner: '优先这条' };
+// 投放单升降权（2026-11-18）：站长对任何单（买家单 / 代投单）单独调上场后的权重。
+// 与 prio 正交：prio 决定能不能上场（applyPromoPriority 挑池子），boost 只管上场以后
+// 被随机挑中的概率（升权 ≈ 3 倍、降权 ≈ 1/3）与排序先后（升权排前面）。不动扣费与期限。
+// 存 ad.boost / r.boost；没存的老单按「正常」兜底，不回溯改写。
+const PROMO_BOOSTS = ['up', 'down'];
+const PROMO_BOOST_LABEL = { up: '升权', '': '正常', down: '降权' };
 // 广告曝光明细：{ 'YYYY-MM-DD': { <adId>: { pv: 3, uv: { 'ip:1.2.3.4': 1, 'u:xxx': 1 } } } }
 // PV = 展示次数；UV = 去重访客（登录按账号、未登录按 IP，与站点 UV 口径一致）
 let adStats = readJSON('ad-stats.json', {});
@@ -781,6 +797,29 @@ const FRIEND_MAX = 50;        // 页脚最多展示多少条（多了页脚也�
 let friendReqs = readJSON('friend-requests.json', []);
 if (!Array.isArray(friendReqs)) friendReqs = [];
 const saveFriendReqs = () => writeJSON('friend-requests.json', friendReqs);
+
+// 推广清单（2026-11-17）：站长自己记的合作产品，四栏——产品名字 / 访问地址 / 账号 / 备注。
+// 2026-11-17 晚加第五栏「认证」：记这个产品的联盟计划要不要企业资质（个人可申请 / 需企业认证 / 待确认）。
+// 不上前台、不发 notifications，只给后台「推广」栏增删改查；整栏站长专属（接口挂 requireOwner）。
+// 数据文件 data/promotions.json，格式 [{ id, name, url, account, note, verify, createdAt, updatedAt }]。
+const PROMO_NAME_MAX = 40, PROMO_URL_MAX = 500, PROMO_ACCOUNT_MAX = 100, PROMO_NOTE_MAX = 200, PROMO_MAX = 200;
+const PROMO_VERIFY = ['', 'personal', 'company'];   // '' 待确认 / personal 个人可申请 / company 需企业认证
+let promotions = readJSON('promotions.json', []);
+if (!Array.isArray(promotions)) promotions = [];
+promotions = promotions.map(p => {
+  const o = p && typeof p === 'object' ? p : {};
+  return {
+    id: String(o.id || '').slice(0, 40) || Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name: String(o.name || '').trim().slice(0, PROMO_NAME_MAX),
+    url: String(o.url || '').trim().slice(0, PROMO_URL_MAX),
+    account: String(o.account || '').trim().slice(0, PROMO_ACCOUNT_MAX),
+    note: String(o.note || '').trim().slice(0, PROMO_NOTE_MAX),
+    verify: PROMO_VERIFY.includes(o.verify) ? o.verify : '',
+    createdAt: o.createdAt || new Date().toISOString(),
+    updatedAt: o.updatedAt || ''
+  };
+}).filter(p => p.name && p.url).slice(0, PROMO_MAX);
+const savePromotions = () => writeJSON('promotions.json', promotions);
 
 // 作品的分类列表：新数据用 categories 数组（1-3 个），老数据只有 category 单值
 function catsOf(w) {
@@ -3834,7 +3873,8 @@ const DISCOVER_ENABLED = String(process.env.DISCOVER_ENABLED || 'off').trim().to
 const DISCOVER_K_MAX = 0.6;            // 后台 k 的上限：k 只放大手动加权档位，0.6 → +2 档约 2.2 倍、−2 档约 0.2 倍
 const EXPO_S_CAP = 60;
 const EXPO_C_CAP = 60;
-const EXPO_USER_IDS_CAP = 200;         // 每个访客已看名单的上限（LRU：超了丢最早的）
+const EXPO_USER_IDS_CAP = 200;         // 每个访客「真看过」名单的上限（LRU：超了丢最早的）
+const EXPO_DELIVERED_CAP = 500;        // 「发过」名单上限：覆盖整站，防刷新后 left 回弹（2026-11-17）
 const EXPO_USER_TTL_DAYS = 180;        // 已看名单保留期：不活跃即清理
 const EXPO_IP_DEVICES_PER_WORK_DAY = 3;// 单 IP 单作品每天最多计 3 个设备人数：防一台机器伪造多个 vid
 const EXPO_REPORT_RPH = 240;           // 单 IP 每小时上报请求数（一屏合并一次，正常浏览用不到零头）
@@ -3891,9 +3931,24 @@ function expoWorkRec(id) {
   return r;
 }
 function expoUserRec(key) {
-  const r = expoData.users[key] || (expoData.users[key] = { ids: [], at: 0 });
+  const r = expoData.users[key] || (expoData.users[key] = { ids: [], delivered: [], at: 0 });
   if (!Array.isArray(r.ids)) r.ids = [];
+  if (!Array.isArray(r.delivered)) r.delivered = [];
   return r;
+}
+// 「发过」名单：发卡即记（不管用户有没有真看），只服务于左计数与去重。
+// 与 ids（曝光 ≥50% 500ms 才写）彻底分开——作品侧 s/c 曝光点击统计不碰，CTR 口径不变。
+// 起因（2026-11-17）：加载更多靠 exclude 消耗整池，卡片渲染了却没上报曝光，
+// left 一直不降；前端靠「屏上卡数」判翻完，一刷新 DOM 清空就冒出旧的 left。
+function recordDelivered(key, ids) {
+  if (!key || !Array.isArray(ids) || !ids.length) return;
+  const ur = expoUserRec(key);
+  for (const id of ids) {
+    if (!ur.delivered.includes(id)) ur.delivered.push(id);
+  }
+  while (ur.delivered.length > EXPO_DELIVERED_CAP) ur.delivered.shift();
+  ur.at = Date.now();
+  scheduleExpoSave();
 }
 // 单 IP 单作品每天的人数额度桶：数组里只存「真正计了数」的人，跨天自动重建
 function expoIpDayRec(ipk) {
@@ -4069,7 +4124,7 @@ function shuffleInPlace(arr) {
 // ② 同一到访内反复刷新、点进详情再回来，基准不动 → 「新」不会逛一圈就消失。
 function wanderFreshSince(key, now) {
   let ur = expoData.users[key];
-  if (!ur) ur = expoData.users[key] = { ids: [], at: 0 };   // at:0 → 走「第一次来」兜底
+  if (!ur) ur = expoData.users[key] = { ids: [], delivered: [], at: 0 };   // at:0 → 走「第一次来」兜底
   const lastSeen = Number(ur.at) || 0;
   const newVisit = !Number(ur.walkBase) || (now - lastSeen) > 30 * 60e3;
   if (newVisit) {
@@ -4093,16 +4148,19 @@ function discoverPick(req, key, size, exclude) {
   const mine = me ? new Set(works.filter(w => w.userId === me.id).map(w => w.id)) : null;
   const seenRec = expoData.users[key];
   const seen = new Set(seenRec && Array.isArray(seenRec.ids) ? seenRec.ids : []);
+  // 「发过」也算已经逛过：exclude 把整池消耗完却没上报曝光的卡，刷新后不该再冒出来
+  // （2026-11-17）。仍与 ids 分开存，作品侧 s/c 曝光统计完全不受影响。
+  const delivered = new Set(seenRec && Array.isArray(seenRec.delivered) ? seenRec.delivered : []);
   // 不推荐件（推广/导流）在源头剔掉：取卡池、重温混填、total 共用这一份，不搞三处过滤
   const all = publicWorks(req).filter(w => !expoNoRec(w.id));
   const skip = exclude instanceof Set ? exclude : new Set();
   const pool = [];
   for (const w of all) {
     if (mine && mine.has(w.id)) continue;
-    if (seen.has(w.id)) continue;
+    if (seen.has(w.id) || delivered.has(w.id)) continue;
     pool.push(w);
   }
-  // 「没看过的总数」要在排除屏上卡之前算：它是这个人还没逛过的真实池子，
+  // 「没看过的总数」要在排除屏上卡之前算：它是这个人还没被发过的真实池子，
   // 屏上的卡只是「还没上报看过」，不该从 left 里扣掉（否则计数会先跌后涨）
   const unseenTotal = pool.length;
   if (!unseenTotal) return { state: 'empty', list: [], revisit: [], total: all.length, left: 0 };
@@ -4132,12 +4190,10 @@ function discoverPick(req, key, size, exclude) {
   return {
     state, list: out, revisit,
     total: all.length,
-    // 「没看过的总数」= pool 本身（已排除已看/自己的；没看过的降级件也算在内——
-    // 2026-11-11 起它们只是排后，不是离池）。2026-11-10 修：
-    // 旧口径减掉本批张数，首屏一出来就扣 19 件，手机 3-4 屏会「只看了七八个却显示
-    // 十几个」。现在只报没看过的总数，前端每真实看完一件（可视 ≥50% 持续 500ms 上报）
-    // 在本地实时递减，下次取数由这里按已看名单重新校准。
-    // 注意：exclude（屏上已有）不从 left 里扣——那些只是还没上报看过，左耳进右耳出会让计数忽上忽下
+    // 「没看过的总数」= pool 本身（已排除已看/发过/自己的；没看过的降级件也算在内——
+    // 2026-11-11 起它们只是排后，不是离池）。2026-11-17 起「发过」也排除：
+    // 发卡时记 delivered，前端不再本地递减 left（发过就少一件，口径单一、刷新不回弹）。
+    // exclude（屏上已有）仍不从 left 里扣：它是本批已发的一部分，已经记进 delivered 了。
     left: Math.max(0, unseenTotal)
   };
 }
@@ -5425,12 +5481,57 @@ function ideaWantKey(req, user) {
   if (user) return 'u:' + user.id;
   return 'ip:' + crypto.createHash('sha256').update('idea:' + clientIp(req)).digest('hex').slice(0, 16);
 }
+// ---------- 酒馆追更（2026-11-17）----------
+// 追的是「这一帖/这一条想法后续有没有人接话」，不是关注作者本人（那是另一套关系）。
+// 状态就挂在帖子/想法自己的 watchKeys 上：删除即消失，不用再维护一张订阅表；
+// 只收站内账号，匿名访客不开放——没账号就没地方收提醒。
+function barWatchKey(user) { return user ? 'u:' + user.id : ''; }
+function barWatchList(item) { return Array.isArray(item.watchKeys) ? item.watchKeys : (item.watchKeys = []); }
+function barWatchOut(item, req, user) {
+  const key = barWatchKey(user);
+  return {
+    watching: !!(key && barWatchList(item).includes(key)),
+    watchCount: barWatchList(item).length
+  };
+}
+// 想法和闲聊共用这一颗开关；save 传对应表的落盘函数，out 传对应的 public* 序列化函数
+function toggleBarWatch(req, res, item, save, out) {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!item || item.hidden) return res.status(404).json({ error: '这条已经不在了' });
+  if (!rateLimit('barwatch:' + clientIp(req), 120, 3600e3)) {
+    return res.status(429).json({ error: '点太快了，歇一会儿' });
+  }
+  const key = barWatchKey(user);
+  const list = barWatchList(item);
+  const i = list.indexOf(key);
+  if (i >= 0) list.splice(i, 1); else list.push(key);
+  save();
+  res.json(out(item, req, user));
+}
+// 追更者的合并提醒：同一帖同一人一小时最多一条，热帖不会把铃铛刷爆。
+// 已经按「帖子作者 / 想法提出者+认领者」身份收到通知的人不再重复发。
+function watcherUids(item, user, already) {
+  const skip = new Set(already.filter(Boolean).map(String));
+  if (user) skip.add(String(user.id));
+  return barWatchList(item)
+    .filter(k => k.startsWith('u:'))
+    .map(k => k.slice(2))
+    .filter(uid => uid && !skip.has(uid));
+}
+const BAR_WATCH_NOTICE_KEY = (kind, id, hour) => `bar-watch:${kind}:${id}:${hour}`;
 function publicIdea(i, req, user) {
   const key = ideaWantKey(req, user);
   const w = i.workId ? works.find(x => x.id === i.workId) : null;
+  // 2026-11-17 酒馆信息流「大气版」：卡片要画头像；11-17 晚卡片上的关注按钮撤掉，
+  // 换成「追更」——追这条帖子的后续，而不是关注这个人。authorRef/头像仍下发给楼层展示用。
+  const au = userByName(i.author);
   return {
     id: i.id,
     title: i.title,
+    authorRef: au ? (au.id || au.username) : '',
+    authorAvatar: avatarUrlOf(au),
+    ...barWatchOut(i, req, user),
     // 想法池的分档就是「找工具」（2026-11-14 主题化）：入口不再叫「提想法」，
     // 但卡片角标、话题筛选跟散座同一套口径，别让时间线上两种皮肤
     topic: '找工具',
@@ -5776,6 +5877,9 @@ const ADMIN_PERMS = [
   { key: 'linkhealth', label: '外链巡检', desc: '外链健康报告（只读）：发起巡检 / 白名单 / 定时设置只有站长', tabs: ['linkhealth'] },
   { key: 'opensub',    label: '开源收录', desc: '开源收录列表（只读）：收录审核 / 分类管理 / star 结算只有站长', tabs: ['opensub'] },
   { key: 'admins',  label: '管理员管理', desc: '增删管理员、审批申请、分配权限 —— 只属于站长，不对外分配', tabs: ['admins'], ownerOnly: true },
+  // 推广清单（2026-11-17）：站长自己记的合作产品（访问地址 / 账号 / 产品名字 / 备注），
+  // 不上前台、不进小程序；整栏站长专属，名单管理员连看都看不到。
+  { key: 'promote', label: '推广', desc: '推广产品清单：访问地址 / 账号 / 产品名字 / 备注 —— 只有站长能看和改', tabs: ['promote'], ownerOnly: true },
   { key: 'deploy',  label: '部署实例', desc: '看还有哪些域名在跑同一套站', tabs: ['deploy'] },
 ];
 const ALL_PERM_KEYS = ADMIN_PERMS.map(p => p.key);
@@ -5800,6 +5904,7 @@ const ADMIN_API_PERM = {
   scenes: 'config',
   replies: 'config', open: 'opensub', starsync: 'opensub', 'notify-old-comments': 'config',
   admins: 'admins',
+  promotions: 'promote',   // 推广清单：只有站长能看和改（模块 ownerOnly，接口再挂 requireOwner 双保险）
   deploy: 'deploy', 'site-list': 'deploy',
   // /stats 是每个 tab 都要用的待办数，任何管理员都放行；session/login/apply 走免鉴权白名单
   stats: 'any'
@@ -5955,6 +6060,9 @@ function auditDescribe(req) {
     const label = op === 'edit' ? '编辑作品' : op === 'del' ? '删除作品' : (W[op] || '作品操作:' + op);
     return label + ' ' + m[1] + (op === 'del' ? '（连图一起删）' : '');
   }
+  // 删众判记录（只有站长能发）：只删留档与票箱，作品不动，留痕里要写清楚是「删记录」而不是「下架作品」
+  m = p.match(/^\/api\/admin\/jury\/([^/]+)$/);
+  if (m && req.method === 'DELETE') return '删除众判记录 作品' + m[1];
   m = p.match(/^\/api\/admin\/jury\/([^/]+)\/([a-z-]+)$/);
   if (m) {
     const J = { flag: '贴「疑似推广」标交众人投票', clear: '众判结案（清票，必要时恢复上架）', remove: '以众判名义直接下架' };
@@ -5991,6 +6099,8 @@ function auditDescribe(req) {
   if (m) return '撤下推广订单 ' + m[1] + '（退款）';
   m = p.match(/^\/api\/admin\/redemptions\/([^/]+)\/prio$/);
   if (m) return '改代投展示优先级 ' + m[1] + ' → ' + s(b.prio || '跟随全局');
+  m = p.match(/^\/api\/admin\/redemptions\/([^/]+)\/boost$/);
+  if (m) return '改投放单权重 ' + m[1] + ' → ' + (b.boost === 'up' ? '升权' : b.boost === 'down' ? '降权' : '正常');
   if (p === '/api/admin/redemptions/comp') return '代投推荐位：作品 ' + s(b.workId) + ' → ' + s(b.slot) + ' ' + s(b.days) + ' 天';
   m = p.match(/^\/api\/admin\/gift\/([^/]+)\/([a-z-]+)$/);
   if (m) return (m[2] === 'toggle' ? '停用/恢复灯火活动 ' : '改灯火活动渠道 ') + m[1];
@@ -6033,6 +6143,9 @@ function auditDescribe(req) {
   if (p === '/api/admin/friends/reorder') return '调整友链排序';
   if (p === '/api/admin/friends/delete') return '删除友链「' + s(b.name) + '」';
   if (p === '/api/admin/friends/update') return '编辑友链「' + s(b.name) + '」';
+  if (p === '/api/admin/promotions') return '新增推广「' + s(b.name) + '」';
+  m = p.match(/^\/api\/admin\/promotions\/([a-z-]+)$/);
+  if (m) return ({ update: '编辑推广', delete: '删除推广' })[m[1]] || '推广操作';
   const FR = { approve: '通过友链申请', recheck: '复查友链申请', 'approve-verified': '通过已验证友链申请', reject: '拒绝友链申请' };
   m = p.match(/^\/api\/admin\/friend-requests\/([a-z-]+)$/);
   if (m) return FR[m[1]] || '友链申请处理';
@@ -6053,6 +6166,7 @@ function auditDescribe(req) {
   if (p === '/api/admin/baidu-push') return '手动推送链接给百度收录';
   if (p === '/api/admin/scenes/rebatch') return 'AI 重新归类全部作品场景';
   if (p === '/api/admin/broadcast') return '发全站站内信「' + s(b.title) + '」';
+  if (p === '/api/admin/broadcast/recall') return '撤回群发「' + s(b.title || b.key) + '」';
   if (p === '/api/admin/guest-notice') return '更新游客公告「' + s(b.title) + '」';
   m = p.match(/^\/api\/admin\/guest-notice\/([^/]+)$/);
   if (m) return '删除游客公告 ' + m[1];
@@ -6420,6 +6534,152 @@ app.post('/api/admin/discover', requireAdmin, (req, res) => {
       manual: expoData.manual[w.id] || null,
       noRec: expoData.noRec[w.id] || null
     });
+  }
+  return res.status(400).json({ error: '未知 action' });
+});
+
+// ---------- 后台：本周精选配置（2026-11-17，写操作仅站长） ----------
+// GET  /api/admin/featured → 配置（个数/默认标签/色卡）＋ 每件作品的独立标签 ＋ 增补/移出名单 ＋ 当前出榜池
+// POST /api/admin/featured → action: top(改个数) / add(增补) / unadd(撤销增补) /
+//                             remove(移出) / unremove(恢复) / tag(带 id＝给单件打标签或清除；不带 id＝改默认标签) /
+//                             search(增补框联想：按 ID/标题关键词搜候选，11-17 加)
+// 出榜池实时算（featuredPoolRows 不进缓存），这里改完前台 15s 内随 featuredCache 过期自然生效
+function featuredWorkBrief(id) {
+  const w = works.find(x => x && x.id === id);
+  return { id, title: w ? w.title : '(作品不存在或已删除)', live: !!(w && isVisible(w)) };
+}
+app.get('/api/admin/featured', requireAdmin, (req, res) => {
+  const agg = weekAgg();
+  const pool = featuredPoolRows(agg);
+  res.json({
+    cfg: {
+      top: featuredCfg.top, topMin: FEATURED_TOP_MIN, topMax: FEATURED_TOP_MAX,
+      tagText: featuredCfg.tagText, tagColor: featuredCfg.tagColor,
+      tagColors: FEAT_TAG_COLORS, tagDefaultText: FEAT_TAG_DEFAULT_TEXT
+    },
+    // 每件作品的独立标签（原始 {id:{text,color}}）：后台据此回填输入框、清空时删键
+    tags: featuredCfg.tags,
+    add: featuredCfg.add.map(featuredWorkBrief),
+    remove: featuredCfg.remove.map(featuredWorkBrief),
+    list: pool.map(r => ({
+      id: r.w.id, title: r.w.title,
+      author: r.w.anonymous ? '匿名' : (r.w.author || ''),
+      score: r.score, manual: !!r.manual,
+      // 算法件的自动角标 key（人气最高/收藏飙升…），后台「当前榜单」用它画出前台此刻真正展示的角标
+      featReason: featuredReasonOf(r, agg),
+      // 已经解析好内联样式，后台列表直接画成和前台一样的胶囊；key 留着回填颜色下拉
+      tag: featuredTagOf(r.w.id),
+      tagKey: (featuredCfg.tags[r.w.id] || {}).color || ''
+    }))
+  });
+});
+app.post('/api/admin/featured', requireAdmin, (req, res) => {
+  if (!adminIsOwner(req)) {
+    return res.status(403).json({ error: '「本周精选」的配置只有站长能操作', permDenied: true });
+  }
+  const body = req.body || {};
+  const action = String(body.action || '');
+  // 找作品：优先精确 ID，兜底标题包含（跟「随便逛逛」的手动加权同一个习惯，不用先去查 ID）
+  const findWork = q => {
+    const s = String(q || '').trim().slice(0, 80);
+    if (!s) return null;
+    const sl = s.toLowerCase();
+    return works.find(x => x && String(x.id) === s)
+      || works.find(x => x && isVisible(x) && String(x.title || '').toLowerCase().includes(sl))
+      || null;
+  };
+  if (action === 'top') {
+    const n = Math.round(Number(body.n));
+    if (!Number.isFinite(n)) return res.status(400).json({ error: '个数要是数字' });
+    featuredCfg.top = Math.min(FEATURED_TOP_MAX, Math.max(FEATURED_TOP_MIN, n));
+    saveFeaturedCfgNow();
+    return res.json({ ok: true, cfg: { top: featuredCfg.top } });
+  }
+  if (action === 'add' || action === 'remove') {
+    const w = findWork(body.q || body.id);
+    if (!w) return res.status(404).json({ error: '找不到这件作品（只认作品 ID 或标题含关键词的）' });
+    if (action === 'add') {
+      if (!isVisible(w)) return res.status(400).json({ error: '这件作品不在架上（待审 / 已下架），先让它上线再增补' });
+      // 增补 = 强制入选：顺手把它从移出名单里放出来，两边不打架
+      const i = featuredCfg.remove.indexOf(w.id);
+      if (i >= 0) featuredCfg.remove.splice(i, 1);
+      if (!featuredCfg.add.includes(w.id)) featuredCfg.add.push(w.id);
+    } else {
+      // 移出对增补件 = 直接从增补名单删掉；对算法件 = 进移出名单、由分数顺位递补
+      const j = featuredCfg.add.indexOf(w.id);
+      if (j >= 0) featuredCfg.add.splice(j, 1);
+      else if (!featuredCfg.remove.includes(w.id)) featuredCfg.remove.push(w.id);
+    }
+    saveFeaturedCfgNow();
+    return res.json({ ok: true, id: w.id, title: w.title });
+  }
+  if (action === 'unadd' || action === 'unremove') {
+    const id = String(body.id || '').trim();
+    const list = action === 'unadd' ? featuredCfg.add : featuredCfg.remove;
+    const i = list.indexOf(id);
+    if (i < 0) return res.status(404).json({ error: '名单里没有这一件' });
+    list.splice(i, 1);
+    saveFeaturedCfgNow();
+    return res.json({ ok: true, id });
+  }
+  if (action === 'search') {
+    // 增补框的联想搜索：ID 精确命中排最前，其余按标题包含；架上的排前面，最多给 8 条。
+    // 带上 inAdd/inRemove/inPool，前端能直接标「已增补 / 已在精选 / 在移出名单」，不用再对名单。
+    const s = String(body.q || '').trim().slice(0, 80);
+    if (!s) return res.json({ ok: true, results: [] });
+    const sl = s.toLowerCase();
+    const hits = [];
+    const byId = works.find(x => x && String(x.id) === s);
+    if (byId) hits.push(byId);
+    for (const w of works) {
+      if (w && w !== byId && String(w.title || '').toLowerCase().includes(sl)) hits.push(w);
+      if (hits.length >= 24) break;
+    }
+    // 稳定排序：只在「是否在架上」上分组，组内保持 works 原序
+    hits.sort((a, b) => (isVisible(b) ? 1 : 0) - (isVisible(a) ? 1 : 0));
+    const poolIds = hits.length ? new Set(featuredPoolRows(weekAgg()).map(r => r.w.id)) : null;
+    return res.json({
+      ok: true,
+      results: hits.slice(0, 8).map(w => ({
+        id: w.id, title: w.title || '',
+        author: w.anonymous ? '匿名' : (w.author || ''),
+        live: isVisible(w),
+        inAdd: featuredCfg.add.includes(w.id),
+        inRemove: featuredCfg.remove.includes(w.id),
+        inPool: poolIds ? poolIds.has(w.id) : false
+      }))
+    });
+  }
+  if (action === 'badge' || action === 'tag') {
+    // 带 id = 给「这一件」打独立标签（2026-11-17 晚）：text 空 = 清除、回落默认/自动角标
+    const wid = String(body.id || '').trim();
+    if (wid) {
+      if (!works.find(x => x && x.id === wid)) return res.status(404).json({ error: '作品不存在' });
+      const text = body.text === undefined ? undefined : String(body.text).trim().slice(0, 8);
+      if (body.text !== undefined && !text) {
+        // 清空：直接删键，不留空壳——前台立刻回到「默认标签 / 自动角标」
+        delete featuredCfg.tags[wid];
+        saveFeaturedCfgNow();
+        return res.json({ ok: true, id: wid, tag: null });
+      }
+      let color = body.color;
+      if (color !== undefined && !FEAT_TAG_COLORS[color]) return res.status(400).json({ error: '颜色要在候选色卡里选' });
+      const cur = featuredCfg.tags[wid] || { text: '', color: featuredCfg.tagColor || 'violet' };
+      if (text !== undefined) cur.text = text;
+      if (color !== undefined) cur.color = color;
+      if (!cur.text) return res.status(400).json({ error: '标签文字不能为空（要清空请用「清除」）' });
+      featuredCfg.tags[wid] = { text: cur.text, color: FEAT_TAG_COLORS[cur.color] ? cur.color : 'violet' };
+      saveFeaturedCfgNow();
+      return res.json({ ok: true, id: wid, tag: featuredTagOf(wid) });
+    }
+    // 不带 id = 改「默认标签」（给没单独设标签的增补件兜底）
+    if (body.text !== undefined) featuredCfg.tagText = String(body.text).trim().slice(0, 8);
+    if (body.color !== undefined) {
+      if (!FEAT_TAG_COLORS[body.color]) return res.status(400).json({ error: '颜色要在候选色卡里选' });
+      featuredCfg.tagColor = body.color;
+    }
+    saveFeaturedCfgNow();
+    return res.json({ ok: true, tag: featuredTagCss() });
   }
   return res.status(400).json({ error: '未知 action' });
 });
@@ -6887,6 +7147,7 @@ function publicWork(w, user) {
     lampUnlocked: lampUnlocked,
     lampUnlocks: lampUnlockCountOf(w.id),
     authorTags: userTagsOf(w.author),
+    authorCert: certOfUser(w.author),   // 企业认证信息（null = 未认证）：卡片小盾章与详情页胶囊的悬停主体
     codesTotal: codesOf(w.id).length,
     codesLeft: codesOf(w.id).filter(c => c.status === 'available').length,
     faved: !!(user && Array.isArray(user.favs) && user.favs.includes(w.id)),
@@ -6921,21 +7182,33 @@ function publicWork(w, user) {
   };
 }
 
-// 相关作品：同分类优先（共享分类越多越靠前），数量不够再补同作者的最新件。
+// 相关作品：关键词重合优先（词比重 > 分类比重——「简历」重合远比同挂一个「效率工具」像相关的），
+// 只有分类重合的排后面，数量不够再补同作者的最新件。
 // SSR 详情页（/w/:id）和前端详情弹窗（/api/works/:id）共用这一份 —— 两处推荐必须是同一批，
 // 否则搜索引擎看到的和用户看到的不一致，改算法时也只需要改这里。
 // 只用 visibleWorks()（已过滤下架 / 未过审），不会把藏起来的作品漏给访客。
+// 关键词里的泛词（免费 / 开源 / 极简这类到处都有的修饰词）不参与相关性打分，
+// 否则「免费小火箭」会靠一个「免费」顶到简历作品前面。
+const RELATED_KW_SKIP = ['免费', '开源', '效率', '极简', '离线', '无广告', '工具箱', 'ai', '人工智能'];
 function relatedWorksOf(w, user, limit = 6) {
   const cats = catsOf(w);
+  const kws = keyWordsOf(w).map(k => String(k).toLowerCase()).filter(k => !RELATED_KW_SKIP.includes(k));
   const author = w.anonymous === true ? '' : (w.author || '');
   const sameCat = [], sameAuthor = [];
   visibleWorks().forEach(x => {
     if (x.id === w.id) return;
-    const shared = cats.length ? catsOf(x).filter(c => cats.includes(c)).length : 0;
-    if (shared > 0) sameCat.push({ x, shared });
+    // 站长在后台设了「随便逛逛不推荐」（expo.noRec，带到期时间）的件，
+    // 相关位也一并不出 —— 不推荐就是全站推荐位里的隐形人，别从相关位绕回来
+    if (expoNoRec(x.id)) return;
+    const sharedCat = cats.length ? catsOf(x).filter(c => cats.includes(c)).length : 0;
+    // 关键词对齐大小写再比（作者填的 AI 和自动生成的 ai 是同一个词）；
+    // 关键词不存在或为空时 keyWordsOf 会现算，老数据也能命中
+    const xkws = keyWordsOf(x).map(k => String(k).toLowerCase()).filter(k => !RELATED_KW_SKIP.includes(k));
+    const sharedKw = kws.length ? xkws.filter(k => kws.includes(k)).length : 0;
+    if (sharedCat > 0 || sharedKw > 0) sameCat.push({ x, shared: sharedCat, kw: sharedKw });
     else if (author && x.author === author && x.anonymous !== true) sameAuthor.push(x);
   });
-  sameCat.sort((a, b) => b.shared - a.shared || (new Date(b.x.createdAt) - new Date(a.x.createdAt)));
+  sameCat.sort((a, b) => b.kw * 2 + b.shared - (a.kw * 2 + a.shared) || (new Date(b.x.createdAt) - new Date(a.x.createdAt)));
   return sameCat.map(o => o.x)
     .concat(byNewest(sameAuthor))
     .slice(0, limit)
@@ -8198,14 +8471,21 @@ app.get('/api/mini/peek-qr', async (req, res) => {
   // 详情页那一位：第一次挑中的作品就钉住（scene 进缓存 key），别每次换一件
   let scene = 'peek';
   if (slot === 'promo-ad') scene = 'pad';   // 推广补灯：固定落「我的」页，页内按 scene 亮推广补灯卡
-  if (slot === 'ck-ad') scene = 'ad';       // 网页签到卡看广告：落「我的」页，页内按 scene 高亮看视频卡
+  // 网页签到卡看广告：码里带上网页账号 id（scene=ad:<uid>），小程序落地时比对当前登录
+  // 的账号——不是同一个就当场警告「灯火会记到当前账号、网页不会到账」，别让人白看一支
+  // 广告才发现记错账。缓存 key 也按 scene 走（不同账号的码内容不同）。
+  if (slot === 'ck-ad') {
+    const u = requireUser(req, res);
+    if (!u) return;
+    scene = 'ad:' + u.id;
+  }
   if (slot === 'mini-detail') {
     const prefix = 'peek:mini-detail:';
     const pinned = [...peekQrCache.keys()].find(k => k.startsWith(prefix));
     scene = pinned ? pinned.slice(prefix.length) : peekDetailScene(req);
     if (!scene) return res.status(400).json({ error: '站里还没有能打开的作品，先去逛逛再来' });
   }
-  const cacheKey = 'peek:' + slot + (slot === 'mini-detail' ? ':' + scene : '');
+  const cacheKey = 'peek:' + slot + (slot === 'mini-detail' || slot === 'ck-ad' ? ':' + scene : '');
   const hit = peekQrCache.get(cacheKey);
   if (hit) return sendPeekQr(req, res, hit, true);
   try {
@@ -8430,6 +8710,8 @@ app.get('/api/me', (req, res) => {
         slugEligible: slugEligible(user),
         // 我的链接：作者主页档案行下面那一排小胶囊。绑过 GitHub 的自动算一条，不用作者手填
         links: profileLinksOf(user),
+        // 个人介绍（作者主页档案区）：作者自己填的纯文本，没填是空串
+        bio: bioOf(user),
         // 主页作品隐藏：true = 别人打开 /u/xxx 只看得到档案，看不到作品卡片（本人不受影响）
         hideWorks: user.hideWorks === true,
         passSet: user.passSet !== false,            // false = OAuth 建号还没设密码
@@ -8956,6 +9238,27 @@ app.post('/api/me/links', (req, res) => {
   user.links = out;
   saveUsers();
   res.json({ ok: true, links: profileLinksOf(user), saved: out.map(l => l.url) });
+});
+
+// 个人介绍（作者自己填，展示在 /u/ 档案区）：纯文本，最多 100 字，去掉首尾空白和控制字符。
+// 不放富文本/链接——这段会出现在公开主页上，富文本等于给 XSS 和垃圾外链开后门。
+const BIO_MAX = 100;
+function bioOf(user) {
+  const s = String((user && user.bio) || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  return s.slice(0, BIO_MAX);
+}
+app.post('/api/me/bio', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('bio:' + user.id, 30, 3600e3)) {
+    return res.status(429).json({ error: '改得太频繁了，稍后再试' });
+  }
+  const raw = String((req.body && req.body.bio) || '').trim();
+  if (raw.length > BIO_MAX) return res.status(400).json({ error: `最多写 ${BIO_MAX} 个字` });
+  const bio = bioOf({ bio: raw });   // bioOf 读的是 .bio 属性，这里包一层对象
+  user.bio = bio;
+  saveUsers();
+  res.json({ ok: true, bio });
 });
 
 // 换主页星空：一个 key 就是一个 CSS 皮肤（白名单校验，别让前端塞任意字符串进 DOM 类名）
@@ -9513,6 +9816,46 @@ function finishCodeClaim(w, code, user, ip) {
   return { settledTips: r.settledTips, osBonus: r.osBonus, bonusPoints: bonus ? bonus.points : 0 };
 }
 
+// 一个暗号可能被站长同时设在同一位作者的几件作品上（一次收录 TA 一批作品）。
+// 这种情形填对一次就该整批归属，所以两条入口都先算「这个暗号该认领哪几件」：
+//   · 只收「作者名相同」的件 —— 暗号被误设到别人作品上时，不能顺手把别人的作品也划走；
+//   · 优先把「作者名就是当前账号」的那件当主件 —— 暗号先后发给不同作者时，
+//     不会把上一位作者还没认领的作品错划给这一位。
+// anchor（可选）= 详情页里作者正在看的那件：有它就以它为准，批次只收同作者同暗号的件。
+function codeClaimTargets(code, user, anchor) {
+  const norm = normClaimCode(code);
+  const who = String((user && user.username) || '').trim().toLowerCase();
+  const key = w => String(w.author || '').trim().toLowerCase();
+  const usable = w => !w.userId && w.userId !== user.id && isClaimable(w);
+  const hits = works.filter(w => claimCodeOn(w) && normClaimCode(w.claimCode) === norm);
+  if (!hits.length) return { primary: null, targets: [] };
+  const primary = (anchor && usable(anchor))
+    ? anchor
+    : hits.find(w => usable(w) && key(w) === who) || hits.find(usable) || hits[0];
+  // 作者名是空的（匿名且没留名字）就不做同批：没有名字可比，凑批等于把别人的作品划走
+  const pk = key(primary);
+  const targets = usable(primary)
+    ? (pk ? hits.filter(w => usable(w) && key(w) === pk) : [primary])
+    : [];
+  return { primary, targets };
+}
+
+// 整批按同一套口径落账（每件各走一次 finishCodeClaim：摘暗号 + 落记录 + 公告 + 发奖），
+// 各件的数字加总后一次性回给前端；titles 让前端能说清「哪几件归了你」。
+function claimByCodeBatch(targets, code, user, ip) {
+  const out = { title: '', titles: [], count: 0, settledTips: 0, osBonus: 0, bonusPoints: 0 };
+  targets.forEach(w => {
+    const r = finishCodeClaim(w, code, user, ip);
+    out.titles.push(w.title);
+    out.count += 1;
+    out.settledTips += Number(r.settledTips) || 0;
+    out.osBonus += Number(r.osBonus) || 0;
+    out.bonusPoints += Number(r.bonusPoints) || 0;
+  });
+  out.title = out.titles[0] || '';
+  return out;
+}
+
 app.post('/api/works/:id/claim', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
@@ -9568,9 +9911,12 @@ app.post('/api/works/:id/claim', async (req, res) => {
       rateLimit(ipKey, 10, 3600000);
       return res.status(400).json({ error: '认领暗号不正确，请向站长核对后再试' });
     }
-    // 用完即废、落已通过记录、转账归属、发通知：公共落账见 finishCodeClaim
-    const r = finishCodeClaim(w, code, user, ip);
-    return res.json({ ok: true, claimed: true, settledTips: r.settledTips, osBonus: r.osBonus, bonusPoints: r.bonusPoints });
+    // 用完即废、落已通过记录、转账归属、发通知：公共落账见 finishCodeClaim。
+    // 详情页以「这件」为准（anchor=w）：同暗号、同一作者的其它件一并归属，
+    // 填一次就把这一批都拿到手，不用回头逐件再填。
+    const { targets } = codeClaimTargets(code, user, w);
+    const r = claimByCodeBatch(targets.length ? targets : [w], code, user, ip);
+    return res.json({ ok: true, claimed: true, ...r });
   }
   // 交证据走人工审核这条路，才吃 5 次/小时 的限制（口令认领在上面有自己的一套）
   if (!rateLimit('claim:' + user.id, 5, 3600000)) {
@@ -9602,9 +9948,10 @@ app.post('/api/works/:id/claim', async (req, res) => {
   res.status(201).json({ ok: true, claim: { id: claim.id, status: claim.status } });
 });
 
-// 只凭暗号认领：数据看板空状态点「认领」进来的作者手里只有一件作品的暗号，
-// 不该要求 TA 先去站内翻到那件作品再走详情页。这里全站扫一遍匹配暗号的 作品，
-// 命中且「开放认领、无归属」就按同一套口径当场归属（finishCodeClaim）。
+// 只凭暗号认领：数据看板空状态点「认领」进来的作者手里只有作品的暗号，
+// 不该要求 TA 先去站内翻到那件作品再走详情页。这里全站扫一遍匹配暗号的作品，
+// 命中且「开放认领、无归属」就按同一套口径当场归属（finishCodeClaim）；
+// 同一暗号覆盖同一位作者的好几件时整批归属，填一次就全部到手（见 codeClaimTargets）。
 // 防撞库与详情页入口同一套限速：按用户 30 次/时 + 猜错按 IP 锁 10 次/时；
 // 暗号不存在和暗号错误都只回同一句「不正确」，不泄露「有没有这个暗号」。
 // 暗号能对上但作品不可认领时可以如实说——能对上说明请求方本来就持有暗号，不算泄露。
@@ -9621,21 +9968,19 @@ app.post('/api/claim/by-code', (req, res) => {
   if (rateUsedUp(ipKey, 10, 3600000)) {
     return res.status(429).json({ error: '口令尝试次数过多，请 1 小时后再试' });
   }
-  const norm = normClaimCode(code);
-  // 两轮查找：先找「无归属且开放认领」的那件（站长可能把同一个暗号先后设在两件作品上，
-  // 若先命中已归属的旧件，会把新作者挡在门外）；都没有时才拿任意命中件给出具体解释。
-  const usable = w => !w.userId && w.userId !== user.id && isClaimable(w);
-  const hit = works.find(w => claimCodeOn(w) && normClaimCode(w.claimCode) === norm && usable(w))
-    || works.find(w => claimCodeOn(w) && normClaimCode(w.claimCode) === norm);
-  if (!hit) {
+  // 查找口径与详情页入口同一条（codeClaimTargets）：先挑「无归属且开放认领」的那件，
+  // 再把同暗号、同一作者的其它件一起收进来——站长把同一个暗号设在几件作品上时填一次就整批归属。
+  const { primary, targets } = codeClaimTargets(code, user);
+  if (!primary) {
     rateLimit(ipKey, 10, 3600000);   // 猜错才计数：输对的作者不消耗 IP 预算（与详情页入口同一口径）
     return res.status(400).json({ error: '认领暗号不正确，请向站长核对后再试' });
   }
-  if (hit.userId === user.id) return res.status(400).json({ error: '这件作品已经在你名下了' });
-  if (hit.userId) return res.status(400).json({ error: '这个暗号对应的作品已经有归属了' });
-  if (!isClaimable(hit)) return res.status(400).json({ error: '这个暗号对应的作品暂未开放认领，请联系站长' });
-  const r = finishCodeClaim(hit, code, user, ip);
-  return res.json({ ok: true, claimed: true, title: hit.title, settledTips: r.settledTips, osBonus: r.osBonus, bonusPoints: r.bonusPoints });
+  // 命中但不可认领时才给具体解释：能对上说明请求方本来就持有暗号，不算泄露
+  if (primary.userId === user.id) return res.status(400).json({ error: '这件作品已经在你名下了' });
+  if (primary.userId) return res.status(400).json({ error: '这个暗号对应的作品已经有归属了' });
+  if (!isClaimable(primary)) return res.status(400).json({ error: '这个暗号对应的作品暂未开放认领，请联系站长' });
+  const r = claimByCodeBatch(targets.length ? targets : [primary], code, user, ip);
+  return res.json({ ok: true, claimed: true, ...r });
 });
 
 // 我的认领记录（前端用来显示「审核中 / 已通过」状态）
@@ -11196,9 +11541,14 @@ function publicBarPost(p, req, user) {
   const key = ideaWantKey(req, user);
   const likes = barPostLikes(p);
   const replies = barPostReplies(p).filter(r => !r.hidden);
+  // 同 publicIdea：11-17 晚起卡片上不放「关注作者」，改放「追更这一帖」。
+  const au = userByName(p.author);
   return {
     id: p.id,
     author: displayNameOf(p.author || '匿名'),
+    authorRef: au ? (au.id || au.username) : '',
+    authorAvatar: avatarUrlOf(au),
+    ...barWatchOut(p, req, user),
     text: p.text || '',
     // 主题（发帖时选的四档之一或自建）：卡片角标直接读它，不再让前端去猜
     topic: p.topic || '',
@@ -11212,6 +11562,8 @@ function publicBarPost(p, req, user) {
     liked: likes.includes(key),
     replyCount: replies.length,
     createdAt: p.createdAt,
+    // 编辑过就带上时间，前台标「已编辑」（用户编辑自己的帖子，2026-11-17）
+    editedAt: p.editedAt || '',
     // 关联的作品（发帖时选的）：读的时候现解析，下架/隐藏/被屏蔽了就自然消失，存量不用清
     work: (() => {
       if (!p.workId) return null;
@@ -11508,6 +11860,13 @@ app.post('/api/bar/posts/:id/like', (req, res) => {
   res.json({ likes: likes.length, liked: i < 0 });
 });
 
+// 追更（2026-11-17）：想听这条帖子的后续回应，不是关注发帖的人。
+app.post('/api/bar/posts/:id/watch', (req, res) => {
+  const p = barPostById(req.params.id);
+  if (!p) return res.status(404).json({ error: '这条已经不在了' });
+  toggleBarWatch(req, res, p, saveBarPosts, publicBarPost);
+});
+
 app.post('/api/bar/posts/:id/reply', async (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
@@ -11543,17 +11902,59 @@ app.post('/api/bar/posts/:id/reply', async (req, res) => {
   // 有人接话了要给帖子作者一声（2026-11-13）：以前酒馆只有卡片上那个 💬 数字在悄悄涨，
   // 帖子沉下去以后本人永远不知道自己被回了什么。自己回自己的楼不通知。
   // 同一帖一小时最多一条（key 按小时分桶）——热帖一晚上能攒十几句，逐条弹会把铃铛淹了。
+  const brief = text.length > 60 ? text.slice(0, 60) + '…' : text;
+  const hour = Math.floor(Date.now() / 3600e3);
   if (p.userId && p.userId !== user.id) {
-    const brief = text.length > 60 ? text.slice(0, 60) + '…' : text;
     addNotice(p.userId, {
       kind: 'bar-reply',
-      key: `bar-reply:${p.id}:${Math.floor(Date.now() / 3600e3)}`,
+      key: `bar-reply:${p.id}:${hour}`,
       title: '有人回应了你的闲聊',
       text: `${displayNameOf(user.username)}：${brief}`,
       link: '/bar?p=' + encodeURIComponent(p.id)
     });
   }
+  // 追更者（11-17）：作者已经单独收到了，别再发一份；自己回自己也不打扰。
+  // 同样按帖+小时合并，热帖不会一人一条把铃铛淹掉。
+  const watchers = watcherUids(p, user, [p.userId]);
+  if (watchers.length) {
+    addNoticeBatch(watchers.map(uid => [uid, {
+      kind: 'bar-reply',
+      key: BAR_WATCH_NOTICE_KEY('post', p.id, hour),
+      title: '你追更的帖子有新回应',
+      text: `${displayNameOf(user.username)}：${brief}`,
+      link: '/bar?p=' + encodeURIComponent(p.id)
+    }]));
+  }
   res.status(201).json({ ...publicBarPost(p, req, user), bonus: barBonus });
+});
+
+// 编辑自己的帖子（2026-11-17）：发出去的话允许改错字、补半句，只限本人。
+// 口径跟新发一遍不差——字数 / 敏感词 / 平台检测 / AI 审核全走，别让「编辑」变成绕审核的后门；
+// 一个字没动就直接回现状，不重跑审核也不动时间。改过记 editedAt，前台标「已编辑」。
+app.put('/api/bar/posts/:id', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const p = barPostById(req.params.id);
+  if (!p || p.hidden) return res.status(404).json({ error: '这条已经不在了' });
+  if (p.userId !== user.id) return res.status(403).json({ error: '只能改自己说的' });
+  const text = String((req.body || {}).text || '').replace(/\s+/g, ' ').trim();
+  if (text.length < 2) return res.status(400).json({ error: '至少写两个字' });
+  if (text.length > BAR_POST_TEXT_MAX) {
+    return res.status(400).json({ error: `最多 ${BAR_POST_TEXT_MAX} 字，说重点` });
+  }
+  if (text === p.text) return res.json(publicBarPost(p, req, user));
+  if (hitSensitive(text)) return res.status(400).json({ error: '内容包含敏感词，改一下再发' });
+  const wxCheck = await wechatMsgCheck(text, user.wechat && user.wechat.openid);
+  if (wxCheck.pass === false) return res.status(400).json({ error: '内容未通过平台内容安全检测，改一下再发' });
+  const ai = await aiReviewGate('造梦酒馆闲聊：' + text);
+  if (ai.pass === false) {
+    return res.status(400).json({ error: '内容疑似违规' + (ai.reason ? '：' + ai.reason : '') + '，改一下再发' });
+  }
+  p.text = text;
+  p.updatedAt = new Date().toISOString();
+  p.editedAt = p.updatedAt;
+  saveBarPosts();
+  res.json(publicBarPost(p, req, user));
 });
 
 // 删除：只有本人和管理员。站长在后台没有这块的界面，先给接口留口子，别让人删不掉自己的话
@@ -11745,6 +12146,14 @@ app.post('/api/ideas/:id/want', (req, res) => {
   res.json({ ok: true, wants: idea.wants, wanted: !wanted });
 });
 
+// 追更（2026-11-17）：跟「我也想要」是两回事——想要是表态，追更是想听后续讨论。
+// 有人在这条想法下发新讨论时，追更者会收到一条合并站内信。
+app.post('/api/ideas/:id/watch', (req, res) => {
+  const idea = ideaById(req.params.id);
+  if (!idea) return res.status(404).json({ error: '想法不存在' });
+  toggleBarWatch(req, res, idea, saveIdeas, publicIdea);
+});
+
 // 我来实现：认领（已认领的不能再抢，除非是自己的）
 app.post('/api/ideas/:id/claim', (req, res) => {
   const user = requireUser(req, res);
@@ -11904,6 +12313,17 @@ app.post('/api/ideas/:id/discussions', async (req, res) => {
     title: kind === 'progress' ? '你关注的想法有进展了' : '你关注的想法有新讨论',
     text: `「${idea.title}」${IDEA_DISCUSSION_KIND_TEXT[kind]}：${brief}`
   }));
+  // 追更者（11-17）：提出者和认领者上面已经收到，不重复发；同一想法同一人一小时合并一条。
+  const watchers = watcherUids(idea, user, [idea.userId, idea.claimer && idea.claimer.userId]);
+  if (watchers.length) {
+    const hour = Math.floor(Date.now() / 3600e3);
+    addNoticeBatch(watchers.map(uid => [uid, {
+      kind: 'bar-reply',
+      key: BAR_WATCH_NOTICE_KEY('idea', idea.id, hour),
+      title: '你追更的想法有新讨论',
+      text: `「${idea.title}」${IDEA_DISCUSSION_KIND_TEXT[kind]}：${brief}`
+    }]));
+  }
   res.status(201).json(publicDiscussion(d, idea, user, admin));
 });
 
@@ -12102,6 +12522,30 @@ function publicAd(a) {
     const r = redemptions.find(x => x.id === a.redemptionId);
     clickBased = !!r && !r.comp && !((r.views || 0) > 0);   // 站长代投（comp）按天投，不算纯点击包
   }
+  // 灯火自荐位在作品网格里要「当成正常作品」渲染（站长 2026-11-17 定的口径）：
+  // 前端拿 workId 去当前列表里找不到这件作品（最新/最热排序时它未必在当页），
+  // 所以随广告一起下发一份卡片渲染所需的最小作品快照。只给 redeem 自荐位带，
+  // 运营广告（source=admin）没有对应作品，保持原样。字段与前端 cardHtml/listHtml 对齐，
+  // 用 publicWork(w,null) 取值保证口径一致，不额外下发详情/解锁等重字段，控制 #dm-boot 体积。
+  let work = null;
+  if (a.source === 'redeem' && a.workId) {
+    const w = works.find(x => x.id === a.workId);
+    if (w && isPublished(w) && !w.hidden) {
+      const p = publicWork(w, null);
+      work = {
+        id: p.id, title: p.title, titleName: p.titleName, titleTag: p.titleTag,
+        cardDesc: p.cardDesc, introText: p.introText,
+        author: p.author, authorName: p.authorName, authorId: p.authorId, anonymous: p.anonymous,
+        category: p.category, categories: p.categories, type: p.type, types: p.types,
+        thumb: p.thumb, image: p.image,
+        likes: p.likes, favs: p.favs, commentCount: p.commentCount, views: p.views,
+        createdAt: p.createdAt, openSource: p.openSource, repo: p.repo,
+        paid: p.paid, paidModel: p.paidModel, lampPrice: p.lampPrice,
+        pinned: p.pinned, jury: p.jury, stage: p.stage,
+        authorTags: p.authorTags, authorCert: p.authorCert
+      };
+    }
+  }
   return {
     id: a.id, slot: a.slot,
     kind: a.kind || (a.image ? 'image' : 'text'),
@@ -12110,7 +12554,9 @@ function publicAd(a) {
     workId: a.workId || '',        // 推荐位渲染原生卡片时要用它拿到作品
     extUrl: a.extUrl === true,     // 推荐但点击跳外链：前端据此走 <a> 外链而不是开作品详情
     source: a.source || 'admin',  // 前台据此区分「广告」（运营）和「推荐」（积分兑换）
-    clickBased                     // 纯点击包兑换位 = true，其余 false
+    boost: adBoostOf(a),          // 站长调的权重档：up 升权 / '' 正常 / down 降权，前台按它加权随机
+    clickBased,                    // 纯点击包兑换位 = true，其余 false
+    work                           // redeem 自荐位的作品卡片快照（详见上方注释）
   };
 }
 // 指向站内作品的广告（workId 或 /w/ 链接），目标作品必须还能公开打开：
@@ -12161,6 +12607,11 @@ function adPrioOf(a) {
   const p = String(a.prio || '');
   return COMP_PRIO_MODES.includes(p) ? p : promoPriorityMode();   // 老单：跟随全局
 }
+// 投放单权重档（2026-11-18）：up 升权 / '' 正常 / down 降权，买家单、代投单都可设。
+// 与 prio 正交：prio 管能不能上场（上面挑池子），boost 只管上场以后被挑中的概率与排位。
+function adBoostOf(a) {
+  return PROMO_BOOSTS.includes(a && a.boost) ? a.boost : '';
+}
 function applyPromoPriority(list) {
   if (!list.length) return list;
   const bySlot = new Map();
@@ -12177,7 +12628,10 @@ function applyPromoPriority(list) {
     else win = g.user.concat(g.tie);
     win.forEach(a => keep.add(a));
   });
-  return list.filter(a => keep.has(a));
+  // 升权排前面、降权排后面（稳定排序，同档保持原相对顺序）：随机挑的位由前端按 boost
+  // 加权概率挑；顺序展示的位（页脚、轮播、首页横幅）直接按这个顺序来，升权先露脸。
+  const boostRank = a => ({ up: 0, '': 1, down: 2 })[adBoostOf(a)];
+  return list.filter(a => keep.has(a)).sort((a, b) => boostRank(a) - boostRank(b));
 }
 // 曝光/点击都是高频写入，攒一下再落盘，避免每来一个曝光就写一次文件
 let adSaveTimer = null;
@@ -12507,6 +12961,20 @@ const STAR_VERIFIED_AUTO_MAX = process.env.STAR_VERIFIED_AUTO_MAX !== undefined
 // 勋章：单仓库 star ≥ 2000 且仓库归属已验证，自动颁发这个标签（不进标签库，避免被改名/删除误伤）
 const GH_BADGE_STARS = 2000;
 const GH_BADGE_TAG = 'GitHub 优质原创作者';
+// 企业认证（2026-11-17）：站长在后台人工核验营业执照后给用户贴的资质标签（不进标签库）。
+// 贴标时必须带认证主体（公司全称），存 u.cert = { subject, at }；展示层是作者名旁蓝V胶囊。
+// 只有站长能贴 / 摘（资质背书，名单管理员不给这个权限），见 /api/admin/users/tags 里的闸。
+const CERT_TAG = '企业认证';
+function certOfUser(username) {
+  const u = users.find(x => x.username === username);
+  return u && u.cert && u.cert.subject ? { subject: String(u.cert.subject), at: u.cert.at || '' } : null;
+}
+// 悬停提示文案：详情弹窗 / 作者主页的胶囊 title 与 SSR 同款（改这里两边一起生效）
+function certTipOf(cert) {
+  return cert && cert.subject
+    ? `企业认证 · 已核验主体：${cert.subject}${cert.at ? '（' + String(cert.at).slice(0, 10) + ' 核验）' : ''}`
+    : '企业认证 · 已核验';
+}
 // 下面两个冷却可用环境变量调（回归测试设 0 才能连续同步多轮）
 // 2026-11-08 站长拍板：同一件作品两次同步间隔从 10 分钟改成 24 小时（一天一次，够作者当天涨的 star 一次结算完，
 // 也把 GitHub API 额度留给真正需要的人）
@@ -13019,7 +13487,7 @@ function backfillUploadRewards() {
 // 只对登录用户发（没有账号无处记账，访客先登录）；幂等靠 rec.arrive.last 记当天日期。
 // kind 用 'arrive'，别用 'visit'——后者已经被「分享链接带来访问」占用了。
 // 想临时关掉：把 ARRIVE_POINTS 改成 0，grantArrive 会直接不发，前端也不显示。
-const ARRIVE_POINTS = 0;   // 2026-11-10 下线：奖励收进形象体系（星星罐 + 自动签到，均内测）
+const ARRIVE_POINTS = 0;   // 2026-11-10 下线：奖励收进形象体系（星星罐 + 自动签到，11-17 起全量）
 
 function arriveView(user) {
   const rec = shareRecOf(user.id);
@@ -13222,7 +13690,7 @@ app.get('/api/me/checkin', (req, res) => {
   res.json({ ...checkinView(user), points: shareStatsOf(user.id).points, checkinBoard: checkinBoard(8), checkinRank: checkinRankOf(user.id) });
 });
 
-// 签到核心动作：网页上的「点亮今日」按钮和「在线满 5 分钟自动签到」（内测）共用。
+// 签到核心动作：网页上的「点亮今日」按钮和「在线满 5 分钟自动签到」共用。
 // 抽出来是为了让自动签到走完全同一套连签/递增/勋章记账，不要出现两套口径；
 // auto=true 只在记录里留一个 ck.autoAt 的痕（后台排查用），不影响任何奖励与榜单口径。
 // 已经签过返回 null（调用方各自决定怎么跟用户说），成功返回 { reward, streak, dayInCycle, points }。
@@ -13419,7 +13887,7 @@ app.get('/api/ad/seen', (req, res) => {
 });
 
 // ---------- 跨站「扫码看广告才放行」：票据（给别的域名用）----------
-// 站内（idea.v5pc.com）用 scene 就够了：记录绑在自己账号的 cookie 上。换到别的域名，
+// 站内（本站域名）用 scene 就够了：记录绑在自己账号的 cookie 上。换到别的域名，
 // 浏览器不肯把 cookie 带过去，那个站也无从知道「这个人看完了没」，所以改成票据：
 //   ① 那个站的页面 POST /api/ad/ticket 领一张票（票号随机、30 分钟过期、一票一人）；
 //   ② 二维码里塞 tk<票号>，扫开还是同一个 pages/adview，看完广告由小程序把票标记完成；
@@ -13435,7 +13903,7 @@ const AD_TICKET_SCENE_PREFIX = 'tk';  // 码里的 scene = 'tk' + 票号，小�
 const AD_GATE_HOST_RE = /^(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
 // 内置这条是本站：仓库里 data/ 不入库、deploy.sh 也不打包 data/，
 // 白名单要是只靠 data 文件，一上线就全站 403。以后加站只改 data 文件，不再动代码。
-const AD_GATE_BUILTIN = ['idea.v5pc.com'];
+const AD_GATE_BUILTIN = [SITE_HOST_DEFAULT].concat(LEGACY_SITE_HOSTS);
 
 function adGateAllowHosts() {
   const raw = readJSON(AD_GATE_ALLOW_FILE, null);
@@ -14799,20 +15267,90 @@ app.get('/api/works', (req, res) => {
   res.json({ items, total, page, pageSize, hasMore: page * pageSize < total, suggest });
 });
 
-// 本周精选：纯算法，按「近 7 天综合分」严格取前 20 件（2026-11-15 站长定口径）
+// 本周精选：按「近 7 天综合分」取分数榜前 N 件（2026-11-15 站长定口径；2026-11-17 扩站长自定）
 //   分数 = 窗口获赞×5 ＋ 收藏×8 ＋ 评论×3 ＋ 灯火人数×10 ＋ 窗口访客×2，
 //   与「本周热榜」共用同一套权重（weekHotScore），全站只有这一套算法。
-//   「严格」的意思：这条链路上不留任何调解空间——
-//     · 后台手选的作品不再插队、不再压轴（「设为精选」现在只留徽标，不占这 20 个名额）；
-//     · 不再按作者去重：同一作者多件都够分就都上 —— 这就是分数榜，不是作品集策划；
-//     · 不再设「窗口分 > 0」的门槛：分数为 0 的作品只在全站不足 20 件时才可能补进榜尾。
+//   2026-11-17 起站长保留两项干预（后台「本周精选」tab，仅站长可写）：
+//     · 增补：把任意在架作品直接放进精选（不占分数名额，板块总数可以超过 N）；
+//     · 移出：把某件作品从精选里拿掉（由分数榜顺位自动递补）。
+//     名单按作品 ID 长期生效——被移出的作品哪怕以后分数冲进前 N 也照样进不来，
+//     想放回来在后台点「恢复」；作品下架后增补/移出记录保留但自动失效，重新上架即恢复。
+//   入选仍不做分数以外的调解：不按作者去重、不设「窗口分 > 0」门槛。
 //   并列时依次比窗口访客 → 累计浏览 → id，任何时刻只有一种排法。
 //   展示顺序（2026-11-16 站长改口径）：入选严格按分数，但顺序每天用日期当种子重洗一次、
 //   当天内固定 —— 分数榜长期不变会让前排作品一直吃点击，新作品没露头机会；
-//   卡片左上角的序号是「当天排位」，不再是分数名次。
+//   卡片左上角的序号是「当天排位」，不再是分数名次。站长增补的作品位置同样参与洗牌，
+//   不会因为被手动加进来就排前面。
 //   卡片上的数据是累计口径（pvAll/uvAll），窗口分只用于排名，不对外展示
-const FEATURED_TOP = 20;
+const FEATURED_TOP_DEFAULT = 20;      // 精选个数默认值（后台可改，存 data/featured.json）
+const FEATURED_TOP_MIN = 4, FEATURED_TOP_MAX = 60;
 const FEATURED_DAYS = 7;              // 与 WEEKHOT_DAYS 同口径，改一处要一起看
+
+// 站长自定配置（2026-11-17）：data/featured.json
+//   { top, add:[作品ID…], remove:[作品ID…], tagText, tagColor, tags:{ 作品ID: {text, color} } }
+// tags 是「每件作品一个标签」（2026-11-17 晚改）：按作品 ID 存，选中哪件就显示哪件的标签，
+//   算法入选的也能单独打标签（打了就压掉自动角标「人气最高/收藏飙升…」）。
+// tagText/tagColor 降级成「默认标签」：只给「没单独设标签的站长增补件」兜底（≤8 字，留空默认「站长精选」），
+//   没打独立标签的算法件照旧按数据自动变角标。优先级：独立标签 > 增补默认标签 > 自动角标。
+// tagColor（含每件的 color）从 FEAT_TAG_COLORS 里选 key；紫罗兰是默认——七种自动角标里没这种颜色，一眼能认出是站长推的
+const FEAT_TAG_COLORS = {
+  violet: { name: '紫罗兰（推荐，跟自动角标都不同色）', color: '#7048e8', bg: '#f1ecfe', border: '#ddd6fe' },
+  blue:   { name: '青蓝',       color: '#2f7fd0', bg: '#eef7ff', border: '#d3e8ff' },
+  purple: { name: '靛紫',       color: '#5b5bd6', bg: '#eeedff', border: '#ddd9ff' },
+  coral:  { name: '珊瑚红',     color: '#d6455b', bg: '#fff0f2', border: '#ffd9e0' },
+  amber:  { name: '琥珀橙',     color: '#c9740a', bg: '#fff6e5', border: '#ffe3b3' },
+  teal:   { name: '青碧',       color: '#0e7c86', bg: '#edfafb', border: '#c9eef2' },
+  green:  { name: '松绿',       color: '#2f9e6a', bg: '#eefaf3', border: '#cfefdd' }
+};
+const FEAT_TAG_DEFAULT_TEXT = '站长精选';
+const featuredCfg = (() => {
+  const raw = readJSON('featured.json', null);
+  const c = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const top = Math.round(Number(c.top));
+  c.top = Number.isFinite(top) ? Math.min(FEATURED_TOP_MAX, Math.max(FEATURED_TOP_MIN, top)) : FEATURED_TOP_DEFAULT;
+  // 名单只收合法 ID、去重、封顶 100：手滑粘一大段不至于把配置撑爆
+  const idList = v => Array.isArray(v)
+    ? [...new Set(v.map(x => String(x || '').trim()).filter(x => /^[A-Za-z0-9_-]{4,32}$/.test(x)))].slice(0, 100)
+    : [];
+  c.add = idList(c.add);
+  c.remove = idList(c.remove);
+  // 兼容 11-17 上午那版 badgeText/badgeColor 字段名（当时误做成全卡统一角标），读进来当同一个东西
+  c.tagText = typeof c.tagText === 'string' ? c.tagText.trim().slice(0, 8)
+    : (typeof c.badgeText === 'string' ? c.badgeText.trim().slice(0, 8) : '');
+  const colorKey = c.tagColor || c.badgeColor;
+  c.tagColor = FEAT_TAG_COLORS[colorKey] ? colorKey : 'violet';
+  // 每件作品的独立标签：{ 作品ID: { text, color } }。ID 不合法的直接丢，文字为空的不存（等于「没单独设」），
+  // 颜色不认识回落紫罗兰；上限 200 件——精选池最多 60 件，200 是给「增补过又撤掉」的残留留余量
+  const srcTags = (c.tags && typeof c.tags === 'object' && !Array.isArray(c.tags)) ? c.tags : {};
+  const tags = {};
+  for (const [k, v] of Object.entries(srcTags)) {
+    const id = String(k || '').trim();
+    if (!/^[A-Za-z0-9_-]{4,32}$/.test(id)) continue;
+    const t = (v && typeof v === 'object') ? v : {};
+    const text = typeof t.text === 'string' ? t.text.trim().slice(0, 8) : '';
+    if (!text) continue;
+    tags[id] = { text, color: FEAT_TAG_COLORS[t.color] ? t.color : 'violet' };
+    if (Object.keys(tags).length >= 200) break;
+  }
+  c.tags = tags;
+  return c;
+})();
+function saveFeaturedCfgNow() {
+  try { writeJSON('featured.json', featuredCfg); } catch (e) { /* 配置写盘失败不阻断主流程 */ }
+}
+// 站长增补标签的内联样式：text 留空回落「站长精选」，颜色跟 tagColor 走
+function featuredTagCss() {
+  const c = FEAT_TAG_COLORS[featuredCfg.tagColor] || FEAT_TAG_COLORS.violet;
+  return { text: featuredCfg.tagText || FEAT_TAG_DEFAULT_TEXT, color: c.color, bg: c.bg, border: c.border };
+}
+// 单件作品的独立标签（2026-11-17 晚）：有就返回同一套内联样式，没有返回 null
+// —— null 时下游自己回落：增补件用 featuredTagCss()，算法件用自动角标
+function featuredTagOf(id) {
+  const t = featuredCfg.tags && featuredCfg.tags[id];
+  if (!t || !t.text) return null;
+  const c = FEAT_TAG_COLORS[t.color] || FEAT_TAG_COLORS.violet;
+  return { text: t.text, color: c.color, bg: c.bg, border: c.border };
+}
 
 // 固定种子伪随机（mulberry32）：同一种子产生的序列稳定，「继续随机」的发牌顺序靠它复现
 function mulberry32(seed) {
@@ -14825,7 +15363,7 @@ function mulberry32(seed) {
   };
 }
 
-// 精选候选：所有公开作品按近 7 天综合分降序，取前 FEATURED_TOP 件。
+// 精选候选：所有公开作品按近 7 天综合分降序（完整榜单，供精选出榜与后台看板取用）。
 //   API 与 SEO 首屏预载共用这一份，免得两处各算一遍、预载的图和真展示的图对不上。
 //   排名本体按 15s 缓存：500 件作品时一次全量算要 0.1~0.3s，而首页 HTML 的预载
 //   和 /api/featured 都会调它，页面渲染再来一遍不值得。本周精选本来就是周榜，
@@ -14853,11 +15391,13 @@ function featuredRankAll(agg) {
 }
 // 按人剔掉他自己屏蔽过的作品（匿名访客传 null 即可）。屏蔽是「我的列表」口径，
 // 不该进全站缓存，所以单独一层。
-function featuredRank(agg, user) {
-  const rows = featuredRankAll(agg);
+function featuredRankFiltered(agg, user, rows) {
   const set = blockedIds(user), authors = blockedAuthorSet(user);
   if (!set.size && !authors.size) return rows;
   return rows.filter(r => !set.has(r.w.id) && !authors.has(r.w.author));
+}
+function featuredRank(agg, user) {
+  return featuredRankFiltered(agg, user, featuredRankAll(agg));
 }
 
 // 展示顺序每天一洗（2026-11-16 站长改口径）：入选仍严格按分数取前 20，但队列顺序
@@ -14874,10 +15414,36 @@ function featuredDayOrder(list) {
   }
   return arr;
 }
-// 精选的完整出榜口径：分数取前 20 + 当日洗牌。所有消费点（/api/featured、
+// 精选出榜池（2026-11-17）：分数前 N ＋ 站长增补 − 站长移出。
+//   · 移出名单先滤掉，再取分数前 N：被移出的作品由后面的分数顺位自动递补，总数不受影响；
+//   · 增补不占分数名额（站长 2026-11-17 拍板）：站长加的直接进池子，板块总数可以超过 N；
+//   · 增补件已下架/已在移出名单的自动失效（记录保留，重新上架即恢复），不用站长手动清理；
+//   · 行结构与 featuredRankAll 完全一致（w/uv7/pv7/parts/score/pvAll/uvAll），下游不用分叉。
+//   增补件的窗口分照算（weekHotParts），只是不参与「前 N」的录取。
+function featuredPoolRows(agg) {
+  const rm = new Set(featuredCfg.remove);
+  const ranked = featuredRankAll(agg).filter(r => !rm.has(r.w.id));
+  const top = ranked.slice(0, featuredCfg.top);
+  const picked = new Set(top.map(r => r.w.id));
+  const adds = [];
+  for (const id of featuredCfg.add) {
+    if (picked.has(id) || rm.has(id)) continue;
+    const w = works.find(x => x && x.id === id);
+    if (!w || !isVisible(w)) continue;
+    const p = weekHotParts(w, agg);
+    const vr = workVisits[w.id] || {};
+    picked.add(id);
+    adds.push({
+      w, uv7: p.uv, pv7: p.pv, parts: p, score: p.score,
+      pvAll: vr.pv || 0, uvAll: Object.keys(vr.uv || {}).length, manual: true
+    });
+  }
+  return top.concat(adds);
+}
+// 精选的完整出榜口径：出榜池 + 按人过滤 + 当日洗牌。所有消费点（/api/featured、
 // 首屏直出 featuredBootRows、<head> preload 图）都走这一层，不许各自 slice。
 function featuredDayList(agg, user) {
-  return featuredDayOrder(featuredRank(agg, user).slice(0, FEATURED_TOP));
+  return featuredDayOrder(featuredRankFiltered(agg, user, featuredPoolRows(agg)));
 }
 
 // 「随便逛逛」取卡（spec §3.3/§3.4）：mode=pool 分层随机；mode=random 洗牌发牌。
@@ -14912,12 +15478,20 @@ app.get('/api/discover', (req, res) => {
     .filter(id => /^[A-Za-z0-9_-]{4,32}$/.test(id))
     .slice(0, 300));
   const r = discoverPick(req, key, size, exclude);
+  // 发卡即记「发过」：下次请求（含刷新）从池子里扣掉，left 同步下降、不回弹。
+  // 只记 pool 模式——random 是「看过的也会再出现」的洗牌玩法，不该烧掉池子。
   const revisitSet = new Set(r.revisit);
+  const freshIds = r.list.filter(w => !revisitSet.has(w.id)).map(w => w.id);
+  recordDelivered(key, freshIds);
+  // discoverPick 算 left 时还没记这一批，这里补扣本批新发的件数，让返回的 left 就是「发完之后剩多少」
+  if (r.state === 'drained') r.left = 0;
+  else r.left = Math.max(0, r.left - freshIds.length);
   r.list = r.list.map(w => ({ ...publicWork(w, user), revisit: revisitSet.has(w.id) }));
   res.json({ ok: true, state: r.state, total: r.total, left: r.left, freshSince, list: r.list });
 });
 
-// 清空已看名单（用户主动要求「重新推荐一遍」）：只清 users[key].ids（取卡去重的唯一依据），
+// 清空已看名单（用户主动要求「重新推荐一遍」）：清 users[key].ids（真看过）
+// + delivered（发过）——两者都是取卡去重的依据，少清一个刷新后又没得推。
 // 不碰 works 侧的 s/c 曝光点击名单——那是作品 CTR 统计，跟「我看过谁」是两回事，
 // 清了会把作品的被看人数冲掉，榜单口径也不能动（/api/track 与本接口零交集）。
 app.post('/api/discover/reset', (req, res) => {
@@ -14927,7 +15501,7 @@ app.post('/api/discover/reset', (req, res) => {
   if (!key) return res.status(400).json({ ok: false, code: 'no-person' });
   const ur = expoData.users[key];
   const cleared = ur && Array.isArray(ur.ids) ? ur.ids.length : 0;
-  if (ur) { ur.ids = []; ur.at = Date.now(); }
+  if (ur) { ur.ids = []; ur.delivered = []; ur.at = Date.now(); }
   saveExpoNow();
   res.json({ ok: true, cleared });
 });
@@ -14949,59 +15523,26 @@ app.get('/api/mascot/quiet', (req, res) => {
   res.json({ ok: true, id: pick.w.id, title: pick.w.title, pv: pick.pv });
 });
 
-// 小助手「摇一颗星」：从全站摇一件作品（2026-11-09 改口径）
-//   原先只在 /api/me/stats 里摇自己的作品，等于把自己的旧作复读一遍（用户反馈：自己的没必要摇）。
-//   现在排除自己的作品，并跳过最新 MASCOT_STAR_SKIP 件：那批就在首页 / 列表第一屏，
-//   也正好是「小门」（/api/works?pageSize=48 随机）的池子，两个入口别撞车；
-//   纸船取的是最冷门 30%，三者池子互不重叠。长尾不够（站里作品还少）时退回全池。
-//   不要求登录：游客也能顺手替一件老作品带一次浏览。
-const MASCOT_STAR_SKIP = 48;
-app.get('/api/mascot/star', (req, res) => {
-  if (!rateLimit('mascot-star:' + ipKeyOf(req), 60, 3600000)) return res.status(429).json({ ok: false, code: 'rate' });
-  const user = currentUser(req);
-  const pool = byNewest(publicWorks(req).filter(w => !(user && w.userId && w.userId === user.id)));
-  if (!pool.length) return res.json({ ok: false, code: 'empty' });
-  const tail = pool.slice(MASCOT_STAR_SKIP);
-  const from = tail.length ? tail : pool;
-  const w = from[Math.floor(Math.random() * from.length)];
-  res.json({ ok: true, id: w.id, title: w.title, pv: (workVisits[w.id] && workVisits[w.id].pv) || 0, longTail: tail.length > 0 });
-});
+// 「摇一颗星」已下线（2026-11-18）：星星罐现在专职攒灯火（/api/mascot/beat + /jar/collect），
+//   空罐时随机跳一件旧作品对用户没什么用（用户反馈），前端不再调用，接口一并撤掉。
+//   原先与纸船（/api/mascot/quiet，最冷门 30%）做的池子区分随之作废。
 
-// ---------- 形象在线心跳：星星罐攒星 + 在线自动签到（2026-11-10，内测） ----------
-// 口径（站长 2026-11-10 拍板）：
-//   星星罐    = 每在线 5 分钟长 1 颗星，一天最多长 8 颗（跟签到满勤 56 盏/周一个量级），
-//               1 星 = 1 盏灯火，kind='jar'；罐子攒上限 6 颗——满了「快收我」，不收就不再进星（溢出的浪费掉）。
-//               收取必须点一下（前端把拿手事变「收星星」）：纯在线 + 自动到账等于挂机白拿，
+// ---------- 形象在线心跳：星星罐攒灯火 + 在线自动签到（2026-11-10 上线，2026-11-17 全量开放） ----------
+// 口径（2026-11-17 站长拍板：别抠搜——每在线 5 分钟给 10 盏，一天最多 10 次，封顶 100 盏）：
+//   星星罐    = 每在线 5 分钟攒 1 波（= 10 盏灯火，JAR_STAR_POINTS），一天最多 10 波（共 100 盏），
+//               kind='jar'；罐子攒上限 6 波（60 盏）——满了「快收我」，不收就不再进（溢出的浪费掉）。
+//               收取必须点一下（前端把拿手事变「收灯火」）：纯在线 + 自动到账等于挂机白拿，
 //               点一下人至少还在页面前，而且「满了快收我」的动画必须有一个收取动作才形成闭环。
 //   自动签到  = 今天累计在线满 5 分钟（站长口径：5 分钟算真爱粉），自动把今天这签补上，
 //               走 performCheckin 与手动签到完全同口径（连签/递增/勋章都算），只留 ck.autoAt 的痕。
 //               适合忘性大经常忘签到的人；勤快的人亲手点没有任何损失，层级不受影响。
-// 内测方式：data/beta.json { "jar": [用户id...], "autoCheckin": [用户id...] }，写 "*" 表示全员；
-//           按 mtime 热加载，改完即生效不用重启。发版前记得把 "*" 换成具体白名单。
 // 心跳协议：前端每 60 秒 POST /api/mascot/beat 一拍（轻请求），服务端按距上一拍的间隔累加在线秒数
 //           （单拍最多记 2 分钟；间隔超过 10 分钟按新会话处理，防止「下午才回来」把上午的空档白记）。
-const JAR_STAR_SEC = 300;       // 每 5 分钟长 1 颗星
-const JAR_DAILY = 8;            // 每天最多长 8 颗
-const JAR_STORE_CAP = 6;        // 罐子攒上限（满了不再进星，催人收）
+const JAR_STAR_SEC = 300;       // 每 5 分钟长 1 波
+const JAR_STAR_POINTS = 10;     // 1 波 = 10 盏灯火
+const JAR_DAILY = 10;           // 每天最多长 10 波（= 100 盏）
+const JAR_STORE_CAP = 6;        // 罐子攒上限（波；满了不再进星，催人收）
 const AUTO_CHECKIN_SEC = 300;   // 在线满 5 分钟自动签到
-
-// 白名单：读 data/beta.json，按 mtime 缓存；文件不存在或解析失败一律视为空名单（安全兜底）
-let betaCache = null;
-function betaListOf(kind) {
-  try {
-    const f = path.join(DATA_DIR, 'beta.json');
-    const st = fs.statSync(f);
-    if (!betaCache || betaCache.mtime !== st.mtimeMs) {
-      betaCache = { mtime: st.mtimeMs, data: JSON.parse(fs.readFileSync(f, 'utf-8')) };
-    }
-    const list = betaCache.data && betaCache.data[kind];
-    return Array.isArray(list) ? list : [];
-  } catch { return []; }
-}
-const isBetaUser = (kind, user) => {
-  const list = betaListOf(kind);
-  return list.includes('*') || !!(user && list.includes(user.id));
-};
 
 // 罐子给前端看的视图
 function jarViewOf(rec) {
@@ -15035,26 +15576,22 @@ app.post('/api/mascot/beat', (req, res) => {
   if (gap > 0 && gap < 10 * 60000) ms.sec += Math.min(120000, gap) / 1000;
   ms.sec = Math.round(ms.sec);
 
-  // 两个内测都不在：空跑返回，前端收到 jar=null 会把角标收掉
-  if (!isBetaUser('jar', user) && !isBetaUser('autoCheckin', user)) {
-    saveShareSoon();
-    return res.json({ ok: true, jar: null, auto: null });
-  }
-
   // 自动签到：在线满 5 分钟且今天还没签 → 按手动签到的同一套口径补上
   let auto = null;
-  if (isBetaUser('autoCheckin', user) && ms.sec >= AUTO_CHECKIN_SEC) {
+  if (ms.sec >= AUTO_CHECKIN_SEC) {
     const done = performCheckin(user, true);
     if (done) auto = { given: true, reward: done.reward, streak: done.streak, points: done.points };
   }
 
-  // 星星罐：按在线秒数把该长的星长出来（长了就进罐，收不收由用户点）
+  // 星星罐：按在线秒数把该攒的攒出来（攒了就进罐，收不收由用户点）。
+  // 2026-11-17 绑定：要先领到「星星罐」形象才攒（站长豁免，与 /api/mascots/state 同口径）；
+  // 没领的 jar=null，前端据此把 ✦ 角标收掉，跟游客一个待遇。
   let jar = null;
-  if (isBetaUser('jar', user)) {
+  if (mascotOwnedOf(user.id, isAdmin(req)).indexOf('jar') >= 0) {
     const jr = rec.jar || (rec.jar = { day: '', pending: 0, got: 0 });
     if (jr.day !== today) { jr.day = today; jr.pending = 0; jr.got = 0; }
-    const want = Math.min(Math.floor(ms.sec / JAR_STAR_SEC), JAR_DAILY);   // 今天一共该长出来的星数
-    const have = jr.got + jr.pending;                                      // 已经长出来的（收掉的 + 罐里的）
+    const want = Math.min(Math.floor(ms.sec / JAR_STAR_SEC), JAR_DAILY);   // 今天一共该攒出来的波数
+    const have = jr.got + jr.pending;                                      // 已经攒出来的（收掉的 + 罐里的）
     const add = Math.max(0, want - have);
     if (add > 0) jr.pending = Math.min(jr.pending + add, JAR_STORE_CAP);   // 罐满就不再进（溢出的浪费）
     jar = jarViewOf(rec);
@@ -15064,24 +15601,28 @@ app.post('/api/mascot/beat', (req, res) => {
   res.json({ ok: true, jar, auto });
 });
 
-// 收星星：把罐里攒的星换成灯火。1 星 = 1 盏，kind='jar'（与签到/到访一样是系统赠送，
+// 收灯火：把罐里攒的星换成灯火。1 波 = 10 盏（JAR_STAR_POINTS），kind='jar'（与签到/到访一样是系统赠送，
 // 不进「推荐」的分享成绩统计口径）。当场落盘，重启不丢。
 app.post('/api/mascot/jar/collect', (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
-  if (!isBetaUser('jar', user)) return res.status(400).json({ error: '星星罐还在内测，先看看别人摇' });
   if (!rateLimit('jar-collect:' + user.id, 6, 60000)) return res.status(429).json({ error: '点太快啦，罐子会晕' });
+  // 绑定口径（2026-11-17）：攒灯火是「星星罐」形象的专属福利，没领的先去 /mascots 看一支广告领
+  if (mascotOwnedOf(user.id, isAdmin(req)).indexOf('jar') < 0) {
+    return res.status(400).json({ error: '先去「换个形象」页看一支广告，把星星罐领到手才开始攒' });
+  }
   const rec = shareRecOf(user.id);
   const today = dateKey();
   const jr = rec.jar || (rec.jar = { day: '', pending: 0, got: 0 });
   if (jr.day !== today) { jr.day = today; jr.pending = 0; jr.got = 0; }
-  const n = Math.min(jr.pending || 0, Math.max(0, JAR_DAILY - jr.got));   // 双保险：超日上限的存量不收
-  if (n <= 0) return res.status(400).json({ error: '罐子里暂时没有能收的星', jar: jarViewOf(rec) });
+  const n = Math.min(jr.pending || 0, Math.max(0, JAR_DAILY - jr.got));   // 双保险：超日上限的存量不收（单位：波）
+  if (n <= 0) return res.status(400).json({ error: '罐子里暂时没有能收的灯火', jar: jarViewOf(rec) });
   jr.pending -= n;
   jr.got += n;
-  const points = addPoints(user.id, n, 'jar');
+  const lights = n * JAR_STAR_POINTS;                                     // 1 波 = 10 盏
+  const points = addPoints(user.id, lights, 'jar');
   saveShareNow();
-  res.json({ ok: true, reward: n, points, jar: jarViewOf(rec) });
+  res.json({ ok: true, reward: n, lights, points, jar: jarViewOf(rec) });
 });
 
 // 入选理由 = 该作品各项里贡献最大的那一项（乘完权重再比），
@@ -15111,17 +15652,20 @@ function featuredReasonOf(r, agg) {
 app.get('/api/featured', (req, res) => {
   const user = currentUser(req);
   const agg = weekAgg();   // 近 7 天增量（30s 缓存），与「本周热榜」共用同一份，口径不会跑偏
-  // 入选严格按分数取前 20：不筛门槛、不限作者、不夹手选（口径见 FEATURED_TOP 上方的注释）；
-  // 展示顺序每天洗一次牌、当天固定（featuredDayList），序号是当天排位不是分数名次
+  // 入选 = 分数前 N（N 后台可调）＋ 站长增补 − 站长移出；展示顺序每天洗一次牌、当天固定
+  // （featuredDayList），序号是当天排位不是分数名次；featManual 标记站长增补件；
+  // featTag = 这一件自己的标签（每件作品一个，2026-11-17 晚），为 null 时前端回落：
+  //   增补件 → tag（默认标签）；算法件 → featReason 自动角标
   const reasonOf = r => featuredReasonOf(r, agg);
   const list = featuredDayList(agg, user).map(r => ({
     ...publicWork(r.w, user), uv7: r.uv7, pv7: r.pv7,
     // 累计口径给卡片展示用：数字比 7 天窗口厚，避免「12 次打开」看着单薄
     pvAll: r.pvAll, uvAll: r.uvAll,
     // featScore 前端不显示，留着是给「这件为什么没上」的排查当依据（口径写在规则气泡里，不算秘密）
-    featScore: r.score, featReason: reasonOf(r)
+    featScore: r.score, featReason: reasonOf(r), featManual: !!r.manual,
+    featTag: featuredTagOf(r.w.id)
   }));
-  res.json({ days: FEATURED_DAYS, list });
+  res.json({ days: FEATURED_DAYS, tag: featuredTagCss(), list });
 });
 
 // ---------- 首屏直出：本周精选卡 + 启动数据（2026-11-15） ----------
@@ -15169,6 +15713,16 @@ function ssrAvaChip(w) {
   return '<span class="ava-chip" aria-hidden="true"' + style + '>' + seo.esc(ch) + '</span>';
 }
 function ssrFeatReasonHtml(w) {
+  // 单件作品的独立标签优先（内联样式与 app.js 的 featReasonHtml 同一套值，接管时不闪）；
+  // 没单独设的：增补件用默认标签，算法件照旧走按数据自动变的角标
+  if (w.featTag && w.featTag.text) {
+    const t = w.featTag;
+    return '<span class="feat-reason" style="color:' + t.color + ';background:' + t.bg + ';border-color:' + t.border + '" title="站长推荐">' + seo.esc(t.text) + '</span>';
+  }
+  if (w.featManual) {
+    const t = featuredTagCss();
+    return '<span class="feat-reason" style="color:' + t.color + ';background:' + t.bg + ';border-color:' + t.border + '" title="站长推荐">' + seo.esc(t.text) + '</span>';
+  }
   const r = FEAT_REASONS_SSR[w.featReason] || FEAT_REASONS_SSR.new;
   return '<span class="feat-reason ' + r.cls + '" title="' + seo.esc(r.tip) + '">' + r.text + '</span>';
 }
@@ -15208,7 +15762,8 @@ function featuredBootRows(user) {
       introText: truncateText(pw.introText || '', 48),
       pvAll: r.pvAll, uvAll: r.uvAll, favs: pw.favs || 0,
       anonymous: !!pw.anonymous, author: pw.author || '', authorName: pw.authorName || '',
-      createdAt: r.w.createdAt, featReason: featuredReasonOf(r, agg)
+      createdAt: r.w.createdAt, featReason: featuredReasonOf(r, agg), featManual: !!r.manual,
+      featTag: featuredTagOf(r.w.id)
     };
   });
 }
@@ -16778,10 +17333,13 @@ app.get('/api/authors/:name', (req, res) => {
     isMe: !!(user && uid && user.id === uid),
     displayName: displayNameOf(name),
     tags: userTagsOf(name),
+    cert: certOfUser(name),   // 企业认证（null = 未认证）：作者主页胶囊悬停时显示主体与时间
     avatar: avatarUrlOf(acct),
     since,
     // 作者留下的外部主页（GitHub / 知乎 / …）：公开信息，访客与本人看到的一致
     links: profileLinksOf(acct),
+    // 个人介绍（作者主页档案区）：作者自己填的纯文本，没填是空串
+    bio: bioOf(acct),
     // 主页星空皮肤：作者自己挑的动效，访客看到的是同一个（没挑过 = 默认流星）
     skin: heroSkinOf(acct),
     total: list.length,
@@ -16926,6 +17484,17 @@ app.get('/api/works/:id', (req, res) => {
   // 只在详情接口下发，列表接口不带——500 张卡每人多两个字段，为了一颗按钮不值得。
   out.authorFollowers = w.userId ? followerCount(w.userId) : 0;
   out.authorFollowing = !!(user && w.userId && isFollowing(user.id, w.userId));
+  // 作者名片卡（2026-11-18，仿 php中文网档案块）：头像 + 作者维度四格统计。
+  // 同样只在详情接口下发；统计是「该作者全部已上架（未下架）作品」的聚合，每次现算——
+  // 量级 = 该作者作品数的一次线性扫描，详情页单条请求可承受，列表绝不能带。
+  const authorCardUser = w.userId ? users.find(u => u.id === w.userId) : null;
+  out.authorAvatar = avatarUrlOf(authorCardUser);
+  const authorWorksList = w.userId
+    ? works.filter(x => x.userId === w.userId && isPublished(x) && !x.hidden)
+    : [];
+  out.authorWorks = authorWorksList.length;
+  out.authorLikes = authorWorksList.reduce((s, x) => s + (x.likes || 0), 0);
+  out.authorFavs = authorWorksList.reduce((s, x) => s + (x.favs || 0), 0);
   // 相关作品：详情弹窗底部的站内导流（同分类优先，不够补同作者）。
   // 展示用小卡 3 件刚好收尾：4 件会把末条顶成半截、还得在弹窗里再滚一次。
   out.related = relatedWorksOf(w, user, 3);
@@ -17942,7 +18511,7 @@ function rawFetch(u, ip, opts) {
         ? cb(null, [{ address: ip.address, family: ip.family }])
         : cb(null, ip.address, ip.family),  // 固定 IP，SNI / 证书仍按 hostname
       headers: {
-        'User-Agent': 'ZaomengShowcaseBot/1.0 (+https://idea.v5pc.com)',
+        'User-Agent': 'ZaomengShowcaseBot/1.0 (+' + SITE_ORIGIN_DEFAULT + ')',
         'Accept': opts.binary ? 'image/avif,image/webp,image/png,image/jpeg,*/*;q=0.8'
           : 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.5',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.6',
@@ -20798,6 +21367,8 @@ function redeemOverview(daysRaw) {
       // 代投单的展示优先级：老单没有这个字段，空串＝跟随右上角的全局投放权重
       prio: r.comp === true && COMP_PRIO_MODES.includes(String(r.prio || '')) ? String(r.prio) : '',
       prioLabel: r.comp === true ? (COMP_PRIO_LABEL[String(r.prio || '')] || '跟随全局') : '',
+      // 投放单权重档：up 升权 / '' 正常 / down 降权（后台列表就地下拉改，走 /boost 接口）
+      boost: PROMO_BOOSTS.includes(String(r.boost || '')) ? String(r.boost) : '',
       viewsBought, clicksBought, used, left: Math.max(0, viewsBought - used),
       clickUsed, clickLeft: Math.max(0, clicksBought - clickUsed),
       pv: st.pv, uv: st.uv, clicks: st.clk, clickUv: st.clkUv,
@@ -21336,6 +21907,27 @@ app.post('/api/admin/jury/:id/remove', requireAdmin, (req, res) => {
   saveJuryNow();
   saveWorksNow();
   res.json({ ok: true, changed: true, reason: w.offlineReason });
+});
+
+// 删除众判记录（2026-11-17）：结案后留档的旧记录会一直堆在列表里，给站长一个清理入口。
+// 只删留档 + 票箱，作品本身、评论、当前上/下架状态一概不动（下架态要恢复请去「已下架」或本页「结案并恢复」）。
+// 众判中的一律不给删——还在投票的案子凭空消失，投票人只会以为系统吞了票，先结案或下架再来清。
+// 只认站长：名单管理员就算有「审核处理」模块也只能贴标/结案/下架，不能删记录。
+app.delete('/api/admin/jury/:id', requireAdmin, (req, res) => {
+  if (!adminIsOwner(req)) return res.status(403).json({ error: '删除众判记录只有站长能做，管理员可以结案或下架', permDenied: true });
+  const id = String(req.params.id || '');
+  const c = juryData.cases[id];
+  if (!c) return res.json({ ok: true, changed: false });     // 已经删过了：当成功处理，别报错
+  if ((c.status || 'open') === 'open') {
+    return res.status(400).json({ error: '这件还在众判中（票还在收）：先「结案清票」或「直接下架」，再来删记录' });
+  }
+  const was = c.status || 'open';
+  delete juryData.cases[id];
+  delete juryData.votes[id];
+  // 作品若正因众判下架，w.juryRemoved / offlineReason 都留着——删的只是后台留档，
+  // 不能顺手把「为什么下架」也抹掉，更不能因此把作品悄悄恢复上架。
+  saveJuryNow();
+  res.json({ ok: true, changed: true, was });
 });
 
 // 精选 / 置顶 切换（精选支持有效期：1/3/7/15/30 天，默认 3 天；开启时通知作者，可回复）
@@ -22875,6 +23467,67 @@ app.post('/api/admin/friends/update', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- 推广清单（2026-11-17，整栏站长专属）----------
+// 后台「推广」栏的四个字段：产品名字 / 访问地址 / 账号 / 备注。只存后台，不上前台、不进小程序。
+// 接口全挂 requireOwner：名单管理员即使被错授了 promote 模块也进不来；前端菜单也是 ownerOnly。
+function promoFields(body, partial) {
+  const b = body || {};
+  const name = String(b.name || '').trim();
+  const url = String(b.url || '').trim();
+  const account = String(b.account || '').trim();
+  const note = String(b.note || '').trim();
+  const verify = String(b.verify || '').trim();
+  if (!partial || b.name !== undefined || b.url !== undefined) {
+    if (!name) return { error: '产品名字不能为空' };
+    if (!url) return { error: '访问地址不能为空' };
+  }
+  if (name.length > PROMO_NAME_MAX) return { error: `产品名字最多 ${PROMO_NAME_MAX} 字` };
+  if (url.length > PROMO_URL_MAX) return { error: `访问地址过长（最多 ${PROMO_URL_MAX} 字）` };
+  if (url && !/^https?:\/\/\S+$/i.test(url)) return { error: '访问地址需以 http(s):// 开头' };
+  if (account.length > PROMO_ACCOUNT_MAX) return { error: `账号最多 ${PROMO_ACCOUNT_MAX} 字` };
+  if (note.length > PROMO_NOTE_MAX) return { error: `备注最多 ${PROMO_NOTE_MAX} 字` };
+  if (!PROMO_VERIFY.includes(verify)) return { error: '认证只能是：待确认 / 个人可申请 / 需企业认证' };
+  return { name, url, account, note, verify };
+}
+app.get('/api/admin/promotions', requireOwner, (req, res) => res.json(promotions));
+app.post('/api/admin/promotions', requireOwner, (req, res) => {
+  const f = promoFields(req.body || {});
+  if (f.error) return res.status(400).json({ error: f.error });
+  if (promotions.length >= PROMO_MAX) return res.status(400).json({ error: `推广清单最多 ${PROMO_MAX} 条` });
+  const now = new Date().toISOString();
+  const item = {
+    id: 'pm-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name: f.name, url: f.url, account: f.account, note: f.note, verify: f.verify,
+    createdAt: now, updatedAt: ''
+  };
+  promotions.push(item);
+  savePromotions();
+  res.status(201).json({ ok: true, item });
+});
+app.post('/api/admin/promotions/update', requireOwner, (req, res) => {
+  const id = String((req.body || {}).id || '');
+  const i = promotions.findIndex(p => p.id === id);
+  if (i < 0) return res.status(404).json({ error: '这条推广不存在，刷新后重试' });
+  const f = promoFields(req.body || {});
+  if (f.error) return res.status(400).json({ error: f.error });
+  const cur = promotions[i];
+  if (cur.name === f.name && cur.url === f.url && cur.account === f.account && cur.note === f.note && String(cur.verify || '') === f.verify) {
+    return res.json({ ok: true, item: cur });
+  }
+  const item = Object.assign({}, cur, f, { updatedAt: new Date().toISOString() });
+  promotions[i] = item;
+  savePromotions();
+  res.json({ ok: true, item });
+});
+app.post('/api/admin/promotions/delete', requireOwner, (req, res) => {
+  const id = String((req.body || {}).id || '');
+  const i = promotions.findIndex(p => p.id === id);
+  if (i < 0) return res.status(404).json({ error: '这条推广不存在，刷新后重试' });
+  const [item] = promotions.splice(i, 1);
+  savePromotions();
+  res.json({ ok: true, item });
+});
+
 // ---------- 友链申请：访客前台提交，站长在「友情链接」tab 审批 ----------
 // 查重用归一后的 url（协议尾斜杠大小写都抹平），入库保留用户原始写法
 function normFriendUrl(u) {
@@ -22905,7 +23558,7 @@ async function fetchHomeHtml(url) {
   try {
     const r = await fetch(url, {
       signal: AbortSignal.timeout(5000),
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; DreamCaseFriendBot/1.0; +https://idea.v5pc.com)', 'Accept': 'text/html' },
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; DreamCaseFriendBot/1.0; +' + SITE_ORIGIN_DEFAULT + ')', 'Accept': 'text/html' },
       redirect: 'follow'
     });
     if (!/text\/html/i.test(String(r.headers.get('content-type') || ''))) return '';
@@ -22922,8 +23575,8 @@ async function resolveSiteName(url) {
 // 互链检测用的本站域名：正式域名 + 环境里配的（自定义域名 / 测试）。
 // 只认指向本站的 <a href>，不看文字 —— 「造梦橱窗」四个字写一堆但没链接是不算的。
 const BACKLINK_HOSTS = (() => {
-  const s = new Set(['idea.v5pc.com']);
-  ['https://idea.v5pc.com', process.env.SITE_ORIGIN, process.env.SITE_URL].forEach(o => {
+  const s = new Set([SITE_HOST_DEFAULT].concat(LEGACY_SITE_HOSTS));
+  [SITE_ORIGIN_DEFAULT, process.env.SITE_ORIGIN, process.env.SITE_URL].forEach(o => {
     try { s.add(new URL(String(o)).hostname.toLowerCase().replace(/^www\./, '')); } catch {}
   });
   return [...s];
@@ -23130,9 +23783,15 @@ app.delete('/api/admin/types/:name', requireAdmin, (req, res) => {
 // 推荐位管理
 app.get('/api/admin/tools', requireAdmin, (req, res) => res.json(tools));
 app.post('/api/admin/tools', requireAdmin, (req, res) => {
-  const { name, desc, url } = req.body || {};
+  const { name, desc, url, feed, cert, partner } = req.body || {};
   if (!name || !url) return res.status(400).json({ error: '名称和链接必填' });
-  tools.push({ id: Date.now().toString(36), name: String(name).slice(0, 40), desc: String(desc || '').slice(0, 120), url: String(url).slice(0, 300), active: true });
+  // feed=true：这条也当成「工具卡」插进首页作品流（角标「工具 · 企业认证」）；
+  // cert=企业认证主体，partner=带返佣/合作的推广链接（前台底脚会多写「合作」）。
+  tools.push({
+    id: Date.now().toString(36), name: String(name).slice(0, 40), desc: String(desc || '').slice(0, 120),
+    url: String(url).slice(0, 300), active: true,
+    feed: !!feed, cert: !!cert, partner: !!partner
+  });
   saveTools();
   res.status(201).json(tools);
 });
@@ -23539,6 +24198,25 @@ app.post('/api/admin/redemptions/:id/prio', requireAdmin, (req, res) => {
   res.json({ ok: true, prio, prioLabel: COMP_PRIO_LABEL[prio] || '跟随全局' });
 });
 
+// 投放单升降权（2026-11-18）：后台「用户推广」列表里对任何在投 / 排队中的单（买家单、
+// 代投单都行）单独调权重。升权 = 同位随机挑时约 3 倍概率、顺序位排前面；降权 = 约 1/3
+// 概率、排位靠后——作品还照常上场、照常计费，只是不太显眼，不用拉下脸让朋友撤单。
+// 与代投的 prio 正交（prio 管能不能上场，boost 管上场以后的权重），不动扣费与期限。
+// 改完两边一起写：ad.boost 决定前台（加权随机 + 排序），r.boost 负责后台列表显示。
+app.post('/api/admin/redemptions/:id/boost', requireAdmin, (req, res) => {
+  const r = redemptions.find(x => x.id === req.params.id);
+  if (!r) return res.status(404).json({ error: '投放单不存在' });
+  const boost = String((req.body && req.body.boost) || '');
+  if (boost && !PROMO_BOOSTS.includes(boost)) return res.status(400).json({ error: '不认识的权重档位' });
+  r.boost = boost;
+  const ad = ads.find(a => a.id === r.adId);
+  // 排队中的单也写：轮到它时直接带权重上场
+  if (ad) ad.boost = boost;
+  saveRedemptions();
+  saveAds();
+  res.json({ ok: true, boost, boostLabel: PROMO_BOOST_LABEL[boost] || '正常' });
+});
+
 // 投放者画像（代投弹窗里选中作品后拉一下，看这位作者在本站投过什么包、多少次）。
 // 数字全历史：含已结束 / 已撤，不只是当前窗口。
 app.get('/api/admin/promo-buyer/:userId', requireAdmin, (req, res) => {
@@ -23797,11 +24475,24 @@ app.post('/api/admin/users/tags', requireAdmin, (req, res) => {
   const u = users.find(x => x.id === String((req.body && req.body.id) || ''));
   if (!u) return res.status(404).json({ error: '用户不存在' });
   const raw = Array.isArray(req.body && req.body.tags) ? req.body.tags.slice() : [];
-  // 勋章标签先提到最前再清洗：它不受「最多 6 个」限制（勋章 + 6 个手工标签），
+  // 企业认证闸（2026-11-17）：贴 / 摘都只有站长能做——徽章是站方资质背书，名单管理员不给这个权限
+  const touchesCert = raw.includes(CERT_TAG) || (Array.isArray(u.tags) && u.tags.includes(CERT_TAG));
+  if (touchesCert && !adminIsOwner(req)) {
+    return res.status(403).json({ error: '企业认证只有站长能贴 / 摘', permDenied: true });
+  }
+  const certSubject = String((req.body && req.body.certSubject) || '').trim().slice(0, 40);
+  const wantCert = raw.includes(CERT_TAG);
+  // 首次贴企业认证必须带主体：没有主体名字，访客悬停徽章时就没法看「认证的是哪家公司」
+  if (wantCert && !certSubject && !(u.cert && u.cert.subject)) {
+    return res.status(400).json({ error: '贴企业认证要填认证主体（公司全称）' });
+  }
+  // 勋章 / 认证这类特殊标签先提到最前再清洗：不受「最多 6 个」限制（特殊标签 + 6 个手工标签），
   // 否则正好贴满 6 个的用户永远加不上勋章——被清洗截断在后面直接丢掉。
   const wantBadge = raw.includes(GH_BADGE_TAG);
-  const next = wantBadge
-    ? sanitizeTags([GH_BADGE_TAG, ...raw.filter(t => t !== GH_BADGE_TAG)], 7)
+  const specials = [wantBadge && GH_BADGE_TAG, wantCert && CERT_TAG].filter(Boolean);
+  const plainRaw = raw.filter(t => t !== GH_BADGE_TAG && t !== CERT_TAG);
+  const next = specials.length
+    ? sanitizeTags([...specials, ...plainRaw], 6 + specials.length)
     : sanitizeTags(raw);
   const old = Array.isArray(u.tags) ? u.tags : [];
   const added = next.filter(t => !old.includes(t));
@@ -23817,23 +24508,37 @@ app.post('/api/admin/users/tags', requireAdmin, (req, res) => {
     delete rec.ghBadgeApplyAt;
     saveShareNow();
   }
-  u.tags = hasBadge ? [GH_BADGE_TAG, ...next.filter(t => t !== GH_BADGE_TAG)] : next;
+  // 企业认证落盘：贴标记主体与核验时间；只换主体名（等于重新核验）才刷新时间，原样重贴保留原时间
+  const certAdded = wantCert && !(u.cert && u.cert.subject);
+  const certRemoved = !wantCert && u.cert && u.cert.subject;
+  if (wantCert) {
+    const prev = u.cert || null;
+    u.cert = {
+      subject: certSubject || prev.subject,
+      at: (!prev || (certSubject && certSubject !== prev.subject)) ? new Date().toISOString() : prev.at
+    };
+  } else if (u.cert) {
+    delete u.cert;
+  }
+  // 特殊标签排最前（勋章 → 认证 → 手工标签）：卡片只露一枚，资质比荣誉更该先被看到
+  u.tags = [...specials, ...next.filter(t => t !== GH_BADGE_TAG && t !== CERT_TAG)];
   saveUsers();
   // 贴标签 → 写进造梦编年史（公开荣誉，不涉数量）。
   // 编年史记「第一次」不记流水：每个标签只记**第一个**获得的人，
   // 之后别人再得到同名标签，只发本人站内消息，不再上公开页（荣誉徽章本身照常发放）。
+  // 企业认证不进编年史：它是资质背书不是站点荣誉，而且家家都记「第一家」没有意义。
   const chronSeenTags = new Set(chronicle.map(e => String(e.tag || '')).filter(Boolean));
   added.forEach(t => {
-    if (chronSeenTags.has(t)) return;
+    if (t === CERT_TAG || chronSeenTags.has(t)) return;
     chronSeenTags.add(t);
     addChronicleEvent({
       kind: 'tag', userId: u.id, username: u.username,
       name: displayNameOf(u.username), tag: t
     });
   });
-  // 变动都通知本人（和认证开关一个口径），不带积分数字；勋章单独一条，措辞不能和普通标签混
-  const plainAdded = added.filter(t => t !== GH_BADGE_TAG);
-  const plainRemoved = removed.filter(t => t !== GH_BADGE_TAG);
+  // 变动都通知本人（和认证开关一个口径），不带积分数字；勋章 / 企业认证单独一条，措辞不能和普通标签混
+  const plainAdded = added.filter(t => t !== GH_BADGE_TAG && t !== CERT_TAG);
+  const plainRemoved = removed.filter(t => t !== GH_BADGE_TAG && t !== CERT_TAG);
   if (badgeAdded) {
     addNotice(u.id, {
       kind: 'system',
@@ -23843,9 +24548,18 @@ app.post('/api/admin/users/tags', requireAdmin, (req, res) => {
   } else if (badgeRemoved) {
     addNotice(u.id, { kind: 'system', title: `勋章已移除：${GH_BADGE_TAG}`, text: '站长移除了你账号上的勋章。' });
   }
+  if (certAdded) {
+    addNotice(u.id, {
+      kind: 'system',
+      title: `企业认证通过：${u.cert.subject}`,
+      text: `站长已核验你提交的资质，「${CERT_TAG}」徽章会展示在你的作品卡片、详情页和作者主页上。`
+    });
+  } else if (certRemoved) {
+    addNotice(u.id, { kind: 'system', title: '企业认证已取消', text: '站长取消了你账号上的企业认证，徽章会一并撤下。' });
+  }
   if (plainAdded.length) addNotice(u.id, { kind: 'system', title: `获得新标签：${plainAdded.join('、')}`, text: '管理员给你的账号加上了荣誉标签，会展示在你的作品卡片和作者主页上。' });
   if (plainRemoved.length) addNotice(u.id, { kind: 'system', title: `标签已移除：${plainRemoved.join('、')}`, text: '管理员移除了你账号上的部分标签。' });
-  res.json({ ok: true, tags: u.tags });
+  res.json({ ok: true, tags: u.tags, cert: u.cert || null });
 });
 
 app.get('/api/admin/taglib', requireAdmin, (req, res) => res.json(taglib));
@@ -23948,6 +24662,12 @@ app.post('/api/admin/points', requireAdmin, (req, res) => {
 // ---- 群发通知：给「有作品的用户」（或全部用户）发一条站内消息 ----
 // 场景：站内新增了展位/功能，想让创作者们知道（例：最近多了 xx 展位，可以用灯火把作品挂上去）。
 // 走铃铛站内消息，默认只发给有作品的人，不打扰围观的路人。
+// 发送记录（2026-11-17）：每次群发落一条进 broadcasts.json，支撑「撤回」——
+//   撤回 = 按群发 key 把所有用户铃铛里的同 key 消息删掉，同 key 的游客公告条一并下架。
+//   单独落盘而不是从 notices 里反推：notices 每人只留 50 条，老群发会被挤掉，账要自己记。
+let broadcasts = readJSON('broadcasts.json', []);
+if (!Array.isArray(broadcasts)) broadcasts = [];
+function saveBroadcasts() { writeJSON('broadcasts.json', broadcasts); }
 app.get('/api/admin/broadcast/count', requireAdmin, (req, res) => {
   const scope = req.query.scope === 'all' ? 'all' : 'with-works';
   const targets = scope === 'all'
@@ -23984,12 +24704,53 @@ app.post('/api/admin/broadcast', requireAdmin, (req, res) => {
   // 勾了「游客也可见」：同一条文案再挂到游客公告条（未登录访客的顶部横幅）
   let guestItem = null;
   if (guest) guestItem = upsertGuestNotice({ key: dedupKey, title: t || '站内通知', text: body });
+  // 记一笔发送账：撤回按 key 找这条记录
+  broadcasts.unshift({
+    key: dedupKey,
+    title: t || '站内通知',
+    text: body,
+    scope: scope === 'all' ? 'all' : 'with-works',
+    cat: kind,
+    guest: !!guestItem,
+    sent,
+    deduped: targets.length - sent,
+    at: new Date().toISOString(),
+    recalledAt: null
+  });
+  if (broadcasts.length > 200) broadcasts = broadcasts.slice(0, 200);   // 账本别无限长
+  saveBroadcasts();
   res.json({
     ok: true, sent,
     deduped: targets.length - sent,   // 本次因 key 撞车被跳过的人数
     scope: scope === 'all' ? 'all' : 'with-works',
     guest: !!guestItem
   });
+});
+
+// 群发记录：撤回面板的数据源（含已撤回的，前端标灰）
+app.get('/api/admin/broadcast/history', requireAdmin, (req, res) => {
+  res.json({ items: broadcasts.slice(0, 50) });
+});
+// 撤回一次群发：按 key 删掉所有用户铃铛里的同 key 消息 + 同 key 游客公告条。
+// 只认发送账里登记过的 key——系统公告（编年史/上线通告）key 不在账上，撤不了，防误伤。
+app.post('/api/admin/broadcast/recall', requireAdmin, (req, res) => {
+  const key = String((req.body || {}).key || '').trim();
+  const rec = broadcasts.find(b => b.key === key);
+  if (!rec) return res.status(404).json({ error: '群发记录不存在（系统公告不支持撤回）' });
+  if (rec.recalledAt) return res.status(400).json({ error: '这条群发已经撤回过了' });
+  const before = notices.length;
+  notices = notices.filter(n => n.key !== key);
+  const removed = before - notices.length;
+  let guestRemoved = 0;
+  const gb = guestNotices.length;
+  guestNotices = guestNotices.filter(n => n.key !== key);
+  guestRemoved = gb - guestNotices.length;
+  if (guestRemoved) saveGuestNotices();
+  rec.recalledAt = new Date().toISOString();
+  rec.recalled = removed;
+  saveNotices();
+  saveBroadcasts();
+  res.json({ ok: true, removed, guestRemoved, recalledAt: rec.recalledAt });
 });
 
 // ---- 游客公告条：未登录访客也能看到的全站公告（后台管理） ----
@@ -24597,7 +25358,7 @@ const BAIDU_PUSH_TOKEN = (() => {
   try { return fs.readFileSync(fileOf('baidu-push-token.txt'), 'utf-8').trim(); } catch { return ''; }
 })();
 const BAIDU_PUSH_SITE = String(
-  process.env.BAIDU_PUSH_SITE || process.env.SITE_ORIGIN || process.env.SITE_URL || 'https://idea.v5pc.com'
+  process.env.BAIDU_PUSH_SITE || process.env.SITE_ORIGIN || process.env.SITE_URL || SITE_ORIGIN_DEFAULT
 ).trim().replace(/\/+$/, '');
 const BAIDU_PUSH_COOLDOWN = 24 * 3600 * 1000;
 const BAIDU_PUSH_MAX_PER_CALL = 100;       // 单次最多 100 条：宁可多跑几次，也别一口气吃掉一天配额
@@ -24810,7 +25571,7 @@ app.get('/', (req, res) => {
       if (rows.length) {
         boot = {
           featHtml: rows.map(ssrFeatCard).join(''),
-          json: bootJsonOf({ featured: rows, ads: bootAdPayload() })
+          json: bootJsonOf({ featured: rows, featuredTag: featuredTagCss(), ads: bootAdPayload() })
         };
       }
     } catch (e) {
@@ -25147,6 +25908,8 @@ app.get('/u/:name', (req, res) => {
     : '';
   // 档案行下面的外链（无主作品没有账号，自然也没有链接）
   const profileLinks = refUser ? profileLinksOf(refUser) : [];
+  // 个人介绍：作者自己填的纯文本，没填就是空串（无主作品没有账号，自然没有介绍）
+  const profileBio = refUser ? bioOf(refUser) : '';
   // 粉丝数（2026-11-15）：SSR 这一份只作展示与结构化数据，关注按钮在 SPA 里（需要登录态）
   const followerN = refUser ? followerCount(refUser.id) : 0;
   // 主页作品隐藏（2026-11-14）：作者把主页上的作品区收起来了，作品本身照旧在首页 / 榜单 / 搜索里。
@@ -25218,7 +25981,17 @@ app.get('/u/:name', (req, res) => {
       <div class="author-info">
         <h1>@${seo.esc(shown)}</h1>
         <div class="author-badges">
-          ${userTagsOf(name).map(t => `<span class="author-tag">${seo.esc(t)}</span>`).join('')}
+          ${(() => { const c = certOfUser(name);
+            // 圆章图案按关键词认（和 frontend/app.js 的 tagBadgeKind 同一套）：
+            // github → 章鱼猫、体验官 → 拇指、奖/赛/榜/名次 → 奖牌、元老 → 皇冠、其余 → 金星
+            const badgeKind = t => /github/i.test(t) ? 'gh'
+              : /体验官/.test(t) ? 'thumb'
+              : /奖|赛|冠军|榜|第[\d一二三四五六七八九十]+名/.test(t) ? 'cup'
+              : /元老|创始/.test(t) ? 'crown'
+              : 'star';
+            return userTagsOf(name).map(t => t === CERT_TAG
+            ? `<span class="author-tag cert" title="${seo.esc(certTipOf(c))}"><svg class="cert-shield" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1l2 2h3v3l2 2-2 2v3h-3l-2 2-2-2H3v-3L1 8l2-2V3h3l2-2z" fill="#fff"/><path d="M5.2 8.2l2 2 3.6-4" stroke="#185FA5" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>${seo.esc(t)}</span>`
+            : `<span class="author-tag${badgeKind(t) === 'gh' ? ' gh' : ''}" data-ti="${badgeKind(t)}" aria-label="${seo.esc(t)}" title="${seo.esc(t)}">${seo.esc(t)}</span>`).join(''); })()}
           ${journalRankHtml}
         </div>
         <p class="author-meta">
@@ -25226,16 +25999,19 @@ app.get('/u/:name', (req, res) => {
           ${catList.length ? `<span class="am-item">常做 ${seo.esc(catList.map(c => c.name).join(' / '))}</span>` : ''}
           ${followerN ? `<span class="am-item">${followerN} 人关注</span>` : ''}
         </p>
+        ${profileBio ? `<p class="author-bio">${seo.esc(profileBio)}</p>` : ''}
         ${profileLinks.length ? `<p class="author-links">${profileLinks.map(l =>
           `<a class="al-link" href="${seo.esc(l.url)}" target="_blank" rel="nofollow noopener noreferrer">${seo.esc(l.label)}</a>`
         ).join('')}</p>` : ''}
       </div>
     </div>
-    <!-- 六格顺序与 SPA 的 AUTHOR_STAT_CELLS 一致（11-16）：作品 / 关注 / 获赞 / 被收藏 / 点亮人数 / 访客。
-         评论换成关注数（粉丝），关注排第二；访客只是流量，挪到最后 -->
+    <!-- 六格顺序与 SPA 的 AUTHOR_STAT_CELLS 一致（11-16）：作品 / 粉丝 / 获赞 / 被收藏 / 点亮人数 / 访客。
+         评论换成粉丝数（followers），排第二；访客只是流量，挪到最后。
+         第二格标签写「粉丝」不写「关注」（11-17 站长点名）：「关注」在这个页面是动作（关注按钮），
+         统计格说的是人，写「关注 0」容易被读成「我关注了 0 个人」。两处标签必须同字，别只改一边 -->
     <div class="author-stat-grid">
       <div class="as-cell"><span class="as-ico">${Icons.icon('edit', 15)}</span><b class="as-val">${list.length}</b><span class="as-label">作品</span></div>
-      <div class="as-cell" title="有多少人关注了这位作者；关注后他发新作品会在站内消息里提醒你"><span class="as-ico">${Icons.icon('person', 15)}</span><b class="as-val">${followerN}</b><span class="as-label">关注</span></div>
+      <div class="as-cell" title="有多少人关注了这位作者；关注后他发新作品会在站内消息里提醒你"><span class="as-ico">${Icons.icon('person', 15)}</span><b class="as-val">${followerN}</b><span class="as-label">粉丝</span></div>
       <div class="as-cell"><span class="as-ico">${Icons.icon('heart', 15)}</span><b class="as-val">${totalLikes}</b><span class="as-label">获赞</span></div>
       <div class="as-cell"><span class="as-ico">${Icons.icon('fav', 15)}</span><b class="as-val">${totalFavs}</b><span class="as-label">被收藏</span></div>
       <div class="as-cell" title="送过灯火的人数，同一人多笔只算一人"><span class="as-ico">${Icons.icon('lamp', 15)}</span><b class="as-val">${totalTippers}</b><span class="as-label">点亮人数</span></div>
@@ -26582,16 +27358,85 @@ app.get('/mascots', (req, res) => {
   res.type('html').send(devEnv.injectInto(html.split('__ADMIN__').join(isAdmin(req) ? '1' : '0')));
 });
 
-// 首页小助手用：只在本地存的是内测形象时才问一次「我是不是站长」，别的时候不请求
-// /mascots 页也问一次（它不引 app.js）：同一趟里把站头要的登录态一起带回去，省一次 /api/me。
+/* ---------- 形象领取（2026-11-17）----------
+   口径：12 个形象全部开放，但「开放」＝可领，不是免费。默认只有一个免费的「机器人」，
+   想换成别的形象，得先看一支激励视频（小程序里播，网页放不了），看完这个形象就记到账号上，
+   以后换任何设备登录都还在。
+   广告不新造通道：复用跨站票据那套（/api/ad/ticket）——网页出一张票二维码，扫码进小程序
+   pages/adview 看完，小程序把票核销成 done，网页拿票号来这儿换形象。
+   为什么不认「谁看的」：小程序里核销的是小程序那个账号，网页这里登录的可能不是同一个
+   （很多人小程序是自动建号）。票一票一用、30 分钟过期，只当「这支广告确实看过」的凭据，
+   认票不认人；真正挡住白拿的是「必须有票且票已 done」。
+   名单要和 frontend/mascots.js 的键顺序一致：多一个少一个都只是前端多一格/少一格，
+   但领取时 id 不在名单里会被拒，所以加形象要两边一起改。 */
+const MASCOT_FREE_ID = 'robot';
+const MASCOT_IDS = ['lamp', 'jar', 'moon', 'bfly', 'door', 'quill', 'boat', 'cloud', 'letter', 'box', 'cat', 'robot'];
+
+function mascotOwnedOf(uid, admin) {
+  if (admin) return MASCOT_IDS.slice();      // 站长本来就是来看效果的，全开
+  const rec = shareData.users[uid] || {};
+  const list = Array.isArray(rec.mascots) ? rec.mascots : [];
+  return list.filter(id => MASCOT_IDS.indexOf(id) >= 0 && id !== MASCOT_FREE_ID);
+}
+
+// 每个形象有多少人领过（2026-11-18，/mascots 页卡片上展示「N 人已领取」）：
+// 直接数 share.json 里 mascots 字段含这个 id 的账号，人数少、实时算不心疼。
+// 机器人是免费默认形象不走领取，它的计数恒为 0，前端不给它画这一行。
+function mascotClaimCounts() {
+  const counts = {};
+  MASCOT_IDS.forEach(id => { counts[id] = 0; });
+  Object.keys(shareData.users || {}).forEach(uid => {
+    const rec = shareData.users[uid] || {};
+    const list = Array.isArray(rec.mascots) ? rec.mascots : [];
+    list.forEach(id => { if (counts[id] !== undefined) counts[id]++; });
+  });
+  return counts;
+}
+
+// 首页小助手 / /mascots 页共用：我是谁 + 我领了哪几个。
+// 首页只在本地存着非默认形象时才问一次，别的时候不请求。
 app.get('/api/mascots/state', (req, res) => {
   res.set('Cache-Control', 'no-store');
   const u = currentUser(req);
+  const admin = isAdmin(req);
   res.json({
-    admin: isAdmin(req),
+    admin,
     loggedIn: !!u,
-    name: u ? (u.nickname || displayNameOf(u.username)) : ''
+    name: u ? (u.nickname || displayNameOf(u.username)) : '',
+    free: MASCOT_FREE_ID,
+    owned: u ? mascotOwnedOf(u.id, admin) : (admin ? MASCOT_IDS.slice() : []),
+    counts: mascotClaimCounts()
   });
+});
+
+// 领取：票换成形象。要登录（形象挂在账号上），要有票，票得是「已看完」的。
+app.post('/api/mascots/claim', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const id = String((req.body && req.body.id) || '').trim().toLowerCase();
+  if (MASCOT_IDS.indexOf(id) < 0) return res.status(400).json({ error: '没有这个形象' });
+  if (id === MASCOT_FREE_ID) return res.json({ ok: true, already: true, id, owned: mascotOwnedOf(user.id, false) });
+  if (!rateLimit('mclaim:' + user.id, 30, 60e3)) return res.status(429).json({ error: '点得有点快，歇一下' });
+  const owned = mascotOwnedOf(user.id, false);
+  if (owned.indexOf(id) >= 0) return res.json({ ok: true, already: true, id, owned });   // 幂等：已经有了就不再要票
+
+  const tid = String((req.body && req.body.ticket) || '').trim().toLowerCase();
+  if (!AD_TICKET_ID_RE.test(tid)) return res.status(400).json({ error: '票号不对，回页面刷新重出一张' });
+  const all = adTicketsLoad();
+  const it = all[tid];
+  if (!it) return res.status(404).json({ error: '这张码过期了，重新出一张再扫', expired: true });
+  if (!it.done) return res.status(403).json({ error: '这支广告还没看完，看完会自动领取' });
+  if (it.mascotId) {
+    return res.status(409).json({ error: '这张码已经领过一个形象了，再领要看下一支', used: true, mascotId: it.mascotId });
+  }
+  it.mascotId = id;
+  it.mascotUid = user.id;
+  it.mascotAt = Date.now();
+  adTicketsSave(all);
+  const rec = shareRecOf(user.id);
+  rec.mascots = owned.concat(id);
+  saveShareSoon();
+  res.json({ ok: true, id, owned: rec.mascots.slice() });
 });
 
 app.get('/rules', (req, res) => {
@@ -26745,7 +27590,20 @@ app.get('/rules', (req, res) => {
       <p class="rules-note">所有投票记录（账号、时间、选择）后台可查。用众判打击同行、组织小圈子围投的，按上一条「违规怎么处理」处理。</p>
     </section>
 
-    <p class="rules-foot">规范会随平台规则调整，重要变更在站内通知。最近更新：2026-11-16。</p>
+    <section class="rules-sec">
+      <h2>十一、企业合作工具（带角标的工具卡）</h2>
+      <p class="rules-note">书架上有两样东西：作者自己做的作品，和作者做作品时会用到的工具。第二类是我们和厂商的合作，一律标出来，不混进作品里。</p>
+      <ul class="rules-list">
+        <li><b>怎么认。</b>这类卡片的角标写的是「工具 · 企业认证」，卡片底色和作品卡不同，底脚是「去试试 ↗」而不是作者名字和点赞收藏数。看到这个角标，就知道它不是某位造梦者的作品。</li>
+        <li><b>带返佣的会多写一个「合作」。</b>如果这条链接是我们参与推广、能拿到返佣的，底脚会写「企业认证 · 合作」，让你在点之前就知道。不写这一项的，就是纯推荐，我们拿不到钱。</li>
+        <li><b>它不参与作品的一切。</b>工具卡不进榜单、不进星梦期刊、不进编年史，也不算进作品总数；点开是直接跳到对方的网站，不套作品详情页，也没有点赞、收藏、评论。</li>
+        <li><b>为什么放进来。</b>这些工具确实是站里很多作者在用的东西，放在大家翻作品的地方比塞在角落里更有用。但我们不会把它写成「某位作者的作品」，也不会帮它刷榜。</li>
+        <li><b>想推荐工具。</b>你在做作品时用过特别顺手的工具，可以在作品页底部「意见建议」里告诉我们，值得的我们会加进去。</li>
+      </ul>
+      <p class="rules-note">一句话：<b>作品是作品，合作是合作，卡片上看得见。</b></p>
+    </section>
+
+    <p class="rules-foot">规范会随平台规则调整，重要变更在站内通知。最近更新：2026-11-17。</p>
     <p class="seo-more"><a class="btn-ghost" href="/">← 返回首页</a> <a class="btn-ghost" href="/howto">投稿指南 →</a></p>
   </div>
 </div>`;
@@ -26939,7 +27797,7 @@ app.get('/t/:name', listPageRoute('t'));
 // 保证「已收录 N 件」「N 位创作者」和形态标签不会和站内其它页面对不上。
 // shareBase：海报/复制链接固定印的正式站点根地址。故意不取 req 的 host——
 // 本地预览时海报若印 localhost，转发出去对方打不开；站点上线换域名时改 SITE_URL 即可。
-const INVITE_SHARE_BASE = (process.env.SITE_URL || 'https://idea.v5pc.com').replace(/\/+$/, '');
+const INVITE_SHARE_BASE = (process.env.SITE_ORIGIN || process.env.SITE_URL || SITE_ORIGIN_DEFAULT).replace(/\/+$/, '');
 const invitePage = require('./invite-page.js');
 app.get('/invite', (req, res) => {
   const list = visibleWorks();

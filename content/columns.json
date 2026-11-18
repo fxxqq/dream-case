@@ -8,33 +8,23 @@
       "title": "AI 编程",
       "subtitle": "写代码这件事，正在被重写",
       "summary": "这一批工具不是补全括号，是直接接管一个任务：读仓库、改多个文件、跑测试、自己修错。选哪个取决于你要它多自主、以及你在不在国内网络里。",
-      "tags": ["AI 编程", "Agent", "IDE", "代码助手", "终端"],
+      "tags": [
+        "AI 编程",
+        "Agent",
+        "IDE",
+        "代码助手",
+        "终端"
+      ],
       "updatedAt": "2026-11-09",
       "items": [
-        {
-          "name": "Trae",
-          "vendor": "字节跳动",
-          "url": "https://www.trae.ai",
-          "platforms": ["Windows", "macOS", "Linux"],
-          "tier": "首选",
-          "pricing": "国内版免费，国际版按订阅",
-          "verdict": "国内网络下最省事的 AI IDE，Builder 模式能从一个需求直接铺出可运行的项目骨架。",
-          "good": [
-            "国内直连，不用为网络额外折腾",
-            "SOLO 模式能让它自己拆任务、连续改多个文件",
-            "从 VS Code 迁移成本低，键位和插件习惯基本能带走"
-          ],
-          "bad": [
-            "生态比 Cursor 年轻，遇到冷门框架容易给出旧写法",
-            "自动改多文件时偶尔会顺手改掉不该动的地方，要先看 diff"
-          ],
-          "for": "国内开发者，想让 AI 从写函数升级到接手整个需求"
-        },
         {
           "name": "Qoder",
           "vendor": "阿里巴巴",
           "url": "https://qoder.com",
-          "platforms": ["Windows", "macOS"],
+          "platforms": [
+            "Windows",
+            "macOS"
+          ],
           "tier": "首选",
           "pricing": "免费额度 + 积分制订阅",
           "verdict": "主打仓库级理解，先把你整个项目的结构读一遍再动手，改老项目比多数工具稳。",
@@ -50,10 +40,59 @@
           "for": "在维护中大型存量项目、怕 AI 乱改的人"
         },
         {
+          "name": "WorkBuddy",
+          "vendor": "腾讯",
+          "url": "https://cloud.tencent.com/act/cps/redirect?redirect=6871&cps_key=3bd05bbfb4f3f97d7bb5964ef12edda9",
+          "platforms": [
+            "Windows",
+            "macOS"
+          ],
+          "tier": "特定场景",
+          "pricing": "个人版免费；企业版按席位订阅，走腾讯云购买页",
+          "verdict": "不只是写代码：它能直接读写你电脑上的文件、跑命令、生成网页和文档，是个桌面级的执行者。",
+          "good": [
+            "能真的操作本地文件系统和命令行，不是只给建议",
+            "做网站、报告、表格、演示文稿一条龙，产出直接落盘",
+            "支持挂载 MCP 和专家角色，把重复流程固定下来"
+          ],
+          "bad": [
+            "给了文件和命令权限就要接受它可能改错，重要目录先备份",
+            "长任务需要人盯着关键节点，不适合完全撒手"
+          ],
+          "for": "想要一个能动手干活的助手，而不是只会聊天的模型"
+        },
+        {
+          "name": "Trae",
+          "vendor": "字节跳动",
+          "url": "https://www.trae.ai",
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux"
+          ],
+          "tier": "首选",
+          "pricing": "国内版免费，国际版按订阅",
+          "verdict": "国内网络下最省事的 AI IDE，Builder 模式能从一个需求直接铺出可运行的项目骨架。",
+          "good": [
+            "国内直连，不用为网络额外折腾",
+            "SOLO 模式能让它自己拆任务、连续改多个文件",
+            "从 VS Code 迁移成本低，键位和插件习惯基本能带走"
+          ],
+          "bad": [
+            "生态比 Cursor 年轻，遇到冷门框架容易给出旧写法",
+            "自动改多文件时偶尔会顺手改掉不该动的地方，要先看 diff"
+          ],
+          "for": "国内开发者，想让 AI 从写函数升级到接手整个需求"
+        },
+        {
           "name": "Cursor",
           "vendor": "Anysphere",
           "url": "https://cursor.com",
-          "platforms": ["Windows", "macOS", "Linux"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux"
+          ],
           "tier": "值得一试",
           "pricing": "免费版有限额度，Pro 按月订阅",
           "verdict": "把 AI 塞进编辑器的位置最自然的一个，Tab 补全的手感至今没被超越。",
@@ -72,7 +111,11 @@
           "name": "Claude Code",
           "vendor": "Anthropic",
           "url": "https://www.anthropic.com/claude-code",
-          "platforms": ["macOS", "Linux", "Windows"],
+          "platforms": [
+            "macOS",
+            "Linux",
+            "Windows"
+          ],
           "tier": "首选",
           "pricing": "按用量计费，随订阅套餐提供额度",
           "verdict": "在终端里干活最像资深工程师：先读代码再动手，改完自己跑测试，出错自己回退。",
@@ -91,7 +134,12 @@
           "name": "CodeBuddy",
           "vendor": "腾讯云",
           "url": "https://copilot.tencent.com",
-          "platforms": ["Windows", "macOS", "Linux", "Web"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux",
+            "Web"
+          ],
           "tier": "值得一试",
           "pricing": "个人版有免费额度，团队版按人订阅",
           "verdict": "插件和独立 IDE 两种形态都有，国内团队落地时合规和网络都不用额外解释。",
@@ -107,29 +155,14 @@
           "for": "需要走公司采购、对网络合规有要求的技术团队"
         },
         {
-          "name": "WorkBuddy",
-          "vendor": "腾讯",
-          "url": "https://www.workbuddy.cn",
-          "platforms": ["Windows", "macOS"],
-          "tier": "特定场景",
-          "pricing": "免费版可用，进阶能力按订阅",
-          "verdict": "不只是写代码：它能直接读写你电脑上的文件、跑命令、生成网页和文档，是个桌面级的执行者。",
-          "good": [
-            "能真的操作本地文件系统和命令行，不是只给建议",
-            "做网站、报告、表格、演示文稿一条龙，产出直接落盘",
-            "支持挂载 MCP 和专家角色，把重复流程固定下来"
-          ],
-          "bad": [
-            "给了文件和命令权限就要接受它可能改错，重要目录先备份",
-            "长任务需要人盯着关键节点，不适合完全撒手"
-          ],
-          "for": "想要一个能动手干活的助手，而不是只会聊天的模型"
-        },
-        {
           "name": "Windsurf",
           "vendor": "Cognition",
           "url": "https://windsurf.com",
-          "platforms": ["Windows", "macOS", "Linux"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux"
+          ],
           "tier": "值得一试",
           "pricing": "免费版有限额度，Pro 按月订阅",
           "verdict": "Cascade 会记住你刚才在终端跑过什么、报了什么错，接着往下改，不用每次都重新交代背景。",
@@ -148,7 +181,11 @@
           "name": "Zed",
           "vendor": "Zed Industries",
           "url": "https://zed.dev",
-          "platforms": ["macOS", "Linux", "Windows"],
+          "platforms": [
+            "macOS",
+            "Linux",
+            "Windows"
+          ],
           "tier": "特定场景",
           "pricing": "编辑器免费开源，AI 功能按订阅",
           "verdict": "Rust 写的 GPU 编辑器，打开大文件的速度快到不像现代软件，AI 面板是加分不是主角。",
@@ -171,14 +208,22 @@
       "title": "效率工具",
       "subtitle": "装完就回不去的系统级小工具",
       "summary": "这一区没有大软件，全是几十兆的小东西。共同点是：装上前觉得可有可无，装上后换电脑第一件事就是重装它。",
-      "tags": ["启动器", "剪贴板", "截图", "窗口管理", "文本扩展"],
+      "tags": [
+        "启动器",
+        "剪贴板",
+        "截图",
+        "窗口管理",
+        "文本扩展"
+      ],
       "updatedAt": "2026-11-09",
       "items": [
         {
           "name": "Raycast",
           "vendor": "Raycast",
           "url": "https://www.raycast.com",
-          "platforms": ["macOS"],
+          "platforms": [
+            "macOS"
+          ],
           "tier": "首选",
           "pricing": "基础免费，Pro 按月订阅",
           "verdict": "一个快捷键接管搜索、剪贴板、窗口和脚本，macOS 上装完能删掉五六个小工具。",
@@ -197,7 +242,11 @@
           "name": "uTools",
           "vendor": "uTools",
           "url": "https://u.tools",
-          "platforms": ["Windows", "macOS", "Linux"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux"
+          ],
           "tier": "首选",
           "pricing": "基础免费，会员解锁部分插件",
           "verdict": "国内做得最像 Raycast 的启动器，插件市场里全是中文场景的小工具，Windows 上尤其好用。",
@@ -216,7 +265,9 @@
           "name": "PowerToys",
           "vendor": "Microsoft",
           "url": "https://learn.microsoft.com/windows/powertoys/",
-          "platforms": ["Windows"],
+          "platforms": [
+            "Windows"
+          ],
           "tier": "值得一试",
           "pricing": "免费开源",
           "verdict": "微软自己做的工具集，分屏布局、批量改名、取字、高级粘贴，每个都能单独替掉一个付费软件。",
@@ -235,7 +286,9 @@
           "name": "Everything",
           "vendor": "voidtools",
           "url": "https://www.voidtools.com",
-          "platforms": ["Windows"],
+          "platforms": [
+            "Windows"
+          ],
           "tier": "首选",
           "pricing": "免费",
           "verdict": "输入三个字母就列出全盘文件，Windows 自带的搜索在它面前没有可比性。",
@@ -254,7 +307,11 @@
           "name": "Snipaste",
           "vendor": "Le Liu",
           "url": "https://zh.snipaste.com",
-          "platforms": ["Windows", "macOS", "Linux"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux"
+          ],
           "tier": "首选",
           "pricing": "免费，专业版一次性买断",
           "verdict": "截图之后能直接贴回屏幕当参照物，对着抄数据、对设计稿都靠它。",
@@ -273,7 +330,11 @@
           "name": "Espanso",
           "vendor": "Espanso",
           "url": "https://espanso.org",
-          "platforms": ["Windows", "macOS", "Linux"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux"
+          ],
           "tier": "特定场景",
           "pricing": "开源免费",
           "verdict": "打几个字母就展开成整段话，回邮件、填表单、写注释都能省下大量重复输入。",
@@ -292,7 +353,9 @@
           "name": "Ditto",
           "vendor": "Ditto",
           "url": "https://ditto-cp.sourceforge.io",
-          "platforms": ["Windows"],
+          "platforms": [
+            "Windows"
+          ],
           "tier": "特定场景",
           "pricing": "免费开源",
           "verdict": "Windows 上最实用的剪贴板历史：能搜、能固定、能跨设备同步，写东西时救过无数次。",
@@ -311,7 +374,9 @@
           "name": "Rectangle",
           "vendor": "Ryan Hanson",
           "url": "https://rectangleapp.com",
-          "platforms": ["macOS"],
+          "platforms": [
+            "macOS"
+          ],
           "tier": "特定场景",
           "pricing": "免费开源，Pro 一次性买断",
           "verdict": "macOS 窗口管理的标准答案：快捷键把窗口甩到左半屏、右半屏、四分之一，手不用离开键盘。",
@@ -334,14 +399,26 @@
       "title": "笔记与知识库",
       "subtitle": "别让想法停在微信收藏里",
       "summary": "笔记软件没有最好的，只有跟你的提取习惯对得上的。这一区按「本地优先 / 卡片白板 / 碎片收集 / 稍后读」分开挑，都是有明确取舍的工具。",
-      "tags": ["笔记", "知识库", "白板", "书签", "稍后读"],
+      "tags": [
+        "笔记",
+        "知识库",
+        "白板",
+        "书签",
+        "稍后读"
+      ],
       "updatedAt": "2026-11-09",
       "items": [
         {
           "name": "Heptabase",
           "vendor": "Heptabase",
           "url": "https://heptabase.com",
-          "platforms": ["Windows", "macOS", "iOS", "Android", "Web"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "iOS",
+            "Android",
+            "Web"
+          ],
           "tier": "首选",
           "pricing": "订阅制，按年付费",
           "verdict": "卡片写在白板上、可以拖着连线，用来做研究、读论文、拆复杂问题时思路最清楚。",
@@ -360,7 +437,13 @@
           "name": "思源笔记",
           "vendor": "B3log",
           "url": "https://b3log.org/siyuan/",
-          "platforms": ["Windows", "macOS", "Linux", "iOS", "Android"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux",
+            "iOS",
+            "Android"
+          ],
           "tier": "首选",
           "pricing": "核心功能免费，云同步与增值服务另计",
           "verdict": "国产开源里做得最扎实的块级笔记，数据存在本地，还能自己部署到服务器。",
@@ -379,7 +462,13 @@
           "name": "Obsidian",
           "vendor": "Obsidian",
           "url": "https://obsidian.md",
-          "platforms": ["Windows", "macOS", "Linux", "iOS", "Android"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux",
+            "iOS",
+            "Android"
+          ],
           "tier": "值得一试",
           "pricing": "个人使用免费，官方同步与发布另订阅",
           "verdict": "笔记就是一个文件夹里的 Markdown 文件，十年后还能原样打开，这是它最值钱的地方。",
@@ -398,7 +487,13 @@
           "name": "Anytype",
           "vendor": "Any Association",
           "url": "https://anytype.io",
-          "platforms": ["Windows", "macOS", "Linux", "iOS", "Android"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux",
+            "iOS",
+            "Android"
+          ],
           "tier": "值得一试",
           "pricing": "个人版免费，协作与更多存储按订阅",
           "verdict": "把笔记做成一个个对象，本地加密存储还能点对点同步，是「去中心化 Notion」最接近的一个。",
@@ -417,7 +512,14 @@
           "name": "Raindrop.io",
           "vendor": "Raindrop",
           "url": "https://raindrop.io",
-          "platforms": ["Web", "Windows", "macOS", "iOS", "Android", "浏览器插件"],
+          "platforms": [
+            "Web",
+            "Windows",
+            "macOS",
+            "iOS",
+            "Android",
+            "浏览器插件"
+          ],
           "tier": "首选",
           "pricing": "免费版够用，Pro 按年订阅",
           "verdict": "收藏夹做成正经工具：网页、图片、视频都能存，还能全文搜索和自动抓封面。",
@@ -436,7 +538,12 @@
           "name": "Readwise Reader",
           "vendor": "Readwise",
           "url": "https://readwise.io/read",
-          "platforms": ["Web", "iOS", "Android", "浏览器插件"],
+          "platforms": [
+            "Web",
+            "iOS",
+            "Android",
+            "浏览器插件"
+          ],
           "tier": "特定场景",
           "pricing": "订阅制，按年付费",
           "verdict": "网页、PDF、邮件通讯都收进一个阅读器，高亮能自动回流到你的笔记软件。",
@@ -455,7 +562,10 @@
           "name": "Memos",
           "vendor": "usememos",
           "url": "https://usememos.com",
-          "platforms": ["Web", "Docker"],
+          "platforms": [
+            "Web",
+            "Docker"
+          ],
           "tier": "特定场景",
           "pricing": "开源免费，自备服务器",
           "verdict": "一条命令部署的轻量碎片笔记，像自己家的微博，随手记一句，不打扰任何人。",
@@ -474,7 +584,12 @@
           "name": "Craft",
           "vendor": "Craft",
           "url": "https://www.craft.do",
-          "platforms": ["macOS", "iOS", "Windows", "Web"],
+          "platforms": [
+            "macOS",
+            "iOS",
+            "Windows",
+            "Web"
+          ],
           "tier": "特定场景",
           "pricing": "免费版有限文档数，Pro 按月订阅",
           "verdict": "苹果生态里排版最舒服的文档工具，写出来的东西不用调格式就能直接发出去。",
@@ -497,14 +612,23 @@
       "title": "设计与创作",
       "subtitle": "设计师私下在用、但没上过热搜的那些",
       "summary": "这一区避开了人人都知道的那几家，挑的是能解决具体环节的：画界面、做动效、搭三维、找参考、管素材、录演示。",
-      "tags": ["界面设计", "动效", "三维", "素材管理", "录屏"],
+      "tags": [
+        "界面设计",
+        "动效",
+        "三维",
+        "素材管理",
+        "录屏"
+      ],
       "updatedAt": "2026-11-09",
       "items": [
         {
           "name": "Penpot",
           "vendor": "Kaleidos",
           "url": "https://penpot.app",
-          "platforms": ["Web", "Docker"],
+          "platforms": [
+            "Web",
+            "Docker"
+          ],
           "tier": "首选",
           "pricing": "开源免费，可自建；云端版有付费档",
           "verdict": "唯一能自己部署在设计团队内部的开源设计协作工具，代码和设计稿不会被平台锁住。",
@@ -523,7 +647,11 @@
           "name": "Rive",
           "vendor": "Rive",
           "url": "https://rive.app",
-          "platforms": ["Web", "Windows", "macOS"],
+          "platforms": [
+            "Web",
+            "Windows",
+            "macOS"
+          ],
           "tier": "首选",
           "pricing": "免费版可发布，团队与商用按订阅",
           "verdict": "用状态机做交互动画，导出的运行时很小，网页、App、游戏里都能直接跑起来。",
@@ -542,7 +670,11 @@
           "name": "Spline",
           "vendor": "Spline",
           "url": "https://spline.design",
-          "platforms": ["Web", "macOS", "Windows"],
+          "platforms": [
+            "Web",
+            "macOS",
+            "Windows"
+          ],
           "tier": "值得一试",
           "pricing": "免费版可导出，付费解锁更高清与协作",
           "verdict": "在浏览器里搭三维场景，做完直接嵌进网页，做产品页和品牌站的首屏特别省事。",
@@ -561,7 +693,11 @@
           "name": "Framer",
           "vendor": "Framer",
           "url": "https://www.framer.com",
-          "platforms": ["Web", "macOS", "Windows"],
+          "platforms": [
+            "Web",
+            "macOS",
+            "Windows"
+          ],
           "tier": "值得一试",
           "pricing": "免费版带品牌标识，正式站点按月订阅",
           "verdict": "设计稿当场变成能上线的网站，改文案和排版不用排期等前端。",
@@ -580,7 +716,10 @@
           "name": "Eagle",
           "vendor": "Eagle",
           "url": "https://eagle.cool",
-          "platforms": ["Windows", "macOS"],
+          "platforms": [
+            "Windows",
+            "macOS"
+          ],
           "tier": "首选",
           "pricing": "一次性买断",
           "verdict": "设计素材的总仓库：图片、视频、字体、配色全收进来，按颜色和形状都能搜。",
@@ -599,7 +738,11 @@
           "name": "PureRef",
           "vendor": "PureRef",
           "url": "https://www.pureref.com",
-          "platforms": ["Windows", "macOS", "Linux"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux"
+          ],
           "tier": "特定场景",
           "pricing": "自愿付费下载",
           "verdict": "一个永远置顶的小窗口，把几十张参考图拼在一起看，画画建模的人离不开。",
@@ -618,7 +761,9 @@
           "name": "Screen Studio",
           "vendor": "Screen Studio",
           "url": "https://screen.studio",
-          "platforms": ["macOS"],
+          "platforms": [
+            "macOS"
+          ],
           "tier": "值得一试",
           "pricing": "一次性买断，价格偏高",
           "verdict": "录完自动加缩放、平滑光标和背景，产品演示视频不用剪辑就能直接发。",
@@ -637,7 +782,11 @@
           "name": "DaVinci Resolve",
           "vendor": "Blackmagic Design",
           "url": "https://www.blackmagicdesign.com/products/davinciresolve",
-          "platforms": ["Windows", "macOS", "Linux"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux"
+          ],
           "tier": "特定场景",
           "pricing": "免费版功能完整，工作室版一次性买断",
           "verdict": "免费版就能剪、能调色、能混音，预算为零也能做出专业级后期。",
@@ -660,14 +809,25 @@
       "title": "开发工具",
       "subtitle": "除了编辑器之外，真正天天在用的那些",
       "summary": "编辑器人人都装了，这一区挑的是周边：调接口、跑容器、看数据库、画架构、查编码、开终端。每一个都能替掉一段重复劳动。",
-      "tags": ["API 调试", "容器", "数据库", "终端", "架构图"],
+      "tags": [
+        "API 调试",
+        "容器",
+        "数据库",
+        "终端",
+        "架构图"
+      ],
       "updatedAt": "2026-11-09",
       "items": [
         {
           "name": "Apifox",
           "vendor": "Apifox",
           "url": "https://apifox.com",
-          "platforms": ["Windows", "macOS", "Linux", "Web"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux",
+            "Web"
+          ],
           "tier": "首选",
           "pricing": "个人免费，团队按人年订阅",
           "verdict": "接口文档、调试、Mock、自动化测试共用一份定义，前后端不用再对两份数据。",
@@ -687,7 +847,11 @@
           "vendor": "Bruno",
           "url": "https://www.usebruno.com",
           "tier": "值得一试",
-          "platforms": ["Windows", "macOS", "Linux"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux"
+          ],
           "pricing": "开源免费，团队协作与 CI 能力按订阅",
           "verdict": "接口集合以文件形式存进 Git，团队改接口就像改代码一样能 review。",
           "good": [
@@ -705,7 +869,9 @@
           "name": "OrbStack",
           "vendor": "OrbStack",
           "url": "https://orbstack.dev",
-          "platforms": ["macOS"],
+          "platforms": [
+            "macOS"
+          ],
           "tier": "首选",
           "pricing": "个人免费，商业使用按订阅",
           "verdict": "Mac 上跑 Docker 和 Linux 虚拟机的替代品，启动几秒、风扇不转，用完就回不去。",
@@ -724,7 +890,12 @@
           "name": "TablePlus",
           "vendor": "TablePlus",
           "url": "https://tableplus.com",
-          "platforms": ["Windows", "macOS", "Linux", "iOS"],
+          "platforms": [
+            "Windows",
+            "macOS",
+            "Linux",
+            "iOS"
+          ],
           "tier": "值得一试",
           "pricing": "免费版限制连接数与标签页，正式版买断",
           "verdict": "原生写的数据库客户端，开表、改数据、看结构都是秒开，比一堆网页版工具省心。",
@@ -743,7 +914,11 @@
           "name": "Warp",
           "vendor": "Warp",
           "url": "https://www.warp.dev",
-          "platforms": ["macOS", "Linux", "Windows"],
+          "platforms": [
+            "macOS",
+            "Linux",
+            "Windows"
+          ],
           "tier": "值得一试",
           "pricing": "基础免费，团队版按人月订阅",
           "verdict": "把终端做成块状输出加 AI 补全，命令记不住的人会明显轻松。",
@@ -762,7 +937,11 @@
           "name": "Excalidraw",
           "vendor": "Excalidraw",
           "url": "https://excalidraw.com",
-          "platforms": ["Web", "Docker", "VS Code"],
+          "platforms": [
+            "Web",
+            "Docker",
+            "VS Code"
+          ],
           "tier": "首选",
           "pricing": "开源免费，可自建",
           "verdict": "手绘风的白板，画架构图和流程图快到不用思考排版，团队一看就懂。",
@@ -781,7 +960,10 @@
           "name": "DevToys",
           "vendor": "DevToys",
           "url": "https://devtoys.app",
-          "platforms": ["Windows", "macOS"],
+          "platforms": [
+            "Windows",
+            "macOS"
+          ],
           "tier": "值得一试",
           "pricing": "免费开源",
           "verdict": "开发者的小工具瑞士军刀：JSON 格式化、正则测试、哈希、时间戳、图片压缩全在一个窗口。",
@@ -800,7 +982,10 @@
           "name": "Ghostty",
           "vendor": "Ghostty",
           "url": "https://ghostty.org",
-          "platforms": ["macOS", "Linux"],
+          "platforms": [
+            "macOS",
+            "Linux"
+          ],
           "tier": "特定场景",
           "pricing": "开源免费",
           "verdict": "2024 年底才发布的 GPU 终端，原生界面加极简配置，把终端体验拉回了该有的样子。",
@@ -823,14 +1008,24 @@
       "title": "AI 生产力",
       "subtitle": "别只看聊天框，这些才是能干活的",
       "summary": "通用对话人人都会开，这一区挑的是嵌进具体工作流的：查资料、出图、做图表、配音、生成视频、写音乐。共同点是产出能直接用。",
-      "tags": ["资料研究", "演示文稿", "图像生成", "语音", "视频"],
+      "tags": [
+        "资料研究",
+        "演示文稿",
+        "图像生成",
+        "语音",
+        "视频"
+      ],
       "updatedAt": "2026-11-09",
       "items": [
         {
           "name": "NotebookLM",
           "vendor": "Google",
           "url": "https://notebooklm.google.com",
-          "platforms": ["Web", "iOS", "Android"],
+          "platforms": [
+            "Web",
+            "iOS",
+            "Android"
+          ],
           "tier": "首选",
           "pricing": "免费版够用，进阶版随 Google 订阅",
           "verdict": "把你上传的资料变成一个只会引用原文的助手，问细节时能点回出处，编造明显更少。",
@@ -849,7 +1044,9 @@
           "name": "Gamma",
           "vendor": "Gamma",
           "url": "https://gamma.app",
-          "platforms": ["Web"],
+          "platforms": [
+            "Web"
+          ],
           "tier": "首选",
           "pricing": "注册送额度，之后按订阅",
           "verdict": "给一段话就生成一整套版式统一的演示，改内容时排版自己跟着调整。",
@@ -868,7 +1065,9 @@
           "name": "Napkin AI",
           "vendor": "Napkin",
           "url": "https://www.napkin.ai",
-          "platforms": ["Web"],
+          "platforms": [
+            "Web"
+          ],
           "tier": "值得一试",
           "pricing": "免费额度，付费解锁更多导出与样式",
           "verdict": "把一段文字直接变成信息图，写文章和做汇报时最缺的那张图，它几秒就给你。",
@@ -887,7 +1086,11 @@
           "name": "Suno",
           "vendor": "Suno",
           "url": "https://suno.com",
-          "platforms": ["Web", "iOS", "Android"],
+          "platforms": [
+            "Web",
+            "iOS",
+            "Android"
+          ],
           "tier": "值得一试",
           "pricing": "免费版有额度限制，商用需付费档",
           "verdict": "给一句描述就出一首完整的歌，带人声和编曲，做短视频配乐和品牌曲够用。",
@@ -906,7 +1109,10 @@
           "name": "ElevenLabs",
           "vendor": "ElevenLabs",
           "url": "https://elevenlabs.io",
-          "platforms": ["Web", "API"],
+          "platforms": [
+            "Web",
+            "API"
+          ],
           "tier": "首选",
           "pricing": "按字符计费，免费额度有限",
           "verdict": "中文配音里最不像机器的一个，情绪和停顿自然，做有声内容和产品播报直接可用。",
@@ -925,7 +1131,11 @@
           "name": "Perplexity",
           "vendor": "Perplexity AI",
           "url": "https://www.perplexity.ai",
-          "platforms": ["Web", "iOS", "Android"],
+          "platforms": [
+            "Web",
+            "iOS",
+            "Android"
+          ],
           "tier": "首选",
           "pricing": "免费版可用，Pro 按月订阅",
           "verdict": "给答案的同时把来源列出来，查资料比自己翻搜索结果快得多。",
@@ -944,7 +1154,10 @@
           "name": "Recraft",
           "vendor": "Recraft",
           "url": "https://www.recraft.ai",
-          "platforms": ["Web", "API"],
+          "platforms": [
+            "Web",
+            "API"
+          ],
           "tier": "值得一试",
           "pricing": "免费额度，商用与更多生成按订阅",
           "verdict": "少数能稳定出矢量图标的生成工具，同一个品牌风格能批量套用，导出直接是 SVG。",
@@ -963,7 +1176,10 @@
           "name": "HeyGen",
           "vendor": "HeyGen",
           "url": "https://www.heygen.com",
-          "platforms": ["Web", "API"],
+          "platforms": [
+            "Web",
+            "API"
+          ],
           "tier": "特定场景",
           "pricing": "免费额度少，正式使用按订阅",
           "verdict": "一个头像加一段文字就能出人像口播视频，翻译成外语还能对上口型。",
@@ -986,14 +1202,26 @@
       "title": "团队协作",
       "subtitle": "小团队用得起的正经工具",
       "summary": "这一区不碰动辄按人年报价的大平台，挑的是小团队能落地、且不会把流程做得更重的工具。核心就一件事：让人少开会。",
-      "tags": ["项目管理", "异步沟通", "会议记录", "白板", "录屏"],
+      "tags": [
+        "项目管理",
+        "异步沟通",
+        "会议记录",
+        "白板",
+        "录屏"
+      ],
       "updatedAt": "2026-11-09",
       "items": [
         {
           "name": "Linear",
           "vendor": "Linear",
           "url": "https://linear.app",
-          "platforms": ["Web", "Windows", "macOS", "iOS", "Android"],
+          "platforms": [
+            "Web",
+            "Windows",
+            "macOS",
+            "iOS",
+            "Android"
+          ],
           "tier": "首选",
           "pricing": "免费版支持小团队，正式版按人月订阅",
           "verdict": "把 issue 做到几乎不用鼠标：快捷键一按就建单、改状态、切视图，工程团队上手就上瘾。",
@@ -1012,7 +1240,13 @@
           "name": "Loom",
           "vendor": "Atlassian",
           "url": "https://www.loom.com",
-          "platforms": ["Web", "Windows", "macOS", "iOS", "Android"],
+          "platforms": [
+            "Web",
+            "Windows",
+            "macOS",
+            "iOS",
+            "Android"
+          ],
           "tier": "值得一试",
           "pricing": "免费版限制视频数与时长，付费按人订阅",
           "verdict": "录一段屏加讲解代替一次会，对方随时看、能拖进度、能在时间点上留言。",
@@ -1031,7 +1265,10 @@
           "name": "Granola",
           "vendor": "Granola",
           "url": "https://granola.ai",
-          "platforms": ["macOS", "iOS"],
+          "platforms": [
+            "macOS",
+            "iOS"
+          ],
           "tier": "首选",
           "pricing": "免费版可用，Pro 按月订阅",
           "verdict": "会议笔记工具里最不打扰的一种：不入会、不弹窗，只是安静地把系统声音和你的麦克风记下来。",
@@ -1050,7 +1287,13 @@
           "name": "Twist",
           "vendor": "Doist",
           "url": "https://twist.com",
-          "platforms": ["Web", "Windows", "macOS", "iOS", "Android"],
+          "platforms": [
+            "Web",
+            "Windows",
+            "macOS",
+            "iOS",
+            "Android"
+          ],
           "tier": "特定场景",
           "pricing": "免费版不限人数，付费按人月订阅",
           "verdict": "把聊天改成线程式讨论，谁都不用守着消息，异步团队的注意力能保住。",
@@ -1069,7 +1312,13 @@
           "name": "FigJam",
           "vendor": "Figma",
           "url": "https://www.figma.com/figjam/",
-          "platforms": ["Web", "Windows", "macOS", "iOS", "Android"],
+          "platforms": [
+            "Web",
+            "Windows",
+            "macOS",
+            "iOS",
+            "Android"
+          ],
           "tier": "值得一试",
           "pricing": "免费版限三块白板，团队版按人订阅",
           "verdict": "开会时所有人都能往同一块板上贴，投票、计时、流程模板都现成，比共享屏幕高效。",
@@ -1089,7 +1338,13 @@
           "vendor": "37signals",
           "url": "https://basecamp.com",
           "tier": "特定场景",
-          "platforms": ["Web", "Windows", "macOS", "iOS", "Android"],
+          "platforms": [
+            "Web",
+            "Windows",
+            "macOS",
+            "iOS",
+            "Android"
+          ],
           "pricing": "按项目统一定价，不限人数",
           "verdict": "把消息、待办、文件、日程放进一个项目里，功能少到你只能专注做事。",
           "good": [

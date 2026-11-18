@@ -9,7 +9,7 @@ cd "$(dirname "$0")" || exit 1
 printf '\033[2J\033[H\033]0;造梦橱窗 · 发版\007'
 
 SELF="./deploy-patch.sh"
-SITE="idea.v5pc.com"
+SITE="zm94.com"
 INTERACTIVE=0; [ -t 0 ] && INTERACTIVE=1
 
 FILES=(server.js frontend/app.js frontend/style.css frontend/index.html frontend/admin.html)
