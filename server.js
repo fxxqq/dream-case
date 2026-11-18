@@ -16164,9 +16164,9 @@ const BADGE_DEFS = [
   { key: 'views1000', t: 'L2', icon: 'chart', name: '千人驻足', cond: '单件作品访问量破 1000',
     note: '橱窗前有人停下脚步，才叫陈列。按作品累计访问算，不看点赞和收藏。' },
   { key: 'week_top', t: 'L2', icon: 'podium', name: '一梦当先', cond: '新作周榜第一名',
-    note: '七天里最亮的那件新作。周榜每周重排，第一只有一个，拿过就留在身上。' },
+    note: '七天里最亮的那件新作。周榜每周重排，出刊后再过 7 天名次定稿——定稿那一刻的第一才算数，拿过就留在身上。' },
   { key: 'month_top', t: 'L2', icon: 'crown', name: '独占一窗', cond: '月榜第一名',
-    note: '一整个月，最好的位置就那一扇窗。每月重排，拿过就留在身上。' },
+    note: '一整个月，最好的位置就那一扇窗。每月重排，名次定稿后才揭晓归属，拿过就留在身上。' },
   { key: 'all_top', t: 'L2', icon: 'steps', name: '众梦之首', cond: '总榜第一名',
     note: '全站所有作品里排在最前的那一件。不是一周也不是一月，得一直有人记着它。' },
   { key: 'nanke', t: 'L2', icon: 'cloud', name: '南柯一梦', cond: '坐过高光榜第一，如今已被超越',
@@ -16207,6 +16207,49 @@ function veteranIds() {
   return new Set(users.filter(u => u && u.id && u.createdAt)
     .sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0))
     .slice(0, VETERAN_LIMIT).map(u => u.id));
+}
+
+// 榜单三枚里的周/月两枚（2026-11-18 站长定）：只认「定榜后」的结果。
+// 起因：原来 /api/rank 每次算出结果就顺手发勋章，一周之内名次来回换，一梦当先发出去 7 个人——
+// 「周榜第一名」一周只该有一个。星梦期刊的定稿档案（data/journals.json，phase=closed）里
+// 每期名次冻结不再改写，正好是「定榜后」的权威名单：定稿那一刻的第 1 名才发。
+// 无主作品（匿名投稿、种子作品）没有 authorId，勋章发不到人身上，跳过往后找下一位。
+function journalChampionUid(issue) {
+  const list = Array.isArray(issue && issue.list) ? issue.list : [];
+  const hit = list.slice().sort((a, b) => (a.rank || 99) - (b.rank || 99)).find(e => e && e.authorId);
+  if (!hit) return null;
+  // 点亮日期用定稿日（finalAt），比 awardBadge 落档时间更贴近「定榜那一刻」
+  const at = Date.parse((issue.finalAt || '') + 'T00:00:00')
+    || Date.parse(issue.frozenAt || '') || Date.now();
+  return { uid: hit.authorId, at };
+}
+
+let champHonorsCache = { at: 0, data: null };
+function championHonors() {
+  if (champHonorsCache.data && Date.now() - champHonorsCache.at < 60e3) return champHonorsCache.data;
+  const out = { week: {}, month: {} };
+  for (const type of ['week', 'month']) {
+    for (const key of Object.keys(journals[type] || {})) {
+      const iss = journals[type][key];
+      if (!iss || iss.phase !== 'closed') continue;
+      const c = journalChampionUid(iss);
+      // 同一个人多期夺冠只记最早那次的定稿日（点亮日期取第一回）
+      if (c && (!out[type][c.uid] || c.at < out[type][c.uid])) out[type][c.uid] = c.at;
+    }
+  }
+  champHonorsCache = { at: Date.now(), data: out };
+  return out;
+}
+
+// 定稿档案里已有的冠军补点亮：启动时跑一遍（幂等，silent——往期的荣誉不该在今天刷一波通知）。
+// 之后的期由 journalCut 定稿那一刻实时发（不 silent，正常推通知）。
+function awardJournalChampions() {
+  const h = championHonors();
+  let n = 0;
+  for (const [key, map] of [['week_top', h.week], ['month_top', h.month]]) {
+    for (const uid of Object.keys(map)) if (awardBadge(uid, key, true)) n++;
+  }
+  return n;
 }
 
 // 把「某个人现在够不够格」需要的数据一次算完：20 枚勋章里十几枚都要扫作品/评论/访问，
@@ -16256,6 +16299,7 @@ function badgeFacts(user) {
   // 邀请：只有一端记录 invitedBy（被邀请人身上），被邀请人还得真投过稿
   const invitedOk = users.some(u => u.invitedBy === user.username
     && works.some(w => w.userId === u.id && !w.deleted));
+  const champs = championHonors();
   return {
     veteran: veteranIds().has(uid),
     ckDays, bestStreak, nightAt, comeback,
@@ -16267,6 +16311,9 @@ function badgeFacts(user) {
     invite: invitedOk,
     browsed,
     comments: myCmts,
+    // 周/月两枚榜单勋章的点亮依据：定稿档案现算（总榜没有定稿那一刻，仍走 badges 记录）
+    weekChampAt: champs.week[uid] || 0,
+    monthChampAt: champs.month[uid] || 0,
     badges: badgeData.users[uid] || {}
   };
 }
@@ -16283,8 +16330,9 @@ function badgeProgress(key, f) {
     case 'first_work':    return { ok: f.approved >= 1, now: f.approved, goal: 1 };
     case 'works3':        return { ok: f.approved >= 3, now: f.approved, goal: 3 };
     case 'views1000':     return { ok: f.maxPv >= 1000, now: f.maxPv, goal: 1000 };
-    case 'week_top':      return { ok: !!f.badges.week_top };
-    case 'month_top':     return { ok: !!f.badges.month_top };
+    case 'week_top':      return { ok: !!f.weekChampAt };
+    case 'month_top':     return { ok: !!f.monthChampAt };
+    // 总榜没有定稿那一刻（实时分一直在变），这枚保持实时口径：badges.json 里记了就算
     case 'all_top':       return { ok: !!f.badges.all_top };
     case 'nanke':         return { ok: !!f.badges.nanke };
     case 'github':        return { ok: f.github };
@@ -16331,9 +16379,10 @@ function recordChampion(period, sorted) {
   const prev = badgeData.board[period];
   if (prev && prev.workId === w.id) return;
   badgeData.board[period] = { workId: w.id, userId: w.userId, at: Date.now() };
-  if (period === 'week') awardBadge(w.userId, 'week_top');
-  else if (period === 'month') awardBadge(w.userId, 'month_top');
-  else if (period === 'all') awardBadge(w.userId, 'all_top');
+  // 周/月两枚 2026-11-18 起改「定稿才发」（见 championHonors / journalCut）：
+  // 实时名次一天能换好几个主人，当场发等于把「周榜第一」发成「某一瞬间的第一」。
+  // 总榜没有定稿那一刻（实时分一直在涨），这枚保留实时口径：谁是当下的第一就归谁，被超过不收回。
+  if (period === 'all') awardBadge(w.userId, 'all_top');
   else if (period === 'peak') {
     // 高光榜是「每件作品最亮的七天」，只涨不跌：冠军被换掉只有一种可能——有人做出了更亮的七天。
     // 这枚不发给新冠军，发给旧冠军：你坐过那个位置，如今被超过了，这才是南柯。
@@ -16363,6 +16412,15 @@ function awardVeteranBadges() {
   if (n) console.log('[badges] 造梦元老 自动授予 ' + n + ' 人');
 }
 awardVeteranBadges();
+
+// 榜单勋章（周/月两枚）按定稿档案补扫：启动后跑一遍（journals 在文件后段才加载完，所以挂 setTimeout）。
+// 幂等：awardBadge 拿过不重发。之前按实时榜发出去的记录不在这里删——清账走一次性脚本（带备份），不写进启动流程。
+setTimeout(() => {
+  try {
+    const n = awardJournalChampions();
+    if (n) console.log('[badges] 榜单勋章按定稿补录 ' + n + ' 条');
+  } catch (e) { console.error('[badges] 定稿冠军补扫失败：' + e.message); }
+}, 9000).unref?.();
 
 // 自动结算的勋章：人数按「现在真够格的人」算（2026-11-18）
 // 起因：站长截图「心有灵犀」写 4 人已获得，可线上绑了 GitHub 的账号有 19 个；「三件成窗」也只剩 1 个。
@@ -16412,7 +16470,12 @@ function computeBadges(user) {
   return BADGE_DEFS.map(def => {
     const out = { ...def, count: def.by ? (handed[def.key] || 0) : (auto[def.key] || 0) };
     if (!user) return { ...out, state: 'off' };
-    const at = (badgeData.users[user.id] || {})[def.key];
+    // 周/月两枚的点亮状态跟「够格判定」同一个来源（定稿档案现算）：
+    // badges.json 里的旧实时记录不能拿来当点亮依据，否则会出现「卡片亮着、人数里又没他」的对不上。
+    const rec = badgeData.users[user.id] || {};
+    const at = def.key === 'week_top' ? (f.weekChampAt || 0)
+      : def.key === 'month_top' ? (f.monthChampAt || 0)
+      : (rec[def.key] || 0);
     const p = badgeProgress(def.key, f);
     // 已经够格但还没记过（比如上线前就签过 20 天）：这次访问补录一条，不推通知
     if (!at && p.ok) { awardBadge(user.id, def.key, true); }
@@ -17123,6 +17186,11 @@ function journalCut(type, span) {
   journals[type][key] = frozen;
   saveJournals();
   payJournalPrizes(frozen);
+  // 定榜那一刻发榜单勋章（2026-11-18）：周榜 → 一梦当先，月榜 → 独占一窗。
+  // 名次从这一刻起冻结不再改写，发出去的就是「定稿后的第一」；无主作品 champion 为 null，自然不发。
+  champHonorsCache.at = 0;
+  const champ = journalChampionUid(frozen);
+  if (champ) awardBadge(champ.uid, type === 'week' ? 'week_top' : 'month_top');
   return frozen;
 }
 
