@@ -42,9 +42,11 @@
        但 SSR 索引块被 JS 渲染替换时会多出一次大位移，CLS 从 0.07 恶化到 0.36。
        已改用服务端压缩 CSS 体积（见 server.js 的 CSS 压缩中间件），收益接近、零风险。 -->
   <link rel="stylesheet" href="/style.css" />
-  <!-- 小助手形象动效：与 /mascots 换形象页共用同一份，必须在 style.css 之后 -->
+  <!-- 小住客动效：与 /mascots 换形象页共用同一份，必须在 style.css 之后 -->
   <link rel="stylesheet" href="/mascots.css" />
   <script src="/icons.js"></script>
+  <!-- Umami 统计（Umami Cloud）：defer 加载不阻塞；SPA 路由切换由 umami 自动追踪 history 变化 -->
+  <script defer src="https://analytics.umami.is/script.js" data-website-id="96b6aaa5-bc4f-4f33-8af4-fc294f577e0b"></script>
 </head>
 <body>
   <header class="site-header">
@@ -86,10 +88,11 @@
              data-tip 由 style.css 画成气泡，比原生 title 出得快、样式统一；aria-label 给读屏，也在没有 CSS 时兜底。
              触屏没有 hover，顶部导航在 ≤640px 本来就隐藏，靠 /howto 开头的「先认认路」那一节兜底。 -->
         <a class="nav-btn" href="/rank" data-nav data-tip="作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届" aria-label="星梦榜：作品的热度排行，访客、收藏、评论、灯火加权计分，每周换一届"><i class="ico" data-ico="rank"></i> 星梦榜</a>
-        <a class="nav-btn" href="/bar" data-nav data-tip="说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现，也能闲聊、安利、分享"><i class="ico" data-ico="wish"></i> 造梦酒馆</a>
-        <!-- PC「发现」入口暂缓上线（站长还要构思），加回时把 /discover 按钮放这行注释后面：
-             <a class="nav-btn" href="/discover" data-nav title="发现：按平台和分类逛作品专栏——iOS、安卓、小程序、游戏、效率工具都在这儿"><i class="ico" data-ico="globe"></i> 发现</a>
-             同时 app.js updateNavActive 里的 onDiscover 高亮已写好，按钮一回来就自动生效 -->
+        <a class="nav-btn" href="/bar" data-nav data-tip="说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现，也能闲聊、安利、分享"><i class="ico" data-ico="wish"></i> 酒馆</a>
+        <!-- PC「发现」入口（2026-11-18 上线）：≥641px 显示新版式（左分类侧栏 + 内容网格），
+             ≤640px 不显示这条（顶部导航本来就隐藏），走底部 Tab「发现」的专栏版式。
+             app.js updateNavActive 里的 onDiscover 高亮一直写好着，按钮回来即生效 -->
+        <a class="nav-btn" href="/discover" data-nav data-tip="按平台和分类逛作品——iOS、安卓、小程序、游戏、效率工具都在这儿" aria-label="发现：按平台和分类逛作品，iOS、安卓、小程序、游戏、效率工具都在这儿"><i class="ico" data-ico="globe"></i> 发现</a>
         <button type="button" class="nav-btn hero-mini-open" data-tip="扫小程序码，微信里也能逛橱窗、签到、看酒馆" aria-label="小程序：扫小程序码，微信里也能逛橱窗、签到、看酒馆"><i class="ico" data-ico="mini"></i> 小程序</button>
         <!-- 精选专栏 /column 的入口放在页脚「逛逛 · 软件精选」，顶部导航不再加入口 -->
       </nav>
@@ -227,7 +230,7 @@
                 <circle cx="10" cy="14" r="1.05" fill="currentColor"/>
               </svg>
             </button>
-            <span class="feat-info-pop" role="tooltip">按近 7 天数据打分，取分数最高的一批作品入选（个数由站长调整）：获赞 ×5 ＋ 收藏 ×8 ＋ 评论 ×3 ＋ 灯火人数 ×10 ＋ 访客 ×2（同一人只算 1 个访客、作者本人不计）· 不设互动门槛、不按作者分摊名额 · 站长可增补个别作品（带统一的站长标签、不占分数名额），也可移出个别作品（由分数顺位递补）· 同分依次比访客、累计浏览 · 展示顺序每天随机重排一次、当天固定（左上角数字是当天排位，不是分数名次，站长增补的也参与重排）· 卡上的打开/看过是累计数据</span>
+            <span class="feat-info-pop" role="tooltip">按近 7 天数据打分，取分数排名前 25 的作品入选：获赞 ×5 ＋ 收藏 ×8 ＋ 评论 ×3 ＋ 灯火人数 ×10 ＋ 访客 ×2（同一人只算 1 个访客、作者本人不计）· 不设互动门槛、不按作者分摊名额 · 同分依次比访客、累计浏览 · 展示顺序每天随机重排一次、当天固定（左上角数字是当天排位，不是分数名次）· 卡上的打开/看过是累计数据</span>
           </span>
           <div class="featured-nav">
             <button class="fn-btn" id="featPrev" aria-label="向左滑动" disabled>‹</button>
@@ -327,12 +330,13 @@
             <button class="ct-btn" data-cols="6" title="每行 6 个（需要 1500px 以上的屏幕宽度）">6 列</button>
           </div>
           <!-- 排序切换（随便逛逛/最新/最热）2026-11-11 挪到上面筛选行右端（id=sortToggle 不变） -->
-          <!-- 展示方式：卡片 / 列表 -->
+          <!-- 展示方式：卡片 / 列表 / 无图 -->
           <!-- 2026-11-07：选中态由 app.js 依 state.view 设置（手机默认列表 / PC 默认卡片），
                这里不写死 active，否则手机首屏会先亮一下卡片图标再跳成列表 -->
           <div class="view-toggle" id="viewToggle" role="group" aria-label="展示方式">
             <button class="vt-btn" data-view="card" title="卡片视图" aria-label="卡片视图"><i class="ico" data-ico="viewcard"></i></button>
             <button class="vt-btn" data-view="list" title="列表视图" aria-label="列表视图"><i class="ico" data-ico="viewlist"></i></button>
+            <button class="vt-btn" data-view="compact" title="无图模式" aria-label="无图模式"><i class="ico" data-ico="viewnoimg"></i></button>
           </div>
         </div>
       </div>
@@ -737,6 +741,9 @@
           <button type="button" class="au-act" data-auact="wallet" title="灯火账本：签到、分享、看广告攒的，投放花掉的，都在这里">
             <span class="au-act-ico"><i class="ico" data-ico="coin"></i></span>我的灯火
           </button>
+          <button type="button" class="au-act" data-auact="follow" title="我关注的创作者：他们发新作品会在站内消息里提醒你">
+            <span class="au-act-ico"><i class="ico" data-ico="person"></i></span>我的关注
+          </button>
           <button type="button" class="au-act" data-auact="mini" title="扫码在微信里打开自己的造梦橱窗小程序">
             <span class="au-act-ico"><i class="ico" data-ico="mobile"></i></span>扫码看我的小程序
           </button>
@@ -910,14 +917,72 @@
       </div>
     </section>
 
-    <!-- 发现页：精选 + 平台专栏 + 分类专栏（Android/iOS 按手机机型排前后），SPA 自己渲染。
-         移动端走底部 Tab「发现」；PC 顶导入口暂缓上线，/discover 路由本身 PC 也能访问 -->
+    <!-- 发现页（/discover，2026-11-18 起双版式）：
+         PC（≥641px）用 .disc-pc——左分类侧栏 + 右内容网格（版式参考 App Store 网页版），app.js renderDiscoverPc() 填充；
+         移动端（≤640px）用 .disc-m——原有「精选 + 平台/分类专栏」胶囊版式，SPA 自己渲染 -->
     <section id="discoverView" style="display:none">
-      <div class="page-head disc-page-head">
-        <h2 class="page-title"><i class="ico" data-ico="globe"></i> 发现</h2>
+      <div class="disc-pc" id="discPc">
+        <aside class="cat-side">
+          <div class="cat-search">
+            <i class="ico" data-ico="search"></i>
+            <input id="discPcSearch" type="search" placeholder="搜索作品" autocomplete="off" />
+          </div>
+          <!-- 平台专区（2026-11-18）：按平台逛的一组固定入口，AppStore 只认 apps.apple.com 官方商店链接；
+               app.js renderDiscoverPc 填充；选中专区时顶部平台胶囊条收起（同一套口径不摆两遍），再点一次取消 -->
+          <div class="cat-group-title">平台专区</div>
+          <div class="cat-list" id="discPcZones"></div>
+          <!-- 分类自定义（2026-11-18）：「编辑」进增删/排序模式，游客记本机、登录记账号；≤900px 横条版式下藏掉 -->
+          <div class="cat-group-title cat-group-mt cat-group-row"><span>分类</span><button type="button" id="discCatEdit" class="cat-edit-btn">编辑</button></div>
+          <div class="cat-list" id="discPcCats"></div>
+        </aside>
+        <div class="cat-main">
+          <div class="cat-head">
+            <div>
+              <h1 id="discPcTitle">全部作品</h1>
+              <p id="discPcDesc">按用途逛一逛，找到刚好能帮上忙的那一个</p>
+            </div>
+          </div>
+          <div class="cat-toolbar">
+            <div class="cat-chips" id="discPcTypeChips">
+              <button type="button" class="cat-chip active" data-dtype="">全部平台</button>
+              <button type="button" class="cat-chip" data-dtype="Web">网页</button>
+              <button type="button" class="cat-chip" data-dtype="小程序">小程序</button>
+              <button type="button" class="cat-chip" data-dtype="iOS">iOS</button>
+              <button type="button" class="cat-chip" data-dtype="Android">安卓</button>
+              <button type="button" class="cat-chip" data-dtype="Windows">Windows</button>
+              <button type="button" class="cat-chip" data-dtype="macOS">Mac</button>
+            </div>
+            <div class="cat-sort">
+              <!-- 记住自己的选择（2026-11-18）：记的是这一页的三项「逛的口味」——平台胶囊、左侧分类、排序。
+                   跟首页那条「记住筛选条件」是两套独立状态，互不覆盖；默认不勾，发现页上来先给全站。 -->
+              <div class="cat-remember">
+                <label class="cat-remember-main"><input type="checkbox" id="discPcRemember"><span>记住我的选择</span></label>
+              </div>
+              <label for="discPcSort">排序</label>
+              <select id="discPcSort">
+                <option value="fair" selected>随便看看</option>
+                <option value="new">最新收录</option>
+                <option value="hot">最多浏览</option>
+                <option value="like">最多喜欢</option>
+              </select>
+            </div>
+          </div>
+          <section class="gallery cols-5" id="discPcGallery"></section>
+          <div class="cat-empty" id="discPcEmpty" style="display:none">这个分类暂时没有作品</div>
+        </div>
       </div>
-      <div class="disc-chips" id="discChips" role="tablist"></div>
-      <div id="discPanel"></div>
+      <div class="disc-m">
+        <div class="page-head disc-page-head">
+          <h2 class="page-title"><i class="ico" data-ico="globe"></i> 发现</h2>
+        </div>
+        <div class="disc-chips" id="discChips" role="tablist"></div>
+        <!-- 手机端「记住我的选择」：手机上没有平台胶囊和排序可筛，能记的就是「上次停在哪个专栏」。
+             和 PC 那条共用 dm_disc_remember 开关——在一端勾了，另一端也是勾的，口径一致。 -->
+        <div class="disc-m-remember">
+          <label class="cat-remember-main"><input type="checkbox" id="discMRemember"><span>记住我的选择</span></label>
+        </div>
+        <div id="discPanel"></div>
+      </div>
     </section>
 
     <!-- 我的（移动端 Tab）：登录/签到/收藏/作品/设置的聚合入口，SPA 自己渲染 -->
@@ -1099,7 +1164,17 @@
           <button type="button" class="draft-bar-del" id="draftBarDel">删除</button>
           <button type="button" class="draft-bar-new" id="draftNewBtn">再开一份</button>
         </div>
-        <!-- 粘贴介绍自动填表：只回填候选值，不自动提交；下面这些控件都不带 name，不会混进 FormData -->
+        <div id="authorField" style="display:none">
+          <label>署名（选填）</label>
+          <input type="text" name="author" maxlength="20" placeholder="审核通过后显示的作者名，不填就是「匿名」" />
+        </div>
+        <label>作品形态 *（可多选，比如既是网站又有小程序）</label>
+        <div class="type-picker" id="typePicker"></div>
+        <input type="text" name="newType" id="newTypeInput" maxlength="10"
+               placeholder="列表里没有？输入新形态名，回车创建（如：浏览器主题）" style="display:none; margin-top:8px" />
+
+        <!-- 粘贴介绍自动填表：只回填候选值，不自动提交；下面这些控件都不带 name，不会混进 FormData。
+             2026-11-18：从表单最顶上挪到「作品形态」下面——先想清楚做的是什么形态，再让极速填写按它回填 -->
         <div class="ai-fill" id="aiFillBox">
           <button type="button" class="ai-fill-toggle" id="aiFillToggle" aria-expanded="false" aria-controls="aiFillBody">
             <span class="ai-fill-ico" aria-hidden="true">✦</span>
@@ -1119,7 +1194,7 @@
               <textarea id="aiFillText" rows="4" maxlength="3000" placeholder="例：「拾光清单」是一个帮人整理待办的小程序，支持语音快速记录、按精力分配任务，也有 Web 版可以同步……"></textarea>
             </div>
             <div class="ai-fill-pane" id="aiFillPaneUrl" hidden>
-              <p class="ai-fill-tip">填作品网址，自动读页面标题、描述和正文，识别名称 / 简介 / 分类 / 形态，并填好网站地址。<b>贴 GitHub 仓库链接会自动改读仓库信息</b>（含简介、官网、源码地址）。<b>只读取公开页面</b>，读不到会提示你手动补。</p>
+              <p class="ai-fill-tip">填作品网址，自动读页面标题、描述和正文，识别名称 / 简介 / 分类 / 形态，并填好网站地址。<b>贴 GitHub 仓库链接会自动改读仓库信息</b>（含简介、官网、源码地址），<b>贴 App Store 应用链接会自动读应用信息</b>（简介、官网、图标，形态勾 iOS）。<b>只读取公开页面</b>，读不到会提示你手动补。</p>
               <input type="url" id="aiFillUrl" maxlength="500" placeholder="https://你的作品地址" autocomplete="off" />
               <div class="ai-fill-cover" id="aiFillCover" hidden>
                 <button type="button" class="ai-fill-cover-btn" id="aiFillCoverBtn">用网站图片做封面</button>
@@ -1148,15 +1223,6 @@
             </div>
           </div>
         </div>
-
-        <div id="authorField" style="display:none">
-          <label>署名（选填）</label>
-          <input type="text" name="author" maxlength="20" placeholder="审核通过后显示的作者名，不填就是「匿名」" />
-        </div>
-        <label>作品形态 *（可多选，比如既是网站又有小程序）</label>
-        <div class="type-picker" id="typePicker"></div>
-        <input type="text" name="newType" id="newTypeInput" maxlength="10"
-               placeholder="列表里没有？输入新形态名，回车创建（如：浏览器主题）" style="display:none; margin-top:8px" />
 
         <!-- 标题拆两框：名字最长 20（汉字/全角算 2 个字符）、一句话介绍 ≤20 字，提交时前端拼成「名字 介绍」（中间一个空格）存进 title -->
         <!-- 名字不用 HTML maxlength：它只数字符、数不了宽度，加权上限由 app.js 的 input 监听 + 服务端兜底 -->
@@ -1452,6 +1518,64 @@
              placeholder="例如 DM-ABCD-EFGH" />
       <button type="button" class="btn-primary btn-block" id="giftCodeBtn">立即兑换</button>
       <p class="gift-msg" id="giftMsg" style="display:none"></p>
+    </div>
+  </div>
+
+  <!-- 自己生成一曲（2026-11-18）：八音盒面板里的第二扇门。
+       曲子不落库、不传音频文件：只把「种子 + 四个参数」当输入，现场算出声音。
+       同一个种子必然长出同一首，所以「分享」就是把这串字符给朋友，他粘回来能听到一样的一首。
+       控件用原生 select / range：手机上不弹自己画的东西，稳，也不会跟站里的样式打架。 -->
+  <div class="modal-mask" id="musicModal" style="display:none">
+    <div class="modal modal-music">
+      <div class="modal-head">
+        <h2>八音盒</h2>
+        <button class="close-btn" id="closeMusic" title="关闭">✕</button>
+      </div>
+      <p class="music-tip">全部现算，不下载不缓冲。点一首现成的听，或拨四个参数，长一首只属于你的。</p>
+
+      <!-- 曲目单：由 MusicBox.listAll() 画，改曲库不用动这段 HTML -->
+      <div class="music-list" id="musicList"></div>
+
+      <div class="music-sep"><span>自己生成一曲</span></div>
+
+      <div class="music-row">
+        <label for="musicMood">情绪</label>
+        <select id="musicMood">
+          <option value="night">夜航 · 小调，偏暗</option>
+          <option value="day">晴日 · 大调，偏亮</option>
+          <option value="mist">雾 · 多利亚，一直悬着</option>
+          <option value="old">古意 · 五声，像旧曲</option>
+        </select>
+      </div>
+      <div class="music-row">
+        <label for="musicBpm">速度</label>
+        <input type="range" id="musicBpm" min="56" max="116" step="4" value="84" />
+        <span class="music-val" id="musicBpmV">84 BPM</span>
+      </div>
+      <div class="music-row">
+        <label for="musicDensity">疏密</label>
+        <select id="musicDensity">
+          <option value="thin">疏 · 一句两三个音</option>
+          <option value="mid" selected>中 · 正常说话</option>
+          <option value="thick">密 · 音符连成线</option>
+        </select>
+      </div>
+      <div class="music-row">
+        <label for="musicBars">长度</label>
+        <select id="musicBars">
+          <option value="12">12 小节 · 短</option>
+          <option value="16" selected>16 小节 · 中</option>
+          <option value="24">24 小节 · 长</option>
+        </select>
+      </div>
+      <button type="button" class="btn-primary btn-block" id="musicGo">生成并播放</button>
+      <p class="music-seed" id="musicSeed" hidden></p>
+      <!-- 最近生成过：本机留最近 8 条，点一下按原种子重放（种子自带参数，完全一样） -->
+      <div class="music-recent" id="musicRecent" hidden></div>
+      <div class="music-replay">
+        <input type="text" id="musicSeedIn" maxlength="12" placeholder="有别人的种子？粘进来" autocomplete="off" spellcheck="false" />
+        <button type="button" id="musicSeedGo">听这首</button>
+      </div>
     </div>
   </div>
 
@@ -1881,6 +2005,7 @@
         <button type="button" class="btn" id="tdClose">先看看别的</button>
         <a class="btn btn-primary" id="tdGo" href="#" target="_blank" rel="noopener nofollow sponsored">去官网看看 ↗</a>
       </div>
+      <p class="td-dismiss"><button type="button" class="link-btn" id="tdHide">不再提示此工具</button></p>
     </div>
   </div>
 
@@ -1888,6 +2013,24 @@
   <div class="modal-mask" id="detailModal" style="display:none">
     <div class="modal detail">
       <button class="close-btn" id="closeDetail">✕</button>
+      <!-- 竖排操作条（2026-11-18，参考掘金文章页）：互动按钮集中在弹窗最右，
+           左侧内容区专心放主入口和作品介绍。沿用 .detail-actions 的按钮基础样式，
+           竖排形态由 .detail-rail 覆盖（order 排到信息栏之后）；窄屏时整条转横排落回大图下方 -->
+      <div class="detail-actions detail-rail" id="detailRail">
+        <button class="btn-like" id="detailLike" title="给这件作品点个赞"><i class="ico b-ico" data-ico="heart"></i><span class="sr-label" id="detailLikeLabel">点赞</span><span id="detailLikes">0</span></button>
+        <button class="btn-like btn-watch" id="detailWatch" style="display:none"></button>
+        <button class="btn-like btn-fav" id="detailFav" title="收藏后可在顶部「我的收藏」里找到"><i class="ico" data-ico="fav"></i><span class="sr-label">收藏</span><span class="fav-num" id="detailFavNum">0</span></button>
+        <!-- 评论在截图/介绍下面，不往下滚看不到；给一个带数的锚点，点了直接跳过去 -->
+        <button class="btn-like btn-cmt" id="detailCmt" title="跳到评论区：说点什么，或向作者提问"><i class="ico" data-ico="chat"></i><span class="sr-label">评论</span><span id="detailCmtNum">0</span></button>
+        <!-- 送灯火是唯一带「暖意」的动作，保留可见文字，竖排时缩成图标+小字 -->
+        <button class="btn-tip" id="detailTip" title="用灯火支持作者或这件作品"><i class="ico b-ico" data-ico="lamp"></i> <span class="tip-word">送灯火</span></button>
+        <!-- 私信作者：图标胶囊（文字只给读屏），和点赞/收藏同一列，不抢「送灯火」的主位；
+             图标用 mail 信封，别和评论的 chat 气泡撞脸（2026-11-15） -->
+        <button class="btn-like btn-dm" id="detailDm" title="给作者发私信"><i class="ico" data-ico="mail"></i><span class="sr-label">私信</span></button>
+        <button class="btn-share" id="shareCardBtn" title="生成一张带二维码的分享图，发朋友圈/小红书都行"><i class="ico b-ico" data-ico="sharecard"></i><span class="sr-label">分享卡片</span></button>
+        <button class="btn-share btn-pack" id="promoKitBtn" title="按平台生成投稿文案，复制就能去外站投"><i class="ico b-ico" data-ico="megaphone"></i> <span class="rail-word">外宣包</span></button>
+        <button class="btn-link btn-code" id="detailRedeem" style="display:none"><i class="ico b-ico" data-ico="gift"></i> <span class="rail-word">兑换码</span></button>
+      </div>
       <div class="detail-media" id="detailMedia">
         <img id="detailImg" alt="作品大图" title="点击全屏查看" />
         <button class="gal-arrow gal-prev" id="galPrev" style="display:none" title="上一张">‹</button>
@@ -1901,6 +2044,9 @@
       <div class="detail-info">
         <h2 id="detailTitle"></h2>
         <div class="detail-stage" id="detailStage" style="display:none"></div>
+        <!-- 涉币提示（2026-11-18）：勾了涉币标记的作品在详情页挂一条说明，把「只是信息展示、
+             站方不推荐不背书」讲在点开之后的第一眼，别等用户读完才在卡片角落看到 -->
+        <p class="detail-crypto" id="detailCrypto" style="display:none"></p>
         <!-- 「一眼看懂」里的定位句：只有一句话时当副标题读，不再为一行字套一张卡（2026-11-13）。
              其余四件套（解决什么/适合谁/和同类比/上手几步）仍走下面的 #detailQuick 卡片 -->
         <p class="detail-lead" id="detailLead" style="display:none"></p>
@@ -1913,22 +2059,8 @@
         </div>
         <button class="claim-entry" id="claimEntry" style="display:none"></button>
 
-        <!-- 作者名片卡（2026-11-18，仿 php中文网档案块）：头像 + 名字 + 全量荣誉章 + 四格统计 + 关注按钮。
-             关注按钮从 headrow 挪进卡里（大按钮更像「对人的动作」，跟截图版式对齐）；
-             匿名 / 未认领作品整块隐藏，自己的作品显示统计但不出关注（换成「进我的主页」入口） -->
-        <div class="detail-author-card" id="detailAuthorCard" style="display:none">
-          <div class="dac-top">
-            <button type="button" class="dac-ava" id="dacAva" title="访问作者主页"></button>
-            <div class="dac-id">
-              <button type="button" class="dac-name" id="dacName" title="访问作者主页"></button>
-              <span class="dac-sub" id="dacSub"></span>
-            </div>
-            <span class="dac-cert" id="dacCert"></span>
-          </div>
-          <div class="dac-badges" id="dacBadges"></div>
-          <div class="dac-stats" id="dacStats"></div>
-          <button type="button" class="detail-follow dac-follow" id="dacFollow" style="display:none"></button>
-        </div>
+        <!-- 作者名片卡（2026-11-18）：已撤出详情弹窗，只保留完整页（/w/:id?full=1）右栏那张 #seoAuthorCard。
+             弹窗里作者荣誉章看 headrow 作者名旁（只露一枚，悬停看全量），统计看作者主页。 -->
 
         <!-- 作者管理条：自己的作品才显示。作品级管理动作（含兑换码）都收在这里，访客动作区只放互动/分享 -->
         <div class="owner-bar" id="ownerBar" style="display:none">
@@ -1950,30 +2082,14 @@
           </div>
         </div>
 
-        <!-- 访客动作区（2026-11-13 收拢层级）
-             之前 6 颗彩色描边按钮挤成 4+2 两行、三套配色，主 CTA 混在里面看不出是主按钮；
-             现在压成「一个实心主按钮 + 一排等宽图标胶囊」，文字收进 .sr-label（只给读屏和悬停提示），
-             数字直接挂在图标上——同一批数字不再在相邻两行出现两次。 -->
-        <div class="detail-actions">
-          <!-- 打开网站/下载等外链入口放最前：详情页的主行动是「去用作品」 -->
-          <span id="detailLinks" class="detail-links"></span>
-          <button class="btn-like" id="detailLike" title="给这件作品点个赞"><i class="ico b-ico" data-ico="heart"></i><span class="sr-label" id="detailLikeLabel">点赞</span><span id="detailLikes">0</span></button>
-          <button class="btn-like btn-watch" id="detailWatch" style="display:none"></button>
-          <button class="btn-like btn-fav" id="detailFav" title="收藏后可在顶部「我的收藏」里找到"><i class="ico" data-ico="fav"></i><span class="sr-label">收藏</span><span class="fav-num" id="detailFavNum">0</span></button>
-          <!-- 评论在截图/介绍下面，不往下滚看不到；给一个带数的锚点，点了直接跳过去 -->
-          <button class="btn-like btn-cmt" id="detailCmt" title="跳到评论区：说点什么，或向作者提问"><i class="ico" data-ico="chat"></i><span class="sr-label">评论</span><span id="detailCmtNum">0</span></button>
-          <!-- 送灯火是唯一带「暖意」的动作，保留可见文字按钮，不并进图标堆 -->
-          <button class="btn-tip" id="detailTip" title="用灯火支持作者或这件作品"><i class="ico b-ico" data-ico="lamp"></i> <span class="tip-word">送灯火</span></button>
-          <!-- 私信作者：图标胶囊（文字只给读屏），和点赞/收藏同一排，不抢「送灯火」的主位；
-               图标用 mail 信封，别和左边评论的 chat 气泡撞脸（2026-11-15） -->
-          <button class="btn-like btn-dm" id="detailDm" title="给作者发私信"><i class="ico" data-ico="mail"></i><span class="sr-label">私信</span></button>
-          <button class="btn-share" id="shareCardBtn" title="生成一张带二维码的分享图，发朋友圈/小红书都行"><i class="ico b-ico" data-ico="sharecard"></i><span class="sr-label">分享卡片</span></button>
-          <button class="btn-share btn-pack" id="promoKitBtn" title="按平台生成投稿文案，复制就能去外站投"><i class="ico b-ico" data-ico="megaphone"></i> 外宣包</button>
-          <button class="btn-link btn-code" id="detailRedeem" style="display:none"><i class="ico b-ico" data-ico="gift"></i> 兑换码</button>
-        </div>
+        <!-- 访客动作区（2026-11-18 重排）：互动按钮（点赞/收藏/评论/灯火/私信/分享）已挪到弹窗
+             最右侧的竖排操作条 .detail-rail（参考掘金），这里只留「打开作品」的主入口——
+             官网 / 各平台下载链接仍是实心主按钮，放内容区顶部保证一眼可见。 -->
+        <!-- 打开网站/下载等外链入口：详情页的主行动是「去用作品」 -->
+        <span id="detailLinks" class="detail-links"></span>
 
         <!-- 数据行：只留按钮里没有的数字（浏览 / 灯火 / 时间）。
-             点赞、收藏、评论的数已经在按钮上——同一批数字在相邻两行各说一遍，是最显眼的一处「乱」 -->
+             点赞、收藏、评论的数已经在左侧操作条按钮上——同一批数字在相邻两行各说一遍，是最显眼的一处「乱」 -->
         <div class="detail-stats" id="detailStats"></div>
 
         <!-- 手机扫码：直接展开，不再折叠（2026-11-13 晚站长定：折叠行让人找不到码）。
@@ -2115,6 +2231,7 @@
           <button class="btn-report" id="blockWork" style="display:none" title="不再在列表里看到这个作品"><i class="ico b-ico" data-ico="block"></i> 屏蔽</button>
           <button class="btn-report" id="blockAuthor" style="display:none" title="这个作者的每件作品都不再展示给我（含以后新发的）"><i class="ico b-ico" data-ico="block"></i> 拉黑作者</button>
           <button class="btn-report" id="openReport"><i class="ico b-ico" data-ico="warn"></i> 投诉</button>
+          <button class="btn-report" id="openCatFix" title="分类挂错了？告诉我们应该放哪个分类，核实后由我们调整"><i class="ico b-ico" data-ico="folder"></i> 分类有误</button>
           <a class="btn-report" href="/rules" target="_blank" rel="noopener"
              title="能传什么、二维码怎么放、原作者怎么申请移除"><i class="ico b-ico" data-ico="rules"></i> 作品规范</a>
           <button class="btn-report" id="copyLinkBtn"><i class="ico b-ico" data-ico="link"></i> 复制链接</button>
@@ -2309,6 +2426,26 @@
 
   <div class="toast" id="toast"></div>
 
+  <!-- 分类有误：用户看到作品挂错分类，直接选一个更合适的提交，
+       进后台「投诉处理」队列，由管理员/站长核实；采纳后才真改分类，提交本身不动数据 -->
+  <div class="modal-mask" id="catFixModal" style="display:none">
+    <div class="modal">
+      <div class="modal-head">
+        <h2>分类有误？</h2>
+        <button class="close-btn" id="closeCatFix" type="button" title="关闭">✕</button>
+      </div>
+      <p class="catfix-cur" id="catFixCur"></p>
+      <form id="catFixForm">
+        <label for="catFixWant">你觉得更合适的分类 *</label>
+        <select id="catFixWant" name="want"></select>
+        <label for="catFixNote">补充说明（选填）</label>
+        <textarea id="catFixNote" name="note" rows="2" maxlength="200" placeholder="比如：这是聊天工具，不该算效率工具"></textarea>
+        <button type="submit" class="btn-primary btn-block" id="catFixSubmit">提交建议</button>
+      </form>
+      <p class="catfix-hint">建议会进审核队列，由管理员核实后调整，提交后不会立刻生效。</p>
+    </div>
+  </div>
+
   <!-- 「不再看这个作品」确认弹窗：卡片上的入口点一下就到这里，取消/确认都由用户决定。
        只说清两件事：只对你自己生效、不动排名、随时可恢复 -->
   <div class="modal-mask" id="blockWorkModal" style="display:none">
@@ -2397,7 +2534,7 @@
     </div>
   </div>
 
-  <!-- 右下角小助手：Trae 同款小机器人 + 点击弹出的聊天窗口。
+  <!-- 右下角小住客：Trae 同款小机器人 + 点击弹出的聊天窗口。
        原右下角三颗浮标（装到桌面 / 小程序 / 反馈）收进窗口里，按钮 id/类名不变，
        app.js 的 PWA 安装 / 小程序弹窗 / 反馈红点逻辑仍挂在原按钮上；
        滚动整组收起沿用 #fabStack 容器逻辑（2026-11-07）。 -->
@@ -2405,15 +2542,25 @@
     <div class="bot-panel" id="botPanel" aria-hidden="true">
       <div class="bot-panel-head">
         <div class="bot-panel-avatar" id="botAvatar" aria-hidden="true"></div>
-        <div class="bot-panel-id"><b>造梦小助手</b><i><span class="dot"></span>在线</i></div>
-        <button type="button" class="bot-panel-close" id="botPanelClose" aria-label="收起小助手">✕</button>
+        <div class="bot-panel-id"><b>小住客</b><i><span class="dot"></span>在线</i></div>
+        <!-- 常驻（2026-11-18）：图钉亮起后小住客一直留在右下角，30s 靠边站不再生效；默认不常驻 -->
+        <button type="button" class="bot-panel-pin" id="botPanelPin" aria-pressed="false" aria-label="常驻右下角">
+          <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"/></svg>
+        </button>
+        <button type="button" class="bot-panel-close" id="botPanelClose" aria-label="收起小住客">✕</button>
       </div>
-      <p class="bot-panel-msg" id="botPanelMsg">嗨，我是造梦小助手，这几件事都能帮你：</p>
+      <p class="bot-panel-msg" id="botPanelMsg">嗨，我是橱窗里的小住客，这几件事都能帮你：</p>
       <!-- 这个形象的「拿手事」（2026-11-09）：文案与图标由 applySkin 按 mascots.js 的 act 换，
            点击走 runAct。不是独占能力，只是站内已有入口的另一个更顺手的门。 -->
       <button type="button" class="bot-act" id="botAct">
         <i class="ico" data-ico="sparkle" id="botActIco"></i>
-        <span id="botActLabel">自动签到</span>
+        <span id="botActLabel">每日签到</span>
+      </button>
+      <!-- 八音盒的第二扇门（2026-11-18）：只在八音盒在的时候出现（refreshAct 控制 hidden）。
+           点开是弹窗，上半是曲目单、下半是生成器；曲子不落库，只存种子（种子自带参数）。 -->
+      <button type="button" class="bot-gen" id="botGen" hidden>
+        <i class="ico" data-ico="sparkle"></i>
+        <span>挑一首 / 自己生成</span>
       </button>
       <!-- 找找的第二扇门（2026-11-14）：通向第一屏那颗「说不清叫什么」的胶囊，同一个弹层、同一套 /api/find。
            只加门不加能力——找找是一次性检索、宁空勿糊弄，接不住闲聊，所以不并成对话式助手。 -->
@@ -2427,8 +2574,10 @@
         <span>换个形象</span>
         <em id="botSkinName">机器人</em>
       </a>
+      <!-- 试用提示（2026-11-18）：当前形象还在 3 天试用里时补一句还剩多久，到期自动换成机器人 -->
+      <p class="bot-trial" id="botTrial" hidden></p>
     </div>
-    <div class="site-bot" id="siteBot" role="button" tabindex="0" aria-label="打开小助手" aria-expanded="false">
+    <div class="site-bot" id="siteBot" role="button" tabindex="0" aria-label="打开小住客" aria-expanded="false">
       <div class="bot-bubble">嗨～需要帮忙吗？</div>
       <!-- 形象由 mascots.js 注入，用户可以在窗口底部换；下面这份机器人 SVG 是无脚本时的兜底 -->
       <div class="bot-figure" id="botFigure">
@@ -2474,6 +2623,9 @@
       </div><!-- /bot-figure -->
     </div>
   </div>
+  <!-- 八音盒引擎（2026-11-18）：曲库 + 现场合成 + 生成器，几十 KB 的活全在 musicbox.js，
+       这里只留「点一下」的门。放在 mascots.js 之前，ACTS 那段脚本用得到它。 -->
+  <script src="/musicbox.js"></script>
   <script src="/mascots.js"></script>
   <script>
   (function(){
@@ -2490,12 +2642,18 @@
     var DEFAULT_SKIN = 'robot';
     var SKIN_KEY = 'dm_mascot';
     var OWNED_KEY = 'dm_mascot_owned';   // 领到哪几个的缓存：真账在服务端，这里只给首屏和 bfcache 用
+    /* 2026-11-18 试用口径：11 个付费形象各给 3 天，第一次换上桌开始算，一人一个形象只给一次；
+       到期退回机器人，想一直留着还是看一支广告领到手（/mascots 页）。 */
+    var TRIAL_KEY = 'dm_mascot_trial';        // { 形象id: 到期时间戳 }：游客的账本，也是服务端那本的缓存
+    var TRIAL_NOTICE = 'dm_mascot_trial_end'; // 到期提示每个形象只念一次，别天天烦人
+    var TRIAL_MS = 3 * 24 * 3600 * 1000;      // 与 server.js 的 MASCOT_TRIAL_MS 对齐
     var M = window.MASCOTS || {};
     var figure  = document.getElementById('botFigure');
     var avatar  = document.getElementById('botAvatar');
     var msgEl   = document.getElementById('botPanelMsg');
     var bubbleEl = bot.querySelector('.bot-bubble');
     var skinNameEl = document.getElementById('botSkinName');
+    var trialEl   = document.getElementById('botTrial');
     var curSkin = '';
 
     /* ---------------- 形象专属动作（2026-11-09） ----------------
@@ -2533,6 +2691,9 @@
     function refreshAct(){
       if (!actBtn) return;
       var a = (M[curSkin] && M[curSkin].act) || null;
+      // 「自己生成一曲」只属于八音盒：别的形象身上不出现，免得成了人人都有的空门
+      var genBtn = document.getElementById('botGen');
+      if (genBtn) genBtn.hidden = (curSkin !== 'box');
       if (!a || !a.label){ actBtn.hidden = true; return; }
       actBtn.hidden = false;
       var label = a.label;
@@ -2546,6 +2707,9 @@
       if (curSkin === 'jar' && window.dmJarPending > 0){
         label = '收灯火（' + (window.dmJarPending * 10) + ' 盏）';
       }
+      /* 八音盒两态（2026-11-18）：正在响的时候按钮写「停下」。
+         不写的话用户不知道还能再点一下——旧版就卡在这儿，只能等它自己放完。 */
+      if (curSkin === 'box' && window.MusicBox && window.MusicBox.isPlaying()) label = '停下';
       if (actLabelEl) actLabelEl.textContent = label;
       actBtn.setAttribute('title', a.hint || label);
       actBtn.setAttribute('aria-label', a.hint || label);
@@ -2562,7 +2726,7 @@
          到不了这里。下线的动作文案在 mascots.js 的行内注释里留了旧款说明。 */
     var ACTS = {
       /* 灯火：点一下立刻签到。doCheckin 自己处理「没登录 → 打开登录框」「今天签过了」；
-         自动那份在下面的心跳里（在线满 5 分钟补签），拿手事只是把手动这扇门留在这。 */
+         2026-11-18 起签到只有这一扇门（在线自动补签已按站长要求下掉，心跳不再碰签到）。 */
       lamp: function(){
         if (typeof window.doCheckin === 'function') window.doCheckin();
         else actNeedLogin();
@@ -2603,29 +2767,35 @@
         try { q.focus({ preventScroll: true }); } catch (e){ q.focus(); }
         if (box){ box.classList.add('is-focus'); setTimeout(function(){ box.classList.remove('is-focus'); }, 1200); }
       },
-      /* 八音盒：WebAudio 现场合成八个音，不请求任何音频文件 */
+      /* 八音盒：点一下放一首（12 首里随机，避开上一首），再点停下。
+         2026-11-18 重写。旧版是写死的 8 个音（C-D-E-G-A-G-E-D，3.6 秒），每次点都新建一个
+         AudioContext —— 连点两下会同时响两遍、也越来越响，而且停不下来，只能等它自己结束。
+         现在只有 window.MusicBox 一个实例：再点就是停，曲库和合成都在 /musicbox.js。 */
       box: function(){
-        var AC = window.AudioContext || window.webkitAudioContext;
-        if (!AC){ actToast('这台设备放不出声音'); return; }
-        try {
-          var ac = new AC();
-          var notes = [523.25, 587.33, 659.25, 783.99, 880.00, 783.99, 659.25, 587.33];
-          var t0 = ac.currentTime + 0.06;
-          notes.forEach(function(f, i){
-            var o = ac.createOscillator(), g = ac.createGain();
-            o.type = 'sine'; o.frequency.value = f;
-            var s = t0 + i * 0.52;
-            g.gain.setValueAtTime(0.0001, s);
-            g.gain.exponentialRampToValueAtTime(0.14, s + 0.04);
-            g.gain.exponentialRampToValueAtTime(0.0001, s + 0.95);
-            o.connect(g); g.connect(ac.destination);
-            o.start(s); o.stop(s + 1);
-          });
-          actToast('放一小段，听完就睡', 'ok');
-          setTimeout(function(){ try { ac.close(); } catch (e) {} }, notes.length * 520 + 1500);
-        } catch (e){ actToast('这台设备放不出声音'); }
+        var MB = window.MusicBox;
+        if (!MB){ actToast('这台设备放不出声音'); return; }
+        if (MB.isPlaying()){ MB.stop(); actToast('停下了'); return; }
+        var r = MB.random();
+        if (!r){ actToast('这台设备放不出声音'); return; }
+        actToast('《' + r.name + '》· 约 ' + Math.round(r.secs) + ' 秒 · 再点一下停止', 'ok');
       }
     };
+
+    /* 试用提示（2026-11-18）：当前形象还在 3 天试用里，就在「换个形象」下面写还剩多久。
+       只写试用中的——免费默认形象、已领取的都不写（窗口本来就窄，别塞废话）。 */
+    function syncTrialLine(){
+      if (!trialEl) return;
+      var at = Number(localTrials[curSkin]) || 0;
+      var own = readOwned();
+      var left = at - Date.now();
+      if (!at || left <= 0 || (own && own.indexOf(curSkin) >= 0) || curSkin === DEFAULT_SKIN){
+        trialEl.hidden = true;
+        trialEl.innerHTML = '';
+        return;
+      }
+      trialEl.hidden = false;
+      trialEl.innerHTML = '试用中 · 还剩 <b>' + trialLeftText(curSkin) + '</b> · 看一支广告就能一直留着';
+    }
 
     function applySkin(id, remember){
       if (!M[id]) id = M[DEFAULT_SKIN] ? DEFAULT_SKIN : Object.keys(M)[0];
@@ -2637,9 +2807,10 @@
       if (msgEl && skin.msg) msgEl.textContent = skin.msg;
       if (bubbleEl && skin.bubble) bubbleEl.textContent = skin.bubble;
       if (skinNameEl) skinNameEl.textContent = skin.name;   // 入口右侧显示当前名字
-      bot.setAttribute('aria-label', '打开小助手（' + skin.name + '）');
+      bot.setAttribute('aria-label', '打开小住客（' + skin.name + '）');
       refreshAct();                                            // 拿手事跟着形象换
       syncJarBadge();                                          // ✦ 角标只该亮在星星罐上，换形象时重新判一次
+      syncTrialLine();                                         // 试用中的形象补一句还剩多久
       if (remember){ try { localStorage.setItem(SKIN_KEY, id); } catch(e){} }
       bindEyes();
       if (remember && !reduce){
@@ -2658,7 +2829,84 @@
         return Array.isArray(v) ? v : null;
       } catch(e){ return null; }
     }
-    function ownedHas(id, owned){ return id === DEFAULT_SKIN || !!(owned && owned.indexOf(id) >= 0); }
+    function ownedHas(id, owned){
+      if (id === DEFAULT_SKIN) return true;
+      if (owned && owned.indexOf(id) >= 0) return true;
+      return trialLeft(id) > 0;             // 试用期内跟领到的一个待遇（2026-11-18）
+    }
+
+    /* 试用账本。登录了以 /api/mascots/state 的 trials 为准（换设备接着算），
+       游客只能记本机——清了缓存就没了，这是「不登录也能试」的代价。 */
+    var localTrials = readTrials();
+    function readTrials(){
+      try {
+        var v = JSON.parse(localStorage.getItem(TRIAL_KEY) || 'null');
+        return (v && typeof v === 'object') ? v : {};
+      } catch(e){ return {}; }
+    }
+    function trialLeft(id){
+      var at = Number(localTrials[id]) || 0;
+      return at > Date.now() ? at - Date.now() : 0;
+    }
+    function trialLeftText(id){
+      var ms = trialLeft(id);
+      if (!ms) return '已到期';
+      var h = Math.floor(ms / 3600000);
+      if (h >= 24) return Math.floor(h / 24) + ' 天 ' + (h % 24) + ' 小时';
+      if (h >= 1) return h + ' 小时';
+      return Math.max(1, Math.floor(ms / 60000)) + ' 分钟';
+    }
+    /* 试用到期说一句（每个形象只说一次）：只在这个形象确实试过、现在又过期时才念，
+       免得换设备/清缓存那种「本来就没试过」的情况也被念一句。 */
+    function noteTrialEnd(id){
+      var at = Number(localTrials[id]) || 0;
+      if (!id || !at || at > Date.now()) return;
+      var shown = [];
+      try { shown = (localStorage.getItem(TRIAL_NOTICE) || '').split(',').filter(Boolean); } catch(e){}
+      if (shown.indexOf(id) >= 0) return;
+      shown.push(id);
+      try { localStorage.setItem(TRIAL_NOTICE, shown.join(',')); } catch(e){}
+      var nm = (M[id] && M[id].name) || '这个形象';
+      if (typeof actToast === 'function'){
+        actToast('「' + nm + '」的 3 天试用到期了，去「换个形象」看一支广告就能一直留着', 'ok');
+      }
+    }
+
+    /* 游客试了一半再登录：本机还留着没到期的试用，按它原本的开始时间补录到账号上，
+       接着剩下的钟点走（服务端会把 since 夹在 72 小时内，报「刚点」也拿不到更多）。
+       一个形象只补一次——账号上已经有记录时接口直接回原到期时间。 */
+    function pendingGuestTrials(local){
+      var out = [], now = Date.now();
+      Object.keys(local || {}).forEach(function(id){
+        if (!M[id] || id === DEFAULT_SKIN) return;
+        var at = Number(local[id]) || 0;
+        if (at <= now) return;                        // 已经到期的不用补
+        if ((Number(localTrials[id]) || 0) > 0) return; // 账号上已经有记录（哪怕过期）就不动
+        out.push(id);
+      });
+      return out;
+    }
+    function runGuestMigrate(ids, local){
+      ids.forEach(function(id){
+        fetch('/api/mascots/trial', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: id, since: (Number(local[id]) || 0) - TRIAL_MS })
+        })
+          .then(function(r){ return r.json(); })
+          .then(function(d){
+            if (!d || !d.trials) return;
+            localTrials = d.trials;
+            try { localStorage.setItem(TRIAL_KEY, JSON.stringify(localTrials)); } catch(e){}
+            // 补上了就把形象换回去；没补上（这个形象账号上早用过了）就回机器人并说明
+            if (ownedHas(id, readOwned())) applySkin(id, false);
+            else if (!ownedHas(curSkin, readOwned())){ noteTrialEnd(curSkin); applySkin(DEFAULT_SKIN, true); }
+            syncTrialLine();
+          })
+          .catch(function(){});
+      });
+    }
 
     var bootSkin = readSkin();
     var bootOwned = readOwned();
@@ -2666,16 +2914,37 @@
        免得先闪一下别人的形象。缓存是空的（新设备）就先信本地，接口回来再校正。 */
     var bootOk = M[bootSkin] && ownedHas(bootSkin, bootOwned);
     applySkin(bootOk ? bootSkin : DEFAULT_SKIN, false);
+    // 开机就落在默认形象上：如果是因为试用到期，说明一句（每个形象只说一次）
+    if (M[bootSkin] && bootSkin !== DEFAULT_SKIN && !bootOk) noteTrialEnd(bootSkin);
     /* 形象要「领了才能用」（2026-11-17）：只要本地存的不是默认形象，就问一次服务端对不对得上。
        对不上（换设备、清过缓存、别人的旧记录）就退回机器人并把本地记录改掉。
-       同一个响应顺手把「我领了哪几个」缓存下来，给 pageshow 用。 */
+       同一个响应顺手把「我领了哪几个」和「哪几个还在试用」缓存下来，给 pageshow 用。 */
     if (M[bootSkin] && bootSkin !== DEFAULT_SKIN){
       fetch('/api/mascots/state', { credentials: 'same-origin' })
         .then(function(r){ return r.json(); })
         .then(function(s){
           var owned = (s && Array.isArray(s.owned)) ? s.owned : [];
           try { localStorage.setItem(OWNED_KEY, JSON.stringify(owned)); } catch(e){}
-          if (!ownedHas(bootSkin, owned)) applySkin(DEFAULT_SKIN, true);
+          /* 试用账本：登录了换成服务端那本（换设备也接着算）；游客没有账号，继续用本机那份。
+             换之前先把本机那本留一份——游客试了两天再登录的，得按原开始时间补录到账号上。 */
+          var guest = localTrials;
+          var pending = [];
+          if (s && s.loggedIn && s.trials && typeof s.trials === 'object'){
+            localTrials = s.trials;
+            try { localStorage.setItem(TRIAL_KEY, JSON.stringify(localTrials)); } catch(e){}
+            pending = pendingGuestTrials(guest);
+          }
+          // 现在能用、或正等着补录（补完就能用）的，都不该退回机器人
+          var usable = ownedHas(bootSkin, owned) || pending.indexOf(bootSkin) >= 0;
+          if (!usable){
+            noteTrialEnd(bootSkin);
+            applySkin(DEFAULT_SKIN, true);
+            return;
+          }
+          // 首屏只按本机账本画，可能是「本机没记、服务端说还在试用」——这时要把它换回来
+          if (!bootOk) applySkin(bootSkin, false);
+          syncTrialLine();
+          if (pending.length) runGuestMigrate(pending, guest);
         })
         .catch(function(){
           if (!ownedHas(bootSkin, readOwned())) applySkin(DEFAULT_SKIN, true);
@@ -2723,14 +2992,47 @@
     var idleTimer = null;
     var isMobile = window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
     var wasDocked = false;
+
+    /* 常驻（2026-11-18）：面板标题栏的图钉。开着时小住客一直站在右下角，
+       30s 靠边站不再生效（dock() 直接短路）；默认不常驻，偏好存本地
+       （跟形象一样是设备级偏好，不进服务端账号）。
+       关掉常驻不做任何「立刻靠边」，只把 30s 计时重新走一遍，给人反应时间。 */
+    var PIN_KEY = 'dm_bot_pin';
+    var pinned = false;
+    var pinBtn = document.getElementById('botPanelPin');
+    try { pinned = localStorage.getItem(PIN_KEY) === '1'; } catch (e) {}
+    function syncPin(){
+      if (!pinBtn) return;
+      pinBtn.classList.toggle('on', pinned);
+      pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+      pinBtn.setAttribute('aria-label', pinned ? '取消常驻' : '常驻右下角');
+      pinBtn.title = pinned ? '已常驻：小住客会一直留在右下角（再点一下取消）'
+                            : '常驻：让小住客一直站在右下角，不再自动靠边';
+    }
+    if (pinBtn) pinBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      pinned = !pinned;
+      try { localStorage.setItem(PIN_KEY, pinned ? '1' : '0'); } catch (err) {}
+      syncPin();
+      if (pinned){
+        wrap.classList.remove('bot-docked');
+        clearTimeout(idleTimer);
+        actToast('小住客常驻右下角了，不会再来靠边站', 'ok');
+      } else {
+        actToast('已取消常驻，30 秒没人理会继续靠边站');
+      }
+    });
+    syncPin();
+
     function dock(){
+      if (pinned) return;                       // 常驻：永不靠边
       if (panel.classList.contains('open')){ idleTimer = setTimeout(dock, 10000); return; }
       wrap.classList.add('bot-docked');
     }
     function wake(){
       clearTimeout(idleTimer);
       wrap.classList.remove('bot-docked');
-      idleTimer = setTimeout(dock, 30000);
+      if (!pinned) idleTimer = setTimeout(dock, 30000);
     }
 
     bot.addEventListener('click', function(e){
@@ -2773,6 +3075,165 @@
         if (hero) hero.click();
       }, 180);
     });
+    /* 八音盒（2026-11-18）：状态一变就把按钮文案改成「放音乐 / 停下」。
+       MusicBox 在 /musicbox.js 里，脚本同步加载，这里一定拿得到。 */
+    if (window.MusicBox){
+      window.MusicBox.onChange = function(){
+        if (curSkin === 'box') refreshAct();
+        markPlaying();
+      };
+    }
+
+    /* 自己生成一曲（2026-11-18）：只存种子，不存音频。
+       生成规则在 musicbox.js，同一个种子 + 同一组参数必然长出同一首，
+       所以「分享」= 把这串字符给朋友，他粘回来听到的是一模一样的一首。
+       没有服务端、没有作品库：它是一件玩具，不做成内容。 */
+    var genBtn      = document.getElementById('botGen');
+    var musicModal  = document.getElementById('musicModal');
+    var musicListEl = document.getElementById('musicList');
+    var musicSeedEl = document.getElementById('musicSeed');
+    var musicSeedIn = document.getElementById('musicSeedIn');
+    var musicBpmEl  = document.getElementById('musicBpm');
+    var musicBpmV   = document.getElementById('musicBpmV');
+    var musicRecentEl = document.getElementById('musicRecent');
+    var lastSeed    = '';
+
+    function musicOpts(){
+      var moodEl = document.getElementById('musicMood');
+      var denEl  = document.getElementById('musicDensity');
+      var barEl  = document.getElementById('musicBars');
+      return {
+        mood:    (moodEl && moodEl.value) || 'night',
+        bpm:     Number(musicBpmEl && musicBpmEl.value) || 84,
+        density: (denEl && denEl.value) || 'mid',
+        bars:    Number(barEl && barEl.value) || 16
+      };
+    }
+
+    /* 曲目单：三组，改了 musicbox.js 的曲库这里不用动 */
+    function renderMusicList(){
+      var MB = window.MusicBox;
+      if (!musicListEl || !MB || !MB.listAll) return;
+      musicListEl.innerHTML = MB.listAll().map(function(g){
+        return '<div class="ml-group"><span class="ml-t">' + g.t + '</span>'
+          + g.items.map(function(it){
+              return '<button type="button" class="ml-chip" data-id="' + it.id + '" title="点一下听这首">'
+                   + it.name + '<i>' + Math.round(it.secs) + 's</i></button>';
+            }).join('')
+          + '</div>';
+      }).join('');
+      markPlaying();
+    }
+    /* 正在放的那首亮起来；换曲时旧的自己灭掉 */
+    function markPlaying(){
+      var MB = window.MusicBox;
+      if (!musicListEl || !MB) return;
+      var st = MB.state();
+      var chips = musicListEl.querySelectorAll('.ml-chip');
+      for (var i = 0; i < chips.length; i++){
+        if (st.playing && chips[i].getAttribute('data-id') === st.id) chips[i].classList.add('on');
+        else chips[i].classList.remove('on');
+      }
+    }
+    if (musicListEl) musicListEl.addEventListener('click', function(e){
+      var chip = e.target.closest('.ml-chip');
+      if (!chip) return;
+      var MB = window.MusicBox;
+      if (!MB) return;
+      var id = chip.getAttribute('data-id');
+      var st = MB.state();
+      if (st.playing && st.id === id){ MB.stop(); return; }   // 点正在放的那首 = 停
+      MB.play(id);
+      if (musicSeedEl) musicSeedEl.hidden = true;
+    });
+
+    /* 最近生成过：只存种子。种子自带四个参数，所以点回来是原样那一首 */
+    var RECENT_KEY = 'dm_music_recent', RECENT_MAX = 8;
+    function readRecent(){
+      try {
+        var a = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+        return Object.prototype.toString.call(a) === '[object Array]' ? a : [];
+      } catch (e){ return []; }
+    }
+    function renderRecent(){
+      if (!musicRecentEl) return;
+      var a = readRecent();
+      if (!a.length){ musicRecentEl.hidden = true; return; }
+      musicRecentEl.hidden = false;
+      musicRecentEl.innerHTML = '<span class="mr-t">最近生成过</span>' + a.map(function(x){
+        return '<button type="button" class="mr-chip" data-seed="' + x.seed + '" title="种子 ' + x.seed + '">'
+             + x.name + '<i>' + x.secs + 's</i></button>';
+      }).join('');
+    }
+    function pushRecent(r){
+      if (!r || !r.seed) return;
+      var a = readRecent().filter(function(x){ return x && x.seed !== r.seed; });
+      a.unshift({ seed:r.seed, name:r.name, secs:Math.round(r.secs) });
+      try { localStorage.setItem(RECENT_KEY, JSON.stringify(a.slice(0, RECENT_MAX))); } catch (e) {}
+      renderRecent();
+    }
+    if (musicRecentEl) musicRecentEl.addEventListener('click', function(e){
+      var chip = e.target.closest('.mr-chip');
+      if (!chip) return;
+      var MB = window.MusicBox;
+      if (!MB) return;
+      var r = MB.playSeed(chip.getAttribute('data-seed'));
+      if (r) showSeed(r);
+    });
+
+    function showSeed(r){
+      lastSeed = (r && r.seed) || '';
+      if (!musicSeedEl) return;
+      if (!lastSeed){ musicSeedEl.hidden = true; return; }
+      musicSeedEl.hidden = false;
+      musicSeedEl.innerHTML = '《' + r.name + '》· 约 ' + Math.round(r.secs) + ' 秒 · 种子 <b>' + r.seed + '</b>'
+        + '<i>点这行复制，给谁都是同一首</i>';
+    }
+
+    function doGenerate(seed){
+      var MB = window.MusicBox;
+      if (!MB){ actToast('这台设备放不出声音'); return; }
+      var o = musicOpts();
+      if (seed) o.seed = seed;
+      var r = MB.generate(o);
+      if (!r){ actToast('这台设备放不出声音'); return; }
+      showSeed(r);
+      pushRecent(r);
+      markPlaying();
+    }
+    if (genBtn) genBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      setPanel(false);
+      if (musicModal) musicModal.style.display = 'flex';
+      if (musicBpmV && musicBpmEl) musicBpmV.textContent = musicBpmEl.value + ' BPM';
+      renderMusicList();
+      renderRecent();
+    });
+    var closeMusicBtn = document.getElementById('closeMusic');
+    if (closeMusicBtn) closeMusicBtn.addEventListener('click', function(){
+      if (musicModal) musicModal.style.display = 'none';
+    });
+    if (musicBpmEl) musicBpmEl.addEventListener('input', function(){
+      if (musicBpmV) musicBpmV.textContent = musicBpmEl.value + ' BPM';
+    });
+    var musicGoBtn = document.getElementById('musicGo');
+    if (musicGoBtn) musicGoBtn.addEventListener('click', function(){ doGenerate(''); });
+    var musicSeedGo = document.getElementById('musicSeedGo');
+    if (musicSeedGo) musicSeedGo.addEventListener('click', function(){
+      var s = (musicSeedIn && musicSeedIn.value || '').replace(/[^0-9a-zA-Z]/g, '').toUpperCase();
+      if (!s){ actToast('先粘一串种子进来'); return; }
+      doGenerate(s);
+    });
+    if (musicSeedIn) musicSeedIn.addEventListener('keydown', function(e){
+      if (e.key === 'Enter'){ e.preventDefault(); if (musicSeedGo) musicSeedGo.click(); }
+    });
+    if (musicSeedEl) musicSeedEl.addEventListener('click', function(){
+      if (!lastSeed) return;
+      try {
+        navigator.clipboard.writeText(lastSeed);
+        actToast('种子已复制：' + lastSeed, 'ok');
+      } catch (err){ actToast('种子：' + lastSeed); }
+    });
     /* 点窗口里的功能项（装桌面/小程序/反馈都会开自己的界面），稍等片刻收起窗口；
        换形象那排不算，点完窗口要留着让人接着试 */
     panel.addEventListener('click', function(e){
@@ -2793,16 +3254,18 @@
       if (document.hidden) return;
       if (isMobile) dock(); else wake();
     });
-    if (isMobile) dock(); else wake();
+    if (pinned){ wrap.classList.remove('bot-docked'); }   // 常驻：开屏就站直，手机也不趴墙角
+    else if (isMobile) dock(); else wake();
 
     /* 进页面 2.2s 挥一次手打招呼（reduced-motion 不挥；手机默认趴墙角，挥了也看不见，跳过） */
     if (!reduce && !isMobile) setTimeout(function(){ wave(2000); }, 2200);
 
     /* ---------------- 在线心跳（2026-11-10 上线，2026-11-17 全量） ----------------
-       60 秒一次轻心跳，服务端用它干两件事（登录用户人人有，beta 白名单已撤）：
-       ① 星星罐攒灯火（专属福利，领了星星罐形象才开始）：每在线 5 分钟攒 1 波（= 10 盏），
-         一天 10 波（100 盏）封顶，罐攒满 6 波（60 盏）亮「快收我」；
-       ② 在线满 5 分钟自动补今天这签（忘性大的人不用记得点「自动签到」）。
+       60 秒一次轻心跳，只服务星星罐（登录用户人人有，beta 白名单已撤）：
+       星星罐攒灯火（专属福利，领了星星罐形象才开始）：每在线 5 分钟攒 1 波（= 10 盏），
+       一天 10 波（100 盏）封顶，罐攒满 6 波（60 盏）亮「快收我」。
+       2026-11-18：站长要求下掉「在线满 5 分钟自动补签」，心跳不再碰签到，
+       签到只在用户亲手点时发生（顶栏按钮 / 灯火形象的拿手事）。
        角标口径（2026-11-18 修）：✦ 只亮在**星星罐**头顶，别的形象不亮——收灯火只有星星罐
        的拿手事才做得到（refreshAct 里 curSkin === 'jar' 那段），挂在羽毛/月亮上就是个
        点开也收不了的死胡同。换到星星罐时 applySkin 会重新同步一次。 */
@@ -2812,10 +3275,6 @@
         .then(function(r){ return r.ok ? r.json() : null; })
         .then(function(d){
           if (!d || !d.ok) return;
-          if (d.auto && d.auto.given){
-            actToast('在线满 5 分钟，小助手帮你把今天的签到补上了（+' + d.auto.reward + ' 盏灯火）', 'ok');
-            if (typeof window.loadMe === 'function') window.loadMe();   // 签到卡 / 顶栏余额原地刷新
-          }
           updateJarUi(d.jar);
         })
         .catch(function(){});
@@ -2827,7 +3286,7 @@
       var on = curSkin === 'jar' && window.dmJarPending > 0;
       if (on){
         bot.classList.add('dm-jar-ready');
-        bot.setAttribute('title', '星星罐攒了 ' + (window.dmJarPending * 10) + ' 盏灯火，点开小助手收一下');
+        bot.setAttribute('title', '星星罐攒了 ' + (window.dmJarPending * 10) + ' 盏灯火，点开小住客收一下');
       } else {
         bot.classList.remove('dm-jar-ready');
         if (bot.getAttribute('title') && bot.getAttribute('title').indexOf('星星罐') === 0) bot.removeAttribute('title');

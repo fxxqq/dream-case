@@ -206,12 +206,13 @@ const state = {
   myClaims: [], // 我的作品认领申请 [{ workId, status }]
   pendingClaim: '', // 匿名投稿者点「存到我名下」带来的投稿凭据，登录/注册成功后自动认领
   myFeedback: [], // 我提过的意见反馈（含与站长的往来），来自 /api/me/feedback 与 /api/feedback/mine
-  // 展示方式：card 卡片网格 / list 一行一个的紧凑列表（记住用户的选择）
+  // 展示方式：card 卡片网格 / list 一行一个的紧凑列表 / compact 无图模式（行式去缩略图）
+  // （记住用户的选择）
   // 2026-11-07：手机端默认「列表」，与小程序首页一致；PC 仍默认卡片。
   // 用户手动切过的以本机记录为准，改默认值不覆盖老用户的选择。
   view: (() => {
     const saved = localStorage.getItem('dm_view');
-    if (saved === 'card' || saved === 'list') return saved;
+    if (saved === 'card' || saved === 'list' || saved === 'compact') return saved;
     return window.matchMedia('(max-width: 640px)').matches ? 'list' : 'card';
   })(),
   // 卡片网格每行几个：4 / 5 / 6（记住用户的选择，窄屏自动回落到响应式列数）
@@ -273,6 +274,8 @@ function applyGalleryCols() {
 function syncColsToggle() {
   const box = document.getElementById('colsToggle');
   if (!box) return;
+  // 列数只对卡片网格有意义：列表 / 无图模式下整块收起（2026-11-18 站长）
+  if (state.view !== 'card') { box.hidden = true; return; }
   const max = maxGalleryCols();
   const eff = effGalleryCols();
   box.hidden = max < 5;      // 只有 4 列一种可能时（1000~1259）整块收起，别占位
@@ -286,15 +289,24 @@ function syncColsToggle() {
 // 这样首屏正好铺满 4 行，不会出现加载完还剩半行、或者一屏全是骨架的情况。
 // 列数变化（切 4/5 列、窗口跨断点）必须从第 1 页重新拉，否则分页偏移会重复/漏项。
 const ROWS_PER_PAGE = 4;
+// 行式视图（列表 / 无图）共用的两个口径：一行一个作品，页大小、列数都按 1 行算。
+// 无图模式 = 列表行去掉缩略图（gallery 挂 noimg-mode，CSS 收图），信息密度更高、首屏更快
+const isRowView = () => state.view === 'list' || state.view === 'compact';
+// 列表容器统一在这里同步视图类：list-mode 负责行式布局，noimg-mode 只在无图模式挂上
+function syncViewClass(g) {
+  if (!g) return;
+  g.classList.toggle('list-mode', isRowView());
+  g.classList.toggle('noimg-mode', state.view === 'compact');
+}
 function galleryCols() {
-  if (state.view === 'list') return 1;           // 列表模式一行一条，按固定条数更自然
+  if (isRowView()) return 1;                     // 行式模式一行一条，按固定条数更自然
   if (!gallery) return state.cols;
   const tpl = (getComputedStyle(gallery).gridTemplateColumns || '').trim();
   const n = tpl ? tpl.split(/\s+/).filter(Boolean).length : 0;
   return n >= 1 && n <= 6 ? n : state.cols;
 }
 function pageSizeOf(page = state.page) {
-  if (state.view === 'list') return ROWS_PER_PAGE * 5;   // 列表模式一屏 20 条
+  if (isRowView()) return ROWS_PER_PAGE * 5;   // 行式模式一屏 20 条
   const base = galleryCols() * ROWS_PER_PAGE;            // 4 列 16 条 / 5 列 20 条
   // 首格宣传卡也占一格：第 1 页少拉一件，首屏才是整 4 行（否则 16+1=17 卡会多出一条尾巴）；
   // 「加载更多」的后续页没有宣传卡，按整页条数拉，保证网格继续对齐
@@ -519,8 +531,8 @@ function canonLinkKey(u) {
     return x.protocol + '//' + x.host.toLowerCase() + x.pathname.replace(/\/+$/, '') + x.search + x.hash;
   } catch { return s.replace(/\/+$/, ''); }
 }
-// 官方下载地址识别（2026-11-17）：下载链接落在官方应用商店，或与作品官网同域时，
-// 详情弹窗的访问/下载按钮上缀一枚「官方」小标签。第三方分发站（蒲公英 / fir / 网盘等）不标。
+// 官方下载地址识别（2026-11-18 口径收紧）：只有下载链接落在官方应用商店（App Store / Google Play
+// 这类商店白名单）才缀「官方」小标签。作者官网同域、网盘、蒲公英 / fir 等私人分发链接一律不标。
 const OFFICIAL_STORE_HOSTS = [
   'apps.apple.com',              // App Store（iOS / macOS 应用共用）
   'testflight.apple.com',        // TestFlight 内测
@@ -530,16 +542,14 @@ const OFFICIAL_STORE_HOSTS = [
   'appgallery.huawei.com', 'appgallery.cloud.huawei.com', 'app.mi.com', // 华为 / 小米应用商店
   'sj.qq.com', 'myapp.com'       // 应用宝
 ];
-function officialStoreOk(url, siteUrl) {
+function officialStoreOk(url) {
   const hostOf = s => {
     try { return new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s).hostname.toLowerCase().replace(/^www\./, ''); }
     catch { return ''; }
   };
   const host = hostOf(url);
   if (!host) return false;
-  if (OFFICIAL_STORE_HOSTS.some(base => host === base || host.endsWith('.' + base))) return true;
-  const site = hostOf(siteUrl);
-  return !!site && host === site;   // 与官网同域 = 作者官方自己的下载页
+  return OFFICIAL_STORE_HOSTS.some(base => host === base || host.endsWith('.' + base));
 }
 // 每个形态对应的访问按钮图标（按钮里用 SVG，不用 emoji）
 const LINK_ICON = {
@@ -1177,22 +1187,6 @@ async function doCheckin(after) {
   }
 }
 
-// 把签到档位压成一句人话：「第 1、2 天各 5 盏、第 3、4 天各 10 盏、第 5、6 天各 20 盏、第 7 天 30 盏」。
-// 不写死天数和金额：服务端改 CHECKIN_REWARDS 或改周期长度，这句话自动跟着变。
-// 为什么要写成「第几天各多少」：只写「5 盏起步」，用户会当成「第 5 天」，断签还以为能拿 20。
-function scheduleLadder(schedule) {
-  const parts = [];
-  let i = 0;
-  while (i < schedule.length) {
-    let j = i;
-    while (j + 1 < schedule.length && schedule[j + 1] === schedule[i]) j++;
-    const dayTxt = j > i ? `第 ${i + 1}、${j + 1} 天各` : `第 ${i + 1} 天`;
-    parts.push(`${dayTxt} ${schedule[i]} 盏`);
-    i = j + 1;
-  }
-  return parts.join('、');
-}
-
 // 签到卡片（数据看板顶部那一块）：一轮 7 天的进度（每天标注当日奖励）+ 一键签到。
 // 格子数是 cycle，服务端改 CHECKIN_REWARDS 长度就跟着变，前端不写死天数。
 function checkinCardHtml(ck) {
@@ -1230,6 +1224,7 @@ function checkinCardHtml(ck) {
       <div class="ck-days">${dots}</div>
       ${arriveLine}
       <div class="ck-tip">本轮第 ${day}/${cycle} 天 · 一轮共 ${schedule.reduce((a, b) => a + b, 0)} 盏，断签从头记。攒的灯火可以换<span style="white-space:nowrap">「推荐」</span>的曝光位，也可以送给喜欢的作品，给作者点一盏灯。</div>
+      ${ckMakeupHtml(ck)}
       ${ckAdHtml(ck)}
     </div>`;
 }
@@ -1241,6 +1236,39 @@ function ckAdOnce(ck) {
   const ar = (ck && ck.adReward) || {};
   return Number(ar.each || ar.once || (Array.isArray(ar.schedule) ? ar.schedule[0] : 0)) || 30;
 }
+
+// 断签补签（2026-11-18）：一个月总有忘签的那天，断一次连签就从第 1 天重来。
+// 这里只做一张窄条：断签了才出现，讲清「断几天 / 补哪天 / 补完几盏 / 还剩几次」，
+// 真正补签要进小程序看一支激励视频（网页播不了），回来轮询自动认账。
+// 补不满（断太久 / 次数不够）时不给按钮——别让人白看一支广告，连签还是断的。
+function ckMakeupHtml(ck) {
+  const m = (ck && ck.makeup) || {};
+  const gap = Number(m.gap) || 0;
+  if (!(gap > 0)) return '';
+  const md = d => String(d || '').slice(5).replace('-', '/');
+  if (!m.can) {
+    const why = m.reason === 'quota'
+      ? `最近 ${Number(m.window) || 7} 天只剩 ${Number(m.left) || 0} 次补签，补不满这段空档`
+      : `断签 ${gap} 天，超过 ${Number(m.limit) || 3} 天就补不回来了`;
+    return `<div class="ck-makeup is-off">
+        <span class="ck-makeup-ico">${ic('clock', 14)}</span>
+        <span class="ck-makeup-txt">${why}，今天签一下从第 1 天重新算</span>
+      </div>`;
+  }
+  return `
+      <div class="ck-makeup">
+        <span class="ck-makeup-ico">${ic('clock', 15)}</span>
+        <span class="ck-makeup-txt"><b>断签 ${gap} 天</b> · 补 ${md(m.nextDay)} <span style="white-space:nowrap">得 <b>+${Number(m.nextReward) || 0} 盏</b></span>，连签接着算<span class="ck-makeup-left">最近 7 天还能补 ${Number(m.left) || 0} 次</span></span>
+        <button type="button" class="ck-makeup-btn" id="ckMakeupBtn">看视频补签</button>
+      </div>`;
+}
+
+function bindMakeupBtn(root) {
+  const scope = root || document;
+  const b = scope.querySelector('#ckMakeupBtn');
+  if (b) b.onclick = () => { if (!state.user) openAuth('login'); else openCheckinAdQr('makeup'); };
+}
+
 
 // 「看视频领灯火」整块可隐藏（2026-11-17）：点「不再显示」记在本机（localStorage），
 // 之后只留一行可恢复的小字——入口不能彻底消失，不然想用的人找不回来。
@@ -1501,6 +1529,8 @@ async function afterAuth(data) {
   refreshTaskState();
   // 从投稿进度页带着凭据来的：登录/注册一成功就把那件匿名作品认到名下
   if (state.pendingClaim) await runPendingClaim();
+  // 游客在发现页分类编辑里选了「注册/登录后同步」：登录一成功就把那份设置写进账号
+  if (pendingDiscLayout) { const l = pendingDiscLayout; pendingDiscLayout = null; postDiscLayout(l); showToast('分类设置已同步到账号', undefined, 'ok'); }
   // 匿名投过稿、但当时没账号：按投稿 IP 认出来问一句「这些是你投的吗」，确认即当场归属
   await maybeOfferIpClaim();
 }
@@ -1558,6 +1588,10 @@ async function loadMe() {
           bio: data.bio || '',   // 个人介绍：作者主页档案区那段纯文本
           hideWorks: data.hideWorks === true,   // 主页作品隐藏：别人打开 /u/xxx 只看得到档案
           noticePrefs: data.noticePrefs || { announce: true, cats: {} },   // 消息提示偏好（屏蔽后仍收消息、不弹窗）
+          discLayout: (data.discLayout && typeof data.discLayout === 'object')   // 发现页分类自定义（游客记本机、登录记账号）
+            ? { order: Array.isArray(data.discLayout.order) ? data.discLayout.order : [],
+                hidden: Array.isArray(data.discLayout.hidden) ? data.discLayout.hidden : [] }
+            : null,
           wechat: data.wechat || null,
           github: data.github || null,
           // 绑定 GitHub 的一次性奖励状态（服务端 ghBindBonusState）：{ points, claimed, bindable, setup }
@@ -3309,6 +3343,14 @@ function juryChipHtml(w, inline) {
     : `<button type="button" class="jury-chip" data-jury-jump="${escapeHtml(w.id)}" title="${escapeHtml(tip)}">众判中 ${n} ›</button>`;
 }
 
+// ---------- 涉币提示（2026-11-18） ----------
+// 区块链资讯 / 数据 / 行情类作品照常展示，但站方不做推荐：卡片挂一枚小标、详情页挂一条说明。
+// 「不进榜单 / 不进星梦期刊 / 不能买推荐位」这三条在服务端拦（server.js），前端只管把话说清楚。
+const CRYPTO_TIP = '涉虚拟货币内容，仅供信息参考：不构成投资建议，也不代表本站推荐或背书';
+function cryptoChipHtml(cls) {
+  return `<span class="crypto-chip${cls ? ' ' + cls : ''}" title="${escapeHtml(CRYPTO_TIP)}">涉币 · 信息参考</span>`;
+}
+
 // 我的主页卡片下的作者操作行（2026-11-14）：编辑 / 上架·下架 / 推荐 / 小程序详情页效果。
 // 只在作者主页的作品 tab 渲染（ownerTools 且 w.owned 双保险），首页/榜单的同款卡片不受影响。
 // 上架·下架是一颗按钮：下架走的是详情弹窗同一条 visibility 接口，数据全保留。
@@ -3321,7 +3363,7 @@ function cardOwnerToolsHtml(w) {
   return `<div class="card-own-tools">
     <button type="button" class="cot-btn is-edit" data-ow-edit title="修改作品信息、图片和链接">${ic('edit', 13)} 编辑</button>
     <button type="button" class="cot-btn${hid ? ' is-relist' : ' is-quiet'}" data-ow-toggle="${w.id}" data-ow-hidden="${hid ? 1 : 0}" title="${hid ? '重新上架：作品恢复公开，重新进首页/榜单/搜索' : '下架后别人看不到，只有你自己能看；数据保留，随时可重新上架'}">${ic('eye', 13)} ${hid ? '上架' : '下架'}</button>
-    <button type="button" class="cot-btn is-promo" data-ow-promo title="用灯火把这件作品换到首页、榜单等推荐位">${ic('promo', 13)} 推荐</button>
+    ${w.crypto ? '' : `<button type="button" class="cot-btn is-promo" data-ow-promo title="用灯火把这件作品换到首页、榜单等推荐位">${ic('promo', 13)} 推荐</button>`}
     <button type="button" class="cot-btn" data-ow-mini="${w.id}" data-ow-title="${escapeHtml(w.title)}"${canPeekMini ? ' data-ow-peek="1"' : ''} title="${canPeekMini ? '打开手机端体验页：亲眼看看小程序里这件作品的详情页长什么样，首屏就有小程序码，扫码直达' : '出一张小程序码，扫码直达小程序里这件作品的详情页'}">${ic('mini', 13)} ${canPeekMini ? '查看小程序详情页效果' : '小程序详情页'}</button>
   </div>`;
 }
@@ -3377,19 +3419,25 @@ function cardHtml(w, opts = {}) {
   const cc = w.commentCount || 0;
   const [ctName, ctIntro] = cardTitleLines(w);
   const ownTools = !!opts.ownerTools && !!w.owned;
+  // 封面角标配额（2026-11-18 视觉降噪）：一张卡最多两枚——「是什么」（形态或名次）+「一个状态」。
+  // 以前置顶/众判中/开发中/付费四枚可以同时叠在封面上，四个人同时喊，谁也不突出。
+  // 优先级按「会不会影响你点进去」排：阶段（开发中/等审核，点进去可能没内容）> 灯火解锁价 > 众判中 > 置顶。
+  // 落选的状态不在封面重复，详情弹窗里本来就都有。
+  const statusBadge = opts.rank ? ''
+    : (stageBadgeHtml(w, 'card-stage')
+      || paidBadgeHtml(w, 'img-paid')
+      || juryChipHtml(w)
+      || (w.pinned ? '<span class="pin-badge">置顶</span>' : ''));
   return `
     <div class="card${opts.rank ? ' rank-card' : ''}${ownTools && w.hidden ? ' is-self-hidden' : ''}" data-id="${w.id}">
       <a class="card-link" href="/w/${w.id}" aria-label="查看《${escapeHtml(w.title)}》完整页面"></a>
       <div class="card-img-wrap">
-        ${juryChipHtml(w)}
         ${opts.rank ? `<span class="rank-num${opts.rank <= 3 ? ' top3 r' + opts.rank : ''}" aria-label="第 ${opts.rank} 名">${opts.rank}</span>` : ''}
         <img class="card-img" src="${imgUrl(w.thumb, 400)}" srcset="${imgSet(w.thumb)}"
              sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 260px"
              alt="${escapeHtml(w.title)}"${opts.eager ? ' fetchpriority="high"' : ' loading="lazy"'} />
         <span class="type-badge" title="${escapeHtml(types.join(' / '))}">${typeTextHtml(w)}</span>
-        ${w.pinned ? '<span class="pin-badge">置顶</span>' : ''}
-        ${stageBadgeHtml(w, 'card-stage')}
-        ${paidBadgeHtml(w, 'img-paid')}
+        ${statusBadge}
         ${cardActionsHtml(w)}
       </div>
       <div class="card-body">
@@ -3398,7 +3446,7 @@ function cardHtml(w, opts = {}) {
         <div class="card-desc">${escapeHtml(ctIntro)}</div>
         <div class="card-meta">
           <span class="card-author">${avaChip(w)}${ghMedalHtml(w.authorTags)}<span class="author-name">${escapeHtml(anamePlain(w))}</span>${certMiniHtml(w.authorCert)}</span>
-          <span class="card-tags"><span class="card-cat">${escapeHtml(w.category)}</span>${osBadgeHtml(w)}</span>
+          <span class="card-tags"><span class="card-cat">${escapeHtml(w.category)}</span>${osBadgeHtml(w)}${w.crypto ? cryptoChipHtml() : ''}</span>
         </div>
         ${opts.metricLabel ? `<div class="card-rank-metric"><span class="card-rank-metric-label">${escapeHtml(opts.metricLabel)}</span><b class="card-rank-metric-val">${opts.metricValue}</b></div>` : ''}
         ${comingMetaHtml(w)}
@@ -3424,16 +3472,17 @@ function listHtml(w) {
       <div class="row-main">
         <div class="row-title">${w.pinned ? '<span class="pin-badge row-pin">置顶</span>' : ''}<span class="row-name">${escapeHtml(ctName)}</span></div>
         ${ctIntro ? `<div class="row-intro">${escapeHtml(ctIntro)}</div>` : ''}
-        <div class="row-meta">${juryChip ? `${juryChip} · ` : ''}${escapeHtml(typeText(w))} · ${ghMedalHtml(w.authorTags)}${escapeHtml(aname(w))}${certMiniHtml(w.authorCert)} · ${escapeHtml(w.category)}${w.openSource === true ? ` · <span class="ico">${ic('lock-open')}</span> 开源` : ''}${w.paidModel === 'lamp' && w.lampPrice ? ` · <span class="ico">${ic('lock')}</span> ${w.lampPrice} 盏解锁` : ''}${w.paid ? ` · <span class="ico">${ic('coin')}</span> ${escapeHtml(PAID_MODELS[w.paidModel] || '付费')}` : ''}</div>
+        <div class="row-meta">${juryChip ? `${juryChip} · ` : ''}${escapeHtml(typeText(w))}${w.crypto ? ` · ${cryptoChipHtml('is-inline')}` : ''} · ${ghMedalHtml(w.authorTags)}${escapeHtml(aname(w))}${certMiniHtml(w.authorCert)} · ${escapeHtml(w.category)}${w.openSource === true ? ` · <span class="ico">${ic('lock-open')}</span> 开源` : ''}${w.paidModel === 'lamp' && w.lampPrice ? ` · <span class="ico">${ic('lock')}</span> ${w.lampPrice} 盏解锁` : ''}${w.paid ? ` · <span class="ico">${ic('coin')}</span> ${escapeHtml(PAID_MODELS[w.paidModel] || '付费')}` : ''}</div>
       </div>
       <div class="row-stats">
         ${/* 四段全部常驻 DOM，0 值挂 is-zero（visibility:hidden 占位不显示）——
              行与行之间右列数据才对得齐；此前赞/浏览 0 值直接不渲染，整列会左右漂（2026-11-11） */''}
-        <span class="row-stat${(w.likes || 0) > 0 ? '' : ' is-zero'}">${ic('heart')} <b>${w.likes || 0}</b></span>
+        <span class="row-stat row-stat-like${(w.likes || 0) > 0 ? '' : ' is-zero'}">${ic('heart')} <b data-like-count="${w.id}">${w.likes || 0}</b></span>
         <span class="row-stat fav-seg${(w.favs || 0) > 0 ? '' : ' is-zero'}" data-fav-seg="${w.id}">${ic('star')} <b class="fav-num" data-fav-count="${w.id}" data-count="${w.favs || 0}" data-prefix="">${w.favs || 0}</b></span>
         <span class="row-stat${(w.views || 0) > 0 ? '' : ' is-zero'}">${ic('eye')} <b>${w.views || 0}</b></span>
         <span class="row-stat cmt-seg${cc ? '' : ' is-zero'}" data-cmt-seg="${w.id}">${ic('chat')} <b class="cmt-num" data-comment-count="${w.id}" data-count="${cc}" data-prefix="">${cc}</b></span>
       </div>
+      <button class="row-like ${isLikedNow(w) ? 'active' : ''}" data-likework="${w.id}" aria-label="${isLikedNow(w) ? '取消赞' : '点赞'}" title="${isLikedNow(w) ? '取消赞' : '点赞'}">${ic('heart')}</button>
       <button class="row-fav ${isFav(w.id) ? 'active' : ''}" data-fav="${w.id}" title="收藏">${ic('fav')}</button>
       ${/* 自己的作品不放「不看这个」，但按钮本体要留着占位（visibility:hidden），
             否则这一行右侧比别人窄、收藏圆钮和别的行对不齐（2026-11-11 站长截图反馈） */''}
@@ -3576,6 +3625,19 @@ function bindCardNode(el) {
         if (data.self) { showToast('不能给自己的作品点赞', undefined, 'err'); return; }
         const now = data.liked === true;
         btn.classList.toggle('active', now);
+        // 列表行右列的点赞数同步（卡片没有行内计数，closest 找不到就自然跳过）；
+        // 行内圆钮的 title/aria 也跟着翻转（2026-11-18 行内点赞钮上线）
+        if (typeof data.likes === 'number') {
+          const row = btn.closest('.work-row');
+          const cnt = row && row.querySelector(`[data-like-count="${id}"]`);
+          if (cnt) {
+            cnt.textContent = data.likes;
+            const seg = cnt.closest('.row-stat');
+            if (seg) seg.classList.toggle('is-zero', !(data.likes > 0));
+          }
+        }
+        btn.title = now ? '取消赞' : '点赞';
+        btn.setAttribute('aria-label', btn.title);
         // 扇面里的气泡文案跟着翻转（原来改的是 title，现在按钮不带原生 tooltip 了）
         const tipEl = btn.querySelector('.ca-tip');
         if (tipEl) tipEl.textContent = now ? '取消赞' : '点赞';
@@ -3682,7 +3744,7 @@ function bindCardNode(el) {
       finally { btn.disabled = false; }
     });
   });
-  // 推荐：与全站各处入口同一条链路（未登录先弹登录，再进 /promote 选位投放）
+  // 推荐：与全站各处入口同一条链路（直接进 /promote，未登录也能先看效果榜再登录投放）
   el.querySelectorAll('[data-ow-promo]').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
@@ -4160,7 +4222,7 @@ function adHtml(a, opts) {
       ${newTab ? 'target="_blank" ' : ''}rel="noopener nofollow sponsored" data-ad="${escapeHtml(a.id)}"${adWorkId ? ` data-ad-work="${escapeHtml(adWorkId)}"` : ''}>
       ${img}
       <span class="ad-body">
-        <span class="ad-badge${a.source === 'redeem' ? ' is-redeem' : ''}">${a.source === 'redeem' ? '推荐' : '广告'}</span>
+        <span class="ad-badge${a.source === 'redeem' ? ' is-redeem' : ''}">${a.source === 'redeem' ? '自荐' : '广告'}</span>
         ${a.title ? `<b class="ad-title">${escapeHtml(a.title)}</b>` : ''}
         ${a.desc ? `<span class="ad-desc">${escapeHtml(a.desc)}</span>` : ''}
         <span class="ad-cta">${escapeHtml(a.cta || '了解更多')} →</span>
@@ -4220,7 +4282,7 @@ function adRentHtml() {
 }
 
 // 推荐位旁的「我也想推荐」小入口：看到别人的作品挂在这里，谁都可能想排队。
-// 统一走 openRedeem()（未登录先弹登录），跳独立页 /promote；不做计费埋点，
+// 统一走 openRedeem()（直接跳独立页 /promote，未登录也能先看效果）；不做计费埋点，
 // 这行小字不是广告，是给作者的邀请函。
 function promoJoinHtml() {
   return `<div class="ad-join"><a href="javascript:void(0)" data-join-promote
@@ -4497,7 +4559,7 @@ function renderAdSlot(el, slot, opts = {}) {
       core = adHtml(mine || weightedPick(list));
     }
     // 条组下方带一行「我也想推荐自己的作品」小入口：看到别人上榜 → 自己也想排队，
-    // 一路直达 /promote（未登录先弹登录）。这行不是广告，不参与计费与关闭。
+    // 一路直达 /promote（未登录也能进、先看效果）。这行不是广告，不参与计费与关闭。
     el.innerHTML = core + promoJoinHtml();
   } else if (slot === 'footer' && list.every(a => a.kind === 'text')) {
     // 页脚：纯文字广告一行并排，最多 3 格；没卖满时不再补「招租」占位（见 AD_RENT_CARD 口径），
@@ -4590,13 +4652,41 @@ function listPromoAd() {
 
 function promoCardHtml(a) {
   // 灯火自荐位在作品网格里「当成正常作品」（站长 2026-11-17 口径）：
-  // 服务端随广告下发了作品快照 work 时，直接用作品卡模板渲染，外观/交互跟旁边作品一致——
-  // 没有「推荐」角标、没有 ×、没有「我也想推荐 / 打开链接」。只在外层挂 data-ad 供
-  // 曝光/点击埋点用（后台照常扣投放额度，灯火的消耗口径不变），不加 promo-card 类，
+  // 服务端随广告下发了作品快照 work 时，直接用作品卡模板渲染，交互跟旁边作品一致——
+  // 没有 ×、没有「打开链接」。只在外层挂 data-ad 供曝光/点击埋点用
+  //（后台照常扣投放额度，灯火的消耗口径不变），不加 promo-card 类，
   // 于是 bindCardNode 会照常绑定点赞/收藏/分享/点开详情。
+  // 角标 +「我也想推荐」入口 2026-11-18 恢复：角标让第一格不被当成最新作品；
+  // 入口是原来推广卡就有的转化引导，伪装时不该一起删掉。
   // 没有 work 的情况（运营广告 / 外链单 / 老缓存没带快照）走下面原推广卡分支，保持旧行为。
   if (a.work && a.work.id) {
-    const html = state.view === 'list' ? listHtml(a.work) : cardHtml(a.work, {});
+    let html = isRowView() ? listHtml(a.work) : cardHtml(a.work, {});
+    // 11-18 恢复角标：自荐位虽伪装成正常作品（可赞可藏可点详情），但要一眼看出它是推荐位，
+    // 否则第一格会被误当成「最新第一条」。后台投单（source=admin）标「广告」，别混写。
+    const flag = a.source === 'redeem' ? '自荐' : '广告';
+    if (isRowView()) {
+      html = html.replace('<div class="row-title">',
+        `<div class="row-title"><span class="promo-row-flag">${flag}</span>`);
+    } else {
+      html = html.replace('<div class="card-img-wrap">',
+        `<div class="card-img-wrap"><span class="promo-flag${a.source === 'redeem' ? '' : ' is-ad'}">${flag}</span>`);
+    }
+    // 「我也想推荐自己的作品」：11-17 伪装成正常作品时连这句一起删了，11-18 补回。
+    // 只给灯火自荐位（redeem）加，后台广告单不引导；点击走全站 [data-join-promote] 捕获委托。
+    // 网格视图独立成行放卡片底脚最后——跟统计行挤一行会被省略号截断（2026-11-18 站长截图反馈）。
+    if (a.source === 'redeem') {
+      const join = `<span class="promo-tip promo-join" data-join-promote title="用灯火给自己的作品换个推荐位">我也想推荐自己的作品 →</span>`;
+      if (isRowView()) {
+        html = html.replace('<div class="row-meta">', `<div class="row-meta">${join} · `);
+      } else {
+        // 挂在 card-body 末尾（末尾两个 </div> 是 card-body 和 .card 的闭合），正则失配兜底插到统计行前面
+        const line = `<div class="promo-join-line">${join}</div>`;
+        const next = html.replace(/(\s*<\/div>\s*<\/div>\s*)$/, `\n        ${line}$1`);
+        html = next === html
+          ? html.replace('<div class="card-meta card-foot">', `${line}<div class="card-meta card-foot">`)
+          : next;
+      }
+    }
     // 给根节点补上 data-ad（埋点）+ 标记（点击委托认它），只在根节点第一个标签上补一次。
     // cardHtml/listHtml 模板开头有换行缩进，别用 ^ 锚点；根节点是唯一的
     // <div class="card" …> / <div class="work-row" …>（其余是 card-img/card-body 等），
@@ -4613,9 +4703,9 @@ function promoCardHtml(a) {
       aria-label="不想看，关掉这条推荐" title="不想看，关掉">
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" /></svg>
     </button>`;
-  // 列表视图：跟作品行同一套排版（一行缩略图 + 标题 + 一句话），
+  // 列表/无图视图：跟作品行同一套排版（一行缩略图 + 标题 + 一句话），
   // 不再塞网格大卡——不然一张手机截图竖图会把列表撑出老高
-  if (state.view === 'list') {
+  if (isRowView()) {
     const open = internal
       ? `<div class="work-row promo-row" data-id="${escapeHtml(id)}" data-ad="${escapeHtml(a.id)}">`
       : `<a class="work-row promo-row promo-ext" href="${escapeHtml(a.url)}" target="_blank" rel="noopener nofollow sponsored" data-ad="${escapeHtml(a.id)}">`;
@@ -4623,7 +4713,7 @@ function promoCardHtml(a) {
       ${internal ? `<a class="card-link" href="/w/${escapeHtml(id)}" aria-label="查看《${escapeHtml(a.title)}》"></a>` : ''}
       ${a.image ? `<img class="row-thumb" src="${escapeHtml(imgUrl(a.image, 400))}" alt="${escapeHtml(a.title)}" loading="lazy" />` : `<span class="row-thumb row-thumb-empty"><span class="ico">${ic('megaphone')}</span></span>`}
       <div class="row-main">
-        <div class="row-title"><span class="promo-row-flag">推荐</span><span class="row-name">${escapeHtml(a.title)}</span></div>
+        <div class="row-title"><span class="promo-row-flag">自荐</span><span class="row-name">${escapeHtml(a.title)}</span></div>
         ${a.desc ? `<div class="row-intro">${escapeHtml(a.desc)}</div>` : ''}
         <div class="row-meta">${a.source === 'redeem' ? `<span class="promo-join" data-join-promote title="用灯火给自己的作品换个推荐位">我也想推荐自己的作品</span> · ` : '广告 · '}${a.extUrl ? '打开链接 ↗' : '看看 →'}</div>
       </div>
@@ -4638,7 +4728,7 @@ function promoCardHtml(a) {
       ${internal ? `<a class="card-link" href="/w/${escapeHtml(id)}" aria-label="查看《${escapeHtml(a.title)}》"></a>` : ''}
       <div class="card-img-wrap">
         ${a.image ? `<img class="card-img" src="${escapeHtml(imgUrl(a.image, 400))}" srcset="${imgSet(a.image)}" sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 260px" alt="${escapeHtml(a.title)}" loading="lazy" />` : `<div class="promo-noimg"><span class="ico">${ic('megaphone')}</span></div>`}
-        <span class="promo-flag">推荐</span>
+        <span class="promo-flag">自荐</span>
       </div>
       <div class="card-body">
         <div class="card-title">${escapeHtml(a.title)}</div>
@@ -4659,9 +4749,27 @@ function promoCardHtml(a) {
 // 一眼能看出它不是某位作者做的作品；点击直接外跳（新标签），不套作品详情弹窗。
 // 数据来自 /api/tools 里带 feed:true 的条目。它压根不是作品：不进榜单、不进期刊计分、
 // 不进编年史、不参与「共 N 件」，也不出现在作者主页/收藏/随便逛逛。
+// 2026-11-18 加「不再提示此工具」：弹窗里点了就记 localStorage，这条工具不再进流。
+const TOOL_HIDE_KEY = 'toolFeedHidden';
+function toolFeedHiddenSet() {
+  try {
+    const arr = JSON.parse(localStorage.getItem(TOOL_HIDE_KEY) || '[]');
+    return Array.isArray(arr) ? new Set(arr.map(String)) : new Set();
+  } catch (e) { return new Set(); }
+}
+function hideToolFeed(id) {
+  if (!id) return;
+  let arr = [];
+  try { arr = JSON.parse(localStorage.getItem(TOOL_HIDE_KEY) || '[]'); } catch (e) { arr = []; }
+  if (!Array.isArray(arr)) arr = [];
+  const s = String(id);
+  if (!arr.includes(s)) arr.push(s);
+  try { localStorage.setItem(TOOL_HIDE_KEY, JSON.stringify(arr)); } catch (e) {}
+}
 function toolFeedItems() {
   if (!isPlainListView()) return [];
-  return (state.tools || []).filter(t => t && t.feed && t.active !== false);
+  const hidden = toolFeedHiddenSet();
+  return (state.tools || []).filter(t => t && t.feed && t.active !== false && !hidden.has(String(t.id || '')));
 }
 function toolFootText(t) {
   return [t.cert ? '企业认证' : '', t.partner ? '合作' : ''].filter(Boolean).join(' · ') || '工具推荐';
@@ -4669,7 +4777,7 @@ function toolFootText(t) {
 function toolCardHtml(t) {
   const letter = escapeHtml(String(t.name || '?').trim().slice(0, 1).toUpperCase());
   const flag = t.cert ? '工具 · 企业认证' : '工具';
-  if (state.view === 'list') {
+  if (isRowView()) {
     return `<a class="work-row tool-row" data-tool-id="${escapeHtml(t.id || '')}" href="${escapeHtml(t.url)}" target="_blank" rel="noopener nofollow sponsored">
       <span class="row-thumb tool-thumb">${letter}</span>
       <div class="row-main">
@@ -4941,7 +5049,7 @@ document.addEventListener('click', e => {
 }, true);
 
 // 推荐位的「我也想推荐自己的作品」入口 + 空位「虚位以待」示例条：
-// 全站委托一次，统一走 openRedeem()（未登录先弹登录），跳独立页 /promote。
+// 全站委托一次，统一走 openRedeem()（直接跳独立页 /promote，未登录也能先看效果）。
 // 必须走捕获阶段（同下方叉号）：推荐卡整卡挂了 click 点开作品详情，
 // 冒泡阶段的话事件先到卡片节点弹了作品详情，这里再 stopPropagation 已经晚了。
 document.addEventListener('click', e => {
@@ -4997,7 +5105,8 @@ function renderTypePicker() {
   const checked = [...box.querySelectorAll('input[name="types"]:checked')].map(i => i.value);
   const names = TYPES.filter(t => t !== '全部');
   box.innerHTML = names.map((t, i) => {
-    const on = checked.length ? checked.indexOf(t) !== -1 : i === 0; // 默认勾第一个
+    // 2026-11-18 起不再默认勾 Web：形态让作者自己选，全空提交时才校验「必选一个」
+    const on = checked.length ? checked.indexOf(t) !== -1 : false;
     return `<label class="type-opt"><input type="checkbox" name="types" value="${escapeHtml(t)}"${on ? ' checked' : ''} /><span>${typeIcoHtml(t)} ${escapeHtml(t)}</span></label>`;
   }).join('')
   + `<button type="button" class="type-opt cat-add" id="typeAddBtn" title="创建并选择新形态"><span>＋ 新形态</span></button>`;
@@ -5156,10 +5265,10 @@ function featAuthorHtml(w) {
   return `<span class="feat-author" title="作者 ${escapeHtml(name)}">${avaChip(w)}<span class="fa-name">${escapeHtml(name)}</span></span>`;
 }
 
-// 「本周精选」一行 = 分数前 N（N 后台可调，默认 20）＋ 站长增补 − 站长移出（2026-11-17 扩站长自定），
+// 「本周精选」一行 = 分数前 N（默认 25）＋ 站长增补（占位、剔除末位） − 站长移出（后位递补），总数恒为 N；
 // 展示顺序每天洗一次牌、当天固定（2026-11-16 改口径，服务端 featuredDayList 出榜，
 // 前端按接口给的顺序原样画）；`.feat-no` 的序号 = 当天排位，不是分数名次。
-// 不设互动门槛、不按作者去重；站长增补的位置同样参与洗牌，不排前面，
+// 不设互动门槛、不按作者去重；增补件同样参与洗牌、不排前面，
 // 角标按「独立标签 > 增补默认标签 > 自动角标」三级回落（见 featReasonHtml）。
 // 卡上的数据是累计口径（打开次数 / 看过人数都是全历史），近 7 天数据只用于选谁进来；
 // 精选卡版式：首页「本周精选」和发现页共用（点击开详情由调用方绑定）
@@ -5468,6 +5577,7 @@ let wanderObserver = null;
 let wanderFlushTimer = null;
 let wanderFoldGate = null;                     // Set<id>：本轮渲染首屏已可见的卡，滚动前不计数
 let wanderFoldY = 0;                           // 建闸时的滚动位置：位移超过阈值才算「人真的滚了」
+let wanderWantTop = false;                     // 一次性意图：这次重取完把视口带回列表第一屏（清空已看 / 从头再翻）
 const wanderPending = new Set();               // 待批量上报的曝光 ids
 const wanderSeen5m = new Map();                // id -> ts：同作品 5 分钟内只报一次
 // 「还有 N 件没逛过」口径（2026-11-17 改）：服务端发卡即记 delivered，left = 没发过的件数；
@@ -5492,6 +5602,32 @@ window.addEventListener('scroll', () => {
   if (wanderFoldGate && Math.abs(window.scrollY - wanderFoldY) > 8) releaseWanderFold();
 }, { passive: true });
 
+// 建首屏闸门：把「此刻真的在屏上」的卡记下来，用户往下滚之前不计数。
+// 整屏重取（刷新 / 切回来 / 清空重推后回到第一屏）都走这一份，别再各写一遍。
+function armWanderFoldGate() {
+  const g = $('gallery');
+  if (!g) return;
+  wanderFoldGate = new Set();
+  wanderFoldY = window.scrollY || 0;
+  g.querySelectorAll(WANDER_CARD_SEL).forEach(el => {
+    if (!el.dataset.id) return;
+    const r = el.getBoundingClientRect();
+    if (r.top < window.innerHeight && r.bottom > 0) wanderFoldGate.add(el.dataset.id);
+  });
+  if (!wanderFoldGate.size) wanderFoldGate = null;
+}
+
+// 把视口带回列表第一屏。#worksHead 有 scroll-margin-top:74px，落点正好在吸顶导航下面；
+// 用瞬时跳而不是平滑滚动：清空重推时整块内容都换过，慢慢滑上去反而像页面在飘。
+function scrollWanderToTop() {
+  const head = $('worksHead');
+  if (head && head.scrollIntoView) {
+    try { head.scrollIntoView({ block: 'start' }); } catch { head.scrollIntoView(); }
+  } else {
+    window.scrollTo(0, 0);
+  }
+}
+
 // 进页面先看有没有未过期的「随便翻翻」状态：有就直接继续随机（spec §6.5）
 (function wanderRestoreState() {
   try {
@@ -5515,6 +5651,9 @@ function wanderNewNonce() {
   wanderNonce = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
   wanderMode = 'random';
   wanderPage = 0;
+  // 「随便翻翻 / 从头再翻」的按钮都在列表底部（空状态、翻到底的 footer）：新一批回来必须
+  // 把人带回第一屏，否则新卡渲染在脚下，还得自己拐回去（2026-11-18 用户反馈）
+  wanderWantTop = true;
   wanderSaveState();
 }
 
@@ -5560,6 +5699,7 @@ async function wanderResetSeen() {
     if (state.sort === 'wander') {
       wanderClearState();
       wanderMode = 'pool'; wanderPage = 0;
+      wanderWantTop = true;   // 入口在列表底部：重取完把视口带回第一屏，别让人自己拐回去
       loadWanderIntoGallery(true);
     }
   } catch { showToast('网络异常，稍后再试', undefined, 'err'); }
@@ -5605,8 +5745,8 @@ function isWanderNew(w) {
 // 「新」优先于「重温」：一件作品既新又被看过时，先说更用得上信息量的那个。
 // revisit 默认取作品上的标记（取卡接口给的），换卡时就地传进 DOM 里读到的值。
 function wanderCardHtml(item) {
-  const html = state.view === 'list' ? listHtml(item) : cardHtml(item, {});
-  return decorateWanderCard(html, item, state.view === 'list');
+  const html = isRowView() ? listHtml(item) : cardHtml(item, {});
+  return decorateWanderCard(html, item, isRowView());
 }
 
 function decorateWanderCard(html, w, isRow, revisit = !!(w && w.revisit)) {
@@ -5646,6 +5786,9 @@ async function loadWanderIntoGallery(reset = true, force = true) {
   const g = $('gallery');
   if (!g || wanderBusy) return;
   if (!force && Date.now() - wanderLastAt < WANDER_REFETCH_GAP) return;   // 静默同步节流，别反复推进队列
+  // 「清空已看 / 从头再翻」带过来的回顶意图：一次性，本次重取就用掉（滚动在 finally 里做，等 DOM 落定）
+  const backTop = reset && wanderWantTop;
+  if (reset) wanderWantTop = false;
   wanderBusy = true;
   // 加载态放在最前面（点「随便逛逛 / 随便翻翻」立刻有反馈）：
   // 空状态原地压暗 / 空容器放「点灯」，然后才等广告数据——2026-11-10 修：
@@ -5656,7 +5799,7 @@ async function loadWanderIntoGallery(reset = true, force = true) {
   //（1080 宽会量到 4 列、真渲染是 5 列），拉回来的条数跟实际列数对不上，尾巴又歪了
   applyGalleryCols();
   if (reset) {
-    g.classList.toggle('list-mode', state.view === 'list');
+    syncViewClass(g);
     renderListLoader();   // 只在容器全空且空状态没挂着时才放「点灯」；空状态挂着就原地压暗
   }
   await ensureAds();   // 随便逛逛首屏要插首页第一格那张推荐卡，先等广告数据到位
@@ -5715,7 +5858,7 @@ async function loadWanderIntoGallery(reset = true, force = true) {
     if (wanderMode === 'pool' && data.state === 'empty') {
       const ghBefore = Math.round(g.getBoundingClientRect().height);
       if (reset) g.innerHTML = '';
-      g.classList.remove('list-mode');
+      g.classList.remove('list-mode', 'noimg-mode');
       const emptyP = emptyBox.querySelector('p');
       if (emptyP) { emptyP.textContent = '全站的作品你都看过了'; emptyP.className = 'wander-empty-title'; }
       emptyBox.classList.add('wander-empty');
@@ -5749,7 +5892,7 @@ async function loadWanderIntoGallery(reset = true, force = true) {
             <span class="wander-foot-hint">这一轮翻完了</span>
           </div>`);
         $('wanderAgain').onclick = () => { wanderNewNonce(); loadWanderIntoGallery(true); };
-        $('wanderBack').onclick = () => { wanderClearState(); wanderMode = 'pool'; wanderPage = 0; loadWanderIntoGallery(true); };
+        $('wanderBack').onclick = () => { wanderClearState(); wanderMode = 'pool'; wanderPage = 0; wanderWantTop = true; loadWanderIntoGallery(true); };
       }
       return;
     }
@@ -5768,7 +5911,7 @@ async function loadWanderIntoGallery(reset = true, force = true) {
       if (wanderMode === 'pool') mountWanderPoolFoot();
       return;
     }
-    g.classList.toggle('list-mode', state.view === 'list');
+    syncViewClass(g);
     // 随便逛逛：首屏(reset)只放首图推广，其余批次随机插几张「推荐」卡（作者灯火自荐位，非后台广告）
     g.insertAdjacentHTML('beforeend', buildWanderBatchHtml(fresh, !reset));
     bindCards(g);
@@ -5777,14 +5920,7 @@ async function loadWanderIntoGallery(reset = true, force = true) {
     // 首屏闸门：整屏重取（刷新/切回）时，屏幕里已有的卡先不计数；「加载更多」说明
     // 用户在往下翻，立即放行（追加的卡本来就在视口下方，走正常观测）
     if (reset) {
-      wanderFoldGate = new Set();
-      wanderFoldY = window.scrollY || 0;
-      g.querySelectorAll(WANDER_CARD_SEL).forEach(el => {
-        if (!el.dataset.id || el.classList.contains('promo-card') || el.classList.contains('promo-row')) return;
-        const r = el.getBoundingClientRect();
-        if (r.top < window.innerHeight && r.bottom > 0) wanderFoldGate.add(el.dataset.id);
-      });
-      if (!wanderFoldGate.size) wanderFoldGate = null;
+      armWanderFoldGate();
     } else if (wanderFoldGate) {
       releaseWanderFold();
     }
@@ -5815,6 +5951,14 @@ async function loadWanderIntoGallery(reset = true, force = true) {
   } catch { /* 统计失败不影响页面 */ } finally {
     wanderBusy = false;
     listLoadingEnd(seq);   // 成功失败都收工：撤掉压暗，计数已被真实数字覆盖
+    // 清空已看 / 从头再翻：入口都在列表底部，新一屏回来必须把视口带回第一屏，
+    // 否则人盯着第二屏、还得自己拐回去（2026-11-18 用户反馈）。
+    // 落地后重设首屏闸门：刚才那份是按底部位置算的，已经对不上；重设后口径和刷新出来的首屏一致
+    //（屏上的卡先不计数，等用户真的往下滚）。
+    if (backTop) {
+      scrollWanderToTop();
+      armWanderFoldGate();
+    }
   }
 }
 
@@ -6078,10 +6222,10 @@ async function loadWorks(reset = true) {
 
     // 首屏第一张卡片是 LCP 主要候选：给它 fetchpriority=high 且不 lazy，
     // 其余卡片继续懒加载（首屏之外的一张都别抢带宽）
-    const html = data.items.map((w, i) => state.view === 'list'
+    const html = data.items.map((w, i) => isRowView()
       ? listHtml(w)
       : cardHtml(w, { eager: reset && i === 0 })).join('');
-    gallery.classList.toggle('list-mode', state.view === 'list');
+    syncViewClass(gallery);
     const ghBefore = Math.round(gallery.getBoundingClientRect().height);
     if (reset) gallery.innerHTML = ''; // 数据到手再替换，旧内容保留期间页面高度稳定
     gallery.insertAdjacentHTML('beforeend', html);
@@ -6177,6 +6321,15 @@ function mountFilterBar(wrap, conf, onPick) {
   }
   let chips = panel.querySelector('.fbar-chips');
   if (!chips) { chips = document.createElement('div'); chips.className = 'fbar-chips'; panel.appendChild(chips); }
+  // 2026-11-18 视觉降噪：手机端「记住筛选条件」不再在筛选栏下面单独占一行，
+  // 收进面板底部（展开筛选才看到）。搬的是原节点而不是新建一个 checkbox——
+  // setupHeader 的 onchange 绑定和 syncRememberToggle 都认这个节点，搬完照旧生效。
+  let foot = panel.querySelector('.fbar-foot');
+  if (!foot) { foot = document.createElement('div'); foot.className = 'fbar-foot'; panel.appendChild(foot); }
+  const rmLabel = document.querySelector('.remember-filters-h5 .remember-filters-main');
+  const rmHint = document.querySelector('.remember-filters-h5 .remember-hint');
+  if (rmLabel && rmLabel.parentElement !== foot) foot.appendChild(rmLabel);
+  if (rmHint && rmHint.parentElement !== foot) foot.appendChild(rmHint);
   // 重绘即收起：换筛选条件后列表已经变了，面板不该继续挂在那儿
   panel.hidden = true;
   wrap.classList.remove('open');
@@ -6276,18 +6429,33 @@ function renderFiltersPC() {
       kind: 'category', icon: 'folder', label: '分类',
       value: state.category, active: state.category !== '全部',
       opts: catOpts
-    },
-    {
-      kind: 'os', icon: 'lock-open', label: '开源',
-      value: state.openSource, active: state.openSource !== '全部',
-      opts: ['全部', '开源', '闭源']
-    },
-    {
-      kind: 'range', icon: 'clock', label: '时间',
-      value: state.range, active: state.range !== '全部',
-      opts: RANGE_OPTS
     }
   ];
+  // 2026-11-18 视觉降噪：开源 / 时间两项低频筛选收进「更多筛选」。
+  // 一行从「3 个排序钮 + 5 个下拉 + 1 个记住框」降到「3 + 3 + 1」，扫一眼先看到常用的。
+  // 面板里直接摊两组胶囊（不做二级下拉）：点一下就是一次筛选，跟原来一样即时生效；
+  // 有生效项时按钮右侧显示「N 项」，不至于筛了却看不出来。
+  const moreCount = (state.openSource !== '全部' ? 1 : 0) + (state.range !== '全部' ? 1 : 0);
+  const moreHtml = `
+    <div class="dd-filter dd-more" data-kind="more">
+      <button type="button" class="dd-btn${moreCount ? ' has-value' : ''}">
+        <span class="dd-label">更多</span><b class="dd-value">${moreCount ? moreCount + ' 项' : '筛选'}</b><span class="dd-caret">▾</span>
+      </button>
+      <div class="dd-panel dd-more-panel">
+        <div class="dd-more-group">
+          <span class="dd-more-title">开源</span>
+          <div class="dd-more-chips">
+            ${['全部', '开源', '闭源'].map(v => `<button type="button" class="dd-more-chip${state.openSource === v ? ' is-on' : ''}" data-more="os" data-v="${v}">${v}</button>`).join('')}
+          </div>
+        </div>
+        <div class="dd-more-group">
+          <span class="dd-more-title">时间</span>
+          <div class="dd-more-chips">
+            ${RANGE_OPTS.map(v => `<button type="button" class="dd-more-chip${state.range === v ? ' is-on' : ''}" data-more="range" data-v="${escapeHtml(v)}">${escapeHtml(RANGE_LABEL[v] || v)}</button>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>`;
   row.innerHTML = conf.map(c => {
     const cur = c.kind === 'type' ? state.type
       : c.kind === 'range' ? state.range
@@ -6321,7 +6489,7 @@ function renderFiltersPC() {
         }).join('')}
       </div>
     </div>`;
-  }).join('');
+  }).join('') + moreHtml;
 
   row.querySelectorAll('.dd-filter').forEach(dd => {
     const kind = dd.dataset.kind;
@@ -6344,6 +6512,19 @@ function renderFiltersPC() {
         else { state.category = opt.dataset.v; }
         // 随便逛逛不认筛选：以前电脑上只有场景会切回最新，形态/分类/开源/时间点了像没生效。
         // 五项统一切回最新（与手机端一致），再落筛选记忆，刷新后筛选才真能按记忆生效。
+        wanderBreakoutLatest();
+        saveFilters();
+        closeAllDD();
+        renderFilters();
+        loadWorks();
+      });
+    });
+    // 「更多筛选」面板里的胶囊：开源 / 时间两支笔，走同一套落库与重载流程
+    dd.querySelectorAll('.dd-more-chip').forEach(chip => {
+      chip.addEventListener('click', e => {
+        e.stopPropagation();
+        if (chip.dataset.more === 'os') state.openSource = chip.dataset.v;
+        else state.range = chip.dataset.v;
         wanderBreakoutLatest();
         saveFilters();
         closeAllDD();
@@ -6447,6 +6628,42 @@ function isFullView() {
 // 评论：评论 UI 只在详情弹窗里有一份（9678 起那套），这里借道 openWork 打开它，
 // 不再复制一份评论渲染——两份源迟早打架。
 let seoRailWork = null;
+// 完整页右栏作者名片（2026-11-18）：与详情弹窗同一套 .detail-author-card，
+// 只是挪到宽敞的侧栏里。数据用 bindSeoRail 那次 /api/works/:id 的返回，不另发请求；
+// 未认领 / 匿名作品不出卡，自己作品只出统计不出关注按钮。
+function paintSeoAuthorCard(rail, w) {
+  const card = rail.querySelector('#seoAuthorCard');
+  if (!card) return;
+  if (!w.claimed || w.anonymous || !w.authorId) { card.style.display = 'none'; return; }
+  const name = dname(w);
+  const ava = card.querySelector('[data-seo-ava]');
+  const nameBtn = card.querySelector('[data-seo-name]');
+  const go = () => { location.href = '/u/' + encodeURIComponent(w.authorId || w.author); };
+  paintAvatar(ava, name, w.authorAvatar);
+  ava.title = w.owned ? '查看我的主页' : `访问 @${name} 的主页`;
+  ava.onclick = go;
+  nameBtn.textContent = name;
+  nameBtn.title = ava.title;
+  nameBtn.onclick = go;
+  const tags = w.authorTags || [];
+  card.querySelector('[data-seo-badges]').innerHTML =
+    (w.authorCert ? certPillHtml(w.authorCert) : '') +
+    tags.filter(t => t !== CERT_TAG).map(t => tagBadgeHtml(t)).join('');
+  card.querySelector('[data-seo-stats]').innerHTML = [
+    ['作品', w.authorWorks || 0],
+    ['获赞', w.authorLikes || 0],
+    ['被收藏', w.authorFavs || 0],
+    ['粉丝', w.authorFollowers || 0]
+  ].map(([label, n]) => `<span class="dac-stat"><b>${fmtStatNum(n)}</b>${label}</span>`).join('');
+  const follow = card.querySelector('[data-seo-follow]');
+  const canFollow = !w.owned && !!w.authorId && !(state.user && state.user.id === w.authorId);
+  follow.style.display = canFollow ? 'flex' : 'none';
+  if (canFollow) {
+    paintFollowBtn(follow, w.authorFollowing === true, w.authorFollowers || 0);
+    follow.onclick = () => toggleFollow(w.authorId, follow);
+  }
+  card.classList.add('is-ready');
+}
 function bindSeoRail() {
   const rail = $('seoRail');
   if (!rail) return;
@@ -6467,6 +6684,7 @@ function bindSeoRail() {
     .then(w => {
       if (!w || w.error) return;
       seoRailWork = w;
+      paintSeoAuthorCard(rail, w);
       if (likeBtn) {
         const liked = state.user ? w.liked === true : localStorage.getItem('liked:' + id) === '1';
         likeBtn.classList.toggle('active', liked);
@@ -6722,6 +6940,7 @@ async function discColsAll() {
   return DISC_BASE_COLS.concat(discExtraCols);
 }
 let discTab = '';      // 当前选中的胶囊；空 = 未初始化（进页面时按 UA 选默认）
+let discTabRestored = false;   // 「记住我的选择」里的专栏只恢复一次，之后以用户手点的为准
 let discCache = {};    // key -> { items, total, scan }：会话内缓存，来回切胶囊不重复拉接口
 let discLoaded = '';   // 上一次渲染的专栏，前进/后退回到同页不重渲染（滚动位置不丢）
 function defaultDiscKey() {
@@ -6787,6 +7006,14 @@ function renderDiscPanel(col, data) {
 }
 async function loadDiscover() {
   const chips = $('discChips');
+  // 「记住我的选择」里的专栏：只在首次进页面恢复一次，之后以用户手点的 tab 为准
+  if (!discTabRestored) {
+    discTabRestored = true;
+    if (discPcRemember) {
+      const s = readDiscSel();
+      if (s && typeof s.mtab === 'string' && s.mtab) discTab = s.mtab;
+    }
+  }
   if (!discTab) discTab = defaultDiscKey();
   const colsAll = await discColsAll();
   const drawChips = () => {
@@ -6798,28 +7025,32 @@ async function loadDiscover() {
     b.onclick = () => {
       if (b.dataset.discTab === discTab) return;
       discTab = b.dataset.discTab;
+      saveDiscSel('m');
       drawChips();
       loadDiscover();
     };
   });
-  const col = colsAll.find(c => c.key === discTab);
+  // 记住的专栏可能已经下线（那类作品全删了、专栏跟着消失）：退回第一个专栏，别让整页空白
+  let col = colsAll.find(c => c.key === discTab);
+  if (!col) { discTab = (colsAll[0] || {}).key || ''; col = colsAll[0]; }
+  if (!col) return;
   if (discLoaded === col.key && discCache[col.key]) return;
   discLoaded = col.key;
-  $('discPanel').innerHTML = '<div class="comment-empty">加载中…</div>';
+  $('discPanel').innerHTML = dmLoadHtml('正在点亮橱窗…');
   try {
     if (!discCache[col.key]) {
       if (col.key === '精选') {
-        const d = await (await fetch('/api/featured', { cache: 'no-store' })).json();
+        const d = await (await fetch('/api/featured?disc=1', { cache: 'no-store' })).json();
         const items = Array.isArray(d.list) ? d.list : [];
         discCache[col.key] = { items, total: items.length };
       } else if (DISC_CAT_COLS.indexOf(col.key) !== -1) {
         // 分类专栏按分类取数，跨形态聚合；「游戏」→ 娱乐游戏，其余 key 即分类名
         const cat = col.key === '游戏' ? '娱乐游戏' : col.key;
-        const d = await (await fetch(`/api/works?sort=hot&category=${encodeURIComponent(cat)}&page=1&pageSize=100`, { cache: 'no-store' })).json();
+        const d = await (await fetch(`/api/works?sort=hot&category=${encodeURIComponent(cat)}&page=1&pageSize=100&disc=1`, { cache: 'no-store' })).json();
         const items = Array.isArray(d.items) ? d.items : [];
         discCache[col.key] = { items, total: d.total || items.length };
       } else {
-        const d = await (await fetch(`/api/works?sort=hot&type=${encodeURIComponent(col.key)}&page=1&pageSize=100`, { cache: 'no-store' })).json();
+        const d = await (await fetch(`/api/works?sort=hot&type=${encodeURIComponent(col.key)}&page=1&pageSize=100&disc=1`, { cache: 'no-store' })).json();
         const items = Array.isArray(d.items) ? d.items : [];
         discCache[col.key] = { items, total: d.total || items.length, scan: items.filter(w => w.qrcode || w.qrSrc).length };
       }
@@ -6829,6 +7060,637 @@ async function loadDiscover() {
     $('discPanel').innerHTML = '<div class="comment-empty">加载失败，稍后再来，或回橱窗逛逛～</div>';
   }
 }
+
+// ---------- 发现页 PC 版式（2026-11-18）：左分类侧栏 + 右内容网格 ----------
+// 与移动端专栏版式共用 /discover 路由：≥641px 走这版（.disc-pc），≤640px 走上面 loadDiscover 那版。
+// 数据口径：/api/works?pageSize=all 全量拉一次存会话缓存（当前量级几百件可控；作品过了上千
+// 再考虑改服务端分页），分类计数 / 筛选 / 排序 / 快搜都在这份池子上现算，切换筛选不重复请求。
+// 卡片直接复用站内 cardHtml + bindCards：点赞/收藏/屏蔽/详情弹窗行为与首页完全同源。
+const DISC_PC_CAT_ICO = {
+  '效率工具': ['bolt', '#5b5bd6'], '生活助手': ['bulb', '#f0a020'], '内容创作': ['palette', '#e05a8a'],
+  '学习教育': ['journal', '#3b82f6'], '娱乐游戏': ['fire', '#f26d3d'], '开发工具': ['api', '#2f9e7e'],
+  '自媒体工具': ['megaphone', '#d24b8c'], '音乐媒体': ['chart', '#8b5cf6'], '手工 DIY': ['shapes', '#e08a2e'],
+  '亲子时光': ['heart', '#ef6a6a'], '刷题网站': ['question', '#4f7ad6'], '悠闲放松': ['clock', '#7a9cc6'],
+  '玄学占卜': ['sparkle', '#9b6fd4'], '广播播客': ['bar', '#5aa6b8'], '众言社区': ['chat', '#4a9c8f'],
+  '个人站': ['home', '#6f7fd6'], '个人博客': ['home', '#6f7fd6'], '日常办公': ['folder', '#5f8fd0'],
+  '导航': ['globe', '#2fa39c'], '户外运动': ['fire', '#e0743c'],
+  '创作设计': ['palette', '#e05a8a'], '实体生意': ['folder', '#5f8fd0'], '客户拓展': ['chat', '#4a9c8f'],
+  '行业应用': ['briefcase', '#3e8ed0'], '互动游戏': ['gamepad', '#7a5cd6'], '生活决策': ['scale', '#d98a2b'],
+  '办公助手': ['folder', '#5f8fd0'], '求职帮手': ['idbadge', '#2e9e6b'], '图片处理': ['image', '#b05cd6'],
+  '3D效果': ['cube', '#5b5bd6'], '解压放松': ['leaf', '#5aa86b'], '卡牌游戏': ['cards', '#d05a5a'],
+  '旅游观光': ['compass', '#2f9ece'], '知识科普': ['gradcap', '#4a7fd6'], '导航网站': ['globe', '#2fa39c']
+};
+const discPcState = { cat: '', type: '', q: '', sort: 'fair' };
+let discPcLoadTip = 0;        // 「加载太久」换文案的定时器（见 renderDiscoverPc）
+// ---------- 发现页「记住我的选择」（dm_disc_remember / dm_disc_sel） ----------
+// 记的是这一页的三项「逛的口味」：平台胶囊、左侧分类、排序。侧栏搜索词不记——那是一次性的快筛，
+// 记下来下次进来就只剩一两条，用户会以为整站没了。
+// 与首页那条 dm_filters 完全分家：首页记形态/场景/分类/开源/时间，是给「最新/最热」列表用的；
+// 这里记的是发现页自己的筛选，两套互相不覆盖（同一个分类名在两边口径也不同）。
+// 默认不记：发现页本来就是逛的地方，上来先给全站。
+const DISC_MEM_KEY = 'dm_disc_remember';
+const DISC_SEL_KEY = 'dm_disc_sel';
+let discPcRemember = readDiscRemember();   // 开关本身也记本机，否则下次进来又变未勾、看着像没记住
+let discSelRestored = false;   // 恢复只做一次，别把用户本次会话里手点的选择又盖回旧值
+function readDiscRemember() {
+  try { return localStorage.getItem(DISC_MEM_KEY) === '1'; } catch { return false; }   // 隐私模式读不到：当没勾
+}
+function readDiscSel() {
+  if (!readDiscRemember()) return null;   // 开关关着就不理旧存档（用户可能刚取消勾选）
+  try {
+    const s = JSON.parse(localStorage.getItem(DISC_SEL_KEY) || 'null');
+    return (s && typeof s === 'object') ? s : null;
+  } catch { return null; }
+}
+// 只更新「谁改了的那一半」：PC 端改筛选只写 cat/type/sort，手机端点专栏只写 mtab。
+// 全量覆盖会出这种事：电脑上记住「效率工具 + Windows + 最热」，回头在手机上点了个专栏，
+// PC 那三个值被默认值冲成空 —— 两套版式共用一份档案，就必须各写各的格子。
+function saveDiscSel(part) {
+  if (!discPcRemember) return;
+  try {
+    const next = readDiscSel() || {};
+    if (!part || part === 'pc') {
+      next.cat = discPcState.cat; next.type = discPcState.type; next.sort = discPcState.sort;
+    }
+    if (!part || part === 'm') next.mtab = discTab || '';
+    localStorage.setItem(DISC_MEM_KEY, '1');
+    localStorage.setItem(DISC_SEL_KEY, JSON.stringify(next));
+  } catch { /* 隐私模式存不了，本次会话内照样生效 */ }
+}
+function clearDiscSel() {
+  try { localStorage.removeItem(DISC_MEM_KEY); localStorage.removeItem(DISC_SEL_KEY); } catch {}
+}
+// 勾选态 / 说明文字的唯一同步口：渲染完侧栏与首屏后调一次，勾选toggle 也调它。
+// PC 和手机两条开关共用 discPcRemember，一处改了另一处立刻跟上（同一块 DOM 里只是显示与否）。
+function syncDiscRemember() {
+  ['discPcRemember', 'discMRemember'].forEach(id => {
+    const b = $(id);
+    if (b && b.checked !== discPcRemember) b.checked = discPcRemember;
+  });
+}
+// 平台专区（2026-11-18）：侧栏固定一组按平台逛的入口，与顶部平台胶囊共用 discPcState.type，两处联动高亮。
+// 专区哨兵（type 不在 TYPES 平台白名单里，走各自的判定函数）：'appstore' 只认官方商店链接，
+// 'ios-notstore' 是它的补集——iOS 作品但下载链接不在 apps.apple.com（TestFlight / 蒲公英 / 官网直链等）。
+const DISC_ZONE_SENTINELS = ['appstore', 'ios-notstore'];
+const DISC_PC_ZONES = [
+  { type: 'appstore', label: 'App Store', ico: 'ios', color: '#2f7cf6', title: 'App Store 专区',
+    desc: '已上架 App Store 的 iPhone 应用：只认 apps.apple.com 官方商店链接，点详情页「下载」直达。' },
+  { type: 'ios-notstore', label: 'iOS（非商店）', ico: 'ios', color: '#5ac8fa', title: 'iOS 非商店专区',
+    desc: '没走 App Store 的 iPhone 作品：TestFlight、蒲公英、官网直链都算，点详情页拿安装入口。' },
+  { type: '小程序', label: '小程序', ico: 'mini', color: '#07c160', title: '小程序专区',
+    desc: '在微信里打开的小程序作品，详情页备好了小程序码，扫码即用。' },
+  { type: 'Windows', label: 'Windows', ico: 'win', color: '#0078d4', title: 'Windows 专区',
+    desc: 'Windows 电脑上使用的作品，详情页里有对应的下载或安装入口。' },
+  { type: 'Android', label: '安卓', ico: 'android', color: '#3ddc84', title: '安卓专区',
+    desc: '安卓手机上的精选作品，详情页里有对应的下载入口和完整介绍。' },
+  { type: 'macOS', label: 'Mac', ico: 'mac', color: '#6e6e73', title: 'Mac 专区',
+    desc: 'Mac 上的精选作品，详情页里有对应的下载入口和完整介绍。' },
+  { type: 'Web', label: '网页', ico: 'web', color: '#5b5bd6', title: '网页专区',
+    desc: '浏览器打开就能用的网页作品，电脑手机都通吃。' }
+];
+// 2026-11-18 晚：平台筛选来自侧栏专区时收起顶部平台胶囊——两处是同一套口径，摆一起只会
+// 让人以为要选两遍。点胶囊（含「全部平台」）或再点一次已选中的专区都会把标志翻回去，胶囊恢复。
+// 只在内存里记，不进 localStorage：恢复存档时只有专区哨兵能确定出自专区，其余按胶囊处理（宁可多显示不锁死）。
+let discPcFromZone = false;
+// 恢复上次记住的选择：必须等 DISC_PC_ZONES / TYPES 都就位（上面几个 const 的 TDZ），
+// 所以不能在 discPcState 定义处直接读档。分类名还要等 /api/categories 回来才能验，交给 applyDiscSavedSel 的调用点。
+function applyDiscSavedSel() {
+  if (!discPcRemember) return;
+  const s = readDiscSel();
+  if (!s) return;
+  // type：'' 是「全部平台」，专区哨兵走各自口径，其余按平台名白名单（脏值不认，否则整页 0 条）
+  if (typeof s.type === 'string' && (s.type === '' || DISC_ZONE_SENTINELS.includes(s.type) || TYPES.includes(s.type))) {
+    discPcState.type = s.type;
+    discPcFromZone = DISC_ZONE_SENTINELS.includes(s.type);   // 只有专区哨兵能确定出自侧栏，其余恢复后按胶囊口径显示
+  }
+  // cat 只存着，等分类表回来再判断是否还有这个分类（分类改名/清空后恢复会把页面锁成空列表）
+  if (typeof s.cat === 'string' && s.cat.length <= 30) discPcState.cat = s.cat;
+  if (['fair', 'new', 'hot', 'like'].includes(s.sort)) discPcState.sort = s.sort;
+  const sel = $('discPcSort');
+  if (sel) sel.value = discPcState.sort;
+}
+// App Store 口径判定：iOS 链接必须落在 apps.apple.com（老数据没有按形态 links 时退回单个 link 字段）
+function appleAppStoreOk(url) {
+  try {
+    const h = new URL(/^https?:\/\//i.test(url) ? url : 'https://' + url).hostname.toLowerCase().replace(/^www\./, '');
+    return h === 'apps.apple.com' || h.endsWith('.apps.apple.com');
+  } catch { return false; }
+}
+function isAppStoreWork(w) {
+  if (!typesOf(w).includes('iOS')) return false;
+  const u = (w.links && w.links['iOS']) || (!w.links && w.link) || '';
+  return appleAppStoreOk(u);
+}
+// App Store 专区的补集：iOS 作品但官方商店判定不通过（含没填 iOS 链接的）
+function isNonStoreIosWork(w) {
+  return typesOf(w).includes('iOS') && !isAppStoreWork(w);
+}
+// 专区哨兵各走各的判定；普通专区按平台名包含算
+function zoneTypeOk(w, type) {
+  if (type === 'appstore') return isAppStoreWork(w);
+  if (type === 'ios-notstore') return isNonStoreIosWork(w);
+  return typesOf(w).includes(type);
+}
+function discPcZoneCount(type) {
+  return (discPcPool || []).filter(w => zoneTypeOk(w, type)).length;
+}
+let discPcPool = null;       // 会话内全量作品池（/api/works?pageSize=all 拉一次）
+let discPcCats = null;       // 分类名列表（/api/categories，去掉「全部」）
+let discPcLoaded = false;    // 侧栏与首屏是否已渲染过（切走再回来不重拉）
+
+function discPcActive() {
+  // 2026-11-18 晚：移动端也走新版发现页（≤900 横滑分类条形态本就有，375 直接复用）；
+  // 原断点是 matchMedia('(min-width: 641px)')，专栏版式 .disc-m 的代码保留但不切回——
+  // 要回滚就把这里改回 matchMedia 判断，并恢复 style.css 里 .disc-pc 的两处 @media 断点。
+  return true;
+}
+// 路由进入 /discover 与断点跨越时调用：给视图挂/摘 PC 标记（CSS 据此显隐两个版式）
+function setDiscoverMode() {
+  const v = $('discoverView');
+  if (!v) return false;
+  const pc = discPcActive();
+  v.classList.toggle('disc-has-pc', pc);
+  return pc;
+}
+// 断点跨越只在发现页可见时补渲染另一版式；两边各有缓存，来回切不重复拉数
+if (window.matchMedia) {
+  const discPcMq = window.matchMedia('(min-width: 641px)');
+  const onDiscPcMq = () => {
+    const v = $('discoverView');
+    if (!v || v.style.display === 'none') return;
+    if (setDiscoverMode()) { if (!discPcLoaded) renderDiscoverPc(); }
+    else if (!discLoaded) loadDiscover();
+  };
+  if (discPcMq.addEventListener) discPcMq.addEventListener('change', onDiscPcMq);
+  else if (discPcMq.addListener) discPcMq.addListener(onDiscPcMq);
+}
+
+// 侧栏（平台专区 / 分类）在数据回来前放几行灰条：
+// 只占住「这里会有五六个入口」的形状，不写假名字、不假装有序号数字。
+function discPcSkeletonSide() {
+  const z = $('discPcZones'), c = $('discPcCats');
+  const rows = n => new Array(n).fill('<span class="cat-skel"></span>').join('');
+  if (z) z.innerHTML = rows(6);
+  if (c) c.innerHTML = rows(7);
+}
+
+async function discPcEnsureData() {
+  // 分类和全量作品池互不依赖，并行拉——串行等于把等待时间白加一倍
+  const pCats = discPcCats ? Promise.resolve() : (async () => {
+    try {
+      const d = await (await fetch('/api/categories', { cache: 'no-store' })).json();
+      discPcCats = (Array.isArray(d) ? d : []).filter(c => c && c !== '全部');
+    } catch { discPcCats = []; }
+  })();
+  const pPool = discPcPool ? Promise.resolve() : (async () => {
+    // disc=1：站长在后台标了「发现页不展示」的件不进这个池子（分类计数、专区计数跟着一起少）
+    const d = await (await fetch('/api/works?pageSize=all&disc=1', { cache: 'no-store' })).json();
+    discPcPool = Array.isArray(d.items) ? d.items : [];
+  })();
+  await Promise.all([pCats, pPool]);
+}
+
+function discPcRenderZones() {
+  const el = $('discPcZones');
+  if (!el) return;
+  el.innerHTML = DISC_PC_ZONES.map(z =>
+    '<button type="button" class="cat-item' + (discPcState.type === z.type ? ' active' : '') + '" data-dzone="' + escapeHtml(z.type) + '">' +
+    '<span class="cat-ico" style="background:' + z.color + '">' + ic(z.ico, 12) + '</span>' +
+    '<span class="nm">' + escapeHtml(z.label) + '</span><span class="cnt">' + discPcZoneCount(z.type) + '</span></button>'
+  ).join('');
+  syncDiscPcScrollHint(el);
+}
+
+// 横滑条「右边还有货」提示（2026-11-18）：≤900px 两条分类条（平台专区/分类）滚动条被藏掉，
+// 光看被裁半截的胶囊分不清「到头了」还是「能往右滑」。两层信号，都按真实溢出/滑动位置挂：
+// 1) 右缘（及滑走后的左缘）叠一层渐隐——胶囊被裁半截时直接透出「后面还有」；
+// 2) 包裹层上钉一枚小箭头——胶囊刚好齐边结束、渐隐带里没内容时（「生活助手」收边就是这种），
+//    箭头是唯一信号。滑到头自动收掉；mask/箭头都只改视觉不挡点击。
+function discScrollWrap(el) {
+  let wrap = el.parentElement;
+  if (wrap && wrap.classList.contains('cat-scroll-wrap')) return wrap;
+  wrap = document.createElement('div');
+  wrap.className = 'cat-scroll-wrap';
+  el.parentNode.insertBefore(wrap, el);
+  wrap.appendChild(el);
+  wrap.insertAdjacentHTML('beforeend',
+    '<i class="cat-scroll-ico cat-scroll-ico-r"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 5.5l6.5 6.5-6.5 6.5"/></svg></i>' +
+    '<i class="cat-scroll-ico cat-scroll-ico-l"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5.5L8 12l6.5 6.5"/></svg></i>');
+  return wrap;
+}
+function syncDiscPcScrollHint(el) {
+  if (!el) return;
+  const wrap = discScrollWrap(el);
+  const max = el.scrollWidth - el.clientWidth;
+  wrap.classList.toggle('cat-fade-r', max > 2 && el.scrollLeft < max - 2);
+  wrap.classList.toggle('cat-fade-l', el.scrollLeft > 2);
+}
+function syncDiscPcScrollHints() {
+  syncDiscPcScrollHint($('discPcZones'));
+  syncDiscPcScrollHint($('discPcCats'));
+}
+
+// ---------- 发现页「分类」自定义（2026-11-18）：增删 / 排序 / 还原 ----------
+// 体验口径（照站长给的参考站）：侧栏「分类」标题旁挂「编辑」，进去后每个分类行挂 ↑ ↓ −，
+// 收起的分类在下面排成一列挂 +，底部「还原默认」+「完成」，随时来随时改。
+// 存档：游客记本机（dm_disc_cat_layout），登录记账号（user.discLayout，/api/me 下发、
+// POST /api/me/disc-layout 保存）；账号还没存过就沿用本机那份，第一次点「完成」才写进账号。
+// 游客点「完成」先弹窗问要不要注册：注册/登录 → 自动同步进账号；先不 → 就记在这台设备。
+// ≤900px 侧栏收成横滑条，↑↓× 按钮塞不下：编辑入口藏掉，编辑态一律用竖栏版式。
+const DISC_CAT_KEY = 'dm_disc_cat_layout';
+let discCatLayout = { order: [], hidden: [] };   // 生效中的自定义（两列全空 = 全默认）
+let discCatEdit = false;                         // 是否处于编辑模式（改的是内存副本，点「完成」才落盘）
+let discEditVis = [];                            // 编辑态渲染时的可见顺序快照（↑↓按这个下标换位）
+let pendingDiscLayout = null;                    // 游客选了「注册并同步」：攒着，登录成功后自动存进账号
+const DISC_EDIT_ICO = {
+  up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14.5L12 8.5l6 6"/></svg>',
+  down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9.5l6 6 6-6"/></svg>',
+  minus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 12h12"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 6v12M6 12h12"/></svg>'
+};
+function readLocalDiscLayout() {
+  try {
+    const s = JSON.parse(localStorage.getItem(DISC_CAT_KEY) || 'null');
+    const arr = v => Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.length <= 30) : [];
+    return (s && typeof s === 'object') ? { order: arr(s.order), hidden: arr(s.hidden) } : { order: [], hidden: [] };
+  } catch { return { order: [], hidden: [] }; }
+}
+function saveLocalDiscLayout(l) { try { localStorage.setItem(DISC_CAT_KEY, JSON.stringify(l)); } catch { /* 隐私模式存不了：本次会话内照样生效 */ } }
+// 生效档案：登录 = 账号的优先；账号还没存过（null）就沿用本机那份，第一次「完成」时才写进账号
+function discLayoutForMe() {
+  if (state.user && state.user.discLayout) return state.user.discLayout;
+  return readLocalDiscLayout();
+}
+// 全量已知分类的期望顺序：用户排过的按 order，没提到的（后台新加的）按默认顺序接在后面
+function discCatSequence() {
+  const all = (discPcCats || []).slice();
+  const head = discCatLayout.order.filter(c => all.includes(c));
+  return head.concat(all.filter(c => !head.includes(c)));
+}
+async function postDiscLayout(layout) {
+  try {
+    const r = await fetch('/api/me/disc-layout', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(layout)
+    });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok && state.user) state.user.discLayout = (d.discLayout && typeof d.discLayout === 'object') ? d.discLayout : null;
+  } catch { showToast('没保存上，稍后再试', undefined, 'err'); }
+  discPcRenderCats();
+}
+// 游客保存后的注册引导：本地其实已经存好了，弹窗只回答「要不要升级成账号同步」，关掉也不丢改动
+function openDiscSyncPrompt(layout) {
+  const oldEl = $('discSyncModal');
+  if (oldEl) oldEl.remove();
+  const el = document.createElement('div');
+  el.className = 'modal-mask';
+  el.id = 'discSyncModal';
+  el.style.display = 'none';
+  el.innerHTML =
+    '<div class="modal disc-sync-modal">' +
+    '<div class="modal-head"><h2>分类设置已记在这台设备</h2><button class="close-btn" id="discSyncClose">✕</button></div>' +
+    '<p class="form-hint">登录后这份设置会跟着账号走，换电脑、换手机都一样。要现在注册吗？</p>' +
+    '<div class="disc-sync-acts">' +
+    '<button type="button" class="btn-primary" id="discSyncGo">注册 / 登录并同步</button>' +
+    '<button type="button" class="btn-ghost" id="discSyncSkip">先不，就用本机的</button>' +
+    '</div></div>';
+  document.body.appendChild(el);
+  $('discSyncGo').onclick = () => {
+    pendingDiscLayout = layout;   // 攒着，登录成功后 afterAuth 自动存进账号
+    hideModal(el); el.remove();
+    openAuth('register');
+  };
+  $('discSyncSkip').onclick = () => { hideModal(el); el.remove(); };
+  $('discSyncClose').onclick = () => { hideModal(el); el.remove(); };
+  bindMaskClose(el, () => $('discSyncClose').click());
+  showModal(el);
+}
+// 「完成」：编辑态落盘。登录直写账号；游客先记本机，再问一句要不要注册同步
+function discCatFinishEdit() {
+  const layout = { order: discCatLayout.order.slice(), hidden: discCatLayout.hidden.slice() };
+  const custom = layout.order.length || layout.hidden.length;
+  discCatEdit = false;
+  if (state.user) {
+    if (custom) showToast('分类设置已保存到账号', undefined, 'ok');
+    else showToast('已还原默认');
+    postDiscLayout(layout);   // 全空时服务端会清掉档案，等于还原默认
+  } else if (custom) {
+    saveLocalDiscLayout(layout);
+    discPcRenderCats();
+    openDiscSyncPrompt(layout);
+  } else {
+    saveLocalDiscLayout({ order: [], hidden: [] });
+    discPcRenderCats();
+    showToast('已还原默认');
+  }
+}
+
+function discPcRenderCats() {
+  const el = $('discPcCats');
+  if (!el) return;
+  // 断点跨进横条版式（≤900px）时编辑态没法用，就地退出
+  if (discCatEdit && window.innerWidth <= 900) discCatEdit = false;
+  // 编辑态用的是内存工作副本，这里绝不能拿存档覆盖（一覆盖 ↑↓−+ 的改动就全丢了）；
+  // 进编辑时的读档在 #discCatEdit 的入口处做
+  if (!discCatEdit) discCatLayout = discLayoutForMe();
+  const counts = {};
+  (discPcPool || []).forEach(w => {
+    const arr = (Array.isArray(w.categories) && w.categories.length) ? w.categories : (w.category ? [w.category] : []);
+    arr.forEach(c => { counts[c] = (counts[c] || 0) + 1; });
+  });
+  // 「全部作品」永远钉在最上面，不参与增删排序
+  let html = '<button type="button" class="cat-item' + (discPcState.cat === '' && !discCatEdit ? ' active' : '') + '" data-dcat="">' +
+    '<span class="cat-ico" style="background:#5b5bd6">' + ic('all', 12) + '</span>' +
+    '<span class="nm">全部作品</span><span class="cnt">' + (discPcPool || []).length + '</span></button>';
+  // 有作品的分类才算数；用户排过序的排前面，没提到的按默认顺序接在后面，收起的不再摆出来
+  const seq = discCatSequence();
+  const vis = seq.filter(c => (counts[c] || 0) > 0 && !discCatLayout.hidden.includes(c));
+  if (discCatEdit) {
+    discEditVis = vis.slice();
+    html += vis.map((c, i) => {
+      const meta = DISC_PC_CAT_ICO[c] || ['shapes', '#8e8e93'];
+      return '<div class="cat-item cat-item-editing' + (discPcState.cat === c ? ' active' : '') + '">' +
+        '<span class="cat-ico" style="background:' + meta[1] + '">' + ic(meta[0], 12) + '</span>' +
+        '<span class="nm">' + escapeHtml(c) + '</span>' +
+        '<span class="cat-edit-acts">' +
+        '<button type="button" class="cat-edit-btn-ico" data-cup="' + i + '" title="上移"' + (i === 0 ? ' disabled' : '') + '>' + DISC_EDIT_ICO.up + '</button>' +
+        '<button type="button" class="cat-edit-btn-ico" data-cdown="' + i + '" title="下移"' + (i === vis.length - 1 ? ' disabled' : '') + '>' + DISC_EDIT_ICO.down + '</button>' +
+        '<button type="button" class="cat-edit-btn-ico cat-edit-x" data-chide="' + escapeHtml(c) + '" title="收起">' + DISC_EDIT_ICO.minus + '</button>' +
+        '</span></div>';
+    }).join('');
+    const hidden = seq.filter(c => discCatLayout.hidden.includes(c) && (counts[c] || 0) > 0);
+    html += '<div class="cat-edit-add-title">' + (hidden.length ? '已收起的分类，点 + 放回来' : '不常看的分类点 − 收起，随时放回来') + '</div>';
+    html += hidden.map(c => {
+      const meta = DISC_PC_CAT_ICO[c] || ['shapes', '#8e8e93'];
+      return '<div class="cat-item cat-item-adding">' +
+        '<span class="cat-ico" style="background:' + meta[1] + '">' + ic(meta[0], 12) + '</span>' +
+        '<span class="nm">' + escapeHtml(c) + '</span>' +
+        '<span class="cat-edit-acts"><button type="button" class="cat-edit-btn-ico cat-edit-add" data-cshow="' + escapeHtml(c) + '" title="放回来">' + DISC_EDIT_ICO.plus + '</button></span></div>';
+    }).join('');
+    html += '<div class="cat-edit-foot">' +
+      '<button type="button" class="cat-edit-reset" id="discCatReset">还原默认</button>' +
+      '<button type="button" class="cat-edit-done" id="discCatDone">完成</button></div>';
+  } else {
+    html += vis.map(c => {
+      const n = counts[c] || 0;
+      const meta = DISC_PC_CAT_ICO[c] || ['shapes', '#8e8e93'];
+      return '<button type="button" class="cat-item' + (discPcState.cat === c ? ' active' : '') + '" data-dcat="' + escapeHtml(c) + '">' +
+        '<span class="cat-ico" style="background:' + meta[1] + '">' + ic(meta[0], 12) + '</span>' +
+        '<span class="nm">' + escapeHtml(c) + '</span><span class="cnt">' + n + '</span></button>';
+    }).join('');
+  }
+  el.innerHTML = html;
+  syncDiscPcScrollHint(el);
+}
+
+// ---------- 发现页「随便看看」：新老旧作公平轮转 ----------
+// 为什么不能只按时间排：小站一次批量上架几十件，全站 268 件里 245 件是本月上的、又集中在几天，
+// 「最新收录」等于把同一批码成一长排，上一批作品直接沉到第 N 屏再也见不到；「最多喜欢」更糟——
+// 大多数作品还是 0 赞，排出来接近随机，只有早就攒了赞的那几件永远在顶上。
+// 做法：按上架时间切成 K 档（按序号切，不按时间窗——时间窗会被批量上架撑爆），
+// 每档内用「访客 + 当天」种子洗牌，再逐档轮转取件。这样一件作品能不能进第一屏，
+// 只取决于它落在哪一档，跟它上架早晚、攒了多少浏览量都无关：第 1 屏一定会同时出现
+// 最新的、中间批次的、以及最老的那几件。
+// 种子一天一换：同一天内换筛选/换平台回来顺序不跳（不会「刚看到的那件找不到了」），
+// 隔天重新打散，避免某一件作品天天霸占第一格。
+const FAIR_TIERS = 5;
+let FAIR_SEED = null;
+function fairSeed() {
+  if (FAIR_SEED) return FAIR_SEED;
+  const d = new Date();
+  FAIR_SEED = visitorId() + '|' + d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+  return FAIR_SEED;
+}
+function fairHash(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return h >>> 0;
+}
+function fairMix(arr) {
+  if (arr.length < 4) return arr.slice();
+  const byTime = arr.slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  // 档数跟着量走：4 件一档，最多 5 档。200 件以下时每档几十件，轮转出来的首屏新老都有
+  const K = Math.max(2, Math.min(FAIR_TIERS, Math.ceil(byTime.length / 4)));
+  const tiers = [];
+  for (let i = 0; i < K; i++) tiers.push([]);
+  byTime.forEach((w, i) => tiers[Math.min(K - 1, Math.floor(i * K / byTime.length))].push(w));
+  const seed = fairSeed();
+  tiers.forEach(t => t.sort((a, b) => fairHash(seed + a.id) - fairHash(seed + b.id)));
+  // 第一格留给池里最新上架的那件：新作刚上架就能在首屏看见，这是「最新收录」原来给它的确定性，
+  // 不能因为改成公平轮转就一起收走。第二格起才进入轮转。
+  const out = [byTime[0]];
+  const lead = tiers[0].indexOf(byTime[0]);
+  if (lead >= 0) tiers[0].splice(lead, 1);
+  for (let i = 0; out.length < byTime.length; i++) {
+    for (let k = 0; k < K; k++) if (tiers[k][i]) out.push(tiers[k][i]);
+  }
+  return out;
+}
+
+function discPcFiltered() {
+  const q = discPcState.q.toLowerCase();
+  const arr = (discPcPool || []).filter(w => {
+    if (discPcState.cat &&
+        !(Array.isArray(w.categories) && w.categories.includes(discPcState.cat)) &&
+        w.category !== discPcState.cat) return false;
+    if (discPcState.type && !zoneTypeOk(w, discPcState.type)) return false;
+    if (q) {
+      // 侧栏搜索是当前池内的快筛；拼音/容错的全站搜索在顶部搜索框，别把这框吹成那个
+      const s = ((w.title || '') + ' ' + (w.titleTag || '') + ' ' + (w.category || '') + ' ' +
+        (w.authorName || w.author || '')).toLowerCase();
+      if (!s.includes(q)) return false;
+    }
+    return true;
+  });
+  if (discPcState.sort === 'fair') return fairMix(arr);
+  if (discPcState.sort === 'hot') arr.sort((a, b) => (b.views || 0) - (a.views || 0));
+  else if (discPcState.sort === 'like') arr.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+  else arr.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return arr;
+}
+
+function discPcRenderList() {
+  const gallery = $('discPcGallery'), empty = $('discPcEmpty');
+  if (!gallery) return;
+  const arr = discPcFiltered();
+  gallery.innerHTML = arr.map(w => cardHtml(w)).join('');
+  // 空态两种口径：没筛选条件时是分类真空，有搜索词时多半只是说法对不上——
+  // 这个框只是当前池内的字面快筛（见 discPcFiltered），全站口径交给「找找」兜底
+  empty.innerHTML = '这个分类暂时没有作品';
+  if (!arr.length && discPcState.q) {
+    empty.textContent = '「' + discPcState.q + '」在这个筛选里没命中，可能只是说法不一样';
+    const askBtn = document.createElement('button');
+    askBtn.type = 'button';
+    askBtn.className = 'findbot-inline-btn';
+    askBtn.textContent = '让「找找」用一句话帮我找';
+    askBtn.onclick = () => { openFindBot(discPcState.q); fbAsk(discPcState.q); };
+    empty.appendChild(askBtn);
+  }
+  empty.style.display = arr.length ? 'none' : 'block';
+  const zone = DISC_PC_ZONES.find(z => z.type === discPcState.type) || null;
+  $('discPcTitle').textContent = [zone && zone.title, discPcState.cat].filter(Boolean).join(' · ') || '全部作品';
+  const n = arr.length;
+  // 「随便看看」是默认档，副标题要说清它凭什么跟「最新收录」不一样，否则用户只会觉得顺序怪
+  const fairHint = discPcState.sort === 'fair' ? '新作老作轮流露出，每件都有机会被看到' : '';
+  $('discPcDesc').textContent =
+    zone && discPcState.cat ? '「' + discPcState.cat + '」分类里符合这个平台的共 ' + n + ' 件，点开详情直接体验。'
+    : zone ? zone.desc.replace(/。$/, '') + '（共 ' + n + ' 件）'
+    : discPcState.cat ? '共 ' + n + ' 件作品 · 造梦橱窗里属于「' + discPcState.cat + '」的精选'
+    : (fairHint ? fairHint + '（共 ' + n + ' 件）' : '按用途逛一逛，找到刚好能帮上忙的那一个（共 ' + n + ' 件）');
+  if (arr.length) { bindCards(gallery); revealCards(gallery); }
+}
+
+function renderDiscoverPc() {
+  const gallery = $('discPcGallery');
+  if (!gallery) return;
+  // 加载态用全站同一枚「点灯」动画（见 dmLoadHtml），别再写裸文字「加载中…」：
+  // 侧栏同时给几行灰条占位——数据回来前整页不空着一大块
+  gallery.innerHTML = dmLoadHtml('正在点亮橱窗…');
+  discPcSkeletonSide();
+  $('discPcEmpty').style.display = 'none';
+  // 慢网兜底：灯亮超过 2.6 秒还没回来，文案换成一句解释——不然一盏灯挂着像卡死了
+  clearTimeout(discPcLoadTip);
+  discPcLoadTip = setTimeout(() => {
+    const t = gallery.querySelector('.dm-load-txt');
+    if (t) t.textContent = '作品有点多，正在一件件摆上橱窗…';
+  }, 2600);
+  discPcEnsureData().then(() => {
+    clearTimeout(discPcLoadTip);
+    if (!document.getElementById('discPcGallery')) return;   // 等待期间已切走
+    discPcLoaded = true;
+    // 记住的选择只在首次进页面恢复一次；之后切走再回来，discPcState 本身就留着上次手点的值
+    if (!discSelRestored) { discSelRestored = true; applyDiscSavedSel(); }
+    // 分类表已经回来了：记住的分类如果改名/清空过，退回「全部作品」，别让页面锁死在一个空列表上
+    if (discPcState.cat && !(discPcCats || []).includes(discPcState.cat)) { discPcState.cat = ''; saveDiscSel('pc'); }
+    discPcRenderZones();
+    discPcRenderCats();
+    discPcRenderList();
+    syncDiscPcScrollHints();   // 首屏渲染完先判一次溢出；字体晚到会改变胶囊宽度，补一次延迟校准
+    setTimeout(syncDiscPcScrollHints, 600);
+    syncDiscPcChips();     // 恢复出来的平台要亮在胶囊上，别让筛选生效了、高亮还停在「全部平台」
+    syncDiscRemember();    // 勾选态 + 说明文字（静态骨架里写的是默认文案）
+  }).catch(() => {
+    clearTimeout(discPcLoadTip);
+    gallery.innerHTML = '<div class="comment-empty">加载失败，稍后再来～</div>';
+  });
+}
+
+// 平台胶囊高亮与 discPcState.type 对齐（专区点了 'appstore' 这种特殊口径时全部胶囊熄灭）；
+// 侧栏专区选中时整个胶囊条收起（2026-11-18），点回胶囊或再点一次专区即恢复
+function syncDiscPcChips() {
+  const chips = $('discPcTypeChips');
+  if (!chips) return;
+  chips.querySelectorAll('.cat-chip').forEach(x => x.classList.toggle('active', x.dataset.dtype === discPcState.type));
+  chips.style.display = (discPcFromZone && discPcState.type) ? 'none' : '';
+}
+// 侧栏/平台胶囊/排序/搜索的控件是静态骨架，绑一次就够（loadDiscover 那边每次重画才需要重绑）
+(function bindDiscPc() {
+  const cats = $('discPcCats');
+  if (!cats) return;
+  // 横滑条渐隐提示跟随滚动与窗口宽度变化（见 syncDiscPcScrollHint）
+  ['discPcZones', 'discPcCats'].forEach(id => {
+    const el = $(id);
+    if (el) el.addEventListener('scroll', () => syncDiscPcScrollHint(el), { passive: true });
+  });
+  window.addEventListener('resize', syncDiscPcScrollHints);
+  cats.addEventListener('click', e => {
+    const b = e.target.closest('[data-dcat]');
+    if (!b) return;
+    discPcState.cat = b.dataset.dcat || '';
+    saveDiscSel('pc');      // 记住开关开着时，每改一次就地落盘（关着时 saveDiscSel 自己 early return）
+    discPcRenderCats();
+    discPcRenderList();
+  });
+  // 分类自定义的编辑动作（↑ ↓ − + / 还原默认 / 完成）：委托同一个容器。
+  // 编辑态的行不带 data-dcat，两套监听互不踩脚；↑↓ 换的是全量序列里的位置，
+  // 收起/放回只动 hidden，改动先落在内存副本上，点「完成」才落盘。
+  cats.addEventListener('click', e => {
+    if (!discCatEdit) return;
+    const up = e.target.closest('[data-cup]');
+    const down = e.target.closest('[data-cdown]');
+    const hide = e.target.closest('[data-chide]');
+    const show = e.target.closest('[data-cshow]');
+    if (up || down) {
+      const i = Number((up || down).dataset.cup || (up || down).dataset.cdown || 0);
+      const j = up ? i - 1 : i + 1;
+      if (j < 0 || j >= discEditVis.length) return;
+      const a = discEditVis[i], b = discEditVis[j];
+      const seq = discCatSequence();
+      const ia = seq.indexOf(a), ib = seq.indexOf(b);
+      if (ia === -1 || ib === -1) return;
+      seq[ia] = b; seq[ib] = a;
+      discCatLayout.order = seq;
+      discPcRenderCats();
+    } else if (hide) {
+      const c = hide.dataset.chide;
+      if (c && !discCatLayout.hidden.includes(c)) discCatLayout.hidden.push(c);
+      discPcRenderCats();
+    } else if (show) {
+      const c = show.dataset.cshow;
+      discCatLayout.hidden = discCatLayout.hidden.filter(x => x !== c);
+      discPcRenderCats();
+    } else if (e.target.closest('#discCatReset')) {
+      discCatLayout = { order: [], hidden: [] };
+      discPcRenderCats();
+    } else if (e.target.closest('#discCatDone')) {
+      discCatFinishEdit();
+    }
+  });
+  // 编辑入口：竖栏版式（>900px）才亮出来
+  const editBtn = $('discCatEdit');
+  if (editBtn) editBtn.onclick = () => {
+    if (window.innerWidth <= 900) return;
+    discCatLayout = discLayoutForMe();   // 进编辑先读一份存档当工作副本（渲染中不再覆盖）
+    discCatEdit = true;
+    discPcRenderCats();
+    const foot = document.querySelector('.cat-edit-foot');
+    if (foot && foot.scrollIntoView) foot.scrollIntoView({ block: 'nearest' });
+  };
+  const zones = $('discPcZones');
+  if (zones) zones.addEventListener('click', e => {
+    const b = e.target.closest('[data-dzone]');
+    if (!b) return;
+    // 胶囊条收起后「全部平台」够不着了：再点一次已选中的专区 = 取消，回到全部并让胶囊回来
+    discPcState.type = (discPcState.type === b.dataset.dzone) ? '' : b.dataset.dzone;
+    discPcFromZone = !!discPcState.type;
+    saveDiscSel('pc');
+    syncDiscPcChips();
+    discPcRenderZones();
+    discPcRenderList();
+  });
+  const chips = $('discPcTypeChips');
+  if (chips) chips.addEventListener('click', e => {
+    const b = e.target.closest('[data-dtype]');
+    if (!b) return;
+    discPcState.type = b.dataset.dtype || '';
+    discPcFromZone = false;
+    saveDiscSel('pc');
+    syncDiscPcChips();
+    discPcRenderZones();
+    discPcRenderList();
+  });
+  const sort = $('discPcSort');
+  if (sort) sort.addEventListener('change', () => { discPcState.sort = sort.value; saveDiscSel('pc'); discPcRenderList(); });
+  // 记住开关：勾上立刻把当前三项存下来（不用再点一次筛选），取消勾选连存档一起删——
+  // 下次打开是真·没记忆，不是「关着但还留着旧选择」。PC 和手机两个勾选框共用一套状态。
+  ['discPcRemember', 'discMRemember'].forEach(id => {
+    const box = $(id);
+    if (!box) return;
+    box.addEventListener('change', () => {
+      discPcRemember = !!box.checked;
+      if (discPcRemember) saveDiscSel(discPcActive() ? 'pc' : 'm'); else clearDiscSel();
+      syncDiscRemember();
+    });
+  });
+  syncDiscRemember();   // 首屏同步一次：上次勾过的话，进页面就是勾好的样子
+  let discPcSearchTimer = 0;
+  const search = $('discPcSearch');
+  if (search) search.addEventListener('input', () => {
+    clearTimeout(discPcSearchTimer);
+    const v = search.value.trim();
+    discPcSearchTimer = setTimeout(() => { discPcState.q = v; discPcRenderList(); }, 150);
+  });
+})();
 
 // ---------- 我的页（移动端 Tab）：深色版式——用户卡 + 数据条 + 四宫格 + 签到横幅 + 快捷入口 ----------
 // 手机端把右下角三颗浮标收进「我的」页快捷宫格：这里只做入口转发，
@@ -6983,6 +7845,7 @@ function renderMePage() {
   menu.innerHTML = '';
   const ck = state.user.checkin || {};
   const ckDone = !!ck.done;
+  const mk = ck.makeup || {};           // 断签补签：只有真断了才出现入口
   const ar = state.user.arrive || {};   // 今日到访那 2 盏（自动到账，不用点）
   const pts = Number(state.user.points || 0);
   const unread = Number(state.user.unreadNotices || 0);
@@ -7033,7 +7896,7 @@ function renderMePage() {
       </div>
       <span class="me-ck-lamp">${ic('lamp')}</span>
       <button type="button" class="me-ck-btn me-checkin${ckDone ? ' is-done' : ''}" id="meCheckin"${ckDone ? ' disabled' : ''}>${ckDone ? '今日已签 ✓' : `签到 +${ck.todayPoints || 5} 灯火`}</button>
-      <p class="me-ck-tip">${ar.points ? `每天打开站点自动 +${ar.points} 盏${ar.done ? '（今天已到账）' : ''} · ` : ''}灯火可兑换推荐位曝光 · <button type="button" class="me-ck-adlink" id="meCkAd">小程序看广告 +${ckAdOnce(ck)} 盏 ›</button></p>
+      <p class="me-ck-tip">${ar.points ? `每天打开站点自动 +${ar.points} 盏${ar.done ? '（今天已到账）' : ''} · ` : ''}灯火可兑换推荐位曝光 · <button type="button" class="me-ck-adlink" id="meCkAd">小程序看广告 +${ckAdOnce(ck)} 盏 ›</button>${Number(mk.gap) > 0 && mk.can ? `<br /><button type="button" class="me-ck-adlink" id="meCkMakeup">断签 ${Number(mk.gap)} 天，看视频补签 ›</button>` : ''}</p>
     </div>
     <a class="me-task-bar${taskClaimable ? ' has-reward' : ''}" href="/tasks" data-nav>
       <span class="me-task-ico">${ic('gift', 18)}</span>
@@ -7085,6 +7948,8 @@ function renderMePage() {
   // 「我的」页也放一条看广告入口：手机 H5 从微信打开时正好在这个页面，扫码/长按识别最顺手
   const meCkAd = $('meCkAd');
   if (meCkAd) meCkAd.onclick = () => openCheckinAdQr();
+  const meCkMakeup = $('meCkMakeup');
+  if (meCkMakeup) meCkMakeup.onclick = () => openCheckinAdQr('makeup');
   $('meAbout').onclick = openSiteInfo;
   bindMeFabTiles(card);
   $('meLogout').onclick = doLogout;
@@ -7855,7 +8720,11 @@ function route() {
   if (path === '/discover') {
     $('discoverView').style.display = 'block';
     setTitle('发现');
-    if (!keepList) loadDiscover();
+    // 双版式（2026-11-18）：PC(≥641px) 走左分类侧栏 + 内容网格，移动端走专栏版式；
+    // 断点跨越由 matchMedia 监听补渲染，两边各有缓存不重复拉数
+    const pc = setDiscoverMode();
+    if (pc) { if (!discPcLoaded || !keepList) renderDiscoverPc(); }
+    else if (!keepList) loadDiscover();
     updateNavActive();
     restoreScroll();
     return;
@@ -8104,6 +8973,8 @@ function bindAuthorOwnerTools(isMe) {
       const k = btn.dataset.auact;
       if (k === 'promo') goMyPromotions();
       else if (k === 'wallet') openStats('points');
+      // 我的关注（2026-11-18）：不在这里重造列表，直接落 /following「我关注的创作者」页
+      else if (k === 'follow') navigate('/following');
       else if (k === 'mini') { const m = $('miniModal'); if (m) showModal(m); }
       else openAuthorMoreSheet();
     };
@@ -8187,7 +9058,7 @@ async function renderAuthorTab(tab) {
   const box = $('authorGallery');
   if (!box) return;
   const token = ++authorTabState.req;   // 连点：只认最后一次的结果
-  box.classList.remove('list-mode');
+  box.classList.remove('list-mode', 'noimg-mode');   // 作者页永远是卡片网格，行式/无图类不跟过来
   paintAuthorFindStrip();   // 补全条只在作品 tab 出现，切到收藏 / 喜欢自动收起
   paintAuthorHideStrip();   // 「作品已隐藏」条同理：只在作品 tab 挂着
   if (tab === 'works') {
@@ -8260,18 +9131,40 @@ function openAuthorActionSheet(title, items) {
           <span class="au-sheet-ico">${ic(it.icon || 'arrowout', 18)}</span>
           <span class="au-sheet-main"><b>${escapeHtml(it.label)}</b>${it.sub ? `<i>${escapeHtml(it.sub)}</i>` : ''}</span>
           ${it.badge ? `<span class="au-sheet-badge">${it.badge}</span>` : ''}
-          <span class="au-sheet-more">›</span>
+          ${it.sw ? `<span class="au-sw${it.swOn() ? ' on' : ''}" aria-hidden="true"><i></i></span>` : `<span class="au-sheet-more">›</span>`}
         </button>`).join('')}</div>
     </div>`;
   auSheetEl.querySelector('.close-btn').onclick = () => hideModal(auSheetEl);
   auSheetEl.querySelectorAll('[data-aureg]').forEach(btn => {
     btn.onclick = () => {
       const it = items[Number(btn.dataset.aureg)];
+      if (!it) return;
+      if (it.sw) { toggleAuSheetSwitch(btn, it); return; } // 开关行当场拨，不关弹层
       hideModal(auSheetEl);
-      if (it && typeof it.on === 'function') it.on();
+      if (typeof it.on === 'function') it.on();
     };
   });
   showModal(auSheetEl);
+}
+
+// 弹层里的行内开关：先按结果重画（拨了就有反应），请求失败再弹回原状态，别让眼前的开关和账号里存的说不一致
+async function toggleAuSheetSwitch(btn, it) {
+  const sw = btn.querySelector('.au-sw');
+  const sub = btn.querySelector('.au-sheet-main i');
+  const prev = !!it.swOn();
+  const next = !prev;
+  if (sw) sw.classList.toggle('on', next);
+  if (sub && it.swSub) sub.textContent = it.swSub(next);
+  btn.disabled = true;
+  try {
+    await it.onSwitch(next);
+  } catch (e) {
+    if (sw) sw.classList.toggle('on', prev);
+    if (sub && it.swSub) sub.textContent = it.swSub(prev);
+    showToast(e.message || '没能保存，稍后再试', 2400, 'err');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // 「编辑主页」：头像 / 昵称 / 个性地址——三件事原来散在三个入口，主页上给一个总口
@@ -8284,7 +9177,12 @@ function openAuthorEditSheet() {
     { icon: 'link', label: '个性地址', sub: u.slug ? `/u/${u.slug}` : '把 /u/ 后面的编号换成好记的词', on: openSlugModal },
     { icon: 'edit', label: '个人介绍', sub: u.bio ? u.bio.slice(0, 24) + (u.bio.length > 24 ? '…' : '') : '技能、擅长的事、兴趣爱好，写在主页上', on: openBioModal },
     { icon: 'globe', label: '我的链接', sub: ls.length ? ls.map(l => l.label).join(' / ') : 'GitHub、知乎、掘金… 填了才显示', on: openLinksModal },
-    { icon: 'eye', label: '主页作品', sub: u.hideWorks ? '已对访客隐藏：别人只看得到档案' : '公开：访客能看到你的全部作品', on: () => setHideWorks(u.hideWorks !== true) }
+    { // 开关行：拨过去 = 公开，拨回来 = 对访客隐藏；副文案跟着开关走
+      icon: 'eye', label: '主页作品', sw: true,
+      swOn: () => (state.user || {}).hideWorks !== true,
+      swSub: on => on ? '公开：访客能看到你的全部作品' : '已对访客隐藏：别人只看得到档案',
+      onSwitch: on => setHideWorks(on)
+    }
     // 账号设置不再放这里：编辑主页只管主页内容，密码/绑定/提醒走头像下拉或「全部功能」的账号设置
   ]);
 }
@@ -8607,7 +9505,7 @@ async function loadAuthor(name) {
   // ② 作品区铺与真卡同构的骨架卡（数量照 SSR 抄，高度不跳）；看板铺同结构「–」占位撑住高度；
   // ③ meta 行放一根灰条占位，别让入驻时间/常写分类回来时档案卡再长高 10px。
   const agEl = $('authorGallery');
-  agEl.classList.remove('list-mode');
+  agEl.classList.remove('list-mode', 'noimg-mode');
   agEl.innerHTML = authorGallerySkeletonHtml(ssr && ssr.cards);
   authorTabState.loading = true;   // 骨架期锁住 tab 切换：作品流还没就位，切过去只能看到空列表
   $('authorStatGrid').innerHTML = authorStatSkeletonHtml();
@@ -9861,48 +10759,8 @@ async function openWork(id, push = true, opts = {}) {
       (aTags.length ? tagHtml(aTags[0]) : '') +
       (aTags.length > 1 ? `<i class="author-tag-more" title="全部勋章：${escapeHtml(aTags.join('、'))}">+${aTags.length - 1}</i>` : '');
 
-    // 作者名片卡（2026-11-18，仿 php中文网档案块）：头像 + 名字 + 全量荣誉章 + 四格统计 + 关注按钮。
-    // 数据都在作品载荷里（详情接口专属的 authorAvatar/authorWorks/authorLikes/authorFavs/authorFollowers），
-    // 不再单独发请求。匿名 / 未认领作品整块隐藏；自己的作品不出关注按钮（名片下方的动作区本来就全是自己的管理条）。
-    const dac = $('detailAuthorCard');
-    if (dac) {
-      const dacShow = !!w.claimed && !w.anonymous && !!w.authorId;
-      dac.style.display = dacShow ? 'block' : 'none';
-      if (dacShow) {
-        const dacName = dname(w);
-        paintAvatar($('dacAva'), dacName, w.authorAvatar);
-        $('dacAva').title = w.owned ? '查看我的主页' : `访问 @${dacName} 的主页`;
-        const dacNameBtn = $('dacName');
-        dacNameBtn.textContent = dacName;
-        dacNameBtn.title = w.owned ? '查看我的主页' : `访问 @${dacName} 的主页`;
-        const dacGo = () => { hideModal(detailModal); navigate('/u/' + encodeURIComponent(w.authorId || w.author)); };
-        $('dacAva').onclick = dacGo;
-        dacNameBtn.onclick = dacGo;
-        // 副标题：站长没给「头衔」这类字段，先放作品归属一句话；有头衔字段后填这里
-        $('dacSub').textContent = '';
-        // 荣誉章：企业认证排最前（蓝V胶囊），其余标签逐个展开——作者名旁边那行只露一枚，这里看全量
-        $('dacBadges').innerHTML =
-          (w.authorCert ? certPillHtml(w.authorCert) : '') +
-          (aTags.filter(t => t !== CERT_TAG).map(t => tagBadgeHtml(t)).join(''));
-        $('dacBadges').style.display = (w.authorCert || aTags.length) ? 'flex' : 'none';
-        // 四格统计（口径与作者页一致：粉丝不写「关注」）
-        $('dacStats').innerHTML = [
-          ['作品', w.authorWorks || 0],
-          ['获赞', w.authorLikes || 0],
-          ['被收藏', w.authorFavs || 0],
-          ['粉丝', w.authorFollowers || 0]
-        ].map(([label, n]) => `<span class="dac-stat"><b>${fmtStatNum(n)}</b>${label}</span>`).join('');
-        // 关注按钮：大按钮放名片底部（原来贴在作者名后面的小胶囊就此退役）
-        const dacFollow = $('dacFollow');
-        const dacCanFollow = !w.owned && !!w.authorId && !(state.user && state.user.id === w.authorId);
-        // 游客也出按钮：toggleFollow 对未登录会自己弹登录框（与作者页同一套行为）
-        dacFollow.style.display = dacCanFollow ? 'flex' : 'none';
-        if (dacCanFollow) {
-          paintFollowBtn(dacFollow, w.authorFollowing === true, w.authorFollowers || 0);
-          dacFollow.onclick = () => toggleFollow(w.authorId, dacFollow);
-        }
-      }
-    }
+    // 作者名片卡（2026-11-18）：已撤出详情弹窗——站长定案是「挪到」完整页右栏 #seoAuthorCard（那里宽敞），
+    // 弹窗里不再重复放。作者统计数据仍随详情接口下发（完整页名片卡要用）；弹窗里荣誉章看上面 headrow（+N 悬停看全量）。
 
     // 阶段横幅：预告 / 等平台上架审核的作品，先把「为什么现在点不了」讲清楚；
     // 作者自主下架的作品（仅作者本人能打开）给一条专属提示
@@ -9931,6 +10789,14 @@ async function openWork(id, push = true, opts = {}) {
       stageBanner.style.display = 'none';
       stageBanner.className = 'detail-stage';
       stageBanner.innerHTML = '';
+    }
+    // 涉币提示：与阶段横幅分开一条，两者可以同时出现（「开发中 + 涉币」都成立）
+    const cryptoNote = $('detailCrypto');
+    if (cryptoNote) {
+      cryptoNote.style.display = w.crypto ? 'block' : 'none';
+      cryptoNote.innerHTML = w.crypto
+        ? `<span class="ico">${ic('coin')}</span> <b>涉虚拟货币内容</b> · 仅供信息参考，不构成投资建议，也不代表本站推荐或背书。这类作品不进榜单和星梦期刊，也不能买推荐位；是否使用、是否合规请自行判断。`
+        : '';
     }
     // 数据行只留按钮里没有的数字：点赞 / 收藏 / 评论已经在按钮上，
     // 同一批数字在相邻两行各说一遍，是之前最显眼的一处「乱」（2026-11-13）
@@ -9983,9 +10849,9 @@ async function openWork(id, push = true, opts = {}) {
     let linksHtml = linkEntries.map(e => {
       const act = actionOfType(e.t, e.site);
       const atype = e.site ? '官网' : (e.t || '作品链接');
-      // 官方下载标注：官网按钮本身就是官方入口不用重复标；小程序「了解详情」兜底也不是下载地址
-      const official = !e.site && !e.miniIntro && officialStoreOk(e.url, w.site);
-      const officialTag = official ? '<span class="official-flag" title="官方下载地址：来自官方应用商店或作者官网同域">官方</span>' : '';
+      // 官方下载标注：只认官方应用商店；官网按钮本身就是官方入口不用重复标；小程序「了解详情」兜底也不是下载地址
+      const official = !e.site && !e.miniIntro && officialStoreOk(e.url);
+      const officialTag = official ? '<span class="official-flag" title="官方下载地址：来自官方应用商店">官方</span>' : '';
       return `<a class="btn-link" target="_blank" rel="nofollow noopener" href="/out/${encodeURIComponent(w.id)}?k=${encodeURIComponent(e.k || '')}" data-act="${act}" data-atype="${escapeHtml(atype)}"><span class="ico b-ico">${ic(e.site ? 'globe' : (e.t && LINK_ICON[e.t]) || 'link')}</span> ${
         e.site ? '官网' : e.miniIntro ? '了解详情' : e.t ? escapeHtml((LINK_LABEL[e.t] || '访问作品').replace(/^[^A-Za-z\u4e00-\u9fa5]+/, '')) : escapeHtml(linkLabelOf(tl))
       }${officialTag}</a>`;
@@ -10274,10 +11140,19 @@ async function openWork(id, push = true, opts = {}) {
       if (canDm) dmBtn.onclick = () => openDmWith(w.authorId, dname(w));
     }
 
-    // 关注作者（2026-11-18）：挪进下方「作者名片卡」的大按钮里（见 renderDetailAuthorCard 段）。
-    // headrow 这颗小胶囊退役——同一屏两颗关注按钮会打架，名片卡里的更大更好点
+    // 关注作者（2026-11-18，站长要求）：弹窗里唯一的关注入口贴在 headrow 作者名后面——
+    // 名字旁边才是「这个人的主页」这一层语境，翻到下面的名片卡再找按钮太远。
+    // 名片卡底部那颗全宽大按钮与之同屏只隔一行，两颗会互相分散注意力，已在上面收起。
     const followEl = $('detailFollow');
-    if (followEl) followEl.style.display = 'none';
+    if (followEl) {
+      const canFollow = !w.owned && !!w.authorId && !(state.user && state.user.id === w.authorId);
+      followEl.style.display = canFollow ? 'inline-flex' : 'none';
+      if (canFollow) {
+        paintFollowBtn(followEl, w.authorFollowing === true, w.authorFollowers || 0);
+        // 游客也出按钮：toggleFollow 对未登录会自己弹登录框（与作者页同一套行为）
+        followEl.onclick = () => toggleFollow(w.authorId, followEl);
+      }
+    }
 
     // 自己的作品：数据区下方显示高亮管理条（编辑 / 下架 / 删除）；别人的作品：登录后可屏蔽，有账号的作者可拉黑
     // 站长账号看别人的作品：同样出这条（浅琥珀色），但只留「站长编辑」——
@@ -10295,9 +11170,10 @@ async function openWork(id, push = true, opts = {}) {
     // 自己的开源作品才给「更新 star」：详情页本来就有 star 徽章，入口放管理条里最顺手
     const dStarBtn = $('detailStarSync');
     if (dStarBtn) dStarBtn.style.display = (canManage && w.openSource === true) ? '' : 'none';
-    // 「推荐」入口只给作者本人：站长视角条不放（投放是作者自己的灯火，站内角色不代操作）
+    // 「推荐」入口只给作者本人：站长视角条不放（投放是作者自己的灯火，站内角色不代操作）。
+    // 涉币作品连作者本人也不给：服务端 createRedeemCore 同样会拒，这里先把入口收掉，别让人点进去才发现。
     const promoEntry = $('ownerPromoBtn');
-    if (promoEntry) promoEntry.style.display = canManage ? '' : 'none';
+    if (promoEntry) promoEntry.style.display = (canManage && !w.crypto) ? '' : 'none';
     const hideBtn = $('toggleHide');
     hideBtn.innerHTML = `<i class="ico b-ico">${ic('eye')}</i> ${w.hidden ? '重新上架' : '下架'}`;
     // 站长模式把这些作者专属动作收起来；切回自己的作品时要还原（openWork 会被反复调用）
@@ -10878,12 +11754,9 @@ function setupUploadForm() {
   renderCatPicker();
 
   // ---- 1 分钟极速填写：粘贴介绍 / 从网址读取，都只回填候选值，绝不自动提交 ----
-  // 形态胶囊默认会勾第一个，那种「用户没碰过」的状态不算已填，AI 可以直接替换。
-  let typesTouched = false;
+  // 2026-11-18 形态不再默认勾 Web：极速填写只在形态全空时自动填，勾过就不抢，
+  // 所以不再需要记录「用户碰过形态」的标记。
   const typePickerBox = $('typePicker');
-  if (typePickerBox) typePickerBox.addEventListener('change', e => {
-    if (e.target && e.target.name === 'types') typesTouched = true;
-  });
   const aiFillBox = $('aiFillBox');
   const aiFillToggle = $('aiFillToggle');
   const aiFillBody = $('aiFillBody');
@@ -10921,7 +11794,8 @@ function setupUploadForm() {
       $('aiFillPaneUrl').hidden = aiMode !== 'url';
       $('aiFillPaneGh').hidden = aiMode !== 'gh';
       aiFillGo.textContent = aiMode === 'url'
-        ? (parseGithubRepo(aiFillUrl.value.trim()) ? '读取仓库并填表' : '读取网站并填表')
+        ? (parseGithubRepo(aiFillUrl.value.trim()) ? '读取仓库并填表'
+          : parseAppStore(aiFillUrl.value.trim()) ? '读取 App Store 并填表' : '读取网站并填表')
         : (aiMode === 'gh' ? '读取仓库并填表' : '识别并回填');
       aiStatus('');
       aiFillCover.hidden = true;
@@ -10938,10 +11812,12 @@ function setupUploadForm() {
     document.querySelectorAll('.ai-fill-tab').forEach(btn => btn.addEventListener('click', () => {
       setMode(btn.dataset.aimode, true);
     }));
-    // 网址框里贴的是 GitHub 仓库 → 按钮文案跟着变，别让人点了才发现走的是仓库通道
+    // 网址框里贴的是 GitHub 仓库 / App Store 应用 → 按钮文案跟着变，别让人点了才发现走的是哪条通道
     aiFillUrl.addEventListener('input', () => {
       if (aiMode !== 'url') return;
-      aiFillGo.textContent = parseGithubRepo(aiFillUrl.value.trim()) ? '读取仓库并填表' : '读取网站并填表';
+      const v = aiFillUrl.value.trim();
+      aiFillGo.textContent = parseGithubRepo(v) ? '读取仓库并填表'
+        : parseAppStore(v) ? '读取 App Store 并填表' : '读取网站并填表';
     });
     // 把服务端的候选值写进表单；网址模式额外填网站地址，并把 og:image 留给用户自己决定要不要当封面
     const applyFill = d => {
@@ -10971,9 +11847,9 @@ function setupUploadForm() {
         else { setCats(d.categories); applied.push('应用分类'); flash($('catPicker')); }
       }
       const curTypes = selectedTypes();
-      const isDefaultTypes = !typesTouched && curTypes.length === 1 && curTypes[0] === TYPES[1];
+      // 2026-11-18 起形态不预选：全空才自动填；用户勾过（或草稿带出）就不抢，要替换请勾「覆盖」
       if (Array.isArray(d.types) && d.types.length) {
-        if (!overwrite && !isDefaultTypes && curTypes.length) skipped.push('作品形态');
+        if (!overwrite && curTypes.length) skipped.push('作品形态');
         else { setSelectedTypes(d.types); applied.push('作品形态'); flash(typePickerBox); }
       }
       // 关键词：AI 识别时按识别出来的名字 / 简介配的词，勾了「覆盖」就整组替换
@@ -10982,15 +11858,27 @@ function setupUploadForm() {
         else { setKeywords(d.keywords); kwTouched = true; applied.push('搜索关键词'); flash($('kwEditor')); }
       }
       if (d.site && d.site.url) {
-        const webInput = form.querySelector('input[data-ltype="Web"]');
-        if (webInput) {
-          if (!overwrite && webInput.value.trim()) skipped.push('网站地址');
+        // 链接落哪个框：勾了 Web 进「网站地址」；形态是 iOS / Android 等时进对应平台的链接框
+        // （App Store 链接读取回填的就是这条支路，types 已是 ['iOS']，链接框已随形态重渲染）
+        const linkInput = form.querySelector('input[data-ltype="Web"]') || form.querySelector('input[data-ltype]');
+        if (linkInput) {
+          if (!overwrite && linkInput.value.trim()) skipped.push(linkInput.dataset.ltype === 'Web' ? '网站地址' : '作品链接');
           else {
-            webInput.value = d.site.url;
-            webInput.dispatchEvent(new Event('input', { bubbles: true }));
-            flash(webInput);
-            applied.push('网站地址');
+            linkInput.value = d.site.url;
+            linkInput.dispatchEvent(new Event('input', { bubbles: true }));
+            flash(linkInput);
+            applied.push(linkInput.dataset.ltype === 'Web' ? '网站地址' : '作品链接');
           }
+        }
+      }
+      // 官网（选填）：App Store 读取会带回开发者网站；Web 读取时官网就是作品网址，不重复回填
+      if (d.officialSite && form.site) {
+        if (!overwrite && String(form.site.value || '').trim()) skipped.push('官网');
+        else {
+          form.site.value = d.officialSite;
+          form.site.dispatchEvent(new Event('input', { bubbles: true }));
+          flash(form.site);
+          applied.push('官网');
         }
       }
       const bits = [];
@@ -11034,6 +11922,10 @@ function setupUploadForm() {
       if (!m) m = s.match(/^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/);
       return m ? { owner: m[1], repo: m[2] } : null;
     }
+    // App Store 应用详情页（2026-11-18）：apps.apple.com/<国家>/app/<名字>/id数字。
+    // 只做识别改按钮文案，实际读取全在服务端 /api/work/parse-url 里分流。
+    const parseAppStore = raw =>
+      !!String(raw || '').trim().match(/^https?:\/\/apps\.apple\.com\/[a-z]{2}\/app\/(?:[^/]+\/)?id\d{6,12}(?:[/?#].*)?$/i);
     // 后台那套「定位句 / 一眼看懂」不在这里自动跑：前台本来就有单独的 AI 帮写按钮，
     // 一次点击连发三个模型请求既慢又费额度，作者想补自己点更清楚。
     function applyGithub(g) {
@@ -11155,7 +12047,7 @@ function setupUploadForm() {
         return;
       }
       aiFillGo.disabled = true;
-      aiStatus(isGh ? '正在读取 GitHub 仓库…' : (aiMode === 'url' ? '正在读取网站…' : '正在识别…'));
+      aiStatus(isGh ? '正在读取 GitHub 仓库…' : (aiMode === 'url' ? (parseAppStore(url) ? '正在读取 App Store 应用…' : '正在读取网站…') : '正在识别…'));
       startProgress(isGh ? 'gh' : aiMode, payloadUrl);
       aiFillCover.hidden = true;
       pendingCover = null;
@@ -11670,7 +12562,8 @@ function setupUploadForm() {
     $('progressVal').textContent = '40%';
     $('etaInput').value = '';
     applyStageFields();
-    setSelectedTypes(['Web']);
+    // 2026-11-18 起新表单不预选任何形态（原来是 ['Web']）：作者自己勾，极速填写再按识别结果回填
+    setSelectedTypes([]);
     setPasteTarget('images');
     // 「一眼看懂」回到收起态，计数归零（form.reset 已经清空 value，但计数是 JS 画的）
     qlUI.setOpen(false);
@@ -13294,6 +14187,13 @@ function setupDetailActions() {
   if ($('closeToolDetail')) $('closeToolDetail').onclick = closeToolDetail;
   if ($('tdClose')) $('tdClose').onclick = closeToolDetail;
   if (toolModal) bindMaskClose(toolModal, closeToolDetail);
+  // 「不再提示此工具」：记 localStorage 后关弹窗并重挂，这张卡当场消失
+  if ($('tdHide')) $('tdHide').onclick = () => {
+    if (!TD_CUR) return;
+    hideToolFeed(TD_CUR.id);
+    closeToolDetail();
+    mountToolCards();
+  };
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && toolModal && toolModal.style.display === 'flex') closeToolDetail();
   });
@@ -13770,6 +14670,64 @@ function setupDetailActions() {
   $('closeReport').onclick = () => { hideModal(reportModal); };
   bindMaskClose(reportModal, () => hideModal(reportModal));
 
+  // ---- 分类有误（2026-11-18）----
+  // 用户在列表/详情发现分类挂错，直接提一个更合适的分类。这里只提交建议、不动作品数据：
+  // 服务端进 reports.json（kind='cat'），后台「投诉处理」里由管理员/站长核实采纳，采纳后才改分类。
+  const catFixModal = $('catFixModal');
+  let catFixCats = null;   // /api/categories 缓存（去掉「全部」），反复开弹窗不用重复拉
+  const catsOfWork = w => (Array.isArray(w.categories) && w.categories.length
+    ? w.categories.filter(Boolean)
+    : (w.category ? [w.category] : []));
+  $('openCatFix').onclick = async () => {
+    const w = state.currentWork;
+    if (!w) return;
+    const cur = catsOfWork(w);
+    $('catFixCur').innerHTML = cur.length
+      ? `现在挂在 <b>${escapeHtml(cur.join(' / '))}</b> 下，选一个你觉得更合适的分类。`
+      : '这件作品还没挂分类，选一个你觉得合适的。';
+    $('catFixWant').innerHTML = '<option value="">加载中…</option>';
+    $('catFixNote').value = '';
+    showModal(catFixModal);
+    try {
+      if (!catFixCats) {
+        const list = await (await fetch('/api/categories', { cache: 'no-store' })).json();
+        catFixCats = (Array.isArray(list) ? list : []).filter(c => c && c !== '全部');
+      }
+      // 已经挂着的分类不再给（服务端同样会拦，前端先筛掉省一次报错）
+      const opts = catFixCats.filter(c => !cur.includes(c));
+      $('catFixWant').innerHTML = opts.length
+        ? '<option value="">请选择…</option>' + opts.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('')
+        : '<option value="">这件作品已经挂满分类了</option>';
+    } catch {
+      $('catFixWant').innerHTML = '<option value="">分类加载失败，刷新后再试</option>';
+    }
+  };
+  $('closeCatFix').onclick = () => hideModal(catFixModal);
+  bindMaskClose(catFixModal, () => hideModal(catFixModal));
+  $('catFixForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const w = state.currentWork;
+    if (!w) return;
+    const want = $('catFixWant').value;
+    if (!want) { showToast('先选一个分类', undefined, 'err'); return; }
+    const btn = $('catFixSubmit');
+    btn.disabled = true; btn.textContent = '提交中…';
+    try {
+      const res = await fetch(`/api/works/${encodeURIComponent(w.id)}/cat-suggest`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ want, note: $('catFixNote').value })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '提交失败');
+      hideModal(catFixModal);
+      showToast(data.message || '建议已收到，核实后我们会调整分类', undefined, 'ok');
+    } catch (err) {
+      showToast(err.message, undefined, 'err');
+    } finally {
+      btn.disabled = false; btn.textContent = '提交建议';
+    }
+  });
+
   // ---- 认领作品 ----
   const claimModal = $('claimModal');
   const claimFormEl = $('claimForm');
@@ -14048,7 +15006,7 @@ function setupDetailActions() {
 
   // 编辑 / 删除自己的作品
   $('detailStarSync').onclick = () => openStarSync();
-  // 推荐位入口：和发布菜单里的 promoBtn 同一条链路（openRedeem：未登录先弹登录，再进 /promote；路由切换会顺手关掉详情弹窗）
+  // 推荐位入口：和发布菜单里的 promoBtn 同一条链路（openRedeem：直接进 /promote，未登录也能先看效果；路由切换会顺手关掉详情弹窗）
   const ownerPromoBtn = $('ownerPromoBtn');
   if (ownerPromoBtn) ownerPromoBtn.onclick = () => openRedeem();
   $('editWork').onclick = () => {
@@ -15016,7 +15974,7 @@ function setupPublishMenu() {
     setPubMenu(false);
     const mode = item.dataset.pub;
     if (mode === 'want' || mode === 'chat') { e.preventDefault(); goCompose(mode); }
-    // 推荐自己的作品：和头像菜单里的 promoBtn 同一条链路（openRedeem：未登录先弹登录，再进 /promote）
+    // 推荐自己的作品：和头像菜单里的 promoBtn 同一条链路（openRedeem：直接进 /promote，未登录也能先看效果）
     if (mode === 'promo') { e.preventDefault(); openRedeem(); }
   });
   // 点空白 / 按 Esc 收起。用 closest 判断，点菜单内部不误关
@@ -15321,8 +16279,6 @@ function renderChatPost() {
       <div class="cp-head">
         ${avaHtml(p.author, p.authorAvatar, 'br-ava cp-ava', false, p.authorRef || p.author)}
         <span class="cp-byline"><b>${brAuthorHtml(p.authorRef, p.author)}</b><span class="br-when">${escapeHtml(wishWhen(p.createdAt))}${p.editedAt ? ' · 已编辑' : ''}</span></span>
-      </div>
-      <div class="cp-meta">
         <span class="br-kind ${kind.cls}" title="${escapeHtml(kind.title)}">${escapeHtml(kind.label)}</span>
       </div>
       ${chatEditing ? `
@@ -16649,9 +17605,10 @@ function xpaySectionHtml() {
     </div>`;
 }
 
-// 推荐面板入口：各处按钮统一跳独立页面 /promote（没登录先弹登录）
+// 推荐面板入口：各处按钮统一跳独立页面 /promote。
+// 未登录也直接进：/promote 未登录态自带「登录后才能投放 + 先登录」引导和投放效果榜，
+// 让游客先看得到推荐效果再决定要不要登录；弹窗拦在前面反而把效果榜挡住了。
 function openRedeem() {
-  if (!state.user) { openAuth('login'); return; }
   navigate('/promote');
 }
 
@@ -17053,16 +18010,21 @@ function renderRedeem() {
     const clickOnly = !comp && (r.views || 0) === 0 && (r.clicks || 0) > 0;   // 纯点击包：没有曝光额度
     const queued = r.status === 'queued';
     // 真被点开的次数（2026-11-16 加）：曝光包没买点击额度，但广告确实会被人点，作者要看的就是这个。
-    // 次数与后台「累计点击」同一本账；人数 11-04 起才记，老单可能只有次数。没被点过就不占一行。
+    // 次数与后台「累计点击」同一本账；人数 11-04 起才记，老单可能只有次数。
+    // 2026-11-18 站长提：投放中的单子哪怕一次没被点、也没人关，也把「0」写出来——
+    // 留着空白，作者会以为这里的数据没统计上；写 0 才是「确实还没人动」。
+    // 已结束的老单仍只在 >0 时显示（11-04 前没有明细，硬写 0 反而是假数据）。
+    const liveAd = !comp && r.status === 'active';
     const realClk = comp ? 0 : (r.clicksReal || 0);
-    const realClkNote = realClk > 0
-      ? ` · 被点开 ${realClk} 次${r.clickPeople ? `（${r.clickPeople} 人）` : ''}` : '';
+    const realClkNote = !comp && (realClk > 0 || liveAd)
+      ? ` · 被点开 ${realClk} 次${realClk > 0 && r.clickPeople ? `（${r.clickPeople} 人）` : ''}` : '';
     // 被访客主动关掉的人数 / 次数（2026-11-16 加）：与后台「关闭 N 人 / N 次」同一本账，
     // 11-04 起才记录，更早的单子没有这份数据就不显示。关掉的人偏多时给一条软提示——
     // 多半是同一批访客最近看到这条推荐太频繁、看腻了：只提建议，不影响正常投放。
     const closePv = comp ? 0 : (r.closePv || 0);
     const closeUv = comp ? 0 : (r.closeUv || 0);
-    const closeNote = closePv > 0 ? ` · 关闭 ${closeUv} 人 / ${closePv} 次` : '';
+    const closeNote = !comp && (closePv > 0 || liveAd)
+      ? ` · 关闭 ${closeUv} 人 / ${closePv} 次` : '';
     const closeRate = (r.uv || 0) > 0 ? closeUv / r.uv : 0;
     // 触发条件（2026-11-16 站长定）：关闭 ≥3 人且占看到的人 ≥10%——门槛压低一点，
     // 单量小时也能早点提醒到「可能投得太频繁」；没有「挡投放」的副作用，宁早勿晚。
@@ -17135,7 +18097,7 @@ function renderRedeem() {
       <details class="rfq-item">
         <summary>怎么获得灯火？</summary>
         <div class="rfq-a">
-          <p>最省事的是<b>每天签到</b>：网页右上角「签到」、小程序「我的」页的签到卡，点一下就行。${scheduleLadder(ckSched)}，${ckDays} 天一共 <b>${ckSum} 盏</b>。断一天就从第 1 天重新开始，已经拿到的不倒扣。</p>
+          <p>最省事的是<b>每天签到</b>：网页右上角「签到」、小程序「我的」页的签到卡，点一下就行，${ckDays} 天一共 <b>${ckSum} 盏</b>。断一天就从第 1 天重新开始，已经拿到的不倒扣。</p>
           <p>最快的一招是<b>把作品分享给朋友</b>：好友通过你的分享链接访问 <b>+1 盏</b>、<b>扫码打开 +3 盏</b>（每人每天只计一次）、注册 <b>+100 盏</b>。</p>
           <div class="rh-share-row"><span>一条分享链接就够：</span><button type="button" class="rh-share-btn" id="shareMyWork"><span class="ico">${ic('share')}</span> 去分享作品</button></div>
           <p>投稿过审也有奖励（首件最多 +200 盏、之后每件 +50 盏），老账号绑定微信一次性 +300 盏。</p>
@@ -17692,10 +18654,19 @@ function closeCkAdModal() {
   if (ckAdModal) hideModal(ckAdModal);
 }
 
-function paintCkAdState(ar) {
+// 弹窗里那行状态：领灯火看额度，补签看断签情况——同一个弹窗两用，mode 决定口径
+function paintCkAdState(ck, mode) {
   const el = ckAdModal && ckAdModal.querySelector('.ckad-state');
   if (!el) return;
-  const a = ar || {};
+  if (mode === 'makeup') {
+    const m = (ck && ck.makeup) || {};
+    const gap = Number(m.gap) || 0;
+    if (!(gap > 0)) { el.textContent = '连签已经续上了，回网页直接签今天这一天就行。'; return; }
+    el.textContent = `断签 ${gap} 天 · 最近 ${Number(m.window) || 7} 天还能补 ${Number(m.left) || 0} 次`
+      + (m.can ? `（补一天 +${Number(m.nextReward) || 0} 盏，补满就连上）` : '');
+    return;
+  }
+  const a = (ck && ck.adReward) || {};
   const left = a.left == null ? null : Number(a.left);
   const sched = Array.isArray(a.schedule) ? a.schedule : [];
   const stepTxt = sched.some(v => v !== sched[0]) ? `，按 ${sched.join('/')} 递增` : '，每次 30 盏';
@@ -17706,10 +18677,24 @@ function paintCkAdState(ar) {
       : '今天的 3 次已经领完，明天 0 点刷新');
 }
 
-function openCheckinAdQr() {
+function openCheckinAdQr(mode) {
   if (!state.user) { openAuth('login'); return; }
-  const ar = (state.user.checkin && state.user.checkin.adReward) || {};
-  if (ar.left != null && Number(ar.left) <= 0) { showToast('今天的 3 次看完了，明天 0 点刷新'); return; }
+  const mk = mode === 'makeup';
+  const ck = state.user.checkin || {};
+  if (mk) {
+    // 断签才补；补不满（断太久 / 次数不够）直接拦下，别让人扫了码才发现补不了
+    const m = ck.makeup || {};
+    if (!(Number(m.gap) > 0)) { showToast('连签没断，不用补签'); return; }
+    if (!m.can) {
+      showToast(m.reason === 'quota'
+        ? `最近 ${Number(m.window) || 7} 天的补签次数不够补满这段空档`
+        : `断签超过 ${Number(m.limit) || 3} 天，补不回来了`);
+      return;
+    }
+  } else {
+    const ar = ck.adReward || {};
+    if (ar.left != null && Number(ar.left) <= 0) { showToast('今天的 3 次看完了，明天 0 点刷新'); return; }
+  }
   if (!ckAdModal) {
     ckAdModal = document.createElement('div');
     ckAdModal.className = 'modal-mask';
@@ -17739,12 +18724,21 @@ function openCheckinAdQr() {
     ckAdModal.querySelector('.close-btn').onclick = closeCkAdModal;
     bindMaskClose(ckAdModal, closeCkAdModal);
   }
-  paintCkAdState(ar);
+  // 同一个弹窗两用：领灯火 / 补签。标题与说明按模式切，码是同一张（都落「我的」页签到卡）
+  ckAdModal.dataset.mode = mk ? 'makeup' : 'ad';
+  ckAdModal.querySelector('.modal-head h2').textContent = mk ? '看支视频补签' : '看支广告领灯火';
+  ckAdModal.querySelector('.ckad-lead').textContent = mk
+    ? '补签也得借小程序走一趟（网页播不了激励视频）：扫码直达「我的」页，点签到下面那条「看视频补签」，看完自动补上——补的是连签，断的那天照样算数。'
+    : '激励视频只能在微信里播，这一步借小程序走一趟：扫码直达「我的」页，点那张「看视频领灯火」，看完立刻到账。';
+  ckAdModal.querySelector('.mpk-tip').textContent = mk
+    ? '微信扫一扫（在微信里打开本页则长按识别）。看完不用回来点按钮——这个窗口开着就会自己认账，补签进度和灯火一起变。'
+    : '微信扫一扫（在微信里打开本页则长按识别）。看完不用截图、也不用回来点按钮——这个窗口开着就会自己认账，余额和「还剩几次」一起变。';
+  paintCkAdState(ck, ckAdModal.dataset.mode);
   showModal(ckAdModal);
   loadPeekQr(ckAdModal.querySelector('.mpk-block'), 'ck-ad', '', false, (state.user && state.user.id) || '');
   ckAdModal.querySelector('.ckad-late').style.display = 'none';   // 新开一张码，上一轮的「没到账」排查提示收起来
-  // 起点是「现在已用几次」，只认变大（跨天 / 多设备都安全）
-  ckAdSeen = Number(ar.used || 0);
+  // 起点是「现在已用几次」，只认变大（跨天 / 多设备都安全）：补签数次数，领灯火数档位
+  ckAdSeen = Number(mk ? (ck.makeup || {}).used : (ck.adReward || {}).used) || 0;
   ckAdMiss = 0;
   stopCkAdPoll();
   ckAdTimer = setInterval(ckAdPoll, 4000);
@@ -17752,14 +18746,15 @@ function openCheckinAdQr() {
 
 function ckAdPoll() {
   if (!state.user || !ckAdModal || ckAdModal.style.display === 'none') { stopCkAdPoll(); return; }
+  const mk = ckAdModal.dataset.mode === 'makeup';
   fetch('/api/me/checkin', { headers: { 'Cache-Control': 'no-cache' } })
     .then(r => r.json())
     .then(d => {
-      const a = d && d.adReward;
-      if (!a) return;
-      const used = Number(a.used) || 0;
-      if (used <= ckAdSeen) {
-        paintCkAdState(a);   // 顺带把冷启动时拿到旧额度的情况纠正过来
+      if (!d) return;
+      // 认账只看服务端真实变大的那个计数：领灯火看 adReward.used，补签看 makeup.used
+      const cur = Number(mk ? (d.makeup || {}).used : (d.adReward || {}).used) || 0;
+      if (cur <= ckAdSeen) {
+        paintCkAdState(d, mk ? 'makeup' : 'ad');   // 顺带把冷启动时拿到旧额度的状态纠正过来
         // 一直没到账：多半是扫码的微信绑的不是当前账号，灯火记到那边去了
         if (++ckAdMiss === 24) {
           const late = ckAdModal.querySelector('.ckad-late');
@@ -17770,19 +18765,64 @@ function ckAdPoll() {
       ckAdMiss = 0;
       const late = ckAdModal.querySelector('.ckad-late');
       if (late) late.style.display = 'none';
-      // 递增档（30/30/40）下「次数 × 单价」不再成立：按档位把这一段实实在在加出来
-      const sched = Array.isArray(a.schedule) ? a.schedule : [30, 30, 40];
-      const gained = sched.slice(ckAdSeen, used).reduce((s, v) => s + (Number(v) || 0), 0);
-      ckAdSeen = used;
+      const prevTotal = Number((state.user.checkin || {}).total) || 0;
+      let gained = 0;
+      if (mk) {
+        // 补签发的是「被补那天档位」的灯火，累计签到灯火的差值就是这一笔
+        gained = Math.max(0, (Number(d.total) || 0) - prevTotal);
+      } else {
+        // 递增档（30/30/40）下「次数 × 单价」不再成立：按档位把这一段实实在在加出来
+        const sched = Array.isArray(d.adReward && d.adReward.schedule) ? d.adReward.schedule : [30, 30, 40];
+        gained = sched.slice(ckAdSeen, cur).reduce((s, v) => s + (Number(v) || 0), 0);
+      }
+      ckAdSeen = cur;
       state.user.checkin = Object.assign({}, state.user.checkin, d);
       if (typeof d.points === 'number') state.user.points = d.points;
       renderAuthBox();          // 顶部灯火数当场变
-      refreshCkAdBlock(d);      // 签到卡里的「还剩几次」跟着变
-      paintCkAdState(a);
-      showToast(`+${gained} 盏灯火到账 · 今天还能看 ${Number(a.left) || 0} 次`, undefined, 'ok');
-      if (!Number(a.left)) stopCkAdPoll();
+      // 整卡重画（ad 块与补签条都在卡里，一次重画到底，别再有第二处替换同一块 DOM）
+      repaintCheckinArea(d, d.checkinBoard, d.checkinRank);
+      paintCkAdState(d, mk ? 'makeup' : 'ad');
+      if (mk) {
+        const m = d.makeup || {};
+        // 「我的」页那张签到卡是另一套结构，开着就整页重画（和签到后同一套做法）
+        const meView = $('meView');
+        if (meView && meView.style.display !== 'none') renderMePage();
+        showToast(Number(m.gap) > 0
+          ? `补签成功 +${gained} 盏 · 还差 ${Number(m.gap)} 天续上，再补 ${Number(m.gap)} 次`
+          : `补签成功 +${gained} 盏 · 连签续上了，记得签今天这一天`, undefined, 'ok');
+        if (!m.can) stopCkAdPoll();
+      } else {
+        const ar = d.adReward || {};
+        showToast(`+${gained} 盏灯火到账 · 今天还能看 ${Number(ar.left) || 0} 次`, undefined, 'ok');
+        if (!Number(ar.left)) stopCkAdPoll();
+      }
     })
     .catch(() => { /* 网络抖一下不打断，下一轮再试 */ });
+}
+
+// 把签到卡 / 签到小榜按最新状态原地重画（签到成功、补签到账共用）。
+// 只影响 .checkin-card 与 .ck-board（统计弹窗里那两块），「我的」页那张卡是另一套结构。
+function repaintCheckinArea(d, board, rank, points) {
+  const ck = d || {};
+  document.querySelectorAll('.checkin-card').forEach(card => {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = checkinCardHtml(ck);
+    const node = tmp.firstElementChild;
+    card.replaceWith(node);
+    bindCkAdBtn(node);
+    bindMakeupBtn(node);
+    const b = node.querySelector('#checkinGo');
+    if (b) b.onclick = () => doCheckin(r => repaintCheckinArea(r, r.checkinBoard, r.checkinRank, r.points));
+  });
+  if (Array.isArray(board)) {
+    document.querySelectorAll('.ck-board').forEach(bd => {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = checkinBoardHtml(board, rank);
+      bd.replaceWith(tmp.firstElementChild);
+    });
+  }
+  const pc = $('pointsCard');
+  if (pc && typeof points === 'number') pc.querySelector('b').textContent = points;
 }
 
 // ---------- 从推荐弹窗引导分享：选作品 → 出分享卡片 ----------
@@ -18355,27 +19395,12 @@ async function openStats(mode) {
   const ckCard = checkinCardHtml(data.checkin || state.user.checkin || {});
   const ckBoard = checkinBoardHtml(data.checkinBoard, data.checkinRank);
   const bindCheckin = () => {
-    bindCkAdBtn();   // 卡片里的「看广告领灯火」按钮（和签到按钮各管各的）
+    bindCkAdBtn();     // 卡片里的「看广告领灯火」按钮（和签到按钮各管各的）
+    bindMakeupBtn();   // 断签时那条「看视频补签」（同样只在断签时才存在）
     const b = $('checkinGo');
     if (!b) return;
-    b.onclick = () => doCheckin(d => {
-      const card = document.querySelector('#statsBody .checkin-card');
-      if (card) {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = checkinCardHtml(d);
-        card.replaceWith(tmp.firstElementChild);
-        bindCheckin();
-      }
-      const pc = $('pointsCard');
-      if (pc) pc.querySelector('b').textContent = d.points;
-      // 签到后小榜原地重画：累计和名次当场变，不用关掉重开
-      const cb = document.querySelector('#statsBody .ck-board');
-      if (cb && Array.isArray(d.checkinBoard)) {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = checkinBoardHtml(d.checkinBoard, d.checkinRank);
-        cb.replaceWith(tmp.firstElementChild);
-      }
-    });
+    // 签到成功后整卡 + 小榜一起重画，与补签到账走同一条路（repaintCheckinArea）
+    b.onclick = () => doCheckin(d => repaintCheckinArea(d, d.checkinBoard, d.checkinRank, d.points));
   };
   const boardHtml = board.length ? `
     <div class="stats-works-head">灯火达人榜</div>
@@ -18656,6 +19681,16 @@ async function openStats(mode) {
     return `<div class="sw-types">入口构成：${parts.join(' · ')}</div>`;
   };
 
+  // 真实跳出（/out 网关口径）：真的跳到了对方网站的次数，和上面的访问/下载按钮点击（含没跳出去的）两本账。
+  // 网关 2026-11-12 才上线，更早没有数；total 为 0 就整行不画，老作品别顶个 0 吓人
+  const OUT_KIND_LABEL = { repo: '源码仓库', site: '官网', link: '作品链接' };
+  const outLine = w => {
+    const o = w.out || { total: 0, d7: 0, kinds: [] };
+    if (!o.total) return '';
+    const parts = o.kinds.map(x => `${escapeHtml(OUT_KIND_LABEL[x.k] || x.k)} ${x.n}`);
+    return `<div class="sw-types sw-out" title="点「访问/下载」后真的跳出到对方网站的次数（服务端网关 2026-11-12 起记录）；上面的访问/下载是按钮点击次数，含点了没跳出去的">真实跳转 ${o.total}${o.d7 ? `（近 7 天 ${o.d7}）` : ''}：${parts.join(' · ')}</div>`;
+  };
+
   const rows = works.map(w => {
     // 状态标签：站内审核（审核中/已下架）与作者进度（开发中/等上架审核）合起来给一句人话
     const chip = w.status === 'rejected' ? '<span class="sw-badge is-bad">已下架</span>'
@@ -18674,6 +19709,7 @@ async function openStats(mode) {
         <div class="sw-meta">浏览 ${w.views} · 访客 ${w.uv} · <span class="ico">${ic('heart')}</span> ${w.likes} · <span class="ico">${ic('star')}</span> ${w.favs} · <span class="ico">${ic('chat')}</span> ${w.comments}${
           actionLine(w)} · <span class="ico">${ic('link')}</span> 分享 ${w.shareVisits || 0}${w.watch ? ` · <span class="ico">${ic('bell')}</span> ${w.watch} 人催更` : ''}</div>
         ${typeLine(w)}
+        ${outLine(w)}
         <div class="sw-star" data-star-id="${escapeHtml(w.id)}" hidden></div>
       </div>
       <div class="sw-right">
@@ -18702,6 +19738,7 @@ async function openStats(mode) {
     sumItem('下载', totals.download, 'is-act'),
     sumItem('扫码人数', totals.scan, 'is-act'),
     ...(totals.scanIntent ? [sumItem('小程序码查看', totals.scanIntent, 'is-act is-intent')] : []),
+    ...(totals.out ? [sumItem('真实跳转', totals.out, 'is-act')] : []),
     sumItem('近 7 天', totals.pv7),
     sumItem('点赞', totals.likes),
     sumItem('收藏', totals.favs),
@@ -19099,7 +20136,7 @@ async function loadFavPage() {
   const g = $('favGallery'), em = $('favEmpty');
   if (!g) return;
   g.innerHTML = dmLoadHtml('正在点亮橱窗…');
-  g.classList.remove('list-mode');
+  g.classList.remove('list-mode', 'noimg-mode');
   em.style.display = 'none';
   try {
     let items = [];
@@ -19108,8 +20145,8 @@ async function loadFavPage() {
       const map = new Map((all.items || []).map(w => [w.id, w]));
       items = (state.favs || []).map(id => map.get(id)).filter(Boolean);
     }
-    g.innerHTML = items.map(w => state.view === 'list' ? listHtml(w) : cardHtml(w)).join('');
-    g.classList.toggle('list-mode', state.view === 'list');
+    g.innerHTML = items.map(w => isRowView() ? listHtml(w) : cardHtml(w)).join('');
+    syncViewClass(g);
     bindCards(g);
     em.style.display = items.length ? 'none' : 'block';
   } catch {
@@ -19124,7 +20161,7 @@ async function loadLikedPage() {
   const g = $('likeGallery'), em = $('likeEmpty');
   if (!g) return;
   g.innerHTML = dmLoadHtml('正在点亮橱窗…');
-  g.classList.remove('list-mode');
+  g.classList.remove('list-mode', 'noimg-mode');
   em.style.display = 'none';
   try {
     let items = [];
@@ -19132,8 +20169,8 @@ async function loadLikedPage() {
       const data = await (await fetch('/api/works?liked=1&pageSize=all', { cache: 'no-store' })).json();
       items = data.items || [];
     }
-    g.innerHTML = items.map(w => state.view === 'list' ? listHtml(w) : cardHtml(w)).join('');
-    g.classList.toggle('list-mode', state.view === 'list');
+    g.innerHTML = items.map(w => isRowView() ? listHtml(w) : cardHtml(w)).join('');
+    syncViewClass(g);
     bindCards(g);
     em.style.display = items.length ? 'none' : 'block';
   } catch {
@@ -19608,6 +20645,7 @@ function setupHeader() {
       localStorage.setItem('dm_view', state.view);
       document.querySelectorAll('#viewToggle .vt-btn').forEach(b =>
         b.classList.toggle('active', b === btn));
+      syncColsToggle();   // 列数开关只在卡片视图出现（2026-11-18 站长）
       loadWorks();
     };
   });
@@ -20960,6 +21998,13 @@ async function loadFooterStats() {
         `<span>已过滤爬虫与脚本请求，脚本刷的量不进统计。</span>` +
         `<span>同一访客一天最多计 50 次访问，超出后照常浏览、但不再计数。</span>` +
         `<span>网页与小程序两边分开统计，互不合并。</span>` +
+        // 不去重的原始数（2026-11-18 用户要求补上）：上面主行的「次」做过单日上限 + 排除名单扣减，
+        // 这里给出没扣过的原始计数，网页/小程序都带上，读者能对出「扣掉了多少」。
+        (s.pvRaw != null
+          ? `<b>不去重的原始数</b>` +
+            `<span>网页：今日 ${fmt(s.pvTodayRaw)} 次 / ${fmt(s.uvTodayRaw)} 人，累计 ${fmt(s.pvRaw)} 次 / ${fmt(s.uvRaw)} 人（不做单日上限、不扣排除名单）。</span>` +
+            `<span>小程序：今日 ${fmt(s.miniPvTodayRaw)} 次 / ${fmt(s.miniUvTodayRaw)} 人，累计 ${fmt(s.miniPvRaw)} 次 / ${fmt(s.miniUvRaw)} 人。</span>`
+          : '') +
       `</span>`;
     // 挂在「访问数据」组标签（.fs-label）后面：紧跟组名、在「网页」角标之前。
     //   注意别用 querySelector('.fs-item')——第一个 .fs-item 是「已运营 N 天」那条编年史 <a>，

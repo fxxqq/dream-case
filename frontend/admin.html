@@ -28,11 +28,19 @@
     .logo { font-weight:700; color:var(--primary); font-size:17px; }
     .spacer { flex:1; }
     /* 顶部 PV/UV 横幅：进入后台一眼看到站点流量 */
-    .pv-banner { display:flex; align-items:center; gap:14px; font-size:13px; color:var(--muted); }
+    .pv-banner { display:flex; align-items:center; gap:11px; font-size:13px; color:var(--muted); }
     .pv-banner b { color:var(--text); font-size:15px; font-variant-numeric: tabular-nums; }
     .pv-banner .pv-item { white-space:nowrap; }
     .pv-banner .pv-item em { font-style:normal; font-size:11px; color:var(--muted); margin-right:3px; }
-    @media (max-width: 900px) { .pv-banner { display:none; } }
+    @media (max-width: 1150px) {
+      .header-inner { gap:8px; padding:0 12px; }
+      .logo, .header-inner > .btn, #adminWhoWrap { flex:none; }
+      .logo { font-size:14px; }
+      .header-inner .btn { padding:6px 10px; }
+      .pv-banner { gap:8px; font-size:12px; }
+      .pv-banner b { font-size:14px; }
+    }
+    @media (max-width: 960px) { .pv-banner { display:none; } }
     .btn { border:none; border-radius:8px; padding:8px 16px; font-size:13px; cursor:pointer; }
     .btn-primary { background:var(--primary); color:#fff; }
     .btn-ghost { background:#fff; border:1px solid var(--border); color:var(--text); }
@@ -333,6 +341,15 @@
     .row-meta .iploc { margin-left:4px; color:#0a7d43; background:#eef7f1; border-radius:4px; padding:0 5px; font-size:11px; }
     .row-meta.ip-meta .tag { margin-left:4px; }
     .row-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    /* 匿名投稿排查：一组一张卡，组头给出判据（同 IP / 同站点）和件数 */
+    .anon-group { border-bottom:1px solid var(--border); }
+    .anon-group-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+      padding:10px 18px; background:#fafbfd; border-bottom:1px solid var(--border); font-size:13px; }
+    .anon-group-head b { font-weight:600; }
+    .anon-group-n { color:var(--muted); font-size:12px; }
+    @media (max-width: 720px) {
+      .anon-group-head { padding:10px 12px; }
+    }
     /* 行操作收纳：只留「编辑」在外，其余收进「操作」下拉（hover 展开，点击也能开合，兜触屏） */
     /* padding-bottom 把按钮和菜单之间 6px 空隙并进 hover 区，鼠标斜着移过去菜单不闪断 */
     .act-more { position:relative; padding-bottom:6px; margin-bottom:-6px; }
@@ -1065,10 +1082,12 @@
     <div class="header-inner">
       <span class="logo">✦ 造梦橱窗 · 后台</span>
       <span class="pv-banner" id="pvBanner" style="display:none">
-        <span class="pv-item" title="小程序今日访问次数"><em>小程序</em><b id="miniPvToday">0</b> PV</span>
+        <span class="pv-item" title="网页今日访问次数（不含小程序和爬虫）"><em>网页</em><b id="pvToday">0</b> PV</span>
+        <span class="pv-item" title="网页今日独立访客数（不含小程序和爬虫）"><em>网页</em><b id="uvToday">0</b> UV</span>
         <!-- 小程序渠道单独统计（不和网页 PV/UV 混算：手机 NAT 共享 IP，混进网页 UV 会失真） -->
+        <span class="pv-item" title="小程序今日访问次数"><em>小程序</em><b id="miniPvToday">0</b> PV</span>
         <span class="pv-item" title="小程序今日独立设备数"><em>小程序</em><b id="miniUvToday">0</b> UV</span>
-        <span class="pv-item" title="今日新增注册用户数"><em>今日注册</em><b id="usersToday">0</b> 人</span>
+        <span class="pv-item" title="今日新增注册用户数（括号里按建号来源分开：网页 / 小程序）"><em>今日注册</em><b id="usersToday">0</b> 人（网页 <b id="usersTodayWeb">0</b> · 小程序 <b id="usersTodayMini">0</b>）</span>
       </span>
       <a class="btn btn-ghost" href="/">返回网站</a>
       <span class="spacer"></span>
@@ -1142,6 +1161,7 @@
           <button class="tab" data-tab="reports">投诉处理</button>
           <button class="tab" data-tab="jury">众人小法官</button>
           <button class="tab" data-tab="claims">认领申请</button>
+          <button class="tab" data-tab="anonip">匿名投稿</button>
           <button class="tab" data-tab="feedback">意见反馈</button>
           <button class="tab" data-tab="wxkf">微信客服</button>
           <span class="side-group">数据</span>
@@ -1528,6 +1548,24 @@
       <div class="modal-foot">
         <button type="button" class="btn btn-ghost" id="adPasteCancel">取消</button>
         <button type="button" class="btn btn-primary" id="adPasteOk">粘贴到这里</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 投放报表（对外口径）：把各广告的周期 + 曝光 + 点击汇成一张能直接发给合作方的表。
+       不做转化归因——成交发生在客户自己的平台/后台，报表里只出点击数，
+       客户拿「自家后台订单数 ÷ 本表点击数」自己算转化率 -->
+  <div class="modal-mask" id="adReportMask">
+    <div class="modal" style="max-width:760px">
+      <h2>投放报表（对外口径）</h2>
+      <div class="hint" style="padding:0 0 12px">
+        给合作方看的口径：每支广告的<b>周期、累计曝光、累计点击、近 7 天走势</b>。转化率不在本站发生，
+        复制出去的文本里已写明「转化率 = 贵方后台订单数 ÷ 本表点击数」，客户拿点击数回自己后台对账即可。
+      </div>
+      <div id="adReportBody" style="max-height:56vh;overflow:auto"></div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" id="adReportClose">关闭</button>
+        <button type="button" class="btn btn-primary" id="adReportCopy">复制文本报表</button>
       </div>
     </div>
   </div>
@@ -2159,8 +2197,14 @@
     async function loadStats() {
       try {
         const s = await api('/api/admin/stats');
-        // 顶部横幅只看小程序渠道 + 注册（2026-11-18：网页 PV/UV 从横幅撤掉，数据仍在 /api/admin/stats 里）
+        // 顶部横幅：网页 PV/UV + 小程序渠道 PV/UV + 今日注册
+        $('pvToday').textContent = s.pvToday || 0;
+        $('uvToday').textContent = s.uvToday || 0;
         $('usersToday').textContent = s.usersToday || 0;
+        // 今日注册按来源拆：网页 = 总数 - 小程序（小程序「微信一键登录」建号才带 regFrom='mini'）
+        const todayMini = Number(s.usersTodayMini) || 0;
+        $('usersTodayWeb').textContent = Math.max(0, (s.usersToday || 0) - todayMini);
+        $('usersTodayMini').textContent = todayMini;
         // 小程序渠道：单独一桶，网页 PV/UV 不含这部分
         $('miniPvToday').textContent = s.miniPvToday || 0;
         $('miniUvToday').textContent = s.miniUvToday || 0;
@@ -2595,6 +2639,7 @@
       if (tab === 'reports') return loadReports();
       if (tab === 'jury') return loadJury();
       if (tab === 'claims') return loadClaims();
+      if (tab === 'anonip') return loadAnonSubmits();
       if (tab === 'feedback') return loadFeedback();
       if (tab === 'wxkf') return loadWxKf();
       if (tab === 'comments') return loadComments();
@@ -3931,6 +3976,7 @@
     let curStatus = '全部';   // 当前作品列表的筛选状态（原地改行时判断是否该移出列表）
     let workQuery = '';       // 作品列表搜索词（全部作品 / 待审核 / 已下架 共用一个框，服务端按它过滤后再分页）
     let workAnonOnly = false; // 「只看匿名」：匿名投稿（无归属）＋ 匿名发布（前台只显示「匿名」）都算
+    let watchScanDays = 30;   // 「一键复查」的时间范围（7/30/90/0=全部），列表重绘不丢
     let workSearchTimer = null;
 
     // 单行 HTML：loadWorks 与原地补丁共用，保证两种渲染完全一致
@@ -3969,6 +4015,8 @@
               <div class="row-title">${rowTitleHtml(w)}
                 <span class="tag">${esc((w.types && w.types.length ? w.types : [w.type || '网站']).join(' / '))}</span>
                 ${w.status === 'pending' ? '<span class="tag warn">待审核</span>' : ''}
+                ${Array.isArray(w.watchHits) && w.watchHits.length ? `<span class="tag bad" title="命中重点复核词：${esc(w.watchHits.join('、'))}。代理 IP / 翻墙 / 科学上网 / 换网络环境类服务一律不收（《作品规范》第四条硬红线），先核对是「做这个服务」还是「只是提到这个词」">重点复核</span>` : ''}
+                ${w.crypto ? '<span class="tag warn" title="涉虚拟货币内容：前台卡片挂「涉币 · 信息参考」提示；不进榜单、不进星梦期刊；作者不能拿它买推荐位。只做信息展示，站方不背书">涉币</span>' : ''}
                 ${w.stage === 'wip' ? `<span class="tag warn" title="还在做：进首页「即将上线」预告卡，不进主列表；站长可在编辑器里改阶段">预告${typeof w.progress === 'number' ? ' · ' + w.progress + '%' : ''}</span>` : ''}
                 ${w.stage === 'reviewing' ? '<span class="tag warn" title="等平台上架审核：展示成灰卡，链接和码先不给点">等平台审核</span>' : ''}
                 ${w.anon ? '<span class="tag">匿名投稿</span>' : ''}
@@ -3978,6 +4026,7 @@
                 ${w.hidden ? '<span class="tag bad">作者下架</span>' : ''}
                 ${w.featured ? '<span class="tag ok">精选' + (w.featuredUntil ? '·剩' + featDaysLeft(w.featuredUntil) + '天' : '') + '</span>' : ''}
                 ${w.pinned ? '<span class="tag">置顶</span>' : ''}
+                ${w.discHide ? '<span class="tag warn" title="只从「发现」页摘掉：搜索、分类页、作者页、详情页、收藏都照旧可见">发现页隐藏</span>' : ''}
                 ${w.pubTimeCustom ? '<span class="tag" title="发布时间是后台手动设置的，首页「最近 / 最新」按这个时间排">手动时间</span>' : ''}
                 ${w.openSource === true ? '<span class="tag ok">开源</span>' : ''}
                 ${w.paidModel === 'lamp' && w.lampPrice ? `<span class="tag warn" title="访客要花 ${w.lampPrice} 盏灯火解锁才看得到入口">灯火解锁 · ${w.lampPrice} 盏</span>` : ''}
@@ -3996,6 +4045,7 @@
                 ${w.aiReview && w.aiReview.pass === false ? `<span style="color:#a32d2d">· AI 初审不通过：${esc(w.aiReview.reason || '未说明原因')}</span>` : ''}
                 ${w.aiReview && w.aiReview.pass === null ? `<span style="color:var(--muted)">· AI 初审不可用：${esc(w.aiReview.note || '转人工')}</span>` : ''}
                 ${w.aiReview && w.aiReview.pass === true && w.status === 'pending' ? '<span style="color:#2e7d32">· AI 初审通过（等人工复核）</span>' : ''}
+                ${Array.isArray(w.watchHits) && w.watchHits.length ? `<span style="color:#a32d2d">· 命中复核词：${esc(w.watchHits.join('、'))}</span>` : ''}
                 ${w.link ? `· <a href="${esc(w.link)}" target="_blank" rel="noopener" class="row-link" title="${esc(w.link)}">${esc(shortUrl(w.link))}</a>` : ''}
                 ${w.repo ? `· <a href="${esc(w.repo)}" target="_blank" rel="noopener" class="row-link repo" title="源码：${esc(w.repo)}">源码：${esc(shortUrl(w.repo, 30))}</a>` : ''}</div>
               ${kwLine}
@@ -4011,6 +4061,8 @@
                   ${w.status !== 'rejected' ? `<button class="mi mi-danger" data-act="reject" data-id="${w.id}">${w.status === 'pending' ? '拒绝' : '下架'}</button>` : ''}
                   <button class="mi" data-act="feature" data-id="${w.id}">${w.featured ? '取消精选' : '设为精选'}</button>
                   <button class="mi" data-act="pin" data-id="${w.id}">${w.pinned ? '取消置顶' : '置顶'}</button>
+                  <button class="mi" data-act="disc-hide" data-id="${w.id}" title="只从「发现」页摘掉（代充、导购、纯聚合这类合法但不是作品的件用这个）：搜索、分类页、作者页、详情页、收藏都不受影响，不用整件下架">${w.discHide ? '恢复到发现页' : '发现页不展示'}</button>
+                  <button class="mi" data-act="crypto" data-id="${w.id}" title="涉虚拟货币内容（区块链资讯 / 数据 / 行情工具）：勾上前台卡片挂「涉币 · 信息参考」，不进榜单和星梦期刊，作者不能买推荐位；已有的在投推荐位会一并撤下退款">${w.crypto ? '取消涉币标记' : '标记为涉币'}</button>
                   <button class="mi" data-act="claimopen" data-id="${w.id}">${w.claimable ? '关闭认领' : '开放认领'}</button>
                   <button class="mi" data-act="claimcode" data-id="${w.id}" title="给这件作品设一个单独的认领暗号（≤10 位），发给作者；TA 填对当场归属，无需交证据、无需审核；认领成功后暗号自动作废。同一暗号设在同一位作者的几件作品上 = 作者填一次，这批一起归他">${w.claimCode ? '改暗号' : '认领暗号'}</button>
                   <button class="mi" data-act="anonymous" data-id="${w.id}">${w.anonymous ? '取消匿名' : '设为匿名'}</button>
@@ -4099,6 +4151,11 @@
         const head = `<div class="form-inline" style="border-bottom:1px solid var(--border)">
             <button class="btn btn-primary" id="newWorkBtn">＋ 新建作品</button>
             <button class="btn btn-ghost" id="mdImportBtn" title="一份 md 清单批量建成多件作品，统一用默认封面">md 一键导入</button>
+            <button class="btn btn-ghost" id="watchScanBtn" title="把最近上架 / 最近改过的已上线作品过一遍重点复核词（代理 IP / 翻墙 / 换网络环境）。只在小标上标出来，不会自动下架或转待审">一键复查</button>
+            <select id="watchScanDays" title="复查的时间范围：按「上架时间」和「最后编辑时间」取较新的那个算" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:#fff;color:#444">
+              ${[[7, '最近 7 天'], [30, '最近 30 天'], [90, '最近 90 天'], [0, '全部已上线']]
+                .map(([v, t]) => `<option value="${v}"${watchScanDays === v ? ' selected' : ''}>${t}</option>`).join('')}
+            </select>
             <span style="color:var(--muted);font-size:12px">${countTxt}${!q && status === 'offline' ? ' · 点「查看」核对内容后「恢复上架」，作品会立刻回到首页和榜单（浏览/点赞/灯火数据都保留）' : ''}</span>
             ${anonChk}
             ${nav}
@@ -4119,10 +4176,84 @@
     // 「只看匿名」勾选：勾选项跟着列表头每次重绘都会换一个新的 DOM，所以事件委托挂在 panel 上（重绘不丢监听）。
     // 换筛选条件一律回第 1 页，否则会停在超出范围的空页。
     panel.addEventListener('change', e => {
-      if (!e.target || e.target.id !== 'workAnonOnly') return;
+      if (!e.target) return;
+      if (e.target.id === 'watchScanDays') { watchScanDays = Number(e.target.value) || 0; return; }
+      if (e.target.id !== 'workAnonOnly') return;
       workAnonOnly = !!e.target.checked;
       loadWorks(curStatus, 1);
     });
+
+    // ---- 一键复查：把最近上架 / 最近改过的已上线作品过一遍重点复核词 ----
+    // 只标不改：命中就在列表里挂「重点复核」小标，转不转待审、下不下架是另一件事，由人点。
+    async function runWatchScan() {
+      const days = watchScanDays;
+      const label = days ? `最近 ${days} 天` : '全部已上线';
+      const mask = document.createElement('div');
+      mask.className = 'modal-mask';
+      mask.id = 'watchScanMask';
+      mask.style.display = 'flex';
+      mask.innerHTML = `<div class="modal" style="max-width:680px;width:100%">
+          <h2>正在复查 · ${label}</h2>
+          <p class="hint" style="line-height:1.7;margin:0">一件件过关键词，稍等一下。</p>
+        </div>`;
+      document.body.appendChild(mask);
+      const close = () => mask.remove();
+      mask.addEventListener('mousedown', e => { if (e.target === mask) close(); });
+
+      let r;
+      try {
+        r = await api('/api/admin/watch-scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ days })
+        });
+      } catch (e) {
+        mask.innerHTML = `<div class="modal" style="max-width:520px;width:100%">
+            <h2>复查没跑起来</h2>
+            <p class="hint" style="line-height:1.7">${esc(e.message || '接口出错')}</p>
+            <div class="modal-foot"><button class="btn btn-ghost" id="wsClose">关闭</button></div>
+          </div>`;
+        mask.querySelector('#wsClose').onclick = close;
+        return;
+      }
+
+      const hits = Array.isArray(r.hits) ? r.hits : [];
+      const when = iso => {
+        const t = Date.parse(iso || '');
+        return t ? new Date(t).toLocaleDateString('zh-CN') : '';
+      };
+      const rows = hits.map(h => `
+        <div style="border-top:1px solid var(--border);padding:10px 0">
+          <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap">
+            <a href="javascript:void(0)" data-ws-open="${esc(h.id)}" style="font-weight:600;color:var(--text);text-decoration:none;border-bottom:1px dashed var(--border)" title="打开这件作品的编辑页看原文">${esc(h.title)}</a>
+            <span style="color:var(--muted);font-size:12px">${h.authorName ? '@' + esc(h.authorName) + ' · ' : ''}${esc(when(h.updatedAt || h.createdAt))}</span>
+            ${h.promos ? `<span class="tag bad" title="这件正挂着推荐位：确认是这类服务的话，先撤投放再下架，灯火会按规则退">在投推荐位 ${h.promos}</span>` : ''}
+            ${h.crypto ? '<span class="tag warn">已标涉币</span>' : (h.cryptoHint ? '<span class="tag" title="文案里有币 / 链 / 交易所这类字眼，可能该打涉币标记（不进榜单、不能买推荐位）。只是线索，不是结论">涉币线索</span>' : '')}
+          </div>
+          <div style="margin-top:4px;font-size:12px;color:#a32d2d">命中：${h.hits.map(esc).join('、')}</div>
+        </div>`).join('');
+
+      mask.innerHTML = `<div class="modal" style="max-width:680px;width:100%">
+          <h2>复查结果 · ${label}</h2>
+          <p class="hint" style="line-height:1.7;margin:0 0 4px">
+            已上线 <b>${r.scanned}</b> 件里，<b style="color:${hits.length ? '#a32d2d' : '#237804'}">${hits.length}</b> 件命中重点词${r.cleared ? `；另有 ${r.cleared} 件的旧标记已撤（文案改干净了）` : ''}。
+          </p>
+          <p class="hint" style="line-height:1.7;margin:0 0 10px">
+            命中只说明「提到了这些词」，不等于就是做这个服务——点标题看原文。这里不会自动下架、也不会转待审；要处理还是到列表里点「下架 / 拒绝」。
+          </p>
+          ${hits.length ? `<div style="max-height:52vh;overflow:auto">${rows}</div>`
+            : `<div class="empty" style="padding:18px 0">这批都没命中，可以放心。</div>`}
+          <div class="modal-foot">
+            <button class="btn btn-ghost" id="wsClose">关闭</button>
+          </div>
+        </div>`;
+      mask.querySelector('#wsClose').onclick = close;
+      mask.querySelectorAll('[data-ws-open]').forEach(el => {
+        el.onclick = () => { close(); openEditor(el.dataset.wsOpen); };
+      });
+      // 复查结果已经写回作品（watchHits），重载当前列表让小标同步亮起来
+      loadWorks(curStatus, curPage || 1);
+    }
 
     // ---- 下架 / 拒绝待审：原因必填，下架的同时把原话站内通知给作者 ----
     // 以前这两个动作是直连接口的：落库原因永远是「管理员手动下架」，作者不点进「我的作品」就不知道发生了什么。
@@ -6507,6 +6638,7 @@
     panel.addEventListener('click', async e => {
       if (e.target.id === 'newWorkBtn') { openEditor(null); return; }
       if (e.target.id === 'mdImportBtn') { openMdImport(); return; }
+      if (e.target.id === 'watchScanBtn') { runWatchScan(); return; }
       // 「操作」下拉：hover 已能展开，这里兜触屏/键盘 —— 点一下开合；点到行内其他位置先收起
       const moreBtn = e.target.closest('.act-more-toggle');
       if (moreBtn) {
@@ -6582,6 +6714,31 @@
           const r = await api(`/api/admin/works/${id}/pin`, { method: 'POST' });
           w.pinned = r.pinned;
           toast(r.pinned ? '已置顶' : '已取消置顶');
+        } else if (act === 'disc-hide') {
+          // 发现页不展示：只影响 /discover 的取数（移动端专栏 + PC 全量池 + 精选栏），
+          // 站内搜索 / 分类页 / 作者页 / 详情页 / 收藏都不动——所以不问「确定下架吗」那么重的话
+          const hide = !w.discHide;
+          if (hide && !confirm(`把「${w.title}」从发现页摘掉？\n· 「发现」页的各专栏、分类、平台专区都不再出现它（分类计数跟着减）\n· 搜索、分类页、作者主页、详情页、收藏照旧可见，浏览 / 点赞 / 灯火 / 收录记录都不动\n· 随时可以点「恢复到发现页」放回来`)) return;
+          const r = await api(`/api/admin/works/${id}/disc-hide`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ hide })
+          });
+          w.discHide = r.discHide;
+          toast(r.discHide ? '已从发现页摘掉，站内其它入口照旧' : '已恢复到发现页');
+        } else if (act === 'crypto') {
+          const on = !w.crypto;
+          if (on && !confirm(`把「${w.title}」标记为涉币？\n· 前台卡片、详情页挂「涉币 · 信息参考」提示\n· 不进榜单、不进星梦期刊（已上榜的下次刷新就不在了）\n· 作者不能拿它买推荐位；已经在投 / 排队的推荐位会一并撤下并退回灯火\n· 作品照常展示、可搜索、可收藏，站内其它入口不变\n\n确定标记？`)) return;
+          const r2 = await api(`/api/admin/works/${id}/crypto`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ on })
+          });
+          w.crypto = r2.crypto;
+          toast(r2.crypto
+            ? `已标记涉币${r2.cancelled ? `，撤下 ${r2.cancelled} 条推荐位并退回 ${r2.refunded} 盏灯火` : ''}`
+            : '已取消涉币标记');
+          patchRow(id);
         } else if (act === 'anonymous') {
           const anon = !w.anonymous;
           const real = w.authorReal || w.author;
@@ -6691,6 +6848,78 @@
           认领暗号现在是<strong style="color:var(--text)">每个作品单独一个</strong>：到「作品管理」里对具体作品点「认领暗号」设置（≤10 位、不区分大小写），把暗号发给对应作者即可——TA 填对就<strong style="color:#237804">当场归到名下</strong>（发奖、匿名灯火结算与「审核通过」同口径），不进审核队列，认领成功后暗号自动作废。没设暗号的作品只能走「交证据 + 人工审核」；<strong style="color:var(--text)">匿名投稿</strong>的作品另有一条自助路：作者用投稿时的网络注册/登录账号后，前台会弹窗问「这些是你投的吗」，点确认就当场归属（本页标「IP 自助认领」，只记录不审核）。
         </div>`;
 
+    // ---- 匿名投稿排查（2026-11-18）----
+    // 匿名作品的投稿 IP 只存哈希（看不出明文），所以这里给的是「指纹前 10 位」：
+    // 同一组里出现同一个前缀，就说明是同一个出口投的。两条线索：
+    //   同 IP 多件 —— 出口没变；同站点多件 —— 换了 IP 也能对上（同一站的不同页面拆成多件）。
+    let anonShowIgnored = false;
+    const ANON_STATUS = { approved: ['已上线', 'ok'], rejected: ['已驳回', 'bad'], pending: ['待审核', 'warn'] };
+    const anonRow = it => `<div class="row">
+        ${it.thumb ? `<img src="${esc(it.thumb)}" alt="" />` : ''}
+        <div class="row-main">
+          <div class="row-title">${esc(it.title || '(无标题)')}
+            <span class="tag ${(ANON_STATUS[it.status] || ['', ''])[1]}">${(ANON_STATUS[it.status] || [it.status || '未知', ''])[0]}</span>
+            ${it.reports ? `<span class="tag bad">被投诉 ${it.reports}</span>` : ''}
+          </div>
+          <div class="row-meta">@${esc(it.author || '匿名')} · ${it.createdAt ? new Date(it.createdAt).toLocaleString('zh-CN') : '—'} · 浏览 ${it.views || 0} · 灯火 ${it.likes || 0}${it.host ? ' · ' + esc(it.host) : ''}</div>
+          <div class="row-meta" style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px">IP ${it.ip ? esc(it.ip.slice(0, 10)) + '…' : '未记录（11-12 之前的投稿没有指纹）'}</div>
+        </div>
+        <div class="row-actions">
+          <a class="btn btn-ghost btn-sm" href="/w/${esc(it.id)}" target="_blank">查看作品</a>
+        </div>
+      </div>`;
+    function bindAnonEvents() {
+      const cb = $('anonShowIgnored');
+      if (cb) cb.onchange = () => { anonShowIgnored = cb.checked; loadAnonSubmits(); };
+      panel.querySelectorAll('[data-anon-ignore]').forEach(b => {
+        b.onclick = async () => {
+          const [kind, key] = b.dataset.anonIgnore.split('|');
+          const off = b.dataset.anonOff === '1';
+          try {
+            await api('/api/admin/anon-submits/ignore', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ kind, key, off })
+            });
+            toast(off ? '已恢复显示' : '已忽略，默认视图里不再出现');
+            loadAnonSubmits();
+          } catch (e) { toast(e.message); }
+        };
+      });
+    }
+    async function loadAnonSubmits() {
+      try {
+        const d = await api('/api/admin/anon-submits' + (anonShowIgnored ? '?all=1' : ''));
+        const head = `<div class="form-inline" style="border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px">
+            <b style="font-size:14px">匿名作品 ${d.anonTotal} 件</b>
+            <span style="color:var(--muted);font-size:12px">其中 ${d.withIp} 件带投稿 IP 指纹 · 默认只列「同 IP 多件」和「同站点多件」</span>
+            <label style="margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer">
+              <input type="checkbox" id="anonShowIgnored" ${anonShowIgnored ? 'checked' : ''}/> 显示已忽略${d.ignoredCount ? `（${d.ignoredCount}）` : ''}
+            </label>
+          </div>
+          <div class="hint" style="padding:8px 18px;color:#5b6472;background:#f7f8fb;border-bottom:1px solid var(--border);line-height:1.7">
+            同 IP 多件 = 投稿出口没变，是最硬的信号；同站点多件 = 换了 IP 也对得上（同一个站的不同页面拆成好几件投）。<br>
+            IP 只存哈希，这里显示指纹前 10 位，同组内一致即同一个出口。你当前出口的组、以及点过「忽略」的组，默认不列。
+          </div>`;
+        if (!d.groups.length) {
+          panel.innerHTML = head + '<div class="empty">没有发现同 IP 或同站点的匿名作品</div>';
+          bindAnonEvents();
+          return;
+        }
+        panel.innerHTML = head + d.groups.map(g => `
+          <div class="anon-group">
+            <div class="anon-group-head">
+              <span class="tag ${g.kind === 'ip' ? 'bad' : 'warn'}">${g.kind === 'ip' ? '同 IP' : '同站点'}</span>
+              <b>${esc(g.label)}</b>
+              <span class="anon-group-n">${g.items.length} 件</span>
+              ${g.ignored ? '<span class="tag">已忽略</span>' : ''}
+              <button class="btn btn-ghost btn-sm" style="margin-left:auto" data-anon-ignore="${g.kind}|${esc(g.key)}" data-anon-off="${g.ignored ? 1 : 0}">${g.ignored ? '恢复显示' : '忽略这个' + (g.kind === 'ip' ? ' IP' : '站点')}</button>
+            </div>
+            ${g.items.map(anonRow).join('')}
+          </div>`).join('');
+        bindAnonEvents();
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
     async function loadClaims() {
       try {
         const list = await api('/api/admin/claims');
@@ -6776,21 +7005,30 @@
     });
 
     // ---- 投诉 ----
+    // 这个队列同时收「分类建议」（reports.json 里 kind='cat'，由详情页「分类有误」提交）：
+    // 建议本身不动作品，点「采用」才改主分类并站内通知作者；同一作品同一建议只留一条。
     async function loadReports() {
       try {
         const list = await api('/api/admin/reports');
-        if (!list.length) { panel.innerHTML = '<div class="empty">暂无投诉</div>'; return; }
+        if (!list.length) { panel.innerHTML = '<div class="empty">暂无投诉或分类建议</div>'; return; }
         panel.innerHTML = list.map(r => {
           const isDm = r.target === 'dm';
+          const isCat = r.kind === 'cat';
           const ev = Array.isArray(r.evidence) ? r.evidence : [];
-          const actionTag = r.action === 'takedown' ? ' · 已下架' : (r.action === 'dm-close' ? ' · 已关闭对话' : '');
+          const actionTag = r.action === 'takedown' ? ' · 已下架'
+            : (r.action === 'dm-close' ? ' · 已关闭对话' : (r.action === 'cat' ? ' · 已调整分类' : ''));
+          const when = new Date(r.createdAt).toLocaleString('zh-CN');
           return `
           <div class="row">
             <div class="row-main">
-              <div class="row-title">${isDm ? '<span class="tag warn">私信</span> ' : ''}${esc(r.workTitle)} <span class="tag ${r.status === '待处理' ? 'warn' : 'ok'}">${esc(r.status)}${actionTag}</span></div>
-              <div class="row-meta">原因：${esc(r.reason)}${r.description ? ' · ' + esc(r.description) : ''}
-                ${r.contact ? ' · 联系方式：' + esc(r.contact) : ''} · ${new Date(r.createdAt).toLocaleString('zh-CN')}
-                ${Number(r.count) > 1 ? ' · 已举报 ' + Number(r.count) + ' 次' : ''}</div>
+              <div class="row-title">${isDm ? '<span class="tag warn">私信</span> ' : ''}${isCat ? '<span class="tag">分类建议</span> ' : ''}${esc(r.workTitle)} <span class="tag ${r.status === '待处理' ? 'warn' : 'ok'}">${esc(r.status)}${actionTag}</span></div>
+              ${isCat
+                ? `<div class="row-meta">建议把「${esc(r.currentCat || '未分类')}」改成 <b>${esc(r.suggestCat || '')}</b>
+                    ${r.description ? ' · ' + esc(r.description) : ''} · ${esc(when)}
+                    ${Number(r.count) > 1 ? ' · 已有 ' + Number(r.count) + ' 人建议' : ''}</div>`
+                : `<div class="row-meta">原因：${esc(r.reason)}${r.description ? ' · ' + esc(r.description) : ''}
+                    ${r.contact ? ' · 联系方式：' + esc(r.contact) : ''} · ${esc(when)}
+                    ${Number(r.count) > 1 ? ' · 已举报 ' + Number(r.count) + ' 次' : ''}</div>`}
               ${isDm ? `<div class="row-meta">举报人 @${esc(r.reporterName || '')} · 被举报 @${esc(r.peerName || '')}</div>` : ''}
               ${ev.length ? `<details style="margin-top:6px">
                 <summary style="cursor:pointer;font-size:12px;color:var(--muted)">证据快照（${ev.length} 条，举报时截取，被举报那条标红）</summary>
@@ -6804,6 +7042,9 @@
               ${r.status === '待处理' ? (isDm
                 ? `<button class="btn btn-danger btn-sm" data-dmclose="${r.id}">关闭这段私信</button>
                    <button class="btn btn-ok btn-sm" data-report="${r.id}">标记已处理</button>`
+                : isCat
+                ? `<button class="btn btn-primary btn-sm" data-adoptcat="${r.id}">采用建议分类</button>
+                   <button class="btn btn-ok btn-sm" data-report="${r.id}">不采用</button>`
                 : `<button class="btn btn-danger btn-sm" data-takedown="${r.id}">下架并告知原因</button>
                    <button class="btn btn-ok btn-sm" data-report="${r.id}">标记已处理</button>`) : ''}
             </div>
@@ -7302,6 +7543,17 @@
           toast('已标记处理');
           loadStats(); loadReports();
         } catch (err) { toast(err.message); }
+        return;
+      }
+      // 采纳分类建议：直接把作品主分类换成建议的那个，并站内通知作者（分类是作者自己填的）
+      const ac = e.target.closest('[data-adoptcat]');
+      if (ac) {
+        ac.disabled = true;
+        try {
+          const d = await api(`/api/admin/reports/${ac.dataset.adoptcat}/adopt-cat`, { method: 'POST' });
+          toast(`已改为「${d.category || ''}」并通知作者`);
+          loadStats(); loadReports();
+        } catch (err) { toast(err.message); ac.disabled = false; }
         return;
       }
       // 私信投诉：没有作品可下架，动作是关闭这段会话（双方都不能再发，记录留到保留期满）
@@ -8055,12 +8307,86 @@
               作者用灯火买的「推荐」是独立的推广单，在 <a class="pm-jump" data-gotab="promos">用户推广</a> 页管理
               （现在 ${promoLiveN} 单在展示）：暂停、撤下退款、剩余额度都在那边，不会和这里混在一起。
             </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+              <button type="button" class="btn btn-primary btn-sm" id="adReportBtn">生成投放报表</button>
+              <span style="color:#8a90a8;font-size:12px">给合作方的对外口径：周期 + 曝光 + 点击，一键复制成文本发微信（自营 + 用户推广一起出）</span>
+            </div>
           </div>
           ${adGateBoxHtml()}
           ${adDisplayBoxHtml()}
           ${AD_SLOTS.map(adGroupHtml).join('')}`;
+        const rb = panel.querySelector('#adReportBtn');
+        if (rb) rb.onclick = openAdReport;
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
+
+    // ---------- 投放报表（对外口径） ----------
+    // 只读、纯前端：数据就是 /api/admin/ads 已经带回的逐支统计（服务端 adStatsOf 已补 first/last/d7pv/d7clk）。
+    // 目的：客户问「你站上来的 buyer 转化率怎么样」时，站长能当场甩一份周期 + 曝光 + 点击的报表，
+    // 转化那一环留给客户拿自家后台订单数 ÷ 本表点击数自己算——本站不做归因回传。
+    const adSlotName = key => { const s = (AD_SLOTS || []).find(x => x.key === key); return s ? s.name : (key || '未知位置'); };
+    function adReportRows() {
+      return (AD_LIST || []).slice()
+        .sort((a, b) => (AD_SLOTS || []).findIndex(s => s.key === a.slot) - (AD_SLOTS || []).findIndex(s => s.key === b.slot))
+        .filter(a => {
+          const st = a.stats || {};
+          // 没曝光过也没点过、还停用了的（历史占位/废弃单）不进报表；在投的哪怕还没量也列出来
+          return a.active !== false || (st.pv || 0) > 0 || (st.clicks || 0) > 0;
+        });
+    }
+    function adReportPeriod(st) {
+      if (!st || !st.first) return (st && st.last) || '暂无曝光记录';
+      return st.first === st.last ? st.first : st.first + ' ~ ' + st.last;
+    }
+    function buildAdReportText(rows) {
+      if (!rows.length) return '';
+      const now = new Date();
+      const p = n => String(n).padStart(2, '0');
+      const stamp = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())} ${p(now.getHours())}:${p(now.getMinutes())}`;
+      const blocks = rows.map((r, i) => {
+        const st = r.stats || {};
+        return [
+          `▍${i + 1}. ${r.title || '(无标题)'} · ${adSlotName(r.slot)}`,
+          `状态：${r.active !== false ? '展示中' : '已停用'}${r.ownerName ? `（作者 ${r.ownerName} 投）` : ''}`,
+          `周期：${adReportPeriod(st)}`,
+          `累计曝光：${st.pv || 0} 次（去重访客 ${st.uv || 0} 人）`,
+          `累计点击：${st.clicks || 0} 次（点击率 ${(st.ctr || 0).toFixed(1)}%）`,
+          `近 7 天：曝光 ${st.d7pv || 0} · 点击 ${st.d7clk || 0}`
+        ].join('\n');
+      }).join('\n\n');
+      return '【造梦橱窗 · 投放报表】\n截至：' + stamp + '\n\n' + blocks +
+        '\n\n—— 口径说明 ——\n' +
+        '1. 曝光 = 广告卡真实滚进访客屏幕才计 1 次，滚动没看到不计；点击按同一访客 60 秒去重。\n' +
+        '2. 转化率 = 贵方后台的订单数 ÷ 上表「累计点击」。成交发生在贵方平台，以贵方后台口径为准，本站提供点击数供对账。';
+    }
+    function openAdReport() {
+      const rows = adReportRows();
+      $('adReportBody').innerHTML = rows.length ? `
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+          <thead><tr>${['投放内容', '位置', '周期', '累计曝光 / UV', '累计点击（率）', '近 7 天 曝光/点击'].map(h =>
+            `<th style="text-align:left;padding:6px 8px;border-bottom:2px solid #e3e6f0;color:#5b6178;white-space:nowrap">${h}</th>`).join('')}</tr></thead>
+          <tbody>${rows.map(r => {
+            const st = r.stats || {};
+            return `<tr>
+              <td style="padding:8px;border-bottom:1px solid #eceef5"><b>${esc(r.title || '(无标题)')}</b>${r.ownerName ? `<div style="color:#8a90a8">作者投 · ${esc(r.ownerName)}</div>` : ''}</td>
+              <td style="padding:8px;border-bottom:1px solid #eceef5;white-space:nowrap">${esc(adSlotName(r.slot))}</td>
+              <td style="padding:8px;border-bottom:1px solid #eceef5;white-space:nowrap">${esc(adReportPeriod(st))}<div style="color:#8a90a8">${r.active !== false ? '展示中' : '已停用'}</div></td>
+              <td style="padding:8px;border-bottom:1px solid #eceef5;white-space:nowrap">${st.pv || 0} / ${st.uv || 0}</td>
+              <td style="padding:8px;border-bottom:1px solid #eceef5;white-space:nowrap">${st.clicks || 0}（${(st.ctr || 0).toFixed(1)}%）</td>
+              <td style="padding:8px;border-bottom:1px solid #eceef5;white-space:nowrap">${st.d7pv || 0} / ${st.d7clk || 0}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>`
+        : '<div class="empty">还没有可上报的数据：等广告真的被看到后这里就有数了</div>';
+      $('adReportMask').style.display = 'flex';
+    }
+    $('adReportClose').onclick = () => { $('adReportMask').style.display = 'none'; };
+    bindMaskClose($('adReportMask'), () => { $('adReportMask').style.display = 'none'; });
+    $('adReportCopy').onclick = () => {
+      const rows = adReportRows();
+      if (!rows.length) return toast('还没有数据可复制');
+      copyText(buildAdReportText(rows), '已复制，可直接发给合作方');
+    };
 
     // 展示频控：每个招商位「每人每天最多看到几次」。只作用于页脚 / 首页底部这类内容位，
     // 作者用灯火买的曝光位（首页顶部、第一格、详情、榜单）不受这里的限制。
@@ -8695,6 +9021,8 @@
           <b>暂停展示</b>＝前台先不出现，不退款、投放期限照走（想让人先下线几天用这个）；
           <b>撤下并退款</b>＝立即下线，没用完的曝光 / 点击额度按下单时锁定的单价退回灯火，已用掉的不退，作者会收到站内信。
           排队中的单一次都没投过，撤下全额退回。<br />
+          <b>＋记曝光</b>＝把剩余曝光手动记成「已投出」：次数只加在进度条分子（已消耗）上，总额度不变，剩余额度同步减少，扣完自动下线；
+          按下单时锁定的单价从作者灯火里扣，<b>不给作者发站内信</b>（灯火流水照常留痕、后台也记操作日志）。<br />
           防刷规则：同一访客一天最多扣 1 次曝光、3 次点击，超出后照常展示但不扣灯火（单 IP 另有 20 次/天的计费兜底）。<br />
           计费口径：计费曝光 / 计费点击才是真正扣买家额度的部分；PV 与点击里含防刷超额后的免费流量，排查消耗只看计费口径（每单行里都标了「计费曝光」= 这一单至今扣掉的次数，× 单价 = 已消耗）。
           前台「投放效果榜」的曝光与点击率自 2026-11-14 起也改用 PV（人次），两边数字已经一致；
@@ -8861,6 +9189,9 @@
           ${o.status === 'active' && ad
             ? `<button class="btn btn-ghost btn-sm" data-pmtoggle="${esc(ad.id)}" data-pmpaused="${paused ? '1' : '0'}">${paused ? '恢复展示' : '暂停展示'}</button>`
             : ''}
+          ${!comp && !o.paid && live
+            ? `<button class="btn btn-ghost btn-sm" data-pmtopup="${esc(o.id)}" title="把剩余曝光记成已消耗（只加分子，总额度不变）；按锁价从作者灯火扣，不发站内信">＋记曝光</button>`
+            : ''}
           ${live ? `<button class="btn btn-danger btn-sm" data-pmcancel="${esc(o.id)}">${comp ? '撤下' : '撤下并退款'}</button>` : ''}
         </div>
       </div>`;
@@ -8941,6 +9272,39 @@
             sel.disabled = false;
             toast(err.message || '改权重失败');
           }
+        };
+      });
+
+      // 站长记曝光消耗：次数只记进「已消耗」（分子），总额度不变，剩余额度同步减少
+      panel.querySelectorAll('[data-pmtopup]').forEach(b => {
+        b.onclick = async () => {
+          const o = pmOrders.find(x => x.id === b.dataset.pmtopup);
+          if (!o) return;
+          const sv = Number(o.showViews) || 1, sp = Number(o.showPoints) || 0;
+          const unit = Math.round(sp / sv * 100) / 100;
+          const left = Math.max(0, Number(o.left) || 0);
+          if (!left) return toast('这单已经没有剩余曝光额度了');
+          const raw = prompt(`把「${o.workTitle}」剩余 ${left} 次曝光里的多少次记成已投出？\n记的次数只进「已消耗」（分子），总额度 ${o.viewsBought} 不变，剩余额度同步减少。\n按这单锁定的单价，每 1 次扣 ${unit} 盏灯火，从 @${o.userName} 的余额里扣。`, String(Math.min(200, left)));
+          if (raw == null) return;
+          const n = Math.round(Number(String(raw).trim()));
+          if (!Number.isFinite(n) || n < 1 || n > 10000) return toast('次数要填 1-10000 之间的整数');
+          if (n > left) return toast(`这单只剩 ${left} 次曝光，最多记 ${left} 次`);
+          const cost = Math.round(n / sv * sp);
+          const done = Number(o.used) || 0;
+          if (!confirm(`给「${o.workTitle}」记 ${n} 次已曝光：进度条 ${done} / ${o.viewsBought} → ${done + n} / ${o.viewsBought}，剩余额度 ${left} → ${left - n}。\n`
+            + `从 @${o.userName} 的灯火里扣 ${cost} 盏，不会给作者发站内信（流水留痕、后台留日志）。\n`
+            + (n >= left ? '这单会直接投完下线。\n' : '')
+            + '确定？')) return;
+          b.disabled = true;
+          try {
+            const r = await api('/api/admin/redemptions/' + encodeURIComponent(o.id) + '/topup', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ views: n })
+            });
+            notifyAds();
+            toast(`已记 ${r.added} 次曝光，扣 ${r.cost} 盏灯火；剩 ${r.left} 次${r.ended ? '，这单已投完下线' : ''}（未发通知）`);
+            await loadPromos();
+          } catch (err) { toast(err.message || '记曝光失败'); b.disabled = false; }
         };
       });
 
@@ -10512,7 +10876,7 @@
       }).join(' ');
       panel.innerHTML = `
         <div class="hint" style="padding:16px 18px;line-height:1.75">
-          首页「本周精选」的出榜配置。<strong>个数 N</strong> 只管算法部分收多少件；<strong>增补</strong>的作品直接进精选、不占 N 的名额（板块可以超过 N 件）；<strong>移出</strong>的作品由分数榜后一位自动递补。<br />
+          首页「本周精选」的出榜配置。<strong>个数 N</strong> 默认 25：按分数取前 N 件；<strong>增补</strong>会把作品塞进榜单、并顶掉当前分数最低的一件（从靠后顺位剔除），<strong>移出</strong>的作品由分数榜后一位自动递补（进位）——所以榜单总数始终锁定在 N 件。<br />
           <strong>标签</strong>是「每件作品一个」：在下面「当前榜单」里点某件右边的「打标签」，就能单独给它写文字 + 选颜色，算法件打了标签也会盖掉自动角标。<strong>没单独打标签的</strong>，增补件用上面的「默认标签」，算法件照旧按数据自动变（人气最高 / 收藏飙升 / 最近新上…）。<br />
           顺序照旧每天随机重排一次、当天固定——增补的不会排前面。增补 / 移出 / 标签都长期生效（按作品 ID 记着），作品下架后记录保留但自动失效。
         </div>
@@ -10520,7 +10884,7 @@
         <div class="form-inline" style="border-bottom:1px solid var(--border)">
           <b style="font-size:14px">精选个数</b>
           <input id="featTop" type="number" min="${cfg.topMin}" max="${cfg.topMax}" value="${cfg.top}" style="width:70px" ${ro ? 'disabled' : ''} />
-          <span>件（${cfg.topMin} ~ ${cfg.topMax}，默认 20）</span>
+          <span>件（${cfg.topMin} ~ ${cfg.topMax}，默认 25）</span>
           ${ro ? '' : '<button class="btn btn-primary btn-sm" id="featTopSave">保存</button>'}
         </div>
         <div class="form-inline" style="border-bottom:1px solid var(--border);flex-wrap:wrap">
@@ -10535,7 +10899,7 @@
           <b style="font-size:14px">增补作品</b>
           <input id="featAddQ" type="text" placeholder="输入标题关键词或作品 ID 搜索" style="width:220px" ${ro ? 'disabled' : ''} autocomplete="off" />
           ${ro ? '' : '<button class="btn btn-primary btn-sm" id="featAddBtn">增补进精选</button>'}
-          <span style="color:var(--muted);font-size:12px">增补不占分数名额，板块总数可以超过 N</span>
+          <span style="color:var(--muted);font-size:12px">增补会顶掉当前分数最低的一件，榜单总数不变</span>
         </div>
         <div id="featSearchRes" style="border-bottom:1px solid var(--border)"></div>
         <div id="featAddList" style="border-bottom:1px solid var(--border)"></div>

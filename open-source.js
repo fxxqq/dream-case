@@ -33,6 +33,21 @@ const CAT_NAME_MAX = 20;     // 分类名长度
 const CAT_HINT_MAX = 40;    // 一句说明长度
 // star 超过这个数自动收录，不用站长过；站长 2026-11-12 定档
 const AUTO_STAR = 500;
+// ---------- 开源收录奖励（2026-11-18 站长拍板） ----------
+// 自荐本人仓库被收进清单时一次性发灯火：star × 5，10★ 起发，封顶 500 盏，同一仓库只发一次。
+// 与作品库那套「GitHub star 奖励」（server.js 的 star-sync，1:1 按涨值手动同步）是两本账：
+// 那边是作品持续涨 star 的增量奖，这边是一次性的收录入场奖，互不抵扣、各自幂等。
+// 只认「本人仓库」：投稿人登录着、且其 GitHub 绑定登录名 = 仓库 owner（与作品库同一套归属判定）。
+// 未登录 / 归属对不上 / 没绑定 GitHub 一律不发，只在 rec.reward.skip 里留个原因，后台可查。
+const OSS_REWARD_RATE = Math.max(0, Number(process.env.OSS_REWARD_RATE) || 5);
+const OSS_REWARD_MIN_STAR = Math.max(0, Number(process.env.OSS_REWARD_MIN_STAR) || 10);
+const OSS_REWARD_CAP = Math.max(0, Number(process.env.OSS_REWARD_CAP) || 500);
+const OSS_REWARD_FILE = path.join(__dirname, 'data', 'oss-rewards.json');
+function loadOssRewards() {
+  const d = readJsonFile(OSS_REWARD_FILE, {}) || {};
+  return (d && typeof d === 'object' && !Array.isArray(d)) ? d : {};
+}
+function saveOssRewards(d) { return writeJsonFile(OSS_REWARD_FILE, d); }
 const REFRESH_GAP = 20 * 3600 * 1000; // 20 小时，留 4 小时余量，一天刷一次不会因为抖动漏天
 const PER_REQUEST_TIMEOUT = 7000;
 const CONCURRENCY = 4;
@@ -196,7 +211,7 @@ async function addToContent(repo, meta = {}) {
   data.items.push(item);
   data.updatedAt = new Date().toISOString().slice(0, 10);
   if (!saveContent(data)) return { error: '写入收录清单失败' };
-  return { ok: true, item, star: info.star || 0 };
+  return { ok: true, item, star: info.star || 0, owner: info.owner || '' };
 }
 
 /** 内容 + 缓存合并成页面用的结构 */
@@ -250,7 +265,9 @@ function ghRepo(repo) {
             resolve({
               star: Number(j.stargazers_count) || 0,
               license: (j.license && j.license.spdx_id) || '',
-              lang: j.language || ''
+              lang: j.language || '',
+              // 仓库 owner 登录名：收录奖励要核对「投稿人自己的仓库」（2026-11-18）
+              owner: String((j.owner && j.owner.login) || String(j.full_name || '').split('/')[0] || '')
             });
           } catch {
             resolve({ error: 'json' });
@@ -514,6 +531,46 @@ function register(app, deps) {
   // server.js 注入的限流 / 取 IP；没传就放行（本地测试不至于被限流卡住）
   const rateLimit = deps.rateLimit || (() => true);
   const clientIp = deps.clientIp || (() => 'unknown');
+  // 开源收录奖励用的三件（2026-11-18）：当前登录用户 / 入账 / 站内信。
+  // 没注入（老测试脚本直接 register）时奖励整段跳过，不影响收录本身。
+  const currentUser = deps.currentUser || (() => null);
+  const addPoints = deps.addPoints || null;
+  const addNotice = deps.addNotice || (() => {});
+
+  /**
+   * 发一次收录奖励（同一仓库全站只发一次）。
+   * submitter = 投稿那一刻的 { uid, login } 快照；owner = GitHub 现查的仓库 owner。
+   * 返回 { points, star, skip }，skip 是没发的原因（写回 rec.reward，后台可排查）。
+   */
+  function grantOssReward({ repo, star, owner, submitter, name }) {
+    const uid = submitter && submitter.uid;
+    const login = submitter && submitter.login;
+    const n = Math.max(0, Number(star) || 0);
+    const base = { star: n, owner: owner || '', uid: uid || '', login: login || '' };
+    if (!addPoints) return { ...base, points: 0, skip: 'no_helpers' };
+    if (!uid) return { ...base, points: 0, skip: 'no_user' };       // 游客提交，没账号可入账
+    if (!login) return { ...base, points: 0, skip: 'no_github' };   // 没绑 GitHub，证明不了仓库是本人的
+    if (!owner || String(login).toLowerCase() !== String(owner).toLowerCase()) {
+      return { ...base, points: 0, skip: 'not_owner' };             // 仓库不在他名下
+    }
+    if (n < OSS_REWARD_MIN_STAR) return { ...base, points: 0, skip: 'low_star' };
+    const key = String(repo || '').toLowerCase();
+    const rewards = loadOssRewards();
+    if (rewards[key]) return { ...base, points: 0, skip: 'repo_used' };   // 同一仓库只发一次
+    const points = Math.min(n * OSS_REWARD_RATE, OSS_REWARD_CAP);
+    rewards[key] = { ...base, repo: key, points, at: new Date().toISOString() };
+    if (!saveOssRewards(rewards)) return { ...base, points: 0, skip: 'save_fail' };
+    addPoints(uid, points, 'oslist');
+    addNotice(uid, {
+      kind: 'points',
+      title: `开源收录奖励 +${points} 盏灯火`,
+      text: `「${name || repo}」已收进开源好物清单（GitHub star ${n}），按 star × ${OSS_REWARD_RATE} 结算、封顶 ${OSS_REWARD_CAP} 盏，本次到账 ${points} 盏。灯火可在「推荐」里换推荐位。`,
+      points,
+      delta: points
+    });
+    return { ...base, points, skip: '' };
+  }
+
   esc = seo.esc;
 
   app.get('/open', (req, res) => {
@@ -575,7 +632,7 @@ function register(app, deps) {
     </div>
     <div class="oss-cta-row">
       <button type="button" class="oss-cta oss-open-submit">+ 提交开源作品</button>
-      <span class="oss-cta-hint">GitHub star 超过 500 自动收录，其余站长人工过一眼</span>
+      <span class="oss-cta-hint">GitHub star 超过 500 自动收录，其余站长人工过一眼；自己的仓库被收录按 star × 5 送灯火（10★ 起、封顶 500）</span>
     </div>
   </header>
   <nav class="oss-filter" id="ossFilter" aria-label="按分类筛选">
@@ -591,6 +648,7 @@ function register(app, deps) {
       <li><b>标了许可证就得当真。</b>绿色是宽松许可（MIT / Apache / BSD 一类，能商用），琥珀色是 copyleft（改完要按同样的协议开源）。要拿去做产品，先点开仓库自己核一遍，别只信这行小字。</li>
       <li><b>收录不等于推荐。</b>写在这里只说明我认为它值得一看，不代表做过安全审计、也不保证一直有人维护。</li>
       <li>项目有误、许可证变了、或者你就是作者希望撤下：<a href="/?feedback=1">告诉我们</a>，会尽快处理。想推荐好项目？<button type="button" class="oss-linkbtn oss-open-submit">点这里提交收录</button>。</li>
+      <li><b>收录奖励。</b>你自己的仓库（登录并绑定 GitHub、仓库在你名下）被收录时，按 GitHub star × ${OSS_REWARD_RATE} 送灯火：${OSS_REWARD_MIN_STAR}★ 起发、封顶 ${OSS_REWARD_CAP} 盏，<b>同一仓库只发一次</b>。作品库那边还有一套「star 涨了再同步」的奖励，两本账互不影响。</li>
     </ol>
   </section>
   <div class="oss-modal" id="ossModal" hidden>
@@ -598,7 +656,8 @@ function register(app, deps) {
     <div class="oss-dialog" role="dialog" aria-modal="true" aria-labelledby="ossModalTitle">
       <div id="ossForm">
         <h3 id="ossModalTitle">提交开源作品</h3>
-        <p class="oss-modal-sub">只收 GitHub 仓库的外链，不搬代码、不进作品池。GitHub star 超过 500 的项目提交后自动收录，其余由站长人工过一眼。</p>
+        <p class="oss-modal-sub">只收 GitHub 仓库的外链，不搬代码、不进作品池。GitHub star 超过 500 的项目提交后自动收录，其余由站长人工过一眼。
+          <br /><b>自己的仓库</b>（登录并绑定 GitHub、仓库在你名下）被收录时按 star × 5 送灯火：10★ 起发、封顶 ${OSS_REWARD_CAP} 盏，同一仓库只发一次。</p>
         <label class="oss-field"><span>GitHub 仓库链接 <i>必填</i></span>
           <input id="ossRepoInput" maxlength="300" placeholder="https://github.com/owner/repo" autocomplete="off" />
         </label>
@@ -729,11 +788,26 @@ function register(app, deps) {
           }
           form.hidden = true;
           done.hidden = false;
+          // 收录奖励回执：发到了就说清楚到账多少；没发（游客/非本人/star 不够/发过）给一句怎么才能拿
+          var rules = r.rewardRules || { rate: '', minStar: '', cap: '' };
+          var rewardLine = function (rw) {
+            if (rw && rw.points > 0) {
+              return '<p class="oss-reward" style="font-size:13px;color:#6c5ce7;margin:8px 0 0">收录奖励 <b>+' + rw.points + ' 盏灯火</b> 已到账（star ' + rw.star + ' × ' + rules.rate + '，封顶 ' + rules.cap + '）。</p>';
+            }
+            if (rw && rw.skip === 'low_star') {
+              return '<p class="oss-reward" style="font-size:13px;color:#8a8fa3;margin:8px 0 0">这个仓库现在 ' + rw.star + ' 个 star，满 ' + rules.minStar + ' 个才有收录奖励。</p>';
+            }
+            if (rw && (rw.skip === 'not_owner' || rw.skip === 'no_user' || rw.skip === 'no_github')) {
+              return '<p class="oss-reward" style="font-size:13px;color:#8a8fa3;margin:8px 0 0">想拿收录奖励：登录并绑定 GitHub，且仓库在你本人名下；按 star × ' + rules.rate + ' 发，' + rules.minStar + '★ 起、封顶 ' + rules.cap + ' 盏。</p>';
+            }
+            return '';
+          };
           done.innerHTML = r.approved
-            ? '<b>已自动收录 ✓</b><p>「' + esc2(r.name) + '」GitHub star ' + r.star + '，超过 500 直接收进了清单。</p>' +
+            ? '<b>已自动收录 ✓</b><p>「' + esc2(r.name) + '」GitHub star ' + r.star + '，超过 500 直接收进了清单。</p>' + rewardLine(r.reward) +
               '<div class="oss-btns" style="justify-content:center"><button type="button" class="oss-btn primary" onclick="location.reload()">看看清单</button></div>'
             : '<b>已提交，谢谢推荐</b><p>这个仓库 GitHub star ' + (r.star || '暂未知') + '，会由站长人工过一眼；通过了就会出现在清单里。' +
               (r.newCatPending ? '你新建的分类「' + esc2(r.newCatName) + '」会在站长收录时一起创建。</p>' : '</p>') +
+              '<p class="oss-reward" style="font-size:13px;color:#8a8fa3;margin:8px 0 0">收录通过后，你自己的仓库（绑定 GitHub）按 star × ' + rules.rate + ' 发灯火：' + rules.minStar + '★ 起、封顶 ' + rules.cap + ' 盏。</p>' +
               '<div class="oss-btns" style="justify-content:center"><button type="button" class="oss-btn primary" data-oss-close>好的</button></div>';
         } catch (e2) {
           err.textContent = '网络不太顺，再试一次';
@@ -763,6 +837,7 @@ function register(app, deps) {
       return res.status(429).json({ error: '提交太频繁了，一小时后再试' });
     }
     const body = req.body || {};
+    const user = currentUser(req);   // 收录奖励要用登录态（游客也能提交，只是没有奖励）
     const repo = normalizeRepo(body.repo);
     if (!repo) return res.status(400).json({ error: 'GitHub 仓库链接必填，如 https://github.com/owner/repo' });
     const data = loadContent();
@@ -792,6 +867,10 @@ function register(app, deps) {
       cat: catNew ? '' : (loadCats().some(c => c.id === body.cat) ? body.cat : 'web'),
       catNew,
       contact: String(body.contact || '').trim().slice(0, 100), // 只有后台可见，不出页面前台
+      // 收录奖励的归属快照：发奖只认投稿这一刻的登录态，之后换账号/解绑不影响已提交的这条
+      uid: user ? user.id : '',
+      ghLogin: (user && user.github && user.github.login) ? String(user.github.login) : '',
+      owner: '',
       star: 0,
       at: new Date().toISOString(),
       ip: clientIp(req),
@@ -802,6 +881,7 @@ function register(app, deps) {
       return res.status(404).json({ error: 'GitHub 上找不到这个仓库，检查一下链接（私有仓库也收不了）' });
     }
     rec.star = info.star || 0;
+    rec.owner = info.owner || '';   // 仓库 owner：收录奖励核对「是不是投稿人本人的仓库」
     let newCatPending = false;
     if (!info.error && rec.star > AUTO_STAR) {
       let catForItem = rec.cat;
@@ -815,6 +895,14 @@ function register(app, deps) {
         rec.status = 'approved';
         rec.auto = true;
         rec.approvedAt = new Date().toISOString();
+        // 收录奖励（2026-11-18）：自荐本人仓库 → star × 5，10★ 起、封顶 500、同仓库只发一次
+        rec.reward = grantOssReward({
+          repo,
+          star: Math.max(rec.star, Number(added.star) || 0),
+          owner: added.owner || rec.owner,
+          submitter: { uid: rec.uid, login: rec.ghLogin },
+          name: rec.name || repo.split('/')[1]
+        });
       }
       // addToContent 失败（限流 / 落盘挂了）不拦提交：降级进人工队列，别让访客白填
     }
@@ -827,7 +915,11 @@ function register(app, deps) {
       star: rec.star,
       name: rec.name || repo.split('/')[1],
       newCatPending,
-      newCatName: catNew ? catNew.name : ''
+      newCatName: catNew ? catNew.name : '',
+      // 自动收录那一刻的奖励结果（待审的还没有，等站长收录）；前端据此回一句到账/没发的原因
+      reward: rec.reward || null,
+      // 奖励口径带给前端：弹窗里「没能拿到」的原因要带上 rate/minStar/cap 才说得清楚
+      rewardRules: { rate: OSS_REWARD_RATE, minStar: OSS_REWARD_MIN_STAR, cap: OSS_REWARD_CAP }
     });
   });
 
@@ -862,6 +954,14 @@ function register(app, deps) {
       rec.cat = added.item.cat;
       rec.status = 'approved';
       rec.approvedAt = new Date().toISOString();
+      // 收录奖励（2026-11-18）：投稿人是本人仓库才发；老记录没有 uid/ghLogin 快照 → 自动跳过
+      rec.reward = grantOssReward({
+        repo: rec.repo,
+        star: Math.max(Number(added.star) || 0, Number(rec.star) || 0),
+        owner: added.owner || rec.owner || '',
+        submitter: { uid: rec.uid, login: rec.ghLogin },
+        name: rec.name || rec.repo.split('/')[1]
+      });
     } else if (action === 'reject') {
       rec.status = 'rejected';
       rec.rejectedAt = new Date().toISOString();

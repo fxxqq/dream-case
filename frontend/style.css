@@ -267,8 +267,10 @@ nav { display: flex; gap: 8px; flex: 1; }
 }
 .aurora i:nth-child(2) {
   width: min(70vw, 460px); aspect-ratio: 1 / 1; right: 0; top: -38%;
+  /* 2026-11-18：峰值 .26 → .21、中段 .11 → .09。它是三团里最艳的一团，又是唯一贴着
+     右上角的那团（箭头指的位置），压两档后标题区不再泛成一片粉，紫蓝两团的层次反而清楚了。 */
   background: radial-gradient(circle closest-side at 50% 50%,
-    rgba(224, 112, 201, .26) 0%, rgba(224, 112, 201, .11) 50%, rgba(224, 112, 201, 0) 100%);
+    rgba(224, 112, 201, .21) 0%, rgba(224, 112, 201, .09) 50%, rgba(224, 112, 201, 0) 100%);
   animation: aurB 32s ease-in-out infinite alternate;
 }
 .aurora i:nth-child(3) {
@@ -293,8 +295,10 @@ nav { display: flex; gap: 8px; flex: 1; }
 /* 大屏标题跟着视口缓升（2026-11-15）：容器放宽到 1660 后，30px 标题在中间显得空，
    用 clamp 让它从 1280 屏的 30px 长到 2K 的 40px，中间任何宽度都是连续过渡、不跳档 */
 .hero h1, .hero .hero-title { font-size: clamp(30px, 1.1vw + 14px, 40px); letter-spacing: .01em; margin-bottom: 10px; text-wrap: balance; }
+/* 渐变的尾色 2026-11-18 加深一档（#e070c9 → #c94f9d）：右上那团粉光和它是同一个色号，
+   粉字落在粉光上对比被吃掉一截；尾色压深后仍属同一色相，观感不变、字更立得住。 */
 .hero h1 .grad, .hero .hero-title .grad {
-  background: linear-gradient(92deg, var(--primary), #9b8cff 55%, #e070c9);
+  background: linear-gradient(92deg, var(--primary), #9b8cff 55%, #c94f9d);
   -webkit-background-clip: text; background-clip: text;
   -webkit-text-fill-color: transparent; color: transparent;
 }
@@ -887,6 +891,15 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
 
 /* 未登录投稿：注册（免审）还是匿名（需审核）的选择弹窗 */
 .modal.modal-choice { max-width: 440px; }
+/* 分类有误（2026-11-18）：比投诉弹窗更轻——现状一句 + 选个分类 + 可选说明。
+   提交只进后台审核队列，采纳后才改分类，所以文案不承诺「已修改」 */
+.catfix-cur {
+  margin: 0 0 14px; padding: 9px 12px; border-radius: 10px;
+  background: #f6f6fb; border: 1px solid var(--border);
+  font-size: 13px; line-height: 1.6; color: var(--muted);
+}
+.catfix-cur b { color: var(--text); }
+.catfix-hint { margin: 12px 0 0; font-size: 12px; line-height: 1.6; color: var(--muted); text-align: center; }
 .choice-list { display: flex; flex-direction: column; gap: 10px; margin: 4px 0 18px; }
 .choice-list p {
   margin: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
@@ -2346,6 +2359,138 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   .modal.detail .detail-actions .btn-tip { flex: 0 0 auto; }
 }
 
+/* ---------- 竖排操作条（2026-11-18，参考掘金文章页） ----------
+   互动按钮（点赞/收藏/评论/灯火/私信/分享…）集中在弹窗最右一根竖条里，
+   左侧内容区只留主入口（打开网站）+ 作品介绍。容器沿用 .detail-actions 的
+   按钮基础样式（尺寸/悬停/零值隐藏都在那边），这里只负责「竖起来」。
+   2026-11-18 二次调整：竖条由最左挪到最右（贴大图一侧太挤、也压住了图），
+   靠 order 排到信息栏之后，分隔线随之翻到左边。 */
+.detail-rail {
+  flex-direction: column;
+  align-items: center;
+  align-content: flex-start;
+  gap: 8px;
+  flex: none;
+  order: 3;
+  width: 62px;
+  margin: 0;
+  /* 顶部留出关闭按钮（top:12 + 30 高）的位置：竖条挪到右侧后正好和右上角 ✕ 抢地方，
+     第一颗按钮不能压在叉号底下（宽屏浮到弹窗外、窄屏转横排时各自另有 padding） */
+  padding: 54px 8px 14px;
+  background: #fafafd;
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.detail-rail::-webkit-scrollbar { display: none; }
+/* 竖排按钮：图标在上、数字/小字在下（掘金同款形态），固定宽高不互相挤动 */
+.detail-rail > .btn-like, .detail-rail > .btn-fav, .detail-rail > .btn-cmt,
+.detail-rail > .btn-watch, .detail-rail > .btn-tip, .detail-rail > .btn-dm,
+.detail-rail > .btn-share, .detail-rail > .btn-link {
+  flex-direction: column;
+  gap: 3px;
+  flex: none;
+  width: 44px;
+  min-width: 44px;
+  height: 50px;
+  padding: 7px 2px;
+  border-radius: 12px;
+  white-space: normal;
+  word-break: break-all;
+  line-height: 1.15;
+}
+.detail-rail > .btn-share { height: 50px; }
+/* 数字挂图标正下方：小一号灰字，别跟 13px 正文抢 */
+.detail-rail .btn-like, .detail-rail .btn-fav, .detail-rail .btn-cmt,
+.detail-rail .btn-watch, .detail-rail .btn-tip, .detail-rail .btn-dm,
+.detail-rail .btn-share, .detail-rail .btn-code, .detail-rail .btn-pack { font-size: 10.5px; }
+.detail-rail .fav-num, .detail-rail #detailLikes, .detail-rail #detailCmtNum {
+  font-size: 11px; font-variant-numeric: tabular-nums; color: inherit;
+}
+/* 竖排形态一律只留图标：带字按钮（送灯火/外宣包/兑换码）的文字藏掉，
+   说明收进 title 悬停提示——一列图标里突然夹一行汉字太突兀（2026-11-18） */
+.detail-rail .btn-tip .tip-word, .detail-rail .rail-word { display: none; }
+/* 上线提醒文案较长（✓ 已订阅上线提醒 · N）：竖条里允许折两行居中 */
+.detail-rail > .btn-watch { font-size: 10.5px; line-height: 1.25; }
+.detail-rail > .btn-watch .ico { font-size: 1.1em; }
+/* 主入口行（打开网站/下载）：挪出动作区后独立成行，紧贴作者行下方 */
+.detail-info > .detail-links { display: flex; margin: 2px 0 10px; }
+@media (max-width: 720px) {
+  /* 窄屏回退：竖条转横排落到大图下方、正文之上，按钮恢复横排胶囊并等宽铺开 */
+  .modal.detail .detail-rail {
+    order: 1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 8px;
+    padding: 10px 12px;
+    background: none;
+    border-left: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    overflow: visible;
+  }
+  .modal.detail .detail-media { order: 0; }
+  .modal.detail .detail-info { order: 2; }
+  .modal.detail .detail-rail > .btn-like,
+  .modal.detail .detail-rail > .btn-fav,
+  .modal.detail .detail-rail > .btn-cmt,
+  .modal.detail .detail-rail > .btn-share {
+    flex-direction: row;
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+    height: 38px;
+    padding: 0 10px;
+    white-space: nowrap;
+    word-break: normal;
+  }
+  .modal.detail .detail-rail > .btn-tip,
+  .modal.detail .detail-rail > .btn-dm,
+  .modal.detail .detail-rail > .btn-watch,
+  .modal.detail .detail-rail > .btn-pack,
+  .modal.detail .detail-rail > .btn-code { flex: 0 0 auto; flex-direction: row; height: 38px; padding: 0 12px; white-space: nowrap; }
+  .modal.detail .detail-rail .btn-like, .modal.detail .detail-rail .btn-fav,
+  .modal.detail .detail-rail .btn-cmt, .modal.detail .detail-rail .btn-share,
+  .modal.detail .detail-rail .btn-tip, .modal.detail .detail-rail .btn-dm,
+  .modal.detail .detail-rail .btn-watch, .modal.detail .detail-rail .btn-pack,
+  .modal.detail .detail-rail .btn-code { font-size: 12px; }
+  .modal.detail .detail-rail .fav-num,
+  .modal.detail .detail-rail #detailLikes,
+  .modal.detail .detail-rail #detailCmtNum { font-size: 12px; }
+  /* 手机横排恢复带字：一排胶囊里带字不突兀，可读性优先 */
+  .modal.detail .detail-rail .btn-tip .tip-word,
+  .modal.detail .detail-rail .rail-word { display: inline; }
+  .modal.detail .detail-info > .detail-links { flex-wrap: wrap; }
+}
+
+/* 宽屏（≥1200）：操作条整体浮到弹窗外面——贴着弹窗右缘立在遮罩上，
+   像掘金文章页那样「卡片归卡片、工具条归工具条」，弹窗内部宽度一点不让。
+   前提是两侧留白够放（1040 弹窗 + 62 竖条 + 14 间距 ≈ 1200），不够就退回弹窗内。 */
+@media (min-width: 1200px) {
+  /* 操作条移出后弹窗不能再裁切（否则浮出去的那截会被剪掉）；
+     圆角改由左右两栏自己兜——大图裁左圆角，滚动信息栏裁右圆角 */
+  .modal.detail { overflow: visible; }
+  .modal.detail .detail-media { border-radius: 16px 0 0 16px; overflow: hidden; }
+  .modal.detail .detail-info { border-radius: 0 16px 16px 0; }
+  .modal.detail .detail-rail {
+    position: absolute;
+    left: 100%;
+    right: auto;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 62px;
+    max-height: 90vh;
+    margin: 0 0 0 14px;
+    padding: 12px 8px;
+    background: #fff;
+    border: 1px solid rgba(31, 35, 48, .08);
+    border-left: 1px solid rgba(31, 35, 48, .08);
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(18, 20, 40, .22), 0 2px 8px rgba(18, 20, 40, .12);
+  }
+}
+
 /* ========== v3 新增样式 ========== */
 .header-inner { gap: 16px; }
 .logo { text-decoration: none; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; }
@@ -2889,6 +3034,33 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 
 /* 列表视图：一行一个作品 */
 .gallery.list-mode { display: flex; flex-direction: column; gap: 10px; }
+/* 无图模式（第三种视图）：每个作品一行——无缩略图，标题 / 简介 / meta 同行，
+   右侧赞/藏/浏览/评论改横排。row-main 用 display:contents 把标题/简介/meta 提为
+   行级 flex 子项：不另写 HTML 模板，listHtml / 推荐行 / 工具行全自动适用 */
+.gallery.noimg-mode { gap: 7px; }
+.gallery.noimg-mode .row-thumb { display: none; }
+.gallery.noimg-mode .work-row { padding: 8px 16px; gap: 12px; }
+.gallery.noimg-mode .work-row:hover { transform: none; }   /* 密排行不做位移悬浮，避免相邻行视觉抖动 */
+.gallery.noimg-mode .row-main { display: contents; }
+/* 简介 2026-11-18 起在无图模式也保留（站长反馈「空荡荡」）：自然宽度，挤不下先给 meta 让路 */
+.gallery.noimg-mode .row-intro {
+  display: block; margin-top: 0;
+  flex: 0 1 auto; min-width: 0;
+}
+/* 标题不伸不缩、内容多长占多长，用 max-width 封顶；超长的在标题内部自己省略——
+   不参与 flex 伸缩，短标题（如 Tutti）就不会因 1px 分配误差冒省略号，
+   也不会把 meta 顶到行中间去 */
+.gallery.noimg-mode .row-title { flex: 0 0 auto; max-width: 50%; min-width: 0; }
+.gallery.noimg-mode .row-name { flex: 0 1 auto; min-width: 0; }
+/* meta 的收缩权重拉到 100：空间不够时先压 meta（到 0 为止），标题尽量保完整 */
+.gallery.noimg-mode .row-meta {
+  flex-grow: 1; flex-shrink: 100; flex-basis: auto;
+  min-width: 0; margin-top: 0; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.gallery.noimg-mode .row-stats { flex-direction: row; align-items: center; gap: 10px; min-width: 0; }
+.gallery.noimg-mode .row-fav, .gallery.noimg-mode .row-like, .gallery.noimg-mode .row-block { width: 26px; height: 26px; font-size: 13px; }
+.gallery.noimg-mode .dm-load { padding: 12px 16px 18px; }
 .work-row {
   display: flex; align-items: center; gap: 14px;
   background: #fff; border: 1px solid var(--border); border-radius: 14px;
@@ -2929,12 +3101,23 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 }
 .row-fav:hover { color: #f5a524; border-color: #f5a524; transform: scale(1.08); }
 .row-fav.active { color: #f5a524; border-color: #f5a524; background: #fff8e8; }
+/* 行内点赞钮（2026-11-18）：结构照抄 .row-fav，换心形配色——红心=赞 */
+.row-like {
+  width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border);
+  background: #fff; color: #b9bdd0; font-size: 15px; cursor: pointer; flex-shrink: 0;
+  transition: color .15s, border-color .15s, transform .15s;
+}
+.row-like:hover { color: #e0465f; border-color: #e0465f; transform: scale(1.08); }
+.row-like.active { color: #e0465f; border-color: #e0465f; background: #fdeef1; }
 
 @media (max-width: 640px) {
   /* 2026-11-07：手机端列表与小程序 wrow 对齐 —— 标题 / 一句话简介 / meta / 右侧数据都在。
      收藏和「不看这个」按钮叠到缩略图角上，不占中间文字的宽度；文字一律单行省略，不折行撑高。 */
   .work-row { position: relative; padding: 10px; gap: 9px; }
   .row-thumb { width: 56px; height: 56px; }
+  .gallery.noimg-mode .work-row { padding: 7px 10px; gap: 8px; }   /* 无图模式手机端再收一档 */
+  .gallery.noimg-mode .row-stats { gap: 6px; min-width: 0; }
+  .gallery.noimg-mode .row-meta { font-size: 11px; }
   .row-main { min-width: 0; }
   .row-title { font-size: 14px; }
   .work-row .row-pin { position: static; }
@@ -3888,7 +4071,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
    纯图标 + 文字，四列均分。宽度跟上面的六格统计行一致（都铺满整张卡）——
    原来收在 760px 居中，六格恢复成全宽之后，这一行会明显往里缩，两条网格线对不上 */
 .author-acts {
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   padding: 10px 6px 8px;
   /* 铺到最下沿：透明 + 抬到背景层之上，皮肤一路盖到卡片底边 */
   position: relative; z-index: 1; background: transparent;
@@ -3982,6 +4165,20 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   padding: 4px 7px; border-radius: 999px; background: var(--danger); color: #fff;
 }
 .au-sheet-more { flex: none; color: var(--muted); font-size: 15px; }
+
+/* 行内开关（iOS 样式）：拨过去 = 开启，替代行尾的 ›；行内 span 不套嵌套按钮 */
+.au-sw {
+  flex: none; width: 38px; height: 22px; border-radius: 999px;
+  background: #d9d9e3; position: relative; transition: background .18s;
+}
+.au-sw i {
+  position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  transition: left .18s;
+}
+.au-sw.on { background: var(--primary); }
+.au-sw.on i { left: 18px; }
+.au-sheet-row:disabled { opacity: .65; cursor: default; }
 
 /* 「我的链接」弹层：三个通用输入框，贴网址就行 */
 .links-modal { max-width: 430px; }
@@ -5219,18 +5416,28 @@ body.on-work .load-more-wrap { display: none !important; }
 .seo-full-body { display: flex; align-items: flex-start; gap: 28px; }
 .seo-full-body .seo-article { flex: 1; min-width: 0; }
 .seo-rail {
-  position: sticky; top: 84px; flex: none; width: 68px;
+  position: sticky; top: 84px; flex: none; width: 248px;
   display: flex; flex-direction: column; gap: 8px;
 }
+/* 2026-11-18：右栏从窄图标条扩成「作者名片 + 动作栏」——站长说这边宽敞，
+   名片放得下；动作改成图标+文字横排，宽栏里比一列小图标好读。 */
 .sr-item {
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  width: 100%; padding: 10px 0 8px;
+  display: flex; flex-direction: row; align-items: center; gap: 9px;
+  width: 100%; padding: 9px 14px;
   border: 1px solid var(--border); border-radius: 14px; background: #fff;
   color: var(--muted); font-size: 12px; line-height: 1; cursor: pointer;
   text-decoration: none; transition: color .15s, border-color .15s, background .15s, transform .15s;
-  font-family: inherit;
+  font-family: inherit; text-align: left;
 }
-.sr-item .tico { font-size: 19px; }
+.sr-item .tico { font-size: 17px; }
+/* 名片骨架由 SSR 出，JS 拿到作品数据才显形，避免先闪一个空壳 */
+.seo-author-card { display: none; margin: 0 0 4px; }
+.seo-author-card.is-ready { display: block; }
+.seo-author-card .dac-ava { width: 42px; height: 42px; font-size: 18px; }
+.seo-author-card .dac-name { font-size: 15px; }
+.seo-author-card .dac-stats { margin-top: 10px; padding: 9px 0; }
+.seo-author-card .dac-stat b { font-size: 15px; }
+.seo-author-card .detail-follow.dac-follow { margin-top: 10px; padding: 8px 12px; font-size: 13px; }
 .sr-item:hover { color: var(--primary); border-color: var(--primary); transform: translateY(-1px); }
 .sr-item.active { color: var(--primary); border-color: var(--primary); background: #f3f3ff; }
 .sr-item.sr-danger:hover { color: var(--danger, #ee4d4d); border-color: var(--danger, #ee4d4d); }
@@ -5240,6 +5447,8 @@ body.on-work .load-more-wrap { display: none !important; }
     position: static; width: 100%;
     flex-direction: row; flex-wrap: wrap; justify-content: flex-end;
   }
+  /* 窄屏右栏横排：名片自己占一整行、排在动作胶囊前面 */
+  .seo-rail .seo-author-card.is-ready { flex: 0 0 100%; order: -1; }
   .sr-item { flex-direction: row; width: auto; padding: 9px 14px; gap: 6px; border-radius: 999px; }
   .sr-item .tico { font-size: 16px; }
 }
@@ -7523,6 +7732,26 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .ck-dot.is-bonus.is-filled { background: #f0a020; border-color: #f0a020; color: #fff; }
 .ck-dot.is-bonus.is-filled b { color: #fff3d9; }
 .ck-tip { font-size: 11.5px; color: var(--muted); line-height: 1.6; }
+/* 断签补签（2026-11-18）：一条窄带，断签才出现。紫虚线刻意和下面那张暖橙广告卡分开——
+   一眼看出「这是把连签接回来」，不是又一份白送的灯火。补不满时退成灰面、不给按钮。 */
+.ck-makeup {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  background: #f7f5ff; border: 1px dashed #cdc7f5; border-radius: 9px;
+  padding: 7px 10px; margin: 8px 0 0;
+}
+.ck-makeup-ico { flex: none; display: flex; color: #6b5bd6; }
+.ck-makeup-txt { flex: 1; min-width: 0; font-size: 11.5px; line-height: 1.5; color: #5a5473; }
+.ck-makeup-txt b { color: #4b3f9e; font-weight: 600; }
+.ck-makeup-left { display: block; font-size: 10.5px; color: #8a84a8; }
+.ck-makeup-btn {
+  flex: none; border: 1px solid #6b5bd6; background: #6b5bd6; color: #fff;
+  border-radius: 7px; padding: 5px 10px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+  font-family: inherit;
+}
+.ck-makeup-btn:hover { background: #5a4bc4; border-color: #5a4bc4; }
+.ck-makeup.is-off { background: #f6f6f9; border-color: #e2e2ec; }
+.ck-makeup.is-off .ck-makeup-ico { color: #a9a9bd; }
+.ck-makeup.is-off .ck-makeup-txt { color: #8a8aa0; }
 /* 到访那一笔：打开站点就自动到账的 2 盏，放在进度条和说明之间。
    和签到用两种视觉（虚线暖色 vs 实线紫），一眼看出「这笔不用点」。 */
 .ck-arrive {
@@ -8979,10 +9208,12 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 /* 领奖台造型扁宽，按 1em 会显得比旁边图标小一圈，单独放一档 */
 .nav-btn .ico[data-ico="rank"] { width: 1.35em; height: 1.35em; vertical-align: -0.28em; }
 .page-title .ico[data-ico="rank"] { width: 1.15em; height: 1.15em; vertical-align: -0.22em; }
-/* 酒馆的啤酒杯剪影四周留白比领奖台多，1em 下比旁边两个图标小一圈，抬到 1.2em 齐平；
-   另外两个导航图标（领奖台彩色、小程序主紫）都有颜色，只它跟文字吃灰色会显得没做完，
-   这里显式给主紫（fill=currentColor，改 color 即可） */
-.nav-btn .ico[data-ico="wish"] { width: 1.2em; height: 1.2em; vertical-align: -0.22em; color: var(--primary); }
+/* 酒馆的啤酒杯剪影四周留白比领奖台多，1em 下比旁边两个图标小一圈，抬到 1.2em 齐平。
+   这里曾经显式给过主紫，理由是「另两个导航图标都有颜色」——后来领奖台改成 currentColor 单色，
+   只剩小程序硬编码品牌紫，这颗常紫的酒杯就被读成「选中的当前页」（2026-11-18 站长提）。
+   现在不再染色：默认跟文字吃灰，进 /bar 时由 .nav-btn.active 带成主紫，跟星梦榜/发现同一套。
+   注：fill=currentColor，改 color 即可生效。 */
+.nav-btn .ico[data-ico="wish"] { width: 1.2em; height: 1.2em; vertical-align: -0.22em; }
 /* 形态 SVG 图标：和旁边 emoji 视觉等大（emoji 天生占 1.1~1.2em） */
 .tico { font-size: 1.12em; }
 /* .ico svg 的百分比宽高在 inline-flex 嵌套里高度会塌陷（被压成横条），固定 em 尺寸 */
@@ -8991,6 +9222,9 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 /* 领奖台造型扁宽，按 1em 会显得比旁边图标小一圈，单独放一档
    （nav-btn 已是 flex 居中，无需再手调 vertical-align） */
 .nav-btn .ico[data-ico="rank"] { width: 1.35em; height: 1.35em; }
+/* 「发现」的地球是空心细环，视觉重量天生比实心的领奖台/啤酒杯轻：
+   给到领奖台同档 1.35em，字号 14px 下才看着齐平（图形已撑满画布，见 icons.js） */
+.nav-btn .ico[data-ico="globe"] { width: 1.35em; height: 1.35em; }
 .page-title .ico[data-ico="rank"] { width: 1.15em; height: 1.15em; vertical-align: -0.22em; }
 
 /* ---- emoji 全部换成 SVG 后的行内对齐（图标在正文/胶囊里跟文字基线对齐） ---- */
@@ -9144,6 +9378,31 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .detail-stage .ds-bar { margin-top: 8px; height: 6px; border-radius: 4px; background: rgba(255,255,255,.7); overflow: hidden; }
 .detail-stage .ds-bar > span { display: block; height: 100%; border-radius: 4px; background: #5b8ed6; }
 .detail-stage.is-reviewing .ds-bar > span { background: #d99a2b; }
+/* 涉币提示（2026-11-18）：卡片小标 + 详情说明条 + SEO 完整页说明。
+   配色沿用「等上架审核」那支琥珀（说明性提示，不是违规下架的红），
+   按视觉降噪的口径不新开第五种颜色。 */
+.crypto-chip {
+  display: inline-block; font-size: 11px; line-height: 1; padding: 3px 7px;
+  border-radius: 999px; white-space: nowrap;
+  color: #7a5310; background: #fdf5e7; border: 1px solid #f2e2c6;
+}
+.crypto-chip.is-inline { padding: 2px 6px; vertical-align: 1px; }
+.detail-crypto {
+  margin: 8px 0 2px; padding: 10px 12px; border-radius: 10px;
+  font-size: 13px; line-height: 1.65; color: #7a5310; background: #fdf5e7;
+  border: 1px solid #f2e2c6;
+}
+.detail-crypto b { font-weight: 600; }
+.detail-crypto .ico { margin-right: 2px; }
+.seo-crypto-chip {
+  font-size: 12px; padding: 2px 8px; border-radius: 999px;
+  color: #7a5310; background: #fdf5e7; border: 1px solid #f2e2c6;
+}
+.seo-crypto {
+  margin: 12px 0; padding: 10px 12px; border-radius: 10px;
+  font-size: 13px; line-height: 1.7; color: #7a5310; background: #fdf5e7;
+  border: 1px solid #f2e2c6;
+}
 .btn-watch { background: #eef1ff; color: #4b45b8; border-color: #cdd2f7; }
 .btn-watch:hover { background: #e3e7ff; }
 .btn-watch.is-on { background: #4b45b8; color: #fff; border-color: #4b45b8; }
@@ -9262,6 +9521,8 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 }
 .td-acts { display: flex; gap: 10px; margin-top: 18px; }
 .td-acts .btn { flex: 1; justify-content: center; text-align: center; }
+.td-dismiss { margin: 12px 0 0; text-align: center; }
+.td-dismiss .link-btn { font-size: 12.5px; color: var(--muted); }
 @media (max-width: 480px) {
   .modal.tool-detail { padding: 22px 18px 16px; }
   .td-logo { width: 44px; height: 44px; font-size: 20px; border-radius: 12px; }
@@ -9278,6 +9539,13 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
   background: rgba(255, 255, 255, .94); border: 1px solid #d9c9f2;
   border-radius: 6px; padding: 0 6px;
 }
+/* 11-18 恢复角标：自荐位伪装成正常作品后，封面左上角原本是「形态」胶囊；
+   推荐角标要占这个位，形态胶囊下移让位（同榜单名次角标的做法）。 */
+.card[data-native-promo="1"] .type-badge { top: 38px; }
+/* 只有作者灯火兑换的「推荐」用暖紫；后台投单（source=admin）标「广告」，用中性灰区分 */
+.promo-flag.is-ad { color: #6b7091; border-color: #dfe2ea; }
+/* 列表视图里「推荐/广告」跟在置顶徽标后面，别贴太紧 */
+.promo-row-flag + .row-name { margin-left: 6px; }
 .promo-noimg {
   display: flex; align-items: center; justify-content: center;
   width: 100%; aspect-ratio: 16 / 9; font-size: 30px; background: #f6f2fd;
@@ -9287,6 +9555,9 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .promo-foot { justify-content: space-between; align-items: center; gap: 8px; margin-top: 4px; }
+/* 自荐卡的「我也想推荐自己的作品」独立一行（2026-11-18）：
+   跟统计行挤一格会被省略号截断，单独占行完整显示；z-index 由 .promo-join 自带（盖过 .card-link） */
+.promo-join-line { margin-top: 4px; font-size: 11px; line-height: 1.5; }
 .promo-tip { font-size: 11px; color: #7b6aa8; }
 .promo-go { flex: none; font-size: 12px; color: var(--primary); }
 /* 卡脚「我也想推荐自己的作品」入口：替掉「作者自荐 · 推荐位」说明字（后台投放的仍标「广告」）。
@@ -9857,6 +10128,18 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 }
 .disc-chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 14px; scrollbar-width: none; }
 .disc-chips::-webkit-scrollbar { display: none; }
+/* 手机端发现页的「记住我的选择」（2026-11-18）：一条细行塞在胶囊栏和专栏之间，
+   左边勾选、右边说明，不占额外高度（胶囊栏底部 14px 内边距在这里收回来一部分）。 */
+.disc-m-remember {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: -8px 2px 12px; font-size: 12px;
+}
+.disc-m-remember .cat-remember-main {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--muted); cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.disc-m-remember .cat-remember-main input { width: 13px; height: 13px; margin: 0; accent-color: var(--primary); cursor: pointer; }
+.disc-m-remember:has(input:checked) .cat-remember-main { color: var(--primary); font-weight: 600; }
 /* 大标题藏掉之后，胶囊栏顶上留出舒适空隙（必须写在基础 padding 之后，否则被覆盖） */
 @media (max-width: 640px) {
   .disc-chips { padding-top: 26px; }
@@ -9906,6 +10189,224 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
   .disc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .disc-title { font-size: 19px; }
   .disc-stats { gap: 18px; padding: 12px 8px; }
+}
+
+/* ---------- 发现页 PC 版式（2026-11-18）：左分类侧栏 + 右内容网格，版式参考 App Store 网页版 ----------
+   晚间改动：移动端（≤640px）也走这版——641–900 横滑分类条形态本来就有，375 直接受益；
+   专栏版式 .disc-m 代码保留但不再切换（回滚只需恢复下面的两处 @media 断点）。
+   侧栏不是通栏贴边而是圆角面板：页面主体在 .container（1260px）里，通栏反而突兀；
+   配色沿用预览稿的浅灰系（站点没有暗色模式，硬编码安全），图标色/主按钮继续走站内变量。 */
+.disc-pc { display: none; }
+#discoverView.disc-has-pc .disc-pc { display: flex; align-items: flex-start; }
+#discoverView.disc-has-pc .disc-m { display: none; }
+/* 侧栏吸顶要避开 60px 的吸顶头部 */
+.disc-pc .cat-side {
+  width: 200px; flex: 0 0 200px; margin-right: 18px;
+  background: #f5f5f7; border: 1px solid #e3e3e6; border-radius: 14px;
+  position: sticky; top: 72px; align-self: flex-start;
+  max-height: calc(100vh - 88px); overflow-y: auto;
+  display: flex; flex-direction: column; padding: 16px 10px 12px;
+}
+.disc-pc .cat-search { position: relative; margin: 0 2px 14px; }
+.disc-pc .cat-search input {
+  width: 100%; height: 30px; border: 1px solid #e3e3e6; border-radius: 8px;
+  background: #fff; font: inherit; font-size: 12.5px; padding: 0 10px 0 28px;
+  color: var(--text); outline: none;
+}
+.disc-pc .cat-search input::placeholder { color: #a1a1a6; }
+.disc-pc .cat-search input:focus { border-color: var(--primary); }
+.disc-pc .cat-search .ico { position: absolute; left: 9px; top: 8px; color: #86868b; pointer-events: none; }
+.disc-pc .cat-group-title { font-size: 11px; font-weight: 600; color: #86868b; padding: 0 9px 6px; }
+.disc-pc .cat-group-mt { margin-top: 14px; }
+.disc-pc .cat-list { display: flex; flex-direction: column; gap: 1px; }
+.disc-pc .cat-item {
+  display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 9px;
+  border-radius: 7px; font: inherit; font-size: 13px; color: var(--text);
+  cursor: pointer; border: none; background: transparent; text-align: left; width: 100%;
+}
+.disc-pc .cat-item:hover { background: #ebebef; }
+.disc-pc .cat-item.active { background: #e3e3e7; font-weight: 600; }
+.disc-pc .cat-item .cat-ico {
+  width: 17px; height: 17px; flex: 0 0 17px; border-radius: 4px;
+  display: inline-flex; align-items: center; justify-content: center; color: #fff;
+}
+.disc-pc .cat-item .cat-ico svg { width: 12px; height: 12px; }
+.disc-pc .cat-item .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.disc-pc .cat-item .cnt { margin-left: auto; font-size: 11px; color: #a1a1a6; font-weight: 400; }
+/* 侧栏占位（2026-11-18）：数据回来前几行灰条，只表达「这里会有一列入口」，不写假名字假数字。
+   呼吸节奏故意比右侧「点灯」慢半拍，别跟主加载动画抢注意力 */
+.disc-pc .cat-list:has(.cat-skel) { gap: 4px; }   /* 占位行之间松一点，别连成一堵灰墙 */
+.disc-pc .cat-skel {
+  display: block; height: 27px; border-radius: 7px; background: #e9e9ee;
+  animation: catSkelPulse 1.9s ease-in-out infinite;
+}
+.disc-pc .cat-skel:nth-child(2) { animation-delay: .1s; }
+.disc-pc .cat-skel:nth-child(3) { animation-delay: .2s; }
+.disc-pc .cat-skel:nth-child(4) { animation-delay: .3s; }
+.disc-pc .cat-skel:nth-child(5) { animation-delay: .4s; }
+.disc-pc .cat-skel:nth-child(6) { animation-delay: .5s; }
+.disc-pc .cat-skel:nth-child(7) { animation-delay: .6s; }
+@keyframes catSkelPulse { 0%, 100% { opacity: .6; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .disc-pc .cat-skel { animation: none; opacity: .85; } }
+
+/* ---------- 发现页分类自定义（编辑模式，2026-11-18）：「分类」标题旁的编辑入口 + 增删排序行 ---------- */
+.disc-pc .cat-group-row { display: flex; align-items: center; justify-content: space-between; }
+.disc-pc .cat-edit-btn {
+  border: none; background: transparent; font: inherit; font-size: 11px; font-weight: 500;
+  color: #86868b; cursor: pointer; padding: 2px 6px; border-radius: 6px;
+}
+.disc-pc .cat-edit-btn:hover { color: var(--text); background: #e3e3e7; }
+.disc-pc .cat-item-editing, .disc-pc .cat-item-adding { cursor: default; }
+.disc-pc .cat-edit-acts { margin-left: auto; display: flex; gap: 2px; flex: none; }
+.disc-pc .cat-edit-btn-ico {
+  width: 20px; height: 20px; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; border-radius: 5px; color: #86868b; cursor: pointer; padding: 0;
+}
+.disc-pc .cat-edit-btn-ico svg { width: 13px; height: 13px; }
+.disc-pc .cat-edit-btn-ico:hover { background: #dcdce1; color: var(--text); }
+.disc-pc .cat-edit-btn-ico:disabled { opacity: .3; cursor: default; }
+.disc-pc .cat-edit-btn-ico:disabled:hover { background: transparent; color: #86868b; }
+.disc-pc .cat-edit-x:hover { color: #d05a5a; background: #f3e1e1; }
+.disc-pc .cat-edit-add:hover { color: #3b8f5c; background: #e0efe5; }
+.disc-pc .cat-item-adding { opacity: .62; }
+.disc-pc .cat-edit-add-title { font-size: 10.5px; color: #a1a1a6; padding: 10px 9px 4px; }
+.disc-pc .cat-edit-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 9px 2px; }
+.disc-pc .cat-edit-reset {
+  border: none; background: transparent; font: inherit; font-size: 12px; color: #86868b; cursor: pointer;
+  padding: 4px 6px; border-radius: 6px; text-decoration: underline; text-underline-offset: 2px;
+}
+.disc-pc .cat-edit-reset:hover { color: var(--text); }
+.disc-pc .cat-edit-done {
+  border: none; background: var(--primary); color: #fff; font: inherit; font-size: 12px; font-weight: 600;
+  cursor: pointer; padding: 5px 16px; border-radius: 7px;
+}
+.disc-pc .cat-edit-done:hover { filter: brightness(1.06); }
+/* 游客保存后的注册引导弹窗 */
+.disc-sync-modal { width: min(360px, calc(100vw - 40px)); }
+.disc-sync-modal .disc-sync-acts { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.disc-sync-modal .disc-sync-acts .btn-ghost { justify-content: center; }
+/* ≤900px 侧栏收成横滑条：编辑入口藏掉，编辑态残留的按钮行也一并藏 */
+@media (max-width: 900px) {
+  .disc-pc .cat-edit-btn { display: none; }
+  .disc-pc .cat-edit-acts, .disc-pc .cat-edit-add-title, .disc-pc .cat-edit-foot { display: none; }
+}
+.disc-pc .cat-main { flex: 1; min-width: 0; }
+.disc-pc .cat-head { margin-bottom: 14px; }
+.disc-pc .cat-head h1 { font-size: 24px; font-weight: 700; color: var(--text); margin: 0 0 5px; }
+.disc-pc .cat-head p { font-size: 13px; color: var(--muted); margin: 0; }
+.disc-pc .cat-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.disc-pc .cat-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.disc-pc .cat-chip {
+  border: 1px solid #e3e3e6; background: var(--card); color: var(--muted);
+  font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+}
+.disc-pc .cat-chip:hover { border-color: var(--primary); color: var(--primary); }
+.disc-pc .cat-chip.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+.disc-pc .cat-sort { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.disc-pc .cat-sort label { font-size: 12px; color: var(--muted); }
+/* 发现页「记住我的选择」（2026-11-18）：跟首页那条 .remember-filters 同一套视觉语言（轻底 + 勾选变紫底），
+   但类名和存取都独立——首页记形态/场景/分类/开源/时间，这里只记平台/分类/排序，两边互不覆盖。
+   说明文字默认收起（这行本来就挤），悬停或勾选后才在右侧展开。 */
+.disc-pc .cat-remember {
+  display: inline-flex; align-items: center; gap: 8px; margin-right: 4px;
+  padding: 4px 10px 4px 12px; border-radius: 9px;
+  background: #f7f7fb; border: 1px solid #ededf5;
+  font-size: 12px; white-space: nowrap;
+}
+.disc-pc .cat-remember-main {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  color: var(--muted); transition: color .15s;
+}
+.disc-pc .cat-remember-main:hover { color: var(--primary); }
+.disc-pc .cat-remember-main input { width: 13px; height: 13px; margin: 0; accent-color: var(--primary); cursor: pointer; }
+.disc-pc .cat-remember:has(input:checked) { background: #f2f2ff; border-color: #dcdcfa; }
+.disc-pc .cat-remember:has(input:checked) .cat-remember-main { color: var(--primary); font-weight: 600; }
+.disc-pc .cat-sort select {
+  border: 1px solid #e3e3e6; background: var(--card); border-radius: 7px;
+  padding: 5px 8px; font: inherit; font-size: 12px; color: var(--text);
+}
+.disc-pc .cat-main .gallery { gap: 16px; }
+/* 发现页内容区宽近千像素，同一枚「点灯」摆在这里会小一号、还贴着一行筛选胶囊——
+   这里只放大不重画（动画本体仍是 dm-load）：窗和灯各放大 30%，四周留出呼吸。
+   另外加 120ms 延迟淡入：本机/缓存命中时加载只要一两百毫秒，太快返回就别闪一下。 */
+.disc-pc .cat-main .gallery .dm-load { padding: 46px 16px 40px; gap: 13px; animation: dmDiscIn .28s ease .12s both; }
+.disc-pc .cat-main .gallery .dm-load-win {
+  width: 82px; height: 74px; padding-bottom: 17px; gap: 9px;
+  border-radius: 26px 26px 11px 11px;
+}
+.disc-pc .cat-main .gallery .dm-load-win::before { left: -20px; right: -20px; top: -20px; height: 84px; }
+.disc-pc .cat-main .gallery .dm-load-win i { width: 9px; height: 14px; border-radius: 5px 5px 2px 2px; }
+.disc-pc .cat-main .gallery .dm-load-win i:nth-child(2) { height: 19px; }
+.disc-pc .cat-main .gallery .dm-load-txt { font-size: 13px; }
+@keyframes dmDiscIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .disc-pc .cat-main .gallery .dm-load { animation: none; }
+}
+/* 专区内容区比首页窄（左侧栏占 218px），不能沿用首页按整屏宽分档的列数——
+   否则 1440 下卡被压到 ~190px、900 附近反而掉成 2 列巨卡。这里单独分档：
+     ≥1261      → 4 列（卡 ~243px）
+     1001–1260  → 3 列（卡 ~247–274px）
+     901–1000   → 侧栏收窄到 180 + auto-fill(226)，948 起够 3 列、之前 2 列
+     641–900    → 横条版式 + auto-fill(226)，内容全宽：848 起回到 3 列
+   卡宽全程 ≥226px，与首页「卡不小于 226」的底线一致。641–900 整段走横条版式（见下）。 */
+.disc-pc .cat-main .gallery { grid-template-columns: repeat(auto-fill, minmax(226px, 1fr)); }
+@media (min-width: 1001px) and (max-width: 1260px) {
+  .disc-pc .cat-main .gallery { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 1261px) {
+  .disc-pc .cat-main .gallery { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (min-width: 901px) and (max-width: 1000px) {
+  .disc-pc .cat-side { width: 180px; flex-basis: 180px; }
+}
+.disc-pc .cat-empty { text-align: center; padding: 80px 0; color: var(--muted); font-size: 14px; }
+/* 横滑提示的两个箭头只在 ≤900px 的横条版式里用。竖侧栏（>900px）下它们没有定位上下文，
+   不基础隐藏就会以 SVG 默认尺寸（300×150）当流内元素排在侧栏中间——2026-11-18 线上事故：
+   侧栏里挂出两个巨大黑箭头。JS 是一律插进 DOM 的（切窗口宽度还要复用），所以隐藏放这里 */
+.disc-pc .cat-scroll-ico { display: none; }
+/* 641–900px：竖侧栏放不下（剩给内容的宽度只够 2 张巨卡），收成顶部横滑分类条 */
+@media (max-width: 900px) {
+  #discoverView.disc-has-pc .disc-pc { display: block; }
+  .disc-pc .cat-side { position: static; width: auto; flex: none; max-height: none; margin: 0 0 14px; }
+  .disc-pc .cat-group-title { display: none; }
+  .disc-pc .cat-list { flex-direction: row; overflow-x: auto; gap: 6px; padding-bottom: 2px; scrollbar-width: none; }
+  .disc-pc .cat-list::-webkit-scrollbar { display: none; }
+  /* 「右边还有货」提示（2026-11-18）：滚动条藏掉后，被裁半截的胶囊分不清「到头了」还是「能滑」。
+     app.js syncDiscPcScrollHint 把列表包进 .cat-scroll-wrap，按真实溢出/滑动位置在包裹层挂
+     cat-fade-r / cat-fade-l：右缘（及滑走后的左缘）渐隐一层，再钉一枚小箭头——胶囊刚好
+     齐边结束、渐隐带里没内容时，箭头就是唯一信号。滑到头自动收掉；只改视觉不挡点击 */
+  .disc-pc .cat-scroll-wrap { position: relative; }
+  .disc-pc .cat-scroll-wrap.cat-fade-r .cat-list {
+    -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 30px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 30px), transparent 100%);
+  }
+  .disc-pc .cat-scroll-wrap.cat-fade-l .cat-list {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 30px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 24px, #000 calc(100% - 30px), transparent 100%);
+  }
+  .disc-pc .cat-scroll-ico {
+    display: none; position: absolute; top: 50%; transform: translateY(-50%);
+    width: 20px; height: 20px; align-items: center; justify-content: center;
+    color: #86868b; background: #f5f5f7; border-radius: 999px;
+    box-shadow: 0 0 7px 5px #f5f5f7;   /* 用面板底色做一圈柔光，压住底下被渐隐的胶囊 */
+    pointer-events: none; z-index: 1;
+  }
+  .disc-pc .cat-scroll-ico svg { width: 12px; height: 12px; }
+  .disc-pc .cat-scroll-ico-r { right: 3px; }
+  .disc-pc .cat-scroll-ico-l { left: 3px; }
+  .disc-pc .cat-scroll-wrap.cat-fade-r .cat-scroll-ico-r { display: flex; }
+  .disc-pc .cat-scroll-wrap.cat-fade-l .cat-scroll-ico-l { display: flex; }
+  .disc-pc .cat-item { width: auto; flex: 0 0 auto; }
+  .disc-pc .cat-skel { width: 84px; flex: 0 0 84px; }   /* 横滑条里灰条要定宽，否则被拉成一整条 */
+  .disc-pc .cat-item .cnt { display: none; }
+  .disc-pc .cat-search { margin-bottom: 10px; }
+  /* 分组标题藏掉后，平台专区条和分类条之间补一道缝，别贴成一坨 */
+  .disc-pc .cat-list#discPcCats { margin-top: 8px; }
+}
+/* ≤640（手机宽度）：专区/分类走上面 641–900 同款横滑条，网格从 auto-fill(226) 收成双列——
+   226px 的最小轨在 375 宽下会把容器撑出横向溢出，必须显式改掉 */
+@media (max-width: 640px) {
+  .disc-pc .cat-main .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 }
 @media (max-width: 640px) {
   /* 作品列表改双列卡片网格（对齐小程序版式）；列表视图(.list-mode)是 flex 不受影响 */
@@ -10437,6 +10938,16 @@ body.scroll-locked .site-bot { opacity: 0; pointer-events: none; }
   transition: background .15s, color .15s;
 }
 .bot-panel-close:hover { background: #f0f1f6; color: var(--text); }
+/* 常驻图钉（2026-11-18）：默认灰（不常驻），点亮＝小助手钉在右下角，30s 靠边站不再生效 */
+.bot-panel-pin {
+  flex: none; width: 24px; height: 24px; border: 0; border-radius: 50%;
+  background: transparent; color: var(--muted); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s, color .15s, transform .15s;
+}
+.bot-panel-pin:hover { background: #f0f1f6; color: var(--text); }
+.bot-panel-pin.on { background: #f3f1ff; color: var(--primary); transform: rotate(-38deg); }
+.bot-panel-pin.on:hover { background: #eae7fb; }
 .bot-panel-msg { margin: 10px 1px 2px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
 /* 窗口里的功能行：延续旧浮标的圆底图标 + 箭头样式，改成列表行形制。
    a.skin-fab（去 /mascots 换形象）是链接不是按钮，共用这套观感，所以要一起列进来 */
@@ -10543,6 +11054,16 @@ html.dm-quiet *::after {
   content: '›'; margin-left: 6px; font-size: 16px; line-height: 1;
   color: var(--muted); opacity: .45; flex: none;
 }
+
+/* ---------- 形象试用提示（2026-11-18）----------
+   当前形象还在 3 天试用里时，换形象入口下面补一句还剩多久 + 怎么留住它。
+   放在 .skin-fab 之后：先看「能换成谁」，再看「这个还能用几天」。
+   已领取的和免费默认形象不显示这一行（hidden）。 */
+.bot-panel > .bot-trial {
+  margin: 7px 2px 0; font-size: 11.5px; line-height: 1.55;
+  color: #6a63c9;
+}
+.bot-panel > .bot-trial b { font-weight: 600; }
 
 /* ---------- 账号设置页（/settings） ----------
    下拉里的二级展开收成的独立页面：一行一个设置项，点行打开各自的弹窗 */
@@ -12451,10 +12972,11 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
 .modal.modal-chat-post { max-width: 760px; }
 .modal-chat-post .chat-post-body { max-height: min(80vh, 780px); padding: 4px 6px 0; }
 .modal-chat-post .cp-main { padding: 12px 18px 8px; }
-.modal-chat-post .cp-head { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
-.modal-chat-post .cp-ava { width: 48px; height: 48px; font-size: 18px; }
-.modal-chat-post .cp-byline { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.modal-chat-post .cp-meta { margin: 0 0 16px; }
+.modal-chat-post .cp-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.modal-chat-post .cp-ava { width: 36px; height: 36px; font-size: 14px; }
+.modal-chat-post .cp-byline { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.modal-chat-post .cp-head .br-kind { margin-left: auto; }
+.modal-chat-post .cp-meta { display: none; }
 .modal-chat-post .cp-text {
   margin: 0 0 18px; font-size: 17px; font-weight: 500;
   line-height: 1.9; color: #26293b;
@@ -12568,4 +13090,192 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
 /* 2026-11-17 站长指主列与右栏之间留白过大：列间距 40px → 24px（右栏卡片内部 padding 不动） */
 @media (min-width: 1100px) {
   #wishView .bar-grid { gap: 24px; }
+}
+
+/* ================= 2026-11-18 视觉降噪 =================
+   起因：站长朋友反馈「网站元素太多，看得我眼花缭乱」。
+   诊断：不是功能多，是「每种状态各配一个颜色」——同屏出现过紫/红/金/青/品红/蓝/绿七套强调色，
+   每块都在喊，眼睛没有落点。这一轮只动呈现层：不删信息、不改口径、不动布局，
+   把配色收成四支笔：① 紫=可点/选中 ② 暖橙=钱与待办 ③ 中性灰=说明性标签 ④ 蓝=企业认证（.author-tag.cert 不动）。
+   要回退就整段删掉，下面每条都是对旧规则的平级覆盖（同选择器、后出现即生效）。 */
+
+/* —— 本周精选的「入选理由」：原来 7 种颜色各代表一种数据，可色卡本身就是噪音；
+   文案（获赞多/收藏多/新上架…）已经把差异说清了，颜色全部退成中性 —— */
+.feat-reason,
+.feat-reason.is-pick,
+.feat-reason.is-like,
+.feat-reason.is-fav,
+.feat-reason.is-cmt,
+.feat-reason.is-tip,
+.feat-reason.is-uv,
+.feat-reason.is-new {
+  color: #63697c; background: #f2f3f7; border-color: #e9eaf1;
+}
+
+/* —— 卡片分类胶囊：紫底紫字（第三处紫色）→ 中性灰 —— */
+.card-cat { color: #63697c; background: #f2f3f7; }
+
+/* —— 开源徽章：绿色 → 中性。闭源本来不标，开源只是「说明」不是「状态」，不值得一种独立颜色 —— */
+.os-badge.open { color: #63697c; background: #f2f3f7; }
+
+/* —— 阶段徽章：「开发中」的蓝色 → 中性；「等上架审核」的琥珀保留 ——
+   后者不是装饰，是「这条链接现在点不通」的提示，值得一种颜色。 */
+.stage-badge.is-wip { color: #63697c; background: #f2f3f7; }
+
+/* —— 置顶：正红实底 → 跟形态胶囊同一层的深色半透明，别比作品本身还显眼 —— */
+.pin-badge { background: rgba(31, 35, 48, .82); }
+
+/* —— 热词角标：热/新都退成中性小字。原来 9 个「热」红块连成一排（种子词大多带热），
+   红色不再携带任何信息；「热」「新」两个字本身就是信息，颜色是纯噪音 —— */
+.hh-badge.is-hot,
+.hh-badge.is-new { color: #6b7183; background: rgba(99, 105, 124, .10); }
+
+/* —— 卡片底部的数字：收藏金 / 评论蓝紫都退成灰，靠左边图标分辨就够（只收卡片，详情页不动） —— */
+.card-foot .fav-num,
+.card-foot .cmt-num { color: var(--muted); }
+
+/* —— 游客公告条：白底 + 实线边太「像一条横幅」→ 极淡底 + 虚线分隔，标题不再用紫色 —— */
+.guest-notice-bar { background: #fafbfe; border-bottom: 1px dashed #e9ebf3; }
+.gnb-main b { color: var(--text); }
+
+/* —— PC 筛选行「更多筛选」下拉（开源 / 时间收进来，见 app.js 的 renderFiltersPC） —— */
+.dd-more .dd-btn { color: #4a4f63; }
+.dd-more-panel { min-width: 236px; padding: 12px 14px 6px; }
+.dd-more-group + .dd-more-group { margin-top: 12px; }
+.dd-more-title {
+  display: block; margin-bottom: 8px;
+  font-size: 11.5px; font-weight: 600; color: #8b90a3; letter-spacing: .3px;
+}
+.dd-more-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.dd-more-chip {
+  padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px;
+  background: #fff; color: #4a4f63; font: inherit; font-size: 12.5px; cursor: pointer;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.dd-more-chip:hover { border-color: #c8cef2; }
+.dd-more-chip.is-on { border-color: var(--primary); background: #eeeefc; color: var(--primary-dark); font-weight: 600; }
+
+/* —— 手机端首屏减层：一屏之内少两行，作品往上提 —— */
+@media (max-width: 640px) {
+  /* 1）「大家在找」不再单独占一行：搜索覆盖层里本来就有同一批热词（sg-hot），两处并一处 */
+  .hero-hot { display: none; }
+  /* 2）「让找找帮你翻」从大胶囊降级成一行小字按钮，别和搜索框抢同一声量 */
+  .hero-find { margin-top: 9px; padding: 5px 12px 6px; font-size: 11.5px; box-shadow: none; }
+  /* 3）「记住筛选条件」收进筛选面板底部（.fbar-foot），不再单独占一行 */
+  .remember-filters-h5 { display: none; }
+}
+
+/* —— 筛选面板底部的「记住筛选条件」（手机端唯一入口，节点由 app.js 从 .remember-filters-h5 搬进来） —— */
+.fbar-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: 2px; padding: 10px 0 12px; border-top: 1px dashed #eef0f6;
+}
+.fbar-foot .remember-filters-main { font-size: 12.5px; color: #5f6577; }
+.fbar-foot .remember-hint { font-size: 11.5px; color: var(--muted); }
+
+/* ---------- 八音盒 · 自己生成一曲（2026-11-18） ----------
+   面板里那扇门 + 生成弹窗。门比「拿手事」低一档：拿手事是它会什么，
+   这个是同一件事的进阶玩法；弹窗沿用站里 .modal 的骨架，只补排版。 */
+.bot-panel > button.bot-gen { color: #4b45c6; border-color: #ddd9f7; }
+.bot-panel > button.bot-gen .ico { background: #ece9ff; color: #4b45c6; }
+.bot-panel > button.bot-gen::after { color: #8f8ad8; opacity: .7; }
+
+.modal.modal-music { max-width: 420px; }
+.modal-music .music-tip { margin: 2px 0 14px; font-size: 12.5px; line-height: 1.75; color: var(--muted); }
+.music-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.music-row > label { flex: 0 0 34px; font-size: 12.5px; color: #5f6577; }
+.music-row > select {
+  flex: 1; min-width: 0; height: 36px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: #fbfbfe; color: var(--text); font-size: 13px;
+}
+.music-row > input[type="range"] { flex: 1; min-width: 0; accent-color: #6c63c8; }
+.music-val {
+  flex: 0 0 62px; text-align: right; font-size: 12px;
+  color: var(--primary-dark); font-variant-numeric: tabular-nums;
+}
+.modal-music .btn-block { margin-top: 14px; }
+.music-seed {
+  margin: 12px 0 0; padding: 10px 12px; border-radius: 10px;
+  background: #f7f6ff; border: 1px solid #e6e2fb;
+  font-size: 12.5px; line-height: 1.7; color: #4b45c6; cursor: pointer;
+}
+.music-seed b { font-size: 13px; letter-spacing: .06em; }
+.music-seed i { display: block; font-style: normal; color: var(--muted); font-size: 11.5px; }
+.music-replay { display: flex; gap: 8px; margin-top: 10px; }
+.music-replay input {
+  flex: 1; min-width: 0; height: 34px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: #fbfbfe; color: var(--text); font-size: 12.5px; letter-spacing: .04em;
+}
+.music-replay button {
+  flex: 0 0 auto; height: 34px; padding: 0 14px;
+  border: 1px solid #d9daf5; border-radius: 9px;
+  background: #f6f5ff; color: var(--primary-dark); font-size: 12.5px; cursor: pointer;
+}
+.music-replay button:hover { border-color: #c8cef2; background: #efedff; }
+
+/* ---------- 八音盒 · 曲目单与最近生成（2026-11-18 接站点时补） ----------
+   弹窗上半是曲目单（三组胶囊，正在放的那首亮着），下半仍是生成器。
+   曲目单限高滚动：16 首全摊开会把弹窗顶到屏幕外，尤其中文名比英文长。 */
+.music-list {
+  max-height: 200px; overflow-y: auto; overscroll-behavior: contain;
+  margin: 0 -2px 2px 0; padding-right: 4px;
+}
+@media (min-height: 760px) { .music-list { max-height: 238px; } }
+/* 手机（667/640 这类）把曲目单压矮一档：不然「生成并播放」会被推到首屏外面，
+   看着像这里只能听现成的 */
+@media (max-height: 700px) { .music-list { max-height: 148px; } }
+
+.ml-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 9px; }
+.ml-group:last-child { margin-bottom: 0; }
+.ml-t { flex: 0 0 100%; font-size: 11px; color: var(--muted); letter-spacing: .04em; }
+.ml-chip {
+  display: inline-flex; align-items: baseline; gap: 5px;
+  padding: 5px 9px; border: 1px solid #e6e6f0; border-radius: 8px;
+  background: #fbfbfe; color: var(--text); font-size: 12.5px; line-height: 1.2;
+  cursor: pointer; transition: border-color .15s, background .15s, color .15s;
+}
+.ml-chip:hover { border-color: #cfc9f0; background: #f6f4ff; }
+.ml-chip i { font-style: normal; font-size: 10.5px; color: var(--muted); }
+.ml-chip.on { border-color: #b9b0ee; background: #efecff; color: #4b45c6; }
+.ml-chip.on i { color: #7d74c8; }
+
+.music-sep { display: flex; align-items: center; gap: 10px; margin: 13px 0 10px; }
+.music-sep::before, .music-sep::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.music-sep span { font-size: 11.5px; color: var(--muted); letter-spacing: .04em; white-space: nowrap; }
+
+.music-recent { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.mr-t { flex: 0 0 100%; font-size: 11px; color: var(--muted); }
+.mr-chip {
+  padding: 4px 8px; border: 1px dashed #dcd8f0; border-radius: 7px;
+  background: transparent; color: #5b5590; font-size: 12px; cursor: pointer;
+}
+.mr-chip:hover { border-style: solid; background: #f7f6ff; }
+.mr-chip i { font-style: normal; font-size: 10.5px; color: var(--muted); margin-left: 5px; }
+
+/* 手机上的八音盒：窄、矮，四行控件加曲目单很容易把底部顶出去。
+   这里只压缩间距，不改字号档位——12px 已经在可读下限。 */
+@media (max-width: 640px) {
+  .modal.modal-music { padding: 20px 18px; }
+  .modal-music .music-tip { margin: 0 0 10px; font-size: 12px; line-height: 1.65; }
+  .music-row { gap: 8px; margin-bottom: 8px; }
+  .music-row > label { flex: 0 0 30px; font-size: 12px; }
+  .music-row > select { height: 34px; font-size: 12.5px; }
+  .music-val { flex: 0 0 54px; font-size: 11.5px; }
+  .music-sep { margin: 10px 0 8px; }
+  .modal-music .btn-block { margin-top: 10px; height: 40px; }
+  .music-seed { margin-top: 9px; padding: 8px 10px; font-size: 12px; }
+  .music-replay { margin-top: 8px; }
+  .ml-chip { padding: 4px 8px; font-size: 12px; }
+}
+
+/* 手机上的曲目单：高度只留「原创」一组，底部渐隐告诉人还能往下滑。
+   这样「生成并播放」和种子输入框都落在首屏里，不用先滑一段才看见按钮。 */
+@media (max-width: 640px) {
+  .music-list {
+    max-height: 136px;
+    -webkit-mask-image: linear-gradient(180deg, #000 84%, rgba(0,0,0,.06));
+    mask-image: linear-gradient(180deg, #000 84%, rgba(0,0,0,.06));
+  }
 }

@@ -380,6 +380,15 @@ function workArticle(base, w, trail, related = [], opts = {}) {
   // SSR 不知道访客是谁，也不能把互动按钮做成死链给爬虫看。
   // 「在橱窗里打开」大按钮按站长要求去掉，评论走动作栏的 💬（打开详情弹窗，评论在那里）。
   const railHtml = full ? `<aside class="seo-rail" id="seoRail" data-work="${esc(w.id)}" data-title="${esc(w.title)}">
+      <div class="detail-author-card seo-author-card" id="seoAuthorCard" aria-label="作者名片">
+        <div class="dac-top">
+          <button type="button" class="dac-ava" data-seo-ava></button>
+          <div class="dac-id"><button type="button" class="dac-name" data-seo-name></button></div>
+        </div>
+        <div class="dac-badges" data-seo-badges></div>
+        <div class="dac-stats" data-seo-stats></div>
+        <button type="button" class="detail-follow dac-follow" data-seo-follow style="display:none"></button>
+      </div>
       <a class="sr-item" href="${authorHref(w)}" rel="author" title="访问作者主页">${svgIco('user')}<span>作者主页</span></a>
       <button type="button" class="sr-item" data-seo-like="${esc(w.id)}" aria-label="点赞">${svgIco('heart')}<span class="sr-txt">点赞</span></button>
       <button type="button" class="sr-item" data-fav="${esc(w.id)}" aria-label="收藏">${svgIco('fav')}<span>收藏</span></button>
@@ -396,11 +405,13 @@ function workArticle(base, w, trail, related = [], opts = {}) {
       ${osBadgeHtml(w)}
       ${paidBadgeHtml(w)}
       ${(w.featured && (!w.featuredUntil || new Date(w.featuredUntil).getTime() > Date.now())) ? `<span class="badge-featured">${svgIco('sparkle')} 精选</span>` : ''}
+      ${w.crypto ? '<span class="seo-crypto-chip">涉币 · 信息参考</span>' : ''}
     </div>
     <p class="seo-author">作者：${w.anonymous
       ? '<span rel="author">匿名</span>'
       : `<a href="${authorHref(w)}" rel="author">@${esc(nameOf(w))}</a>`}
       · ${w.likes || 0} 点赞 · ${w.favs || 0} 人收藏 · ${w.commentCount || 0} 评论 · ${w.views || 0} 浏览${date ? ' · ' + esc(date) : ''}</p>
+    ${w.crypto ? `<p class="seo-crypto">${svgIco('coin')} <b>涉虚拟货币内容</b>：仅供信息参考，不构成投资建议，也不代表本站推荐或背书。这类作品不进榜单和星梦期刊，也不能买推荐位；是否使用、是否合规请自行判断。</p>` : ''}
     ${coverHtml}
     ${quickLookHtml(w)}
     ${gallery}

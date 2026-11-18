@@ -1,4 +1,7 @@
-/* 造梦橱窗 · 右下角小助手形象库（2026-11-08）
+/* 造梦橱窗 · 右下角小住客形象库（2026-11-08）
+ *
+ * 名字口径（2026-11-18 站长定）：这一群统称「橱窗里的小住客」，面板/无障碍里简称「小住客」；
+ * 不再叫「小助手」（听着像客服工具人）。12 个形象是住在橱窗里的不同住客，各有各的拿手事。
  *
  * 为什么要单独一个文件：形象要能让用户自己换，切换时只换 <svg> 内容，
  * 悬浮 / 打招呼气泡 / 弹出的功能窗口 / 30 秒靠边站这些行为与形象无关，
@@ -11,7 +14,8 @@
  *     ico 图标名（见 icons.js）, hint 无障碍说明 }。动作逻辑在 index.html 的 runAct 里，
  *     这里只描述「它是谁、它会什么」，保持本文件纯数据（/mascots 页也读同一份）。
  *     动作都不排他：每件拿手事都对应站内本来就有的入口，形象只是更顺手的那个门。
- *   - 拿手事口径（2026-11-17）：只有三件是真能用的——灯火「自动签到」（在线满 5 分钟也自动补签）、
+ *   - 拿手事口径（2026-11-18）：只有三件是真能用的——灯火「每日签到」（纯手动，点一下才算；
+ *     在线自动补签已按站长要求下掉，见 server.js 的 /api/mascot/beat）、
  *     星星罐「攒灯火」（专属福利：领到星星罐才开始攒，在线每 5 分钟 10 盏、一天 10 次共 100 盏）、
  *     八音盒「放音乐」；
  *     机器人保留「找件工具」（默认形象得有个能点的）；其余形象一律标「功能开发中」，
@@ -34,7 +38,7 @@ window.MASCOTS = {
   /* A 灯火小精灵：纸灯笼 + 火苗里的一双眼。站内积分就叫灯火，形象与货币同一个词。 */
   lamp: {
     name: '灯火',
-    act: { label: '自动签到', ico: 'lamp', hint: '点一下立刻签到领灯火；在线满 5 分钟也会自动补签' },
+    act: { label: '每日签到', ico: 'lamp', hint: '点一下签到领灯火；一天一次，连签奖励逐天递增' },
     bubble: '灯亮着，要帮忙吗？',
     msg: '灯亮着，我就在。要装到桌面，还是先进小程序逛逛？',
     svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
@@ -110,41 +114,34 @@ window.MASCOTS = {
 </svg>`
   },
 
-  /* C 月亮小梦：戴靛蓝睡帽的圆月，最直白地说「梦」。 */
-  moon: {
-    name: '月亮',
-    act: DEV_ACT, // 旧款：熄灯（labelOff「点灯」）
-    bubble: '夜深了，慢慢来',
-    msg: '夜深了，慢慢来。要不要先把站装到桌面，明天一点就开？',
+  /* K 八音盒：摇一摇发条就有一小段曲子飘出来，梦是被哄睡的那段旋律。
+     2026-11-18：曲库从写死的 8 个音换成 12 首（原创 4 + 公有领域 8），每次点都不一样，
+     再点一下停下；面板里还多一扇「自己生成一曲」的门，曲子只存种子、不存音频。 */
+  box: {
+    name: '八音盒',
+    act: { label: '放音乐', ico: 'bell', hint: '现场合成，每点一次换一首；再点一下停下' },
+    bubble: '给你放一小段',
+    msg: '一次一首，再点一下停；想挑一首听，或者自己长一首，点下面那扇门。',
     svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
   <defs>
-    <linearGradient id="mooG" x1=".2" y1="0" x2=".8" y2="1">
-      <stop offset="0" stop-color="#ffeeb8"/><stop offset="1" stop-color="#ffc766"/>
+    <linearGradient id="mbL" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#bcbcf6"/><stop offset="1" stop-color="#8383e0"/>
     </linearGradient>
-    <linearGradient id="mooCap" x1=".1" y1="0" x2=".9" y2="1">
-      <stop offset="0" stop-color="#7575e8"/><stop offset="1" stop-color="#4747b6"/>
+    <linearGradient id="mbB" x1=".2" y1="0" x2=".8" y2="1">
+      <stop offset="0" stop-color="#8f8fe8"/><stop offset="1" stop-color="#6262ca"/>
     </linearGradient>
   </defs>
-  <ellipse class="m-shadow" cx="60" cy="126" rx="20" ry="4.2"/>
-  <g class="m-float">
-    <g class="moo-face">
-      <circle cx="60" cy="74" r="40" fill="url(#mooG)"/>
-      <circle cx="43" cy="93" r="5" fill="#ffd98a" opacity=".85"/>
-      <circle cx="77" cy="99" r="3.4" fill="#ffd98a" opacity=".7"/>
-      <circle cx="36" cy="70" r="2.6" fill="#ffd98a" opacity=".6"/>
-      <path d="M97 72a37 37 0 0 1-22 36" stroke="#eeb050" stroke-width="3.4" opacity=".28" fill="none" stroke-linecap="round"/>
-      <ellipse cx="36" cy="84" rx="5.4" ry="3" fill="#ffab7a" opacity=".5"/>
-      <ellipse cx="82" cy="84" rx="5.4" ry="3" fill="#ffab7a" opacity=".5"/>
-      <path d="M42 74c3.2-3.2 7.4-3.2 10.6 0" stroke="#b07a3a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
-      <path d="M67 74c3.2-3.2 7.4-3.2 10.6 0" stroke="#b07a3a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
-      <path d="M55 88c3 3.4 7 3.4 10 0" stroke="#b07a3a" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".85"/>
-    </g>
-    <path d="M21 64C23 40 39 24 60 24s37 16 39 40c-13-10-26-14-39-14s-26 4-39 14z" fill="url(#mooCap)"/>
-    <path d="M24 63C18 57 14 50 13 41c2-1 5 0 7 3 3 6 8 12 13 16z" fill="url(#mooCap)"/>
-    <circle cx="12" cy="38" r="7.2" fill="#f5f7ff"/>
-    <circle cx="10" cy="36" r="2.8" fill="#e5e9fb"/>
-    <path d="M21 64c13-10 26-14 39-14s26 4 39 14" stroke="#9a9af3" stroke-width="1.6" fill="none" opacity=".55"/>
-  </g>
+  <ellipse class="m-shadow" cx="60" cy="122" rx="26" ry="4.4"/>
+  <g class="m-float"><g class="mb-rock">
+    <g class="mb-note" style="animation-delay:0s"><g transform="translate(44 52)"><ellipse cx="0" cy="0" rx="7.4" ry="5.4" fill="#ffd977"/><rect x="5.2" y="-26" width="2.6" height="26" rx="1.3" fill="#ffd977"/><path d="M6.5-24c6 3.4 9 7.6 9 13" stroke="#ffd977" stroke-width="2.6" fill="none" stroke-linecap="round"/></g></g>
+    <g class="mb-note" style="animation-delay:1.1s"><g transform="translate(74 40) scale(.74)"><ellipse cx="0" cy="0" rx="7.4" ry="5.4" fill="#ffc766"/><rect x="5.2" y="-26" width="2.6" height="26" rx="1.3" fill="#ffc766"/><path d="M6.5-24c6 3.4 9 7.6 9 13" stroke="#ffc766" stroke-width="2.6" fill="none" stroke-linecap="round"/></g></g>
+    <rect x="26" y="62" width="68" height="14" rx="5" fill="url(#mbL)"/>
+    <path d="M30 72h60" stroke="#6c6cd0" stroke-width="1.4" opacity=".45"/>
+    <path d="M30 76h60v32a8 8 0 0 1-8 8H38a8 8 0 0 1-8-8z" fill="url(#mbB)"/>
+    <rect x="42" y="86" width="36" height="20" rx="6" fill="#a9a9f1" opacity=".45"/>
+    <g class="mb-key"><circle cx="97" cy="92" r="6.6" fill="#ffd977"/><path d="M90 92h7" stroke="#d9ab35" stroke-width="2" stroke-linecap="round"/><circle cx="97" cy="92" r="2.2" fill="#fff" opacity=".7"/></g>
+    <g transform="translate(60 96) scale(.72)"><path d="M0-6.4C1.15-1.15 1.15-1.15 6.4 0 1.15 1.15 1.15 1.15 0 6.4-1.15 1.15-1.15 1.15-6.4 0-1.15-1.15-1.15-1.15 0-6.4Z" fill="#ffe6a0"/></g>
+  </g></g>
 </svg>`
   },
 
@@ -186,6 +183,44 @@ window.MASCOTS = {
     <circle cx="60" cy="49" r="4.6" fill="#5b5384"/>
     <circle cx="58.4" cy="48" r=".85" fill="#fff"/>
     <circle cx="61.6" cy="48" r=".85" fill="#fff"/>
+  </g>
+</svg>`
+  },
+
+  /* C 月亮小梦：戴靛蓝睡帽的圆月，最直白地说「梦」。 */
+  moon: {
+    name: '月亮',
+    act: DEV_ACT, // 旧款：熄灯（labelOff「点灯」）
+    bubble: '夜深了，慢慢来',
+    msg: '夜深了，慢慢来。要不要先把站装到桌面，明天一点就开？',
+    svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
+  <defs>
+    <linearGradient id="mooG" x1=".2" y1="0" x2=".8" y2="1">
+      <stop offset="0" stop-color="#ffeeb8"/><stop offset="1" stop-color="#ffc766"/>
+    </linearGradient>
+    <linearGradient id="mooCap" x1=".1" y1="0" x2=".9" y2="1">
+      <stop offset="0" stop-color="#7575e8"/><stop offset="1" stop-color="#4747b6"/>
+    </linearGradient>
+  </defs>
+  <ellipse class="m-shadow" cx="60" cy="126" rx="20" ry="4.2"/>
+  <g class="m-float">
+    <g class="moo-face">
+      <circle cx="60" cy="74" r="40" fill="url(#mooG)"/>
+      <circle cx="43" cy="93" r="5" fill="#ffd98a" opacity=".85"/>
+      <circle cx="77" cy="99" r="3.4" fill="#ffd98a" opacity=".7"/>
+      <circle cx="36" cy="70" r="2.6" fill="#ffd98a" opacity=".6"/>
+      <path d="M97 72a37 37 0 0 1-22 36" stroke="#eeb050" stroke-width="3.4" opacity=".28" fill="none" stroke-linecap="round"/>
+      <ellipse cx="36" cy="84" rx="5.4" ry="3" fill="#ffab7a" opacity=".5"/>
+      <ellipse cx="82" cy="84" rx="5.4" ry="3" fill="#ffab7a" opacity=".5"/>
+      <path d="M42 74c3.2-3.2 7.4-3.2 10.6 0" stroke="#b07a3a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+      <path d="M67 74c3.2-3.2 7.4-3.2 10.6 0" stroke="#b07a3a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+      <path d="M55 88c3 3.4 7 3.4 10 0" stroke="#b07a3a" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".85"/>
+    </g>
+    <path d="M21 64C23 40 39 24 60 24s37 16 39 40c-13-10-26-14-39-14s-26 4-39 14z" fill="url(#mooCap)"/>
+    <path d="M24 63C18 57 14 50 13 41c2-1 5 0 7 3 3 6 8 12 13 16z" fill="url(#mooCap)"/>
+    <circle cx="12" cy="38" r="7.2" fill="#f5f7ff"/>
+    <circle cx="10" cy="36" r="2.8" fill="#e5e9fb"/>
+    <path d="M21 64c13-10 26-14 39-14s26 4 39 14" stroke="#9a9af3" stroke-width="1.6" fill="none" opacity=".55"/>
   </g>
 </svg>`
   },
@@ -343,35 +378,6 @@ window.MASCOTS = {
 </svg>`
   },
 
-  /* K 八音盒：摇一摇发条就有一小段曲子飘出来，梦是被哄睡的那段旋律。 */
-  box: {
-    name: '八音盒',
-    act: { label: '放音乐', ico: 'bell', hint: '现场合成一小段旋律，不加载音频文件' },
-    bubble: '给你放一小段',
-    msg: '一曲放完，梦就续上了。想先做哪一件？',
-    svg: `<svg class="bot-svg" viewBox="0 0 120 132" aria-hidden="true">
-  <defs>
-    <linearGradient id="mbL" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#bcbcf6"/><stop offset="1" stop-color="#8383e0"/>
-    </linearGradient>
-    <linearGradient id="mbB" x1=".2" y1="0" x2=".8" y2="1">
-      <stop offset="0" stop-color="#8f8fe8"/><stop offset="1" stop-color="#6262ca"/>
-    </linearGradient>
-  </defs>
-  <ellipse class="m-shadow" cx="60" cy="122" rx="26" ry="4.4"/>
-  <g class="m-float"><g class="mb-rock">
-    <g class="mb-note" style="animation-delay:0s"><g transform="translate(44 52)"><ellipse cx="0" cy="0" rx="7.4" ry="5.4" fill="#ffd977"/><rect x="5.2" y="-26" width="2.6" height="26" rx="1.3" fill="#ffd977"/><path d="M6.5-24c6 3.4 9 7.6 9 13" stroke="#ffd977" stroke-width="2.6" fill="none" stroke-linecap="round"/></g></g>
-    <g class="mb-note" style="animation-delay:1.1s"><g transform="translate(74 40) scale(.74)"><ellipse cx="0" cy="0" rx="7.4" ry="5.4" fill="#ffc766"/><rect x="5.2" y="-26" width="2.6" height="26" rx="1.3" fill="#ffc766"/><path d="M6.5-24c6 3.4 9 7.6 9 13" stroke="#ffc766" stroke-width="2.6" fill="none" stroke-linecap="round"/></g></g>
-    <rect x="26" y="62" width="68" height="14" rx="5" fill="url(#mbL)"/>
-    <path d="M30 72h60" stroke="#6c6cd0" stroke-width="1.4" opacity=".45"/>
-    <path d="M30 76h60v32a8 8 0 0 1-8 8H38a8 8 0 0 1-8-8z" fill="url(#mbB)"/>
-    <rect x="42" y="86" width="36" height="20" rx="6" fill="#a9a9f1" opacity=".45"/>
-    <g class="mb-key"><circle cx="97" cy="92" r="6.6" fill="#ffd977"/><path d="M90 92h7" stroke="#d9ab35" stroke-width="2" stroke-linecap="round"/><circle cx="97" cy="92" r="2.2" fill="#fff" opacity=".7"/></g>
-    <g transform="translate(60 96) scale(.72)"><path d="M0-6.4C1.15-1.15 1.15-1.15 6.4 0 1.15 1.15 1.15 1.15 0 6.4-1.15 1.15-1.15 1.15-6.4 0-1.15-1.15-1.15-1.15 0-6.4Z" fill="#ffe6a0"/></g>
-  </g></g>
-</svg>`
-  },
-
   /* L 梦猫：趴在梦上打盹的猫，尾巴一扫一扫——「别急，还没醒」的那层意思。 */
   cat: {
     name: '梦猫',
@@ -418,7 +424,7 @@ window.MASCOTS = {
     free: true,
     act: { label: '找件工具', ico: 'search', hint: '直接搜站内作品' },
     bubble: '嗨～需要帮忙吗？',
-    msg: '嗨，我是造梦小助手，这几件事都能帮你：',
+    msg: '嗨，我是橱窗里的小住客，这几件事都能帮你：',
     svg: `<svg class="bot-svg" viewBox="0 0 120 126" aria-hidden="true">
   <defs>
     <linearGradient id="botShell" x1="0" y1="0" x2="0" y2="1">

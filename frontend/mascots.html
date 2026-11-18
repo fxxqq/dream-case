@@ -7,12 +7,13 @@
 <meta name="robots" content="noindex,follow" />
 <title>换个形象 - 造梦橱窗</title>
 <link rel="icon" href="/favicon.svg" />
+<script defer src="https://analytics.umami.is/script.js" data-website-id="96b6aaa5-bc4f-4f33-8af4-fc294f577e0b"></script>
 <!--
   换形象页（/mascots）
   - 独立文件：不接入 app.js / SPA 路由，服务端 app.get('/mascots') 直接回本文件。
   - 站头 / 站脚照 /medals 的做法手写一份轻量版（同高 60px、同底色、同链接分组）：
     本页不引 app.js，导航都是整页跳转，登录态由 /api/mascots/state 顺带给出。
-  - 形象库只有一份：mascots.js（window.MASCOTS），与首页右下角小助手同一套数据。
+  - 形象库只有一份：mascots.js（window.MASCOTS），与首页右下角小住客同一套数据。
   - 动效只有一份：mascots.css（首页 style.css 里的形象动效已抽到这里，两边共用）。
   - 领取口径（2026-11-17）：只有 free 的「机器人」白送，其余每个看一支激励视频才领得到。
     广告不新造通道——POST /api/ad/ticket 出票 → 扫码进小程序 pages/adview 看完 → 票变成 done
@@ -129,6 +130,9 @@ body{
 }
 .btn-ghost:hover{border-color:#c3c4ee;color:var(--primary);background:#fbfaff;transform:translateY(-1px)}
 .btn-ghost:active{transform:none}
+/* display:inline-flex 会压过 [hidden] 的 display:none（作者的规则赢 UA 样式表），得显式补一条：
+   「看一支广告留住它」只在试用中显示，其余时候必须真的不占位。 */
+.btn-ghost[hidden]{display:none}
 /* 只有一个形象可用时（还没领别的），随机按钮置灰：别让人白点 */
 .btn-ghost[disabled]{opacity:.5;cursor:default}
 .btn-ghost[disabled]:hover{border-color:var(--border);color:#4a5063;background:#fff;transform:none}
@@ -168,6 +172,8 @@ body{
 /* 「N 人已领取」（2026-11-18）：每个付费形象卡片上的一行小字，人数来自 /api/mascots/state。
    机器人是免费默认形象不走领取，不给它画这一行。 */
 .sk .pc{display:block;font-size:10.5px;color:#a0a5b6;margin-top:2px;letter-spacing:.2px}
+/* 试用中的那行「还剩 X」：紫一点，别和「N 人已领取」混成同一条灰字 */
+.sk .pc.tr-left{color:#6a63c9}
 .hero-info .hact{font-size:12.5px;color:#6a63c9;margin-top:8px}
 .hero-info .hact b{font-weight:600}
 .sk .tick{
@@ -176,26 +182,32 @@ body{
 }
 .sk.on .tick{display:grid}
 
-/* 未领取的形象（2026-11-17）：看得见、点得动——点开就是「看一支广告领取」，
-   但没领到之前选不了，右下角还是默认的机器人。
+/* 没碰过的形象（2026-11-17 领取 / 2026-11-18 加了 3 天试用）：看得见、点得动——
+   点开就开始 3 天试用（点了才计时，一人一个形象只给一次）；用完了再点就是「看一支广告领取」。
    动画照旧只在该格悬停时跑，别让 11 个一起动。 */
 .sk.locked{background:#fbfbfe;border-style:dashed}
 .sk.locked:hover{border-color:#c3c4ee;background:#fdfdff}
 .sk.locked .site-bot{opacity:.66;filter:saturate(.7)}
 .sk.locked:hover .site-bot{opacity:.88;filter:none}
-/* 角标：未领取（琥珀）/ 默认免费（绿）/ 已领取（淡紫） */
+/* 角标：未领取（琥珀）/ 默认免费（绿）/ 已领取（淡紫）/ 试用中（紫）
+   试用口径（2026-11-18）：11 个付费形象各给 3 天，第一次换上桌开始算，一人一个形象只给一次。 */
 .lk{
   font-size:10px;letter-spacing:.4px;padding:1px 6px;border-radius:6px;
   color:#a8761c;background:#fff8e8;border:1px solid #f2e2bb;white-space:nowrap;
+}
+.lk.end{color:#8a8fa3;background:#f6f6fa;border-color:#e6e7ef}
+.tr{
+  font-size:10px;letter-spacing:.4px;padding:1px 6px;border-radius:6px;
+  color:#5b52c9;background:#f1eeff;border:1px solid #ded7fb;white-space:nowrap;
 }
 .fr{
   font-size:10px;letter-spacing:.4px;padding:1px 6px;border-radius:6px;
   color:#2f7d5b;background:#effaf4;border:1px solid #cbe9d8;white-space:nowrap;
 }
-.sk .lk,.sk .fr{position:absolute;top:8px;left:8px}
+.sk .lk,.sk .fr,.sk .tr{position:absolute;top:8px;left:8px}
 .hero-head{display:flex;align-items:center;gap:7px}
-.hero-head .fr,.hero-head .lk{display:none}
-.hero-head .fr.on,.hero-head .lk.on{display:inline-block}
+.hero-head .fr,.hero-head .lk,.hero-head .tr{display:none}
+.hero-head .fr.on,.hero-head .lk.on,.hero-head .tr.on{display:inline-block}
 .owned-cnt{font-size:12px;color:#8a8fa3;margin-top:4px}
 .owned-cnt b{color:#6a63c9;font-weight:600}
 
@@ -332,7 +344,7 @@ body{
     <a class="logo" href="/" title="回造梦橱窗首页"><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
     <nav class="sh-nav" aria-label="主导航">
       <a class="nav-btn" href="/rank" data-tip="作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届" aria-label="星梦榜：作品的热度排行，访客、收藏、评论、灯火加权计分，每周换一届"><i class="ico" data-ico="rank"></i>星梦榜</a>
-      <a class="nav-btn" href="/bar" data-tip="说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现"><i class="ico" data-ico="wish"></i>造梦酒馆</a>
+      <a class="nav-btn" href="/bar" data-tip="说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现"><i class="ico" data-ico="wish"></i>酒馆</a>
       <a class="nav-btn" href="/medals" data-tip="完成指定事情拿勋章，永久挂在你的主页和作品页" aria-label="造梦勋章：完成指定事情拿勋章，永久挂在你的主页和作品页"><i class="ico" data-ico="medal"></i>造梦勋章</a>
     </nav>
     <div class="sh-auth" id="authBox"></div>
@@ -342,7 +354,7 @@ body{
 <div class="wrap">
   <header class="hd">
     <h1>换个形象</h1>
-    <p class="sub">默认只有机器人白送 · 其他每个看一支广告就能领 · 领到手记在账号上</p>
+    <p class="sub">橱窗里住着十二位小住客，各有一件拿手事 · 默认只有机器人白送 · 其他每个可先试 3 天 · 看一支广告就能领到手</p>
   </header>
 
   <section class="hero">
@@ -359,6 +371,7 @@ body{
       <p class="hact" id="heroAct">拿手事 · <b>找件工具</b></p>
       <p class="owned-cnt" id="ownedCnt"></p>
       <div class="hero-acts">
+        <button type="button" class="btn-ghost" id="keepBtn" hidden>看一支广告留住它</button>
         <button type="button" class="btn-ghost" id="randBtn">随机换一个</button>
         <a class="btn-ghost" href="/">回首页看效果</a>
       </div>
@@ -368,14 +381,14 @@ body{
   <div class="list-hd">
     <h2>全部形象</h2>
     <span class="cnt" id="cnt"></span>
-    <span class="tip" id="listTip">点没领的，看一支广告就能领</span>
+    <span class="tip" id="listTip">点没领的，先免费试 3 天</span>
   </div>
   <section class="grid" id="grid" aria-label="形象列表"></section>
 
   <!-- 页面自己的注脚：讲口径与回程，不是站级页脚（站级页脚在 .wrap 外面） -->
   <p class="page-note">
     <span id="footNote"></span><br />
-    小助手窗口里的「换个形象」随时回到这一页 · <a href="/">回首页</a>
+    小住客窗口里的「换个形象」随时回到这一页 · <a href="/">回首页</a>
   </p>
 </div>
 
@@ -445,7 +458,47 @@ body{
   var owned = cachedOwned || [];
   var ownReady = !!cachedOwned;       // 缓存里有答案就先照着画，接口回来再校正
   var loggedIn = null;                // null = 还没问到
-  function canUse(id){ return ADMIN || isFree(id) || owned.indexOf(id) >= 0; }
+
+  /* ---------------- 3 天试用（2026-11-18） ----------------
+     口径：11 个付费形象各给 3 天，第一次换上桌开始算，一人一个形象只给一次；
+     到期退回机器人，想一直留着还是看一支广告领到手。
+     登录了以服务端 rec.mascotTrial 为准（换设备也接着算）；游客只能记本机，
+     登录后按本机那个开始时间补录一次（见 migrateGuestTrials）。 */
+  var TRIAL_KEY = 'dm_mascot_trial';   // { 形象id: 到期时间戳 }，游客的账本，也是登录后的缓存
+  var TRIAL_MS = 3 * 24 * 3600 * 1000;
+  function readLocalTrials(){
+    try {
+      var v = JSON.parse(localStorage.getItem(TRIAL_KEY) || 'null');
+      return (v && typeof v === 'object') ? v : {};
+    } catch(e){ return {}; }
+  }
+  function writeLocalTrials(m){
+    try { localStorage.setItem(TRIAL_KEY, JSON.stringify(m || {})); } catch(e){}
+  }
+  var trials = readLocalTrials();
+  function trialLeft(id){
+    var at = Number(trials[id]) || 0;
+    return at > Date.now() ? at - Date.now() : 0;
+  }
+  // 剩多久：24 小时以上按「N 天 M 小时」，不足一天按「N 小时」，最后一小时按「N 分钟」
+  function trialLeftText(id){
+    var ms = trialLeft(id);
+    if (!ms) return '已到期';
+    var h = Math.floor(ms / 3600000);
+    if (h >= 24) return Math.floor(h / 24) + ' 天 ' + (h % 24) + ' 小时';
+    if (h >= 1) return h + ' 小时';
+    return Math.max(1, Math.floor(ms / 60000)) + ' 分钟';
+  }
+  /* 一个形象现在是什么状态：
+     free 默认免费 / owned 已领取 / trial 试用中 / ended 试用过已到期 / locked 没碰过（可试 3 天） */
+  function trialState(id){
+    if (isFree(id)) return 'free';
+    if (ADMIN || owned.indexOf(id) >= 0) return 'owned';
+    var at = Number(trials[id]) || 0;
+    if (at > Date.now()) return 'trial';
+    return at ? 'ended' : 'locked';
+  }
+  function canUse(id){ return trialState(id) !== 'locked' && trialState(id) !== 'ended'; }
 
   var heroFigure = document.getElementById('heroFigure');
   var heroName = document.getElementById('heroName');
@@ -457,6 +510,7 @@ body{
   var cntEl = document.getElementById('cnt');
   var listTip = document.getElementById('listTip');
   var randBtn = document.getElementById('randBtn');
+  var keepBtn = document.getElementById('keepBtn');
   var footNote = document.getElementById('footNote');
   var toastEl = document.getElementById('toast');
   var cells = [];
@@ -493,10 +547,15 @@ body{
       heroAct.style.display = a && a.label ? '' : 'none';
     }
     if (heroTag){
-      var free = isFree(id);
-      heroTag.className = (free ? 'fr' : 'lk') + ' on';
-      heroTag.textContent = free ? '默认 · 免费' : (ADMIN ? '站长可选' : '已领取');
+      var st = trialState(id);
+      heroTag.className = (st === 'free' ? 'fr' : st === 'trial' ? 'tr' : 'lk') + ' on';
+      heroTag.textContent = st === 'free' ? '默认 · 免费'
+        : st === 'trial' ? '试用中 · ' + trialLeftText(id)
+        : st === 'ended' ? '试用已结束'
+        : (ADMIN ? '站长可选' : '已领取');
     }
+    // 「看一支广告留住它」只在试用中的形象上出现；其余状态不用这条（已领取不需要，没试过的先点卡片开试用）
+    if (keepBtn) keepBtn.hidden = trialState(id) !== 'trial';
     cells.forEach(function(c){
       var on = c.getAttribute('data-id') === id;
       c.classList.toggle('on', on);
@@ -517,6 +576,10 @@ body{
        · 有 1 个人领了就照实写「N 人已领取」；
        · 0 人时对普通访客不画（满屏「0 人已领取」很劝退），只给站长露一行「还没人领」好核数。 */
   function claimLine(id){
+    var st = trialState(id);
+    // 试用中的：这行留给「还剩多久」——比「几个人领过」更该让人看见（到期就回机器人）
+    if (st === 'trial') return '<span class="pc tr-left">还剩 ' + trialLeftText(id) + '</span>';
+    if (st === 'ended') return '<span class="pc tr-left">看一支广告就能留住</span>';
     if (isFree(id) || !countsReady) return '';
     var n = counts[id] || 0;
     if (n > 0) return '<span class=pc>' + n + ' 人已领取</span>';
@@ -529,17 +592,22 @@ body{
     cells = [];
     ids.forEach(function(id){
       var skin = M[id];
-      var locked = !ADMIN && !canUse(id);
+      var st = trialState(id);
+      var locked = !ADMIN && (st === 'locked' || st === 'ended');
       var b = document.createElement('button');
       b.type = 'button';
       b.className = 'sk' + (locked ? ' locked' : '');
       b.setAttribute('data-id', id);
       b.setAttribute('aria-pressed', 'false');
-      b.setAttribute('aria-label', locked
-        ? skin.name + '：还没领，点开看一支广告就能领'
+      b.setAttribute('aria-label',
+        st === 'locked' ? skin.name + '：还没试过，点开先免费试用 3 天'
+        : st === 'ended' ? skin.name + '：3 天试用已结束，点开看一支广告就能留住'
         : '换成' + skin.name + '：' + skin.bubble);
       b.innerHTML =
-        (isFree(id) ? '<span class=fr>默认</span>' : (locked ? '<span class=lk>未领取</span>' : '')) +
+        (st === 'free' ? '<span class=fr>默认</span>'
+          : st === 'trial' ? '<span class=tr>试用中</span>'
+          : st === 'locked' ? '<span class=lk>可试 3 天</span>'
+          : st === 'ended' ? '<span class="lk end">试用已结束</span>' : '') +
         '<span class=tick aria-hidden=true>✓</span>' +
         '<span class=site-bot><span class=bot-figure>' + skin.svg + '</span></span>' +
         '<span class=nm>' + skin.name + '</span>' +
@@ -547,7 +615,8 @@ body{
         (skin.act && skin.act.label ? '<span class=hk>拿手事 · <b>' + skin.act.label + '</b></span>' : '') +
         claimLine(id);
       b.addEventListener('click', function(){
-        if (locked){ openClaim(id); return; }
+        if (st === 'ended'){ openClaim(id); return; }   // 试用用完了：直接给领取的路
+        if (st === 'locked'){ startTrial(id); return; } // 没试过：点了就开始计 3 天，并换上
         if (id !== cur) paint(id, true);
       });
       grid.appendChild(b);
@@ -559,23 +628,91 @@ body{
 
   function updateMeta(){
     var got = ADMIN ? paidCount : owned.filter(function(x){ return M[x] && !isFree(x); }).length;
-    cntEl.textContent = ids.length + ' 个 · 已领 ' + got + ' / ' + paidCount;
+    var trying = ADMIN ? 0 : ids.filter(function(id){ return trialState(id) === 'trial'; }).length;
+    cntEl.textContent = ids.length + ' 个 · 已领 ' + got + ' / ' + paidCount + (trying ? ' · 试用中 ' + trying : '');
     if (ownedCnt){
-      ownedCnt.innerHTML = isFree(cur)
-        ? '默认形象免费 · 其余 ' + paidCount + ' 个各看一支广告就能领'
+      var st = trialState(cur);
+      ownedCnt.innerHTML = st === 'free'
+        ? '默认形象免费 · 其余 ' + paidCount + ' 个都能先试 3 天'
+        : st === 'trial' ? '试用中 · 还剩 ' + trialLeftText(cur) + ' · 看一支广告就能一直留着'
+        : st === 'ended' ? '这个形象的 3 天试用结束了 · 看一支广告就能留住'
         : '已领 <b>' + got + '</b> / ' + paidCount + ' 个 · 换下的形象还在，随时换回来';
     }
     if (listTip){
       listTip.textContent = ADMIN ? '站长：全部可选'
-        : (loggedIn === false ? '领形象要先登录 · 领到的记在账号上' : '点没领的，看一支广告就能领');
+        : (loggedIn === false ? '点一个就开始 3 天试用 · 试完再登录也行' : '点没领的，先免费试 3 天');
     }
     var pool = ids.filter(canUse);
     randBtn.disabled = pool.length < 2;
-    randBtn.textContent = pool.length < 2 ? '先领一个才能随机' : '随机换一个';
-    randBtn.title = pool.length < 2 ? '现在只有默认的机器人，领到第二个才能随机换' : '';
+    randBtn.textContent = pool.length < 2 ? '先试一个才能随机' : '随机换一个';
+    randBtn.title = pool.length < 2 ? '现在只有默认的机器人，试用或领到第二个才能随机换' : '';
     footNote.textContent = loggedIn === false
-      ? '默认的「机器人」免费，其余 ' + paidCount + ' 个各看一支广告就能领；领到的形象记在账号上，所以要先登录（不登录只能用默认的机器人）。'
-      : '默认的「机器人」免费，其余 ' + paidCount + ' 个各看一支广告就能领；领到的记在账号上（换设备也在），此刻选中的那个只记在这台设备。';
+      ? '默认的「机器人」免费，其余 ' + paidCount + ' 个各给 3 天试用（点了就开始算，一个形象只给一次）；到期回机器人，看一支广告就能领到手——领到的记在账号上，所以最后要登录。'
+      : '默认的「机器人」免费，其余 ' + paidCount + ' 个各给 3 天试用（一个形象只给一次）；到期回机器人，看一支广告就能领到手，领到的记在账号上（换设备也在），此刻选中的那个只记在这台设备。';
+  }
+
+  /* ---------------- 开试用：点了就开始计 3 天 ----------------
+     游客：只能记本机（服务端不知道他是谁），登录后由 migrateGuestTrials 按同一个开始时间补录。
+     登录了：叫 /api/mascots/trial，服务端记在账号上，换设备也接着算；一个形象只给一次，
+     已经用过（409）就干脆把人送到领取那条路上，别让他干看着。 */
+  function startTrial(id){
+    if (loggedIn === false){
+      trials[id] = Date.now() + TRIAL_MS;
+      writeLocalTrials(trials);
+      renderGrid();
+      paint(id, true);
+      updateMeta();
+      toast('「' + M[id].name + '」的 3 天试用开始了');
+      return;
+    }
+    trialPost(id, 0, false);
+  }
+
+  function trialPost(id, since, quiet){
+    fetch('/api/mascots/trial', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id, since: since || 0 })
+    })
+      .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){ return { status: r.status, d: d || {} }; }); })
+      .then(function(res){
+        var d = res.d;
+        if (d && d.trials && typeof d.trials === 'object'){ trials = d.trials; writeLocalTrials(trials); }
+        if (res.status === 401){ loggedIn = false; startTrial(id); return; }
+        if (res.status === 409){                        // 这个形象已经试过了：直接给领取的路
+          renderGrid(); updateMeta();
+          if (!quiet) openClaim(id);
+          return;
+        }
+        if (res.status >= 400) throw new Error(d.error || '试用没开成，稍后再试');
+        renderGrid(); updateMeta();
+        if (quiet){
+          // 补录成功：把本机存着、刚被判无效落到机器人的那个形象再换回来
+          var store = readStored();
+          if (store && store !== cur && canUse(store)) paint(store, false);
+          else if (!canUse(cur) && canUse(id)) paint(id, false);
+          return;
+        }
+        paint(id, true);
+        toast('「' + M[id].name + '」的 3 天试用开始了');
+      })
+      .catch(function(err){ if (!quiet) toast((err && err.message) || '试用没开成，稍后再试'); });
+  }
+
+  /* 游客转登录：本机还留着没到期的试用，按它原本的开始时间补录到账号上，接着剩下的钟点走
+     （服务端会把 since 夹在 72 小时内，所以报「刚点」也拿不到更多）。一个形象只补一次：
+     服务端已有记录时 /api/mascots/trial 直接回原到期时间。 */
+  function migrateGuestTrials(local){
+    var now = Date.now();
+    Object.keys(local || {}).forEach(function(id){
+      if (!M[id] || isFree(id)) return;
+      if (owned.indexOf(id) >= 0) return;
+      var at = Number(local[id]) || 0;
+      if (at <= now) return;                       // 已经到期的不用补
+      if ((Number(trials[id]) || 0) > 0) return;    // 服务端已经有记录（哪怕过期）就不动
+      trialPost(id, at - TRIAL_MS, true);
+    });
   }
 
   /* ---------------- 领取：出票 → 扫码进小程序看广告 → 回来凭票换形象 ---------------- */
@@ -805,12 +942,15 @@ body{
   // 随机：只在「我的那几个」里抽，避开当前这个才像真的「换」
   randBtn.addEventListener('click', function(){
     var pool = ids.filter(canUse);
-    if (pool.length < 2){ toast('先领一个别的形象，再来随机'); return; }
+    if (pool.length < 2){ toast('先试一个别的形象，再来随机'); return; }
     var next = cur;
     while (next === cur) next = pool[Math.floor(Math.random() * pool.length)];
     paint(next, true);
     updateMeta();
   });
+
+  // 试用中的形象：hero 区那颗按钮，直接开领取弹层（看一支广告就归你，不用等 3 天到期）
+  if (keepBtn) keepBtn.addEventListener('click', function(){ if (cur) openClaim(cur); });
 
   /* —— 站头登录区：跟 /medals 同一套说法 ——
      已登录：胶囊头像 + 昵称 → /me；未登录：「登录 / 注册」→ 首页带 login=1 回来直接弹登录框。
@@ -842,6 +982,11 @@ body{
     .then(function(d){
       loggedIn = !!d.loggedIn;
       owned = Array.isArray(d.owned) ? d.owned : [];
+      /* 试用账本：登录了以服务端为准（换设备接着算）；游客/接口没给就用本机那份。
+         本机那份先留一份下来——游客试了两天再登录的，得按原开始时间补录到账号上。 */
+      var localT = readLocalTrials();
+      trials = (loggedIn && d.trials && typeof d.trials === 'object') ? d.trials : localT;
+      writeLocalTrials(trials);
       counts = d.counts && typeof d.counts === 'object' ? d.counts : {};
       countsReady = true;
       ownReady = true;
@@ -850,6 +995,7 @@ body{
       renderGrid();
       paint(canUse(cur) ? cur : DEFAULT, false);   // 先重建列表再上色，不然「选中」勾会落空
       updateMeta();
+      if (loggedIn) migrateGuestTrials(localT);     // 游客时代试了一半的，补录进账号
       resumePending();                              // 上次看完没领的，回来当场补上
     })
     .catch(function(){

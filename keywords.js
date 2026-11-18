@@ -167,4 +167,49 @@ function autoKeywords(input) {
   return out.slice(0, KW_MAX);
 }
 
-module.exports = { KW_MAX, KW_LEN, KW_LEXICON, autoKeywords, sanitizeKeywords, hasWord };
+// ============================================================
+// 重点复核词（合规红线，不参与搜索、不进关键词胶囊）
+// ============================================================
+// 2026-11-18：代理 IP / 住宅代理 / 翻墙 / 科学上网 / 换网络环境这类服务，在境内没有电信业务
+// 经营资质就对外提供属违法，站里一律不收——不管包装成「数据采集」「跨境电商」「广告验证」。
+//
+// 为什么不做成「敏感词直接拒」：这类词在正常作品里也会出现（修图工具讲「代理服务器」、
+// 记账工具叫「代理记账」），一刀切会误杀。所以这里只输出「命中」，由调用方转人工重点看，
+// 人再判断是「做这个服务」还是「提到这个词」。
+//
+// 匹配口径：一律子串、不区分大小写。英文不做词边界——真服务商的域名常把词拼在一起
+// （trueproxies.com），加了边界反而漏；中文本来就没空格，子串即语义。
+const WATCH_STRONG = [
+  // 代理 IP / 换网络环境
+  '代理IP', 'IP代理', '住宅IP', '住宅代理', '机房IP', '机房代理', '数据中心代理', '代理池',
+  '独享IP', '纯净IP', '海外IP', '动态IP', '静态IP', '换IP', '秒拨', '单窗口单IP',
+  '指纹浏览器', '防关联', '隐藏IP', '匿名上网',
+  // 翻墙 / 加速
+  '科学上网', '翻墙', '梯子', '网络加速器', '游戏加速器',
+  // 英文 / 工具名（小写比对）。residential / datacenter 是给英文投稿兜底的：
+  // CCRent 这类「租一台挂境外住宅 IP 的机器」的文案全英文，没有这两个词会漏过自动预筛
+  'proxy', 'proxies', 'socks5', 'socks4', 'shadowsocks', 'v2ray', 'vpn', 'openvpn', 'wireguard',
+  'residential', 'datacenter'
+];
+
+// 弱信号词：单说「代理」太常见，先剃掉这些固定搭配再判
+const WATCH_WEAK = ['代理'];
+const WATCH_WEAK_BENIGN = /代理(记账|商|销售|律师|加盟|注册|开票|招聘|运营|服务商|公司|记账本)/g;
+
+function watchHitsOf(text) {
+  const raw = String(text || '');
+  if (!raw) return [];
+  const s = raw.toLowerCase();
+  const hits = [];
+  WATCH_STRONG.forEach(w => { if (s.includes(w.toLowerCase())) hits.push(w); });
+  const weakHay = s.replace(WATCH_WEAK_BENIGN, ' ');
+  WATCH_WEAK.forEach(w => { if (weakHay.includes(w)) hits.push(w); });
+  // 只留最具体的那个：「代理IP」命中时不用再报一次「代理」，「openvpn」也不用再报「vpn」
+  return hits.filter((w, i) => {
+    const lw = w.toLowerCase();
+    if (hits.findIndex(x => x.toLowerCase() === lw) !== i) return false;          // 完全重复
+    return !hits.some(o => o !== w && o.toLowerCase().includes(lw));             // 被更长的词覆盖
+  });
+}
+
+module.exports = { KW_MAX, KW_LEN, KW_LEXICON, autoKeywords, sanitizeKeywords, hasWord, watchHitsOf };
