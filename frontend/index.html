@@ -84,15 +84,18 @@
       </form>
 
       <nav class="main-nav">
-        <!-- 星梦榜 / 造梦酒馆对站内人是不用解释的黑话，对新访客不是：hover（键盘用户是 focus）一句话说清各自是什么。
+        <!-- 顺序按「逛作品 → 看热度 → 认作者 → 进社区 → 另一个端」：发现是主浏览入口放最前，
+             小程序只是扫码入口，收尾。星梦榜 / 造梦酒馆对站内人是不用解释的黑话，对新访客不是：
+             hover（键盘用户是 focus）一句话说清各自是什么。
              data-tip 由 style.css 画成气泡，比原生 title 出得快、样式统一；aria-label 给读屏，也在没有 CSS 时兜底。
              触屏没有 hover，顶部导航在 ≤640px 本来就隐藏，靠 /howto 开头的「先认认路」那一节兜底。 -->
-        <a class="nav-btn" href="/rank" data-nav data-tip="作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届" aria-label="星梦榜：作品的热度排行，访客、收藏、评论、灯火加权计分，每周换一届"><i class="ico" data-ico="rank"></i> 星梦榜</a>
-        <a class="nav-btn" href="/bar" data-nav data-tip="说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现，也能闲聊、安利、分享"><i class="ico" data-ico="wish"></i> 酒馆</a>
         <!-- PC「发现」入口（2026-11-18 上线）：≥641px 显示新版式（左分类侧栏 + 内容网格），
              ≤640px 不显示这条（顶部导航本来就隐藏），走底部 Tab「发现」的专栏版式。
              app.js updateNavActive 里的 onDiscover 高亮一直写好着，按钮回来即生效 -->
         <a class="nav-btn" href="/discover" data-nav data-tip="按平台和分类逛作品——iOS、安卓、小程序、游戏、效率工具都在这儿" aria-label="发现：按平台和分类逛作品，iOS、安卓、小程序、游戏、效率工具都在这儿"><i class="ico" data-ico="globe"></i> 发现</a>
+        <a class="nav-btn" href="/rank" data-nav data-tip="作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届" aria-label="星梦榜：作品的热度排行，访客、收藏、评论、灯火加权计分，每周换一届"><i class="ico" data-ico="rank"></i> 星梦榜</a>
+        <a class="nav-btn" href="/creators" data-nav data-tip="认识认真造梦的创作者，看他们的作品与访客" aria-label="造梦者书架：认识创作者，看他们的作品与访客"><i class="ico" data-ico="shelf"></i> 造梦者</a>
+        <a class="nav-btn" href="/bar" data-nav data-tip="说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现，也能闲聊、安利、分享"><i class="ico" data-ico="wish"></i> 酒馆</a>
         <button type="button" class="nav-btn hero-mini-open" data-tip="扫小程序码，微信里也能逛橱窗、签到、看酒馆" aria-label="小程序：扫小程序码，微信里也能逛橱窗、签到、看酒馆"><i class="ico" data-ico="mini"></i> 小程序</button>
         <!-- 精选专栏 /column 的入口放在页脚「逛逛 · 软件精选」，顶部导航不再加入口 -->
       </nav>
@@ -118,7 +121,7 @@
           </button>
           <button type="button" class="pub-item" data-pub="want" role="menuitem">
             <span class="pub-ico pi-want"><i class="ico" data-ico="bulb"></i></span>
-            <span class="pub-txt"><b>找工具</b><em>想要什么，让创作者认领</em></span>
+            <span class="pub-txt"><b>找工具</b><em>想要什么，说一句帮你找</em></span>
           </button>
           <button type="button" class="pub-item" data-pub="chat" role="menuitem">
             <span class="pub-ico pi-chat"><i class="ico" data-ico="chat"></i></span>
@@ -364,6 +367,28 @@
 
     </section>
 
+    <!-- 造梦者书架：站内 SPA view（2026-11-20 从独立页并入，切 tab 不再整页刷新）。
+         样式类名统一 cr- 前缀，避开主站 .card/.cover/.grid 等。数据走公开 /api/creators。 -->
+    <section id="creatorsView" style="display:none">
+      <header class="cr-hd">
+        <h1>造梦者书架</h1>
+        <p class="cr-sub">每一件作品背后，都是一个在认真造梦的人</p>
+        <div class="cr-tally" id="crTally"></div>
+        <div class="cr-tools">
+          <div class="cr-pills" role="tablist" aria-label="排序方式">
+            <button type="button" class="cr-pill active" data-cr-mode="uv" role="tab" aria-selected="true">总访客</button>
+            <button type="button" class="cr-pill" data-cr-mode="top" role="tab" aria-selected="false">单件最佳</button>
+            <button type="button" class="cr-pill" data-cr-mode="star" role="tab" aria-selected="false" title="投稿到本站的开源作品里，GitHub star 超过 100 的">GitHub Star</button>
+          </div>
+          <div class="cr-search">
+            <input type="search" id="crSearch" placeholder="找一位创作者…" autocomplete="off" aria-label="按名字搜索创作者" />
+          </div>
+        </div>
+      </header>
+      <div class="cr-grid" id="crGrid"></div>
+      <div class="cr-more" id="crMore" hidden><button type="button" id="crMoreBtn">加载更多创作者 →</button></div>
+    </section>
+
     <!-- 榜单 -->
     <section id="rankView" style="display:none">
       <!-- 推荐位（灯火兑换投放）：页头正下方第一行，与酒馆页同口径。
@@ -397,11 +422,11 @@
         <div class="dd-filter" id="rankPeriodDD">
           <button type="button" class="dd-btn" id="rankPeriodBtn">
             <span class="dd-ico"><i class="ico" data-ico="calendar"></i></span><span class="dd-label">周期</span>
-            <b class="dd-value" id="rankPeriodValue">高光榜</b><span class="dd-caret">▾</span>
+            <b class="dd-value" id="rankPeriodValue">新作周榜</b><span class="dd-caret">▾</span>
           </button>
           <div class="dd-panel" id="rankPeriodPanel">
-            <button type="button" class="dd-opt active" data-period="peak"><span class="dd-opt-label"><i class="ico" data-ico="bolt"></i> 高光榜</span><small class="dd-opt-desc">每件作品最亮的 7 天，高光时刻永久留档</small></button>
-            <button type="button" class="dd-opt" data-period="week"><span class="dd-opt-label"><i class="ico" data-ico="week"></i> 新作周榜</span><small class="dd-opt-desc">只排近 7 天上架的新作品</small></button>
+            <button type="button" class="dd-opt" data-period="peak"><span class="dd-opt-label"><i class="ico" data-ico="bolt"></i> 高光榜</span><small class="dd-opt-desc">每件作品最亮的 7 天，高光时刻永久留档</small></button>
+            <button type="button" class="dd-opt active" data-period="week"><span class="dd-opt-label"><i class="ico" data-ico="week"></i> 新作周榜</span><small class="dd-opt-desc">只排近 7 天上架的新作品</small></button>
             <button type="button" class="dd-opt" data-period="month"><span class="dd-opt-label"><i class="ico" data-ico="month"></i> 新作月榜</span><small class="dd-opt-desc">只排近 30 天上架的新作品</small></button>
             <button type="button" class="dd-opt" data-period="all"><span class="dd-opt-label"><i class="ico" data-ico="all"></i> 总榜</span><small class="dd-opt-desc">全部作品，按上架以来的累计成绩</small></button>
           </div>
@@ -928,7 +953,7 @@
             <input id="discPcSearch" type="search" placeholder="搜索作品" autocomplete="off" />
           </div>
           <!-- 平台专区（2026-11-18）：按平台逛的一组固定入口，AppStore 只认 apps.apple.com 官方商店链接；
-               app.js renderDiscoverPc 填充；选中专区时顶部平台胶囊条收起（同一套口径不摆两遍），再点一次取消 -->
+               app.js renderDiscoverPc 填充；选中专区时顶部平台胶囊条照常显示并同步高亮（2026-11-19），再点一次取消 -->
           <div class="cat-group-title">平台专区</div>
           <div class="cat-list" id="discPcZones"></div>
           <!-- 分类自定义（2026-11-18）：「编辑」进增删/排序模式，游客记本机、登录记账号；≤900px 横条版式下藏掉 -->
@@ -1104,6 +1129,7 @@
             <a href="/column" class="footer-link">软件精选</a>
             <!-- 开源好物 /open：站外 GitHub 项目外链页，与专栏（站内精选）分开，不进作品池 -->
             <a href="/open" class="footer-link">开源好物</a>
+            <a href="/creators" data-nav class="footer-link">造梦者书架</a>
           </div>
           <div class="fgroup">
             <span class="fg-label">参与</span>
@@ -1184,29 +1210,36 @@
           </button>
           <div class="ai-fill-body" id="aiFillBody" hidden>
             <div class="ai-fill-tabs" role="tablist">
-              <button type="button" class="ai-fill-tab" data-aimode="url" role="tab" aria-selected="false">从网址读取</button>
+              <button type="button" class="ai-fill-tab active" data-aimode="url" role="tab" aria-selected="true">从网址读取</button>
               <!-- 2026-11-16：GitHub 仓库单独一档，也可直接在「从网址读取」里贴仓库链接 -->
               <button type="button" class="ai-fill-tab" data-aimode="gh" role="tab" aria-selected="false">GitHub 仓库</button>
-              <button type="button" class="ai-fill-tab active" data-aimode="text" role="tab" aria-selected="true">粘贴介绍</button>
+              <!-- 2026-11-19：App Store 单独一档，也可直接在「从网址读取」里贴应用链接 -->
+              <button type="button" class="ai-fill-tab" data-aimode="as" role="tab" aria-selected="false">App Store</button>
+              <button type="button" class="ai-fill-tab" data-aimode="text" role="tab" aria-selected="false">粘贴介绍</button>
             </div>
-            <div class="ai-fill-pane" id="aiFillPaneText">
+            <div class="ai-fill-pane" id="aiFillPaneText" hidden>
               <p class="ai-fill-tip">把写好的产品介绍整段粘进来，自动提取名称、简介、分类和形态。<b>只回填，不会替你提交</b>，填完自己检查一遍。</p>
               <textarea id="aiFillText" rows="4" maxlength="3000" placeholder="例：「拾光清单」是一个帮人整理待办的小程序，支持语音快速记录、按精力分配任务，也有 Web 版可以同步……"></textarea>
             </div>
-            <div class="ai-fill-pane" id="aiFillPaneUrl" hidden>
+            <div class="ai-fill-pane" id="aiFillPaneUrl">
               <p class="ai-fill-tip">填作品网址，自动读页面标题、描述和正文，识别名称 / 简介 / 分类 / 形态，并填好网站地址。<b>贴 GitHub 仓库链接会自动改读仓库信息</b>（含简介、官网、源码地址），<b>贴 App Store 应用链接会自动读应用信息</b>（简介、官网、图标，形态勾 iOS）。<b>只读取公开页面</b>，读不到会提示你手动补。</p>
               <input type="url" id="aiFillUrl" maxlength="500" placeholder="https://你的作品地址" autocomplete="off" />
-              <div class="ai-fill-cover" id="aiFillCover" hidden>
-                <button type="button" class="ai-fill-cover-btn" id="aiFillCoverBtn">用网站图片做封面</button>
-                <span>网站图片未必是首页首屏，建议换成自己的截图</span>
-              </div>
             </div>
             <div class="ai-fill-pane" id="aiFillPaneGh" hidden>
               <p class="ai-fill-tip">贴 GitHub 仓库链接（或「用户名/仓库」），自动读仓库名、简介、官网和 README 开头段落，回填名字 / 一句话介绍 / 作品介绍 / 官网 / 源码仓库。<b>只回填，不会替你提交</b>，读不到就手动补。</p>
               <input type="text" id="aiFillGh" maxlength="500" placeholder="https://github.com/用户名/仓库" autocomplete="off" />
             </div>
+            <div class="ai-fill-pane" id="aiFillPaneAs" hidden>
+              <p class="ai-fill-tip">贴 App Store 应用链接（apps.apple.com/…/id数字），自动读应用信息，回填名字 / 一句话介绍 / 作品介绍 / 官网，形态勾 iOS，图标可一键设为封面候选。<b>只读取公开页面</b>，读不到会提示你手动补。</p>
+              <input type="url" id="aiFillAs" maxlength="500" placeholder="https://apps.apple.com/cn/app/…/id123456789" autocomplete="off" />
+            </div>
+            <!-- 封面候选（网址模式 = 网站图片 / App Store 模式 = 应用图标），各页签共用 -->
+            <div class="ai-fill-cover" id="aiFillCover" hidden>
+              <button type="button" class="ai-fill-cover-btn" id="aiFillCoverBtn">用网站图片做封面</button>
+              <span>图片未必是首页首屏，建议换成自己的截图</span>
+            </div>
             <div class="ai-fill-actions">
-              <button type="button" class="btn-primary" id="aiFillGo">识别并回填</button>
+              <button type="button" class="btn-primary" id="aiFillGo">读取网站并填表</button>
               <label class="ai-fill-overwrite"><input type="checkbox" id="aiFillOverwrite" /> 覆盖已填内容</label>
               <span class="ai-fill-status" id="aiFillStatus" role="status"></span>
             </div>
@@ -1278,7 +1311,8 @@
           <div class="md-tabs">
             <button type="button" class="md-tab active" data-md-tab="edit">写</button>
             <button type="button" class="md-tab" data-md-tab="preview">预览</button>
-            <span class="md-tabs-hint">支持 Markdown：**加粗**、*斜体*、`代码`、- 列表、&gt; 引用、[文字](链接)、# 小标题</span>
+            <button type="button" class="md-insert" id="mdImgBtn" title="上传一张图片插入简介">插图</button>
+            <span class="md-tabs-hint">支持 Markdown：**加粗**、*斜体*、`代码`、- 列表、&gt; 引用、[文字](链接)、# 小标题，图片用「插图」上传</span>
           </div>
           <textarea name="prompt" rows="4" maxlength="3000"
                     placeholder="介绍一下：做什么用的、怎么体验、有什么亮点（支持 Markdown，切到「预览」看效果）"></textarea>
@@ -1576,6 +1610,8 @@
         <input type="text" id="musicSeedIn" maxlength="12" placeholder="有别人的种子？粘进来" autocomplete="off" spellcheck="false" />
         <button type="button" id="musicSeedGo">听这首</button>
       </div>
+      <!-- 通往作曲台的门（2026-11-19）：种子生成器是「拨参数长一首」，想自己一颗颗摆音符的，去 /musicbox -->
+      <a href="/musicbox" style="display:block;text-align:center;margin-top:12px;font-size:12.5px;color:#6a63c9;text-decoration:none">想一颗一颗摆音符？去「作曲台」自己写一首 ↗</a>
     </div>
   </div>
 
@@ -1755,7 +1791,8 @@
         <input id="nickInput" class="nick-input" maxlength="16" autocomplete="off" placeholder="例如：做小程序的老张" />
         <p class="nick-tip">
           昵称是别人看到的名字（作品署名、评论都用它）；登录账号 <b id="nickAccount"></b> 不会变——
-          作品、收藏、作者主页都还是你的。不设昵称就显示账号名。<br />昵称 7 天可以改一次。
+          作品、收藏、作者主页都还是你的。不设昵称就显示账号名。<br />昵称 7 天可以改一次；
+          刚改完 3 分钟内发现填错，可以立刻改回（不算新的一次）。
         </p>
         <p class="nick-msg" id="nickMsg"></p>
         <div class="nick-actions">
@@ -2024,12 +2061,19 @@
         <button class="btn-like btn-cmt" id="detailCmt" title="跳到评论区：说点什么，或向作者提问"><i class="ico" data-ico="chat"></i><span class="sr-label">评论</span><span id="detailCmtNum">0</span></button>
         <!-- 送灯火是唯一带「暖意」的动作，保留可见文字，竖排时缩成图标+小字 -->
         <button class="btn-tip" id="detailTip" title="用灯火支持作者或这件作品"><i class="ico b-ico" data-ico="lamp"></i> <span class="tip-word">送灯火</span></button>
-        <!-- 私信作者：图标胶囊（文字只给读屏），和点赞/收藏同一列，不抢「送灯火」的主位；
-             图标用 mail 信封，别和评论的 chat 气泡撞脸（2026-11-15） -->
-        <button class="btn-like btn-dm" id="detailDm" title="给作者发私信"><i class="ico" data-ico="mail"></i><span class="sr-label">私信</span></button>
+        <!-- 进作者主页：图标胶囊（文字只给读屏），和点赞/收藏同一列，不抢「送灯火」的主位；
+             2026-11-19 由「私信作者」改成「跳作者主页」——私信入口本来就在作者页上，
+             点名字和点这颗现在去同一个地方，icon 用 user 人形，别和评论的 chat 气泡撞脸 -->
+        <button class="btn-like btn-auhome" id="detailAuHome" title="看作者的主页"><i class="ico" data-ico="user"></i><span class="sr-label">作者主页</span></button>
         <button class="btn-share" id="shareCardBtn" title="生成一张带二维码的分享图，发朋友圈/小红书都行"><i class="ico b-ico" data-ico="sharecard"></i><span class="sr-label">分享卡片</span></button>
         <button class="btn-share btn-pack" id="promoKitBtn" title="按平台生成投稿文案，复制就能去外站投"><i class="ico b-ico" data-ico="megaphone"></i> <span class="rail-word">外宣包</span></button>
         <button class="btn-link btn-code" id="detailRedeem" style="display:none"><i class="ico b-ico" data-ico="gift"></i> <span class="rail-word">兑换码</span></button>
+        <!-- 屏蔽作品（2026-11-19）：底部「屏蔽 / 投诉」小字那排太深没人看见，竖排加一颗图标胶囊；
+             点按走的是和列表行「不看」同一套屏蔽接口（user.blocked），只在别人作品 + 已登录时亮出 -->
+        <button class="btn-like btn-blockwork" id="detailBlock" title="不再看这个作品（只对你生效）" style="display:none"><i class="ico b-ico" data-ico="block"></i><span class="sr-label">屏蔽</span></button>
+        <!-- 投诉作品（2026-11-19 站长提）：底部小字那排的「投诉」也提上来，和屏蔽并排收进竖排；
+             点它只是替你按一下底部的「投诉」按钮（弹投诉表单），逻辑不另起一套 -->
+        <button class="btn-like btn-reportwork" id="detailReport" title="作品违规？投诉给管理员核实处理" style="display:none"><i class="ico b-ico" data-ico="warn"></i><span class="sr-label">投诉</span></button>
       </div>
       <div class="detail-media" id="detailMedia">
         <img id="detailImg" alt="作品大图" title="点击全屏查看" />
@@ -2288,7 +2332,7 @@
         <details class="rr-qa">
           <summary><i class="ico" data-ico="bolt"></i> 高光榜是什么</summary>
           <div class="rr-a">
-            <p><b>高光榜 = 每件作品上架以来最亮的连续 7 天</b>：把作品每一天的「获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 当天访客×2 ＋ 回访加分」按天累加，找出总分最高的那段日子（不足 7 天按实际天数算，发布当天就能参与）。这是荣誉榜不是竞技榜——老作品的最好一周永久留档，不会每周清零；每行会标注这段「高光区间」是哪几天。上榜有门槛：窗口内访客 ≥ 10；访客按人去重（一台设备或一个账号算一人），一个人反复刷新也还是 1 个，刷不出榜位。新进入前 20 的作品 7 天内标「新晋」。注：点赞/灯火自 2026-11-07 起才有时间戳，之前的窗口这两项不计，分数略偏低，随时间自动变得更准。</p>
+            <p><b>高光榜 = 每件作品上架以来最亮的连续 7 天</b>：把作品每一天的「获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 当天访客×2 ＋ 回访加分」按天累加，找出总分最高的那段日子（不足 7 天按实际天数算，发布当天就能参与）。这是荣誉榜不是竞技榜——老作品的最好一周永久留档，不会每周清零；每行会标注这段「高光区间」是哪几天。上榜有门槛：窗口内访客 ≥ 10；访客按人去重（一台设备或一个账号算一人），一个人反复刷新也还是 1 个，刷不出榜位。新进入前 20 的作品 7 天内标「新上榜」（按首次进榜时间算，不是上架时间）。注：点赞/灯火自 2026-11-07 起才有时间戳，之前的窗口这两项不计，分数略偏低，随时间自动变得更准。</p>
           </div>
         </details>
         <details class="rr-qa">
@@ -2505,6 +2549,18 @@
           <input type="password" name="password" id="regPass" required minlength="6" autocomplete="new-password" />
           <button type="button" class="pw-eye" id="regPassEye" tabindex="-1" title="显示 / 隐藏密码"><span class="ico" data-ico="eye"></span></button>
         </div>
+        <!-- 手机实名（网络安全法第 24 条）：短信通道开通时才显示（/api/sms.status.required），
+             没开通时整个区块藏起来、注册走原来的两栏，代码可以先上线不改变任何行为 -->
+        <div id="regSmsRow" style="display:none">
+          <label>手机号（实名核验，之后登录不再验）</label>
+          <input type="tel" name="phone" id="regPhone" maxlength="11" inputmode="numeric" autocomplete="tel" placeholder="11 位大陆手机号" />
+          <label>短信验证码</label>
+          <div class="sms-code-wrap">
+            <input type="text" name="code" id="regCode" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="6 位数字" />
+            <button type="button" class="sms-send" id="regSendCode">获取验证码</button>
+          </div>
+          <p class="form-hint">核验一次，永久有效。号码加密保存，不出现在主页和作品里。</p>
+        </div>
         <button type="submit" class="btn-primary btn-block" id="registerBtn">注册并登录</button>
         <p class="auth-switch">已有账号？<a href="#" id="toLogin">去登录 →</a></p>
       </form>
@@ -2534,6 +2590,49 @@
     </div>
   </div>
 
+  <!-- 绑手机弹窗：投稿 / 酒馆发帖 / 私信这些「发布内容」的动作前，还没核验过手机号的
+       存量用户在这里补一次（核验一次永久有效）。浏览、点赞、收藏一律不拦。 -->
+  <div class="modal-mask" id="phoneModal" style="display:none">
+    <div class="modal phone-modal">
+      <div class="modal-head">
+        <h2>完成实名核验</h2>
+        <button class="close-btn" id="closePhoneModal" type="button" title="关闭">✕</button>
+      </div>
+      <p class="form-hint" id="phoneModalHint">按法规要求，发布内容前需要核验一次真实身份。手机号仅用于核验，加密保存，之后不再需要验证。</p>
+      <form id="phoneForm" novalidate>
+        <label>手机号</label>
+        <input type="tel" id="bindPhone" maxlength="11" inputmode="numeric" autocomplete="tel" placeholder="11 位大陆手机号" />
+        <label>短信验证码</label>
+        <div class="sms-code-wrap">
+          <input type="text" id="bindCode" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="6 位数字" />
+          <button type="button" class="sms-send" id="bindSendCode">获取验证码</button>
+        </div>
+        <p class="form-err" id="bindErr" hidden></p>
+        <button type="submit" class="btn-primary btn-block" id="bindBtn">核验并继续</button>
+      </form>
+      <button type="button" class="auth-upgrade-cancel" id="phoneModalCancel">先不核验，稍后再说</button>
+    </div>
+  </div>
+
+  <!-- 预留手机号弹窗（2026-11-19）：短信通道还没开（开通即产生费用），先把愿意配合的人收下来。
+       和上面的 #phoneModal 刻意分开：那个是「发码 + 核验」，这个是「只留号码」，
+       所以这里既没有发码按钮，也不能说成「已实名」——文案必须让人一眼看懂「现在还没验证」。 -->
+  <div class="modal-mask" id="phoneKeepModal" style="display:none">
+    <div class="modal phone-modal">
+      <div class="modal-head">
+        <h2>预留手机号</h2>
+        <button class="close-btn" id="closePhoneKeep" type="button" title="关闭">✕</button>
+      </div>
+      <p class="form-hint" id="phoneKeepHint">按《网络安全法》要求，投稿、发帖、私信需核验真实身份。这里先只登记号码，<b>不发短信、不产生费用</b>，也还不算实名；等核验通道开放，你会收到一条验证短信，验证通过后灯火立刻到账。号码加密保存，只用于身份核验与账号找回，不对外展示、不发营销短信。</p>
+      <form id="phoneKeepForm" novalidate>
+        <label>手机号</label>
+        <input type="tel" id="keepPhone" maxlength="11" inputmode="numeric" autocomplete="tel" placeholder="11 位大陆手机号" />
+        <p class="form-err" id="keepErr" hidden></p>
+        <button type="submit" class="btn-primary btn-block" id="keepBtn">预留手机号</button>
+      </form>
+      <button type="button" class="auth-upgrade-cancel" id="phoneKeepCancel">以后再说</button>
+    </div>
+  </div>
   <!-- 右下角小住客：Trae 同款小机器人 + 点击弹出的聊天窗口。
        原右下角三颗浮标（装到桌面 / 小程序 / 反馈）收进窗口里，按钮 id/类名不变，
        app.js 的 PWA 安装 / 小程序弹窗 / 反馈红点逻辑仍挂在原按钮上；
@@ -2622,6 +2721,16 @@
       </svg>
       </div><!-- /bot-figure -->
     </div>
+  </div>
+  <!-- 滚动导航（2026-11-19）：长页面右侧的两颗小圆钮，回顶部 / 去底部。
+       站在小住客上方一点；只在页面够长、且离两端够远时出现，滚动中整组淡出（逻辑在 app.js）。 -->
+  <div class="scroll-nav" id="scrollNav">
+    <button type="button" class="scroll-nav-btn" id="scrollTopBtn" title="回到顶部" aria-label="回到顶部">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+    </button>
+    <button type="button" class="scroll-nav-btn" id="scrollBottomBtn" title="去底部" aria-label="去底部">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+    </button>
   </div>
   <!-- 八音盒引擎（2026-11-18）：曲库 + 现场合成 + 生成器，几十 KB 的活全在 musicbox.js，
        这里只留「点一下」的门。放在 mascots.js 之前，ACTS 那段脚本用得到它。 -->
@@ -3517,6 +3626,9 @@
         <button type="submit" class="btn-primary btn-block" id="friendSubmit">提交申请</button>
         <p class="form-hint" id="friendHint">提交后由站长人工审批，通过前不会出现在页脚</p>
       </form>
+      <!-- 提交记录：打开弹窗时有记录才显示入口；展开列出本机提交过的申请和状态（审核中/已收录/已结束），点一条把内容填回表单 -->
+      <button type="button" class="fr-history-toggle" id="friendHistoryBtn" style="display:none">查看提交记录 ›</button>
+      <div class="fr-history" id="friendHistory" style="display:none"></div>
     </div>
   </div>
 
@@ -3627,7 +3739,7 @@
       <pre class="pk-copy" id="pkCopy"></pre>
       <div class="pk-actions">
         <button class="btn-primary" id="pkCopyBtn"><i class="ico" data-ico="copy"></i> 复制文案</button>
-        <a class="btn-ghost pk-go" id="pkGo" target="_blank" rel="noopener">去投稿 <i class="ico b-ico" data-ico="arrowout"></i></a>
+        <a class="btn-ghost pk-go" id="pkGo" target="_blank" rel="nofollow noopener">去投稿 <i class="ico b-ico" data-ico="arrowout"></i></a>
       </div>
     </div>
   </div>
@@ -3662,6 +3774,8 @@
   <script src="/qr-guard.js"></script>
   <script src="/md.js"></script>
   <script src="/sharecard.js"></script>
+  <!-- 人机验证：发码前过滑块。必须排在 app.js 前面——app.js 顶层就会去摸 window.ZmCaptcha -->
+  <script src="/captcha.js"></script>
   <!-- app.js 保持挂在 body 末尾（2026-11-15 试过挪到 head + defer：解析期间就开始下，
        实测 Fast3G 下跟阻塞的 style.css 抢带宽，FCP 反而晚 0.4~2.7s，已回退）。 -->
   <script src="/app.js"></script>

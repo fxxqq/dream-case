@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="google-adsense-account" content="ca-pub-5526491839331555" />
+<meta name="robots" content="noindex,nofollow" />
+<title>造梦者书架 · 造梦橱窗</title>
+<meta name="description" content="造梦橱窗的创作者书架：认识那些认真造梦的人，看他们的作品、访客与获赞。" />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<script defer src="https://analytics.umami.is/script.js" data-website-id="96b6aaa5-bc4f-4f33-8af4-fc294f577e0b"></script>
+<!--
+  造梦者书架页（/creators）
+  - 独立文件，不接入 app.js / SPA 路由；服务端 app.get('/creators') 直接回本文件。
+  - 数据来自公开 GET /api/creators：服务端按创作者聚合上线作品的去重访客（人次口径），
+    纯访客降序，剔除匿名无主作品与站长，保留无站点账号的作者。5 分钟缓存。
+  - 站头 / 页脚与主站同款（左品牌栏 / 纵向链接栏 / 落款），图标共用 /icons.js（不能加 defer）。
+-->
+<style>
+:root{
+  --bg:#f7f7fb; --card:#fff; --text:#1f2330; --muted:#7a8095;
+  --primary:#5b5bd6; --border:#e6e8f0;
+  --gold:#8a6d1f; --gold-l:#ffd66b;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scrollbar-gutter:stable}
+body{
+  font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
+  background:var(--bg); color:var(--text); line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  display:flex; flex-direction:column; min-height:100vh;
+}
+.wrap{max-width:1260px;margin:0 auto;padding:28px 20px 60px;width:100%;flex:1 0 auto}
+
+/* —— 站头：与主站 .site-header 同款，sticky 高 60px —— */
+.site-header{background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+.sh-inner{max-width:1260px;margin:0 auto;padding:0 20px;height:60px;display:flex;align-items:center;gap:20px}
+.logo{display:flex;align-items:center;gap:8px;font-size:17px;font-weight:600;color:var(--text);text-decoration:none;white-space:nowrap}
+.logo-mark{width:26px;height:26px}
+.sh-nav{display:flex;align-items:center;gap:4px;flex:1;justify-content:center}
+.nav-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 12px;border-radius:9px;color:var(--muted);text-decoration:none;font-size:13px;white-space:nowrap;transition:background .15s,color .15s}
+.nav-btn:hover{background:#f2f2f8;color:var(--text)}
+.nav-btn.active{background:#eeeefc;color:var(--primary);font-weight:500}
+.sh-auth{display:flex;align-items:center;justify-content:flex-end;min-width:96px}
+.sh-login{font-size:13px;color:var(--primary);text-decoration:none;border:1px solid var(--border);padding:6px 12px;border-radius:9px;white-space:nowrap}
+.sh-user{display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--text);text-decoration:none;background:#f2f2f8;padding:5px 11px;border-radius:20px;white-space:nowrap}
+.ico{width:16px;height:16px;display:inline-block;vertical-align:-3px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+/* —— 页内标题 —— */
+.hd{padding:8px 0 26px;text-align:center}
+.hd h1{font-size:22px;font-weight:600;letter-spacing:.4px}
+.hd .sub{font-size:13px;color:var(--muted);margin-top:5px}
+.hd .tally{font-size:12px;color:#9aa0b3;margin-top:7px}
+
+/* —— 卡片墙 —— */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;text-decoration:none;color:inherit;display:block;transition:transform .15s,border-color .15s}
+.card:hover{transform:translateY(-3px);border-color:#c9c9f0}
+.cover{height:108px;background:#eef0f6;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+.cover img{width:100%;height:100%;object-fit:cover}
+.cover .ph{color:#b6bac8;font-size:12px}
+.rank{position:absolute;top:8px;left:8px;min-width:22px;height:22px;padding:0 6px;border-radius:20px;background:rgba(31,35,48,.72);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center}
+.rank.top{background:linear-gradient(135deg,#ffd66b,#f59e0b);color:#5a4300;font-weight:600}
+.cbody{padding:12px 14px 14px}
+.cwho{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.av{width:34px;height:34px;border-radius:50%;object-fit:cover;flex:0 0 auto;background:#eeeefc}
+.av-ph{width:34px;height:34px;border-radius:50%;flex:0 0 auto;background:#eeeefc;color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500}
+.cname{font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cstats{display:flex;gap:14px;font-size:12px;color:var(--muted)}
+.cstats b{color:var(--text);font-weight:600}
+.cstats .uv b{color:var(--primary)}
+
+.more{display:flex;justify-content:center;margin-top:26px}
+.more button{font-size:13px;color:var(--primary);background:var(--card);border:1px solid var(--border);border-radius:10px;padding:9px 22px;cursor:pointer}
+.more button:hover{border-color:#c9c9f0}
+.empty{text-align:center;color:var(--muted);font-size:13px;padding:60px 0}
+
+/* —— 页脚：与主站 .site-footer 同构 —— */
+.site-footer{background:var(--card);border-top:1px solid var(--border);margin-top:auto}
+.ft-inner{max-width:1260px;margin:0 auto;padding:34px 20px 22px}
+.ft-grid{display:grid;grid-template-columns:1.4fr 2fr;gap:32px}
+.ft-name{font-size:15px;font-weight:600}
+.ft-desc{display:block;font-size:12px;color:var(--muted);margin-top:6px;line-height:1.7}
+.ft-oss{display:flex;gap:6px;font-size:12px;color:var(--muted);margin-top:12px;line-height:1.7}
+.ft-oss a{color:var(--primary);text-decoration:none}
+.ft-links{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+.ft-group{display:flex;flex-direction:column;gap:8px}
+.ft-label{font-size:12px;color:var(--text);font-weight:500;margin-bottom:2px}
+.ft-group a{font-size:12px;color:var(--muted);text-decoration:none}
+.ft-group a:hover{color:var(--primary)}
+.ft-base{border-top:1px solid var(--border);margin-top:26px;padding-top:16px;display:flex;gap:16px;font-size:12px;color:#9aa0b3}
+.ft-base a{color:#9aa0b3;text-decoration:none}
+
+@media(max-width:820px){
+  .sh-nav .nav-btn{padding:7px 8px;font-size:12px}
+  .sh-nav .nav-btn .ico{display:none}
+  .ft-grid{grid-template-columns:1fr;gap:20px}
+  .ft-links{grid-template-columns:repeat(3,1fr)}
+  .grid{grid-template-columns:repeat(2,1fr);gap:12px}
+}
+@media(max-width:520px){
+  .sh-nav{gap:0}
+  .sh-nav .nav-btn{padding:6px 7px}
+  .logo{font-size:0;gap:0}
+  .logo-mark{width:24px;height:24px}
+  .footer-links{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+<!-- 站头图标：与主站共用同一份 icons.js（不能加 defer，页面一出来就要把 data-ico 填好） -->
+<script src="/icons.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="sh-inner">
+    <a class="logo" href="/" title="回造梦橱窗首页"><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
+    <nav class="sh-nav" aria-label="主导航">
+      <a class="nav-btn" href="/rank" data-tip="作品热度排行：访客、收藏、评论、灯火加权计分" aria-label="星梦榜"><i class="ico" data-ico="rank"></i>星梦榜</a>
+      <a class="nav-btn" href="/bar" data-tip="说出你想要的作品，等创作者认领实现" aria-label="造梦酒馆"><i class="ico" data-ico="wish"></i>酒馆</a>
+      <a class="nav-btn active" href="/creators" data-tip="认识认真造梦的创作者，看他们的作品与访客" aria-label="造梦者书架：创作者展示" aria-current="page"><i class="ico" data-ico="shelf"></i>造梦者</a>
+      <a class="nav-btn" href="/discover" data-tip="按平台和分类逛作品" aria-label="发现"><i class="ico" data-ico="globe"></i>发现</a>
+    </nav>
+    <div class="sh-auth" id="authBox"></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <header class="hd">
+    <h1>造梦者书架</h1>
+    <p class="sub">每一件作品背后，都是一个在认真造梦的人</p>
+    <div class="tally" id="tally"></div>
+  </header>
+  <div class="grid" id="grid"></div>
+  <div class="more" id="more" hidden><button type="button" id="moreBtn">加载更多创作者 →</button></div>
+</div>
+
+<footer class="site-footer">
+  <div class="ft-inner">
+    <div class="ft-grid">
+      <div class="ft-brand">
+        <b class="ft-name">造梦橱窗</b>
+        <span class="ft-desc">收录独立开发者、创作者自制的网站、小程序、智能体、软件、游戏</span>
+        <div class="ft-oss">
+          <span class="ico" data-ico="github"></span>
+          <span>本站开源在 <a href="https://github.com/fxxqq/dream-case" target="_blank" rel="noopener noreferrer">GitHub</a>，欢迎 Star / PR</span>
+        </div>
+      </div>
+      <nav class="ft-links" aria-label="页脚导航">
+        <div class="ft-group"><span class="ft-label">逛逛</span><a href="/column">软件精选</a><a href="/open">开源好物</a></div>
+        <div class="ft-group"><span class="ft-label">参与</span><a href="/invite">邀请收录</a><a href="/howto">投稿指南</a><a href="/guide">外宣指南</a></div>
+        <div class="ft-group"><span class="ft-label">合作</span><a href="/ads">投放合作</a><a href="/?feedback=1">意见建议</a></div>
+        <div class="ft-group"><span class="ft-label">订阅</span><a href="/feed.xml">RSS</a><a href="/sitemap.xml">站点地图</a></div>
+        <div class="ft-group"><span class="ft-label">站务</span><a href="/admin">管理入口</a><a href="/admin?apply=1">申请管理员</a></div>
+      </nav>
+    </div>
+    <div class="ft-base">
+      <span class="fb-text">© 2026 造梦橱窗</span>
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const authBox = document.getElementById('authBox');
+let loggedIn = false;
+function renderAuth(name) {
+  if (!authBox) return;
+  authBox.innerHTML = loggedIn
+    ? '<a class="sh-user" href="/me" title="我的主页"><span class="ico" data-ico="user"></span><b>' + esc(name || '我') + '</b></a>'
+    : '<a class="sh-login" href="/?login=1">登录 / 注册</a>';
+  if (window.Icons) Icons.hydrate(authBox);
+}
+
+const grid = document.getElementById('grid');
+const more = document.getElementById('more');
+const moreBtn = document.getElementById('moreBtn');
+const tally = document.getElementById('tally');
+let CREATORS = [];
+let shown = 0;
+const PAGE = 24;
+
+function cardHtml(r, i) {
+  const path = r.path ? esc(r.path) : '';
+  const inner =
+    '<div class="cover">' +
+      (r.cover ? '<img src="' + esc(r.cover) + '" alt="" loading="lazy" />' : '<span class="ph">作品封面</span>') +
+      (i < 3 ? '<span class="rank' + (i < 3 ? ' top' : '') + '">' + (i + 1) + '</span>' : '') +
+    '</div>' +
+    '<div class="cbody">' +
+      '<div class="cwho">' +
+        (r.avatar
+          ? '<img class="av" src="' + esc(r.avatar) + '" alt="" loading="lazy" />'
+          : '<span class="av-ph">' + esc(String(r.name || '?').slice(0, 1).toUpperCase()) + '</span>') +
+        '<span class="cname">' + esc(r.name) + '</span>' +
+      '</div>' +
+      '<div class="cstats">' +
+        '<span>作品 <b>' + r.works + '</b></span>' +
+        '<span class="uv">访客 <b>' + r.uv + '</b></span>' +
+        '<span>获赞 <b>' + r.likes + '</b></span>' +
+      '</div>' +
+    '</div>';
+  return path
+    ? '<a class="card" href="' + path + '" title="去 ' + esc(r.name) + ' 的主页">' + inner + '</a>'
+    : '<div class="card">' + inner + '</div>';
+}
+function renderMore() {
+  const next = CREATORS.slice(shown, shown + PAGE);
+  grid.insertAdjacentHTML('beforeend', next.map((r, k) => cardHtml(r, shown + k)).join(''));
+  shown += next.length;
+  more.hidden = shown >= CREATORS.length;
+}
+async function loadCreators() {
+  try {
+    const r = await fetch('/api/creators', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    const d = await r.json();
+    CREATORS = Array.isArray(d.creators) ? d.creators : [];
+    tally.textContent = CREATORS.length ? CREATORS.length + ' 位创作者 · 按访客数排序' : '';
+    if (!CREATORS.length) {
+      grid.innerHTML = '<div class="empty">书架还在整理中，稍后再来看看</div>';
+      return;
+    }
+    renderMore();
+  } catch (e) {
+    grid.innerHTML = '<div class="empty">书架暂时打不开，刷新试试</div>';
+  }
+}
+moreBtn.addEventListener('click', renderMore);
+
+(async function init() {
+  renderAuth('');
+  try {
+    const r = await fetch('/api/me/badges', { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+    const d = await r.json();
+    loggedIn = !!d.loggedIn;
+    if (loggedIn && d.name) renderAuth(d.name);
+  } catch (e) { loggedIn = false; }
+  loadCreators();
+})();
+</script>
+</body>
+</html>

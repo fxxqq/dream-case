@@ -37,7 +37,7 @@ SITE_URL="${SITE_URL:-https://idea.v5pc.com}"
 PM2_APP="${PM2_APP:-ai-works}"
 KEEP_BAK="${KEEP_BAK:-10}"
 
-DEFAULT_FILES=(server.js frontend/app.js frontend/style.css frontend/index.html frontend/admin.html frontend/icons.js)
+DEFAULT_FILES=(server.js sms-auth.js frontend/app.js frontend/style.css frontend/index.html frontend/admin.html frontend/icons.js)
 
 cd "$(dirname "$0")" || exit 1
 

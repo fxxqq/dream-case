@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-admin="__ADMIN__">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex,follow" />
+<title>账号申诉 - 造梦橱窗</title>
+<link rel="icon" href="/favicon.svg" />
+<script defer src="https://analytics.umami.is/script.js" data-website-id="96b6aaa5-bc4f-4f33-8af4-fc294f577e0b"></script>
+<!--
+  账号申诉页（/appeal，2026-11-20）
+  - 独立文件：不接入 app.js / SPA 路由，服务端 app.get('/appeal') 直接回本文件。
+  - 站头 / 站脚照 /mascots 的做法手写一份轻量版（同高 60px、同底色、同链接分组）。
+  - 只做一件事：把申诉交给站长人工判。没有自动判定、没有自动解封。
+  - 信号口径（和站长对齐过的）：IP / 设备 / 浏览器只是提交时的参考快照（服务端自动记），
+    匹配上了是加分、匹配不上不扣分；真正扛冒领的是站内私密操作记忆——
+    收藏列表不公开，只有真主答得上来，所以表单引导写收藏 / 作品 / 注册方式这些回忆题。
+  - 游客可提（被处理了未必登得进来），但必须留联系方式；登录用户结果走站内信。
+-->
+<style>
+:root{
+  --bg:#f7f7fb; --card:#fff; --text:#1f2330; --muted:#7a8095;
+  --primary:#5b5bd6; --border:#e6e8f0; --soft:#f4f3ff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+/* 与主站 style.css 同一条规则：恒留滚动条槽位，短页/长页来回切时内容不横向抖 */
+html{scrollbar-gutter:stable}
+body{
+  font-family:"PingFang SC","Microsoft YaHei",-apple-system,sans-serif;
+  background:var(--bg); color:var(--text); line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+/* 容器宽度与主站 style.css 的 --page-max 同值（1260px）：头、内容、脚三条线对齐首页 */
+.wrap{max-width:760px;margin:0 auto;padding:28px 20px 60px}
+
+/* ---------- 站头：与主站 .site-header 同款（/mascots /medals 已有一份，这里设成一样）
+   本页不引 app.js，导航是普通链接整页跳转；登录态由 /api/me 顺带拿到后填入 #authBox。 ---------- */
+.site-header{background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
+.sh-inner{max-width:1260px;margin:0 auto;padding:0 20px;height:60px;display:flex;align-items:center;gap:24px}
+.logo{
+  display:inline-flex;align-items:center;gap:8px;flex:none;
+  font-size:18px;font-weight:700;color:var(--primary);text-decoration:none;letter-spacing:.2px;
+}
+.logo-mark{display:block;flex:none}
+.sh-nav{display:flex;align-items:center;gap:4px;flex:1;min-width:0}
+.sh-nav .nav-btn{
+  display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;
+  font-size:14px;color:var(--muted);text-decoration:none;white-space:nowrap;transition:.16s;
+}
+.sh-nav .nav-btn:hover{color:var(--text);background:#f2f3f9}
+.sh-nav .nav-btn.active{color:var(--primary);background:#eeeefc;font-weight:600}
+.sh-nav .nav-btn .ico{display:inline-flex;width:15px;height:15px}
+.sh-nav .nav-btn .ico svg{width:15px;height:15px;display:block}
+.sh-auth{flex:none;display:flex;align-items:center;gap:10px;margin-left:auto}
+.sh-login{
+  border:1px solid var(--border);background:#fff;color:var(--text);text-decoration:none;
+  font-size:13.5px;padding:7px 15px;border-radius:10px;transition:.16s;white-space:nowrap;
+}
+.sh-login:hover{border-color:#cdd0e0;color:var(--primary)}
+.sh-user{
+  display:inline-flex;align-items:center;gap:6px;max-width:160px;text-decoration:none;
+  font-size:13.5px;color:var(--text);padding:5px 12px 5px 6px;border-radius:999px;background:#f2f3f9;
+}
+.sh-user b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------- 页面标题 ---------- */
+.hd{padding:6px 0 20px}
+.hd h1{font-size:22px;font-weight:600;letter-spacing:.4px;text-align:center}
+.hd .sub{font-size:13px;color:var(--muted);text-align:center;margin-top:4px}
+
+/* ---------- 申诉表单 ---------- */
+.card{
+  background:var(--card);border:1px solid var(--border);border-radius:18px;
+  padding:26px 26px 22px;margin-top:8px;
+  box-shadow:0 6px 22px rgba(31,35,48,.05);
+}
+.fld{margin-bottom:18px}
+.fld label{display:block;font-size:13.5px;font-weight:600;margin-bottom:7px}
+.fld label .opt{font-weight:400;font-size:12px;color:#a0a5b6;margin-left:6px}
+.fld input,.fld textarea{
+  width:100%;border:1px solid var(--border);border-radius:10px;background:#fbfbfe;
+  padding:10px 13px;font-size:14px;font-family:inherit;color:var(--text);
+  transition:border-color .16s,background .16s;
+}
+.fld input:focus,.fld textarea:focus{outline:none;border-color:#b9b4f2;background:#fff}
+.fld textarea{resize:vertical;min-height:150px;line-height:1.7}
+.fld .hint{font-size:12px;color:#a0a5b6;margin-top:6px;line-height:1.7}
+.fld .hint.err{color:#c2410c}
+.me-tip{
+  display:none;font-size:12.5px;color:#6a63c9;background:var(--soft);
+  border:1px solid #e2dffa;border-radius:9px;padding:8px 12px;margin-bottom:18px;line-height:1.7;
+}
+.me-tip.on{display:block}
+/* 回忆题引导：教人写「只有真主才知道」的事，这是申诉能不能过的关键 */
+.recalls{
+  border:1px dashed #ded7fb;border-radius:12px;background:#fbfaff;
+  padding:12px 14px;margin-top:8px;font-size:12.5px;color:#6b6f85;line-height:1.9;
+}
+.recalls b{color:#5b52c9;font-weight:600}
+.recalls .rt{display:block;font-size:11.5px;color:#a0a5b6;margin-bottom:4px;letter-spacing:.3px}
+.agree-note{
+  font-size:12px;color:#8a8fa3;margin:4px 0 18px;line-height:1.8;
+  padding:10px 13px;border-radius:10px;background:#f8f8fc;border:1px solid var(--border);
+}
+.submit{
+  display:block;width:100%;border:0;border-radius:11px;padding:13px 0;font-size:15px;font-weight:600;
+  background:var(--primary);color:#fff;cursor:pointer;font-family:inherit;transition:.16s;
+}
+.submit:hover{background:#4f4fc4}
+.submit[disabled]{background:#c7c9d9;cursor:default}
+/* 提交成功态：表单整个换成回执 */
+.done{display:none;text-align:center;padding:26px 10px 10px}
+.done.on{display:block}
+.done .ok-mark{
+  width:52px;height:52px;border-radius:50%;background:#12b76a;color:#fff;
+  font-size:26px;line-height:52px;margin:0 auto 14px;
+}
+.done h2{font-size:17px;font-weight:600}
+.done p{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.8}
+.done .btn-ghost{margin-top:18px}
+
+.btn-ghost{
+  height:34px;padding:0 15px;border:1px solid var(--border);border-radius:9px;
+  background:#fff;color:#4a5063;font-size:12.5px;font-family:inherit;
+  cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;
+  transition:.16s;
+}
+.btn-ghost:hover{border-color:#c3c4ee;color:var(--primary);background:#fbfaff}
+
+/* ---------- 页面注脚（讲口径，不是站级页脚） ---------- */
+.page-note{
+  margin-top:40px;padding-top:16px;border-top:1px solid var(--border);
+  font-size:11.5px;color:#a0a5b6;text-align:center;line-height:1.9;
+}
+.page-note a{color:#8b8ba8}
+
+/* ---------- 站级页脚：照主站 .site-footer 分层式（左品牌栏 / 右纵向链接栏 / 落款）。
+   只放纯链接——「安装到桌面」「小程序码」「合作洽谈」这些挂 app.js 的按钮本页没有，不放。 ---------- */
+.site-footer{
+  flex:none;background:#f3f3f9;border-top:1px solid #dce0ea;
+  color:var(--muted);font-size:13px;padding:28px 0 22px;margin-top:36px;
+}
+.ft-inner{max-width:1260px;margin:0 auto;padding:0 20px}
+.ft-grid{display:flex;flex-wrap:wrap;gap:26px 52px;align-items:flex-start}
+.ft-brand{flex:1 1 250px;min-width:230px}
+.ft-name{display:block;font-size:16px;font-weight:700;color:var(--text);letter-spacing:.01em}
+.ft-desc{display:block;margin-top:8px;font-size:13px;line-height:1.75}
+.ft-oss{font-size:12.5px;line-height:1.9;margin-top:10px}
+.ft-oss .ico{display:inline-flex;vertical-align:-2px;margin-right:5px}
+.ft-oss .ico svg{width:14px;height:14px;display:block}
+.ft-oss a{color:var(--primary);text-decoration:none;white-space:nowrap}
+.ft-oss a:hover{text-decoration:underline}
+.ft-links{
+  display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;
+  gap:24px 48px;flex:2 1 auto;
+}
+.ft-group{display:flex;flex-direction:column;gap:9px;min-width:72px}
+.ft-label{font-size:12.5px;color:var(--text);font-weight:600;opacity:.92;letter-spacing:.04em;margin-bottom:3px}
+.ft-links a{color:var(--muted);text-decoration:none;font-size:13px;line-height:1.5}
+.ft-links a:hover{color:var(--primary)}
+.ft-base{display:flex;align-items:center;gap:14px;margin-top:18px;font-size:12.5px;opacity:.85}
+.ft-base a{color:var(--muted);text-decoration:none;margin-left:auto}
+.ft-base a:hover{color:var(--primary)}
+.toast{
+  position:fixed;left:50%;bottom:34px;transform:translate(-50%,10px);
+  padding:9px 16px;border-radius:10px;background:rgba(31,35,48,.9);color:#fff;
+  font-size:12.5px;opacity:0;pointer-events:none;transition:.22s;z-index:50;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+@media(max-width:640px){
+  .wrap{padding:22px 16px 48px}
+  /* 站头 / 页脚的手机端：跟主站一样不摆顶级导航 */
+  .sh-inner{height:52px;gap:12px;padding:0 16px}
+  .sh-nav{display:none}
+  .sh-auth{margin-left:auto}
+  .logo{font-size:16px}
+  .logo-mark{width:23px;height:23px}
+  .ft-inner{padding:0 16px}
+  /* 手机上分层栏自然折行：品牌栏独占一排，链接组横向流 */
+  .ft-grid{gap:20px 28px}
+  .ft-links{gap:16px 28px;justify-content:flex-start}
+  /* 落款行手机端只留备案号（主站同规则） */
+  .ft-base .fb-text{display:none}
+  .hd h1{font-size:19px}
+  .card{padding:20px 16px 18px}
+}
+@media(prefers-reduced-motion:reduce){
+  .toast{transition:none}
+}
+</style>
+<!-- 站头图标：与主站共用同一份 icons.js（不能加 defer，页面一出来就要把 data-ico 填好） -->
+<script src="/icons.js"></script>
+</head>
+<body>
+<!-- 站头：与主站同款（logo / 导航 / 登录态）。本页不引 app.js，导航是普通链接整页跳转。 -->
+<header class="site-header">
+  <div class="sh-inner">
+    <a class="logo" href="/" title="回造梦橱窗首页"><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
+    <nav class="sh-nav" aria-label="主导航">
+      <a class="nav-btn" href="/rank" aria-label="星梦榜：作品的热度排行"><i class="ico" data-ico="rank"></i>星梦榜</a>
+      <a class="nav-btn" href="/bar" aria-label="造梦酒馆"><i class="ico" data-ico="wish"></i>酒馆</a>
+      <a class="nav-btn" href="/medals" aria-label="造梦勋章"><i class="ico" data-ico="medal"></i>造梦勋章</a>
+    </nav>
+    <div class="sh-auth" id="authBox"></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <header class="hd">
+    <h1>账号申诉</h1>
+    <p class="sub">对处理结果有异议，在这里说明情况 · 全部由人工核对，不会自动解封</p>
+  </header>
+
+  <section class="card">
+    <div class="me-tip" id="meTip"></div>
+
+    <form id="appealForm" novalidate>
+      <div class="fld">
+        <label for="account">申诉的账号<span class="opt">选填，登录了会自动带上</span></label>
+        <input id="account" maxlength="80" autocomplete="off"
+               placeholder="账号名 / 个性地址 / 个人主页链接都可以，例如 @dreamer 或 /u/dreamer" />
+        <div class="hint">填被处理的那一个号；手打错了也没关系，我们看到原文会自己核对。</div>
+      </div>
+
+      <div class="fld">
+        <label for="contact">联系方式<span class="opt" id="contactOpt">没登录的话必填</span></label>
+        <input id="contact" maxlength="100" autocomplete="off"
+               placeholder="邮箱 / 微信号 / QQ 都行，处理结果发到这里" />
+        <div class="hint" id="contactHint"></div>
+      </div>
+
+      <div class="fld">
+        <label for="content">申诉内容<span class="opt">必填，写具体一点</span></label>
+        <textarea id="content" maxlength="2000"
+          placeholder="发生了什么、你觉得哪里处理得不对"></textarea>
+        <div class="recalls">
+          <span class="rt">回忆题提示 —— 下面这些写得越准，越容易核对出你是本人：</span>
+          · 收藏过哪些作品？<b>收藏列表是私密的，只有你自己看得到</b>，这是最有力的一项<br>
+          · 发过哪些作品？大概什么时候发的？<br>
+          · 用的什么注册方式（账号密码 / GitHub / 微信 / 小程序一键登录）？大概什么时候注册的？<br>
+          · 有没有绑过微信、投过推荐位、参加过签到或点亮作品？
+        </div>
+      </div>
+
+      <div class="fld">
+        <label for="workUrl">相关作品链接<span class="opt">选填</span></label>
+        <input id="workUrl" maxlength="200" autocomplete="off"
+               placeholder="如果申诉的是某件作品，把它的页面链接贴过来" />
+      </div>
+
+      <div class="agree-note">
+        提交时会自动记一份你当时的网络环境信息（IP、浏览器类型），仅作为人工核对的参考，不作为判定依据；
+        申诉内容只有站长能看到，不会公开。同一账号 7 天只能提交一条，提交前把情况写完整。
+      </div>
+      <button type="submit" class="submit" id="submitBtn">提交申诉</button>
+    </form>
+
+    <div class="done" id="doneBox">
+      <div class="ok-mark">✓</div>
+      <h2>申诉已收到</h2>
+      <p id="doneMsg">站长会人工核对你说的情况，处理结果会告诉你。</p>
+      <a class="btn-ghost" href="/">回首页</a>
+    </div>
+  </section>
+
+  <p class="page-note">
+    只是提建议或聊别的？<a href="/?feedback=1">意见建议</a>更快 ·
+    处理口径见<a href="/rules">作品规范</a> · <a href="/">回首页</a>
+  </p>
+</div>
+
+<!-- 站级页脚：结构与主站 .site-footer 一致（左品牌栏 / 纵向链接栏 / 落款）。 -->
+<footer class="site-footer">
+  <div class="ft-inner">
+    <div class="ft-grid">
+      <div class="ft-brand">
+        <b class="ft-name">造梦橱窗</b>
+        <span class="ft-desc">收录独立开发者、创作者自制的网站、小程序、智能体、软件、游戏</span>
+        <div class="ft-oss">
+          <span class="ico" data-ico="github"></span>
+          <span>本站开源在 <a href="https://github.com/fxxqq/dream-case" target="_blank" rel="noopener noreferrer">GitHub</a>，欢迎 Star / PR · 服务器部署在 <a href="https://www.aliyun.com/minisite/goods?userCode=tw6ffyfu" target="_blank" rel="nofollow sponsored noopener noreferrer">阿里云 <span aria-hidden="true">↗</span></a></span>
+        </div>
+      </div>
+      <nav class="ft-links" aria-label="页脚导航">
+        <div class="ft-group"><span class="ft-label">逛逛</span><a href="/column">软件精选</a><a href="/open">开源好物</a></div>
+        <div class="ft-group"><span class="ft-label">参与</span><a href="/invite">邀请收录</a><a href="/howto">投稿指南</a><a href="/guide">外宣指南</a></div>
+        <div class="ft-group"><span class="ft-label">合作</span><a href="/ads">投放合作</a><a href="/?feedback=1">意见建议</a></div>
+        <div class="ft-group"><span class="ft-label">订阅</span><a href="/feed.xml">RSS</a><a href="/sitemap.xml">站点地图</a></div>
+        <div class="ft-group"><span class="ft-label">站务</span><a href="/appeal">账号申诉</a><a href="/admin">管理入口</a><a href="/admin?apply=1">申请管理员</a></div>
+      </nav>
+    </div>
+    <div class="ft-base">
+      <span class="fb-text">© 2026 造梦橱窗</span>
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
+    </div>
+  </div>
+</footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var toastTimer = null;
+  function toast(msg){
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 2600);
+  }
+  function esc(s){
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+      return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+    });
+  }
+
+  // 登录态：登录了自动带上当前账号（可以改），联系方式变成选填（结果走站内信）
+  var LOGGED_IN = false;
+  fetch('/api/me', { credentials: 'same-origin' }).then(function(r){ return r.ok ? r.json() : null; }).then(function(me){
+    if (!me || !me.username) return;
+    LOGGED_IN = true;
+    var tip = $('meTip');
+    tip.innerHTML = '当前登录：<b>' + esc(me.displayName || me.username) + '</b>（@' + esc(me.username) + '）。' +
+      '申诉这个号就不用填账号了；要申诉别的号，在下面填那个号的账号名。';
+    tip.classList.add('on');
+    if (!$('account').value) $('account').value = me.username;
+    $('contactOpt').textContent = '选填，处理结果会发到站内消息';
+    $('contact').placeholder = '也可以留一个备用联系方式';
+  }).catch(function(){ /* 游客照常提交 */ });
+
+  $('appealForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var btn = $('submitBtn');
+    var content = $('content').value.trim();
+    var contact = $('contact').value.trim();
+    // 前端先挡一轮：20 字是服务端硬线，这里提前说清楚；游客没留联系方式直接提示
+    if (content.length < 20) { toast('申诉内容至少 20 个字，写得越具体越容易核对'); return; }
+    if (!LOGGED_IN && !contact) { toast('没登录的话，请先留一个联系方式，不然结果没法告诉你'); return; }
+    btn.disabled = true;
+    btn.textContent = '提交中…';
+    fetch('/api/appeals', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        account: $('account').value.trim(),
+        contact: contact,
+        content: content,
+        workUrl: $('workUrl').value.trim()
+      })
+    }).then(function(r){
+      return r.json().catch(function(){ throw new Error('提交失败，稍后再试'); }).then(function(d){
+        if (!r.ok) throw new Error(d && d.error || '提交失败，稍后再试');
+        return d;
+      });
+    }).then(function(d){
+      $('appealForm').style.display = 'none';
+      $('doneMsg').textContent = (d && d.message) || '站长会人工核对你说的情况，处理结果会告诉你。';
+      $('doneBox').classList.add('on');
+    }).catch(function(err){
+      toast(err.message || '提交失败，稍后再试');
+      btn.disabled = false;
+      btn.textContent = '提交申诉';
+    });
+  });
+
+  // 站头登录态（照 /mascots 的轻量做法）：有 /api/me 的结果就画，没有就放登录按钮
+  (function paintAuth(){
+    fetch('/api/me', { credentials: 'same-origin' }).then(function(r){ return r.ok ? r.json() : null; }).then(function(me){
+      var box = $('authBox');
+      if (me && me.username) {
+        box.innerHTML = '<a class="sh-user" href="/me"><b>' + esc(me.displayName || me.username) + '</b></a>';
+      } else {
+        box.innerHTML = '<a class="sh-login" href="/">登录</a>';
+      }
+    }).catch(function(){ /* 站头空着也无妨 */ });
+  })();
+})();
+</script>
+</body>
+</html>

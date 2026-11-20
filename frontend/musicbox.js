@@ -130,6 +130,7 @@
   }
 
   function buildTrack(v){
+    if (v.events) return { ev: v.events, beats: v.beats };   // 作曲页：音符已经摆好，直接用
     if (v.gen) return v.gen();
     if (v.chords) return buildChords(v);
     return buildBars(v);
@@ -343,6 +344,33 @@
 
   P.stardust = { id:'stardust', name:'星屑', bpm:84, gen:buildStardust };
 
+  /* 参考 · 长曲（2026-11-19 从试听页收编）：按热门曲参数重写的那首——
+     92 BPM、40 小节 ≈ 1:44，旋律是全新写的，只对齐参数。
+     不进原创组（分组口径 11-18 站长定的）、不进随机池（长曲不适合「随机一首」甩出来），
+     只在曲目单末尾单列一组，想听的人自己点。 */
+  P.windscape2 = {
+    id:'windscape2', name:'心象风景 · 92 BPM 版', bpm:92,
+    chords:[
+      'Em9','Cmaj7','G','Dadd9',  'Em9','Cmaj7','Am7','Bm7',
+      'Em9','Cmaj7','G','Dadd9',  'Cmaj7','G','Am7','Bm7',
+      'Em9','Cmaj7','G','Dadd9',  'Am7','Em9','Cmaj7','Bm7',
+      'Cmaj7','G','Am7','Bm7',    'Em9','Cmaj7','G','Dadd9',
+      'Am7','Em9','Cmaj7','Em9',  'Em9','Cmaj7','G','Em9'
+    ],
+    melody:[
+      ['B4:2','r:2'], ['G4','A4','B4:2'], ['E5:3','D5'], ['B4:2','r:2'],
+      ['G4','B4','D5:2'], ['E5:2','F#5:2'], ['G5:3','F#5'], ['E5:2','D5:2'],
+      ['B4','A4','G4:2'], ['A4:2','B4:2'], ['D5:3','B4'], ['A4:4'],
+      ['G4','A4','B4','D5'], ['E5:2','F#5','G5'], ['F#5:2','E5:2'], ['D5:4'],
+      ['B4','D5','E5:2'], ['G5:2','F#5:2'], ['E5','D5','B4:2'], ['A4:2','r:2'],
+      ['E5','G5','B5:2'], ['A5:3','G5'], ['F#5:2','E5:2'], ['D5:2','B4:2'],
+      ['G5:2','E5:2'], ['D5:2','B4:2'], ['A4','B4','D5:2'], ['E5:4'],
+      ['D5','B4','A4:2'], ['G4:2','A4:2'], ['B4:3','r:1'], ['r:4'],
+      ['E5:2','D5:2'], ['B4:2','A4:2'], ['G4:2','F#4:2'], ['E4:4'],
+      ['B4:2','r:2'], ['G4','A4','B4:2'], ['E5:2','D5:2'], ['B4:2','E5:2']
+    ]
+  };
+
   P.firefly = {
     id:'firefly', name:'萤火', bpm:66, beatsPerBar:6,
     bars:[
@@ -490,20 +518,22 @@
   };
 
   // 「随机一首」的池子：短曲优先。八音盒是点一下就响的玩具，
-  // 一次放出两分钟会让人找不到停的地方，所以不往里放长曲。
+  // 一次放出两分钟会让人找不到停的地方，所以不往里放长曲（windscape2 也不进）。
   var POOL = ['mindscape','echo','snowline','vacant','ebb','cradle','stardust','firefly','twinkle','ode','elise','canon','farewell','jasmine','tigers','jingle'];
 
-  // 曲目单的分组（面板里「挑一首」用）：原创在前，经典与老歌在后。
+  // 曲目单的分组（面板里「挑一首」用）：原创在前，经典与老歌居中，参考长曲殿后。
   // 改曲库时这三行要一起改，否则新曲进不了列表（random 走 POOL，列表走这里）。
   var GROUPS = [
     { t:'原创 · 造梦自有', ids:['mindscape','echo','snowline','vacant','ebb','cradle','stardust','firefly'] },
     { t:'经典', ids:['twinkle','ode','elise','canon'] },
-    { t:'老歌 · 童谣', ids:['farewell','jasmine','tigers','jingle'] }
+    { t:'老歌 · 童谣', ids:['farewell','jasmine','tigers','jingle'] },
+    { t:'参考 · 长曲', ids:['windscape2'] }
   ];
 
   function secsOf(v){
     if (v.genSeed) return v.chords.length * 4 * 60 / v.bpm;
     if (v.gen) return 36 * 60 / v.bpm;
+    if (v.chords) return v.chords.length * 4 * 60 / v.bpm;   // 分解和弦长曲（windscape2）
     return v.bars.length * v.beatsPerBar * 60 / v.bpm;
   }
 
@@ -557,7 +587,7 @@
     var spb = 60 / v.bpm;
     var total = built.beats * spb;
 
-    CUR = { ctx: ctx, master: master, v: v, timers: [] };
+    CUR = { ctx: ctx, master: master, v: v, timers: [], total: total };
     var me = CUR;
 
     /* 分块前瞻：只排未来 2.2 秒的音，每 500ms 补一次。
@@ -596,6 +626,13 @@
   MB.state = state;
   MB.isPlaying = function(){ return !!CUR; };
   MB.secs = function(id){ return P[id] ? secsOf(P[id]) : 0; };
+
+  /* 作曲页的进度条用：现在放到哪了 / 一共多长（秒）。
+     没在放就回 null，页面那边照着把条清零。 */
+  MB.progress = function(){
+    if (!CUR) return null;
+    return { t: Math.max(0, CUR.ctx.currentTime - CUR.t0), total: CUR.total || 0 };
+  };
 
   MB.play = function(id){
     var v = P[id];
@@ -640,5 +677,44 @@
   MB.playSeed = function(seed){
     if (!seed) return null;
     return MB.generate({ seed: seed });
+  };
+
+  /* ---------------- 作曲页（2026-11-19）----------------
+     /musicbox 的作曲台一颗颗摆出来的音符，从这里放。
+     events = [{ m: midi 音高, b: 第几拍 }]，余韵和音量不用给——八音盒的脾气在这边算，
+     跟曲库、生成器同一个 strike，听感是一家人。不落库不传文件，跟种子一个口径。 */
+  MB.playSong = function(song){
+    if (!song || !Array.isArray(song.events) || !song.events.length) return null;
+    var ev = song.events.map(function(e){
+      var m = Number(e && e.m);
+      if (!(m >= 20 && m <= 108)) m = 72;
+      return { m: m, b: Number(e && e.b) || 0, ring: ringOf(m), amp: 0.95, np: 5 };
+    }).sort(function(x, y){ return x.b - y.b; });
+    var bpm = Number(song.bpm) || 96;
+    return start({
+      id: 'custom', name: String(song.name || '我的小曲'),
+      bpm: Math.max(40, Math.min(200, bpm)),
+      events: ev,
+      beats: Math.max(1, Number(song.beats) || 8)
+    });
+  };
+
+  /* 作曲台上点亮一颗格子时当场响一下：点了没声音，用户不知道自己摆没摆上。
+     一个常驻的小 ctx（不像 start() 每曲新建），跟 CUR 主播放互不搭界。 */
+  var PV = null;
+  MB.preview = function(m){
+    m = Number(m);
+    if (!(m >= 20 && m <= 108)) return;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!PV){
+      var ctx = new AC();
+      var out = ctx.createGain();
+      out.gain.value = 0.75;
+      out.connect(ctx.destination);
+      PV = { ctx: ctx, out: out };
+    }
+    if (PV.ctx.state === 'suspended'){ try { PV.ctx.resume(); } catch (e) {} }
+    strike(PV.ctx, PV.out, m, PV.ctx.currentTime + 0.01, ringOf(m), 0.9);
   };
 })();

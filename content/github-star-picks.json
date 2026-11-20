@@ -1,0 +1,18 @@
+{
+  "at": "2026-11-20T10:03:51Z",
+  "note": "造梦者书架「GitHub Star」榜的人工快照：只收录投稿到本站、标记开源、且 GitHub star > 100 的作品。star 由人工调用 GitHub API 核对后填写（见 tools/star-pick-check.js），不随部署自动刷新。清单自带展示字段，本地旧作品库缺件时照常显示；服务端会按 id 过滤掉真正下架的作品。",
+  "items": [
+    { "id": "mw90fdlnaz83", "title": "ChineseBQB 自己生成表情包，斗图神器", "author": "匿名", "thumb": "/uploads/1794213394249-zi2sqz.jpg", "image": "/uploads/1794213394245-sofi9x.jpg", "link": "https://zhaoolee.com/ChineseBQB/", "repo": "https://github.com/zhaoolee/ChineseBQB", "star": 16613 },
+    { "id": "mvyocs92eare", "title": "水杉输入法", "author": "houko", "thumb": "/uploads/1793588619769-q3eikc.jpg", "image": "/uploads/1793588619763-oxuh12.jpg", "link": "", "repo": "https://github.com/metasequoiaime/msime-windows", "star": 3373 },
+    { "id": "mvw1cpkj63ud", "title": "FreeControl", "author": "pdone", "thumb": "/uploads/1793429052781-j0yob8.jpg", "image": "/uploads/1793429052779-oncx09.jpg", "link": "https://fc.awaw.cc/#download", "repo": "https://github.com/pdone/FreeControl", "star": 2481 },
+    { "id": "8zrytfg3dfrq", "title": "远程控制软件 Airhand 开源免费的低延迟、高性能的远程桌面应用", "author": "sql", "thumb": "/uploads/1794728933181-zc9mkf.jpg", "image": "/uploads/1794728933180-ek8kwf.jpg", "link": "https://github.com/sqlpxc/airhand", "repo": "https://github.com/sqlpxc/airhand", "star": 1918 },
+    { "id": "mvykjd2mg85f", "title": "vibeoffice 浏览器运行doc/ppt/md文件", "author": "匿名", "thumb": "/uploads/1793582208228-a5p92w.jpg", "image": "/uploads/1793582208224-j7at6y.jpg", "link": "https://vibeoffice.work", "repo": "https://github.com/tcchen2026/VibeOffice", "star": 1419 },
+    { "id": "mwbtzcjm5uuq", "title": "Pi-Harness 开源 AI 编程智能体工作台", "author": "wangmiaozero", "thumb": "/uploads/1794384130870-0q6ld5.jpg", "image": "/uploads/1794384130866-ha5jza.jpg", "link": "https://github.com/wangmiaozero/pi-harness/releases", "repo": "https://github.com/wangmiaozero/pi-harness", "star": 398 },
+    { "id": "qu3dxyvzez3j", "title": "py-mt4 用 Python 编写 MT4 自动化交易脚本", "author": "ns2250225", "thumb": "/uploads/1794837641875-0h7pur.png", "image": "/uploads/1794837641875-0h7pur.png", "link": "https://github.com/ns2250225/py-mt4", "repo": "https://github.com/ns2250225/py-mt4", "star": 237 },
+    { "id": "ucqqgzrtm8dk", "title": "构图AI 用AI一句话生成架构图、时序图、思维导图", "author": "wxbT2A2B7L4g", "thumb": "/uploads/1795097071782-qg46ir.jpg", "image": "/uploads/1795097071778-hxq70e.jpg", "link": "https://draw.lzkz.top/draw", "repo": "https://github.com/co-pine/ai-excalidraw", "star": 225 },
+    { "id": "sjmgfrbyrcqa", "title": "vue-webssh 在浏览器里连接远程服务器的终端", "author": "ns2250225", "thumb": "/uploads/1794837658341-el76aw.png", "image": "/uploads/1794837658341-el76aw.png", "link": "https://github.com/ns2250225/vue-webssh", "repo": "https://github.com/ns2250225/vue-webssh", "star": 167 },
+    { "id": "upsw7arh8nez", "title": "Mine StableDiffusion 最通用最快的本地离线生图App", "author": "Onion99", "thumb": "/uploads/1794816901305-f1zrkp.jpg", "image": "/uploads/1794816901301-xx12lk.jpg", "link": "https://github.com/Onion99/KMP-MineStableDiffusion", "repo": "https://github.com/Onion99/KMP-MineStableDiffusion", "star": 131 },
+    { "id": "8nhqgeaqduhy", "title": "方块羊城 广州城市观光模拟器 无需出门", "author": "ns2250225", "thumb": "/uploads/1794826200090-gx95av.jpg", "image": "/uploads/1794826200087-w384w1.jpg", "link": "https://522e7c37.pinme.dev/", "repo": "https://github.com/ns2250225/guangzhou", "star": 124 },
+    { "id": "rpa38kntpmxz", "title": "Sniffy 开源抓包工具 帮开发者抓包调试，排查接口问题", "author": "mintfog", "thumb": "/uploads/1794817956287-c71twz.jpg", "image": "/uploads/1794817956284-em8u2n.jpg", "link": "https://gosniffy.com/download/", "repo": "https://github.com/mintfog/sniffy", "star": 119 }
+  ]
+}

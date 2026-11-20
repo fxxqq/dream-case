@@ -11,7 +11,9 @@
  *   Node：  const md = require('./frontend/md.js')
  *
  * 约定：
- *   - 不支持原始 HTML（一律当文本显示）、不支持图片（避免外链图与 XSS 面）
+ *   - 不支持原始 HTML（一律当文本显示）
+ *   - 支持图片语法 ![说明](图片)，但 src 只放行站内 /uploads/ 文件 —— 外链图是
+ *     追踪像素、失效图、违规图三重风险面，一律不渲染（只留 alt 文字）
  *   - 链接只放行 http(s) / 站内相对路径 / mailto，统一加 rel="nofollow noopener noreferrer"
  *   - 标题最多四级：源码 # → h3（详情里 h1 是作品标题，简介内不抢层级）
  */
@@ -34,10 +36,25 @@
     return '';
   }
 
-  // 行内语法：`code` → [文本](链接) → **粗** → *斜* → ~~删除~~
+  // 图片白名单：只认站内 /uploads/ 下的单个文件名（字母数字下划线连字符 + 短扩展名）。
+  // 不放外链、不放带路径的（../ 目录穿越 / 二级路径都不认）—— 上传接口给什么就只认什么。
+  function safeImgSrc(raw) {
+    const u = unesc(String(raw || '')).trim();
+    return /^\/uploads\/[A-Za-z0-9_-]+\.[A-Za-z0-9]{1,8}$/.test(u) ? u : '';
+  }
+
+  // 行内语法：![alt](图) → `code` → [文本](链接) → **粗** → *斜* → ~~删除~~
   // 输入是「已转义」的文本，输出是白名单标签 + 已转义文本，不会带出用户 HTML
   function inline(escaped) {
     let t = escaped;
+    const imgs = [];
+    // 图片先收进占位符：alt 里就算混进 ** ` 等记号也不会被后续行内语法二次加工，
+    // 还原时原样拼回（alt 本身已是转义文本，可以直接进属性值）
+    t = t.replace(/!\[([^\]\n]*)\]\(([^()\s]+)\)/g, (m, alt, src) => {
+      const u = safeImgSrc(src);
+      imgs.push(u ? `<img src="${u}" alt="${alt}" loading="lazy">` : alt); // 不合规图片只留 alt 文字
+      return '\u0001' + (imgs.length - 1) + '\u0001';
+    });
     const codes = [];
     t = t.replace(/`([^`\n]+)`/g, (m, code) => {
       codes.push('<code>' + code + '</code>');
@@ -52,8 +69,9 @@
     t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
     t = t.replace(/(^|[^*\w])\*([^*\n]+)\*/g, '$1<em>$2</em>');
     t = t.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
-    // 还原行内代码（内容本身没有被二次转义，直接拼回）
+    // 还原行内代码（内容本身没有被二次转义，直接拼回）与图片
     t = t.replace(/\u0000(\d+)\u0000/g, (m, i) => codes[Number(i)] || '');
+    t = t.replace(/\u0001(\d+)\u0001/g, (m, i) => imgs[Number(i)] || '');
     return t;
   }
 
@@ -63,6 +81,8 @@
   const RE_HR = /^(\*{3,}|-{3,}|_{3,})$/;
   const RE_QUOTE = /^>\s?(.*)$/;
   const RE_FENCE = /^(?:```|~~~)\s*([\w+#.-]*)\s*$/;
+  // 整行就是一张图：渲染成独立图块（figure），比塞在段落里好排版
+  const RE_IMG_LINE = /^!\[([^\]]*)\]\(([^()\s]+)\)$/;
 
   function render(src) {
     let text = String(src == null ? '' : src).replace(/\r\n?/g, '\n');
@@ -86,6 +106,18 @@
 
       // 空行：结束当前段落
       if (!line.trim()) { flushParagraph(para); i++; continue; }
+
+      // 整行图片：独立图块（不合规的 src 退回普通段落，alt 当正文）
+      const imgLine = line.trim().match(RE_IMG_LINE);
+      if (imgLine) {
+        flushParagraph(para);
+        const u = safeImgSrc(imgLine[2]);
+        out.push(u
+          ? `<figure class="md-img"><img src="${u}" alt="${esc(imgLine[1])}" loading="lazy"></figure>`
+          : '<p>' + inline(esc(imgLine[1])) + '</p>');
+        i++;
+        continue;
+      }
 
       // 围栏代码块
       const fence = line.match(RE_FENCE);
@@ -167,7 +199,7 @@
       .replace(/^[-*+]\s+/gm, '')
       .replace(/^\d{1,3}[.、]\s+/gm, '')
       .replace(/^(\*{3,}|-{3,}|_{3,})$/gm, '')
-      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '') // 图片整段剥掉：卡片 / meta / RSS 不该冒出「截图1」这类 alt
       .replace(/\[([^\]]+)\]\(([^)]*)\)/g, '$1')
       .replace(/`([^`]*)`/g, '$1')
       .replace(/\*\*([^*]+)\*\*/g, '$1')
