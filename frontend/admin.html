@@ -3607,6 +3607,13 @@
         ['绑定微信', d.bindWx], ['绑定 GitHub', d.bindGh]
       ].filter(([, v]) => v != null && Number(v) > 0)
        .map(([k, v]) => `<span class="stat-tile"><b>${v}</b><span>${k}</span></span>`);
+      // 注册/访客比只留一个总参考值，不在表里逐日展示：分子含后台导入账号，不是转化率
+      const rsDaily = Array.isArray(d.daily) ? d.daily.slice(-60) : [];
+      const rsVis = rsDaily.reduce((a, x) => a + (x.vis != null ? x.vis : 0), 0);
+      const rsReg = rsDaily.reduce((a, x) => a + (x.n || 0), 0);
+      if (rsVis > 0 && rsReg > 0) {
+        tiles.splice(1, 0, `<span class="stat-tile" title="窗口内注册 ${rsReg} ÷ 有访客账的访客 ${rsVis}；注册含后台导入账号，仅作参考，不是转化率"><b>${Math.round(rsReg / rsVis * 1000) / 10}%</b><span>注册/访客（参考）</span></span>`);
+      }
       // 回头率单独放最前：0% 也是有效读数，不能被 >0 过滤掉；访客口径是主打，放更前面
       if (d.activeToday > 0 && d.retToday != null) {
         tiles.unshift(`<span class="stat-tile"><b>${d.retToday}%</b><span>今日回头率 · 注册</span></span>`);
@@ -3987,11 +3994,11 @@
     // 点表头上方的胶囊 = 隐藏 / 恢复该列，隐藏的列 th/td 都打 data-hc="1" 由 CSS 收掉
     let rsColState = {};
     try { rsColState = JSON.parse(localStorage.getItem('rsCols') || '{}') || {}; } catch (e) { rsColState = {}; }
-    // 列显隐按下标存 localStorage；「每日访客与回头率」表三端各加一列「注册率」（16 列 → 19 列），
+    // 列显隐按下标存 localStorage；「每日访客与回头率」表撤掉注册率列（19 列 → 16 列），
     // 列下标全变、旧存档不再对应，直接重置该表显隐为「全显示」并升版本号（act 表不受影响）。
-    if (rsColState.visV !== 4) {
+    if (rsColState.visV !== 5) {
       delete rsColState.vis;
-      rsColState.visV = 4;
+      rsColState.visV = 5;
       try { localStorage.setItem('rsCols', JSON.stringify(rsColState)); } catch (e) {}
     }
     function rsColHidden(key, i) { return Array.isArray(rsColState[key]) && rsColState[key].includes(i); }
@@ -4087,18 +4094,19 @@
         </tr>`).join('') : '<tr><td colspan="6" class="sk-empty">这段时间还没有注册。</td></tr>';
 
       // 每日访客与回头率（访客口径，最近 60 天、新的在前）
-      // 三端分组对照表：全部 / 网页端 / 小程序端，各 6 列（访客·新访客·回头·回头率·注册·注册率）
-      // 回头率口径 = 回头人数 / 访客总人数；注册率口径 = 注册人数 / 访客总人数；分端同理，加权可回到总数。
+      // 三端分组对照表：全部 / 网页端 / 小程序端，各 5 列（访客·新访客·回头·回头率·注册）
+      // 回头率口径 = 回头人数 / 访客总人数；分端同理，加权可回到总数。
+      // 「注册/访客」是参考值，只放在顶部 KPI（分子含后台导入账号，不等于转化率），表里不逐日展示。
       //   x.vis/visNew/visOld/visRet/n 为全部；x.visMini 小程序访客、x.visOldMini 小程序回头、x.visOldWeb 网页回头
       //   网页访客 = x.vis - x.visMini；网页注册 = n - x.mini（x.mini 为小程序注册数）
       //   分端新访客 = 该端访客 - 该端回头；早期无端拆分账（visMini==null）时端列显示「—」
-      const visColNames = ['日期', '访客', '新访客', '回头', '回头率', '注册', '注册率', '访客', '新访客', '回头', '回头率', '注册', '注册率', '访客', '新访客', '回头', '回头率', '注册', '注册率'];
+      const visColNames = ['日期', '访客', '新访客', '回头', '回头率', '注册', '访客', '新访客', '回头', '回头率', '注册', '访客', '新访客', '回头', '回头率', '注册'];
       const hv = i => rsColHidden('vis', i) ? ' data-hc="1"' : '';
       const hasVis = daily.some(x => x.vis != null);
       const pct = (a, b) => (a == null || b == null || !b) ? '—' : (Math.round(a / b * 1000) / 10) + '%';
       const visTableRows = (() => {
         const rows = daily.slice(-60).reverse();
-        if (!rows.length) return '<tr><td colspan="19" class="sk-empty">这段时间没有数据。</td></tr>';
+        if (!rows.length) return '<tr><td colspan="16" class="sk-empty">这段时间没有数据。</td></tr>';
         return rows.map(x => {
           const hasSplit = x.visMini != null;                       // 当天有没有端拆分账
           const webVis = hasSplit ? Math.max(0, x.vis - x.visMini) : null;
@@ -4113,30 +4121,25 @@
             <td${hv(3)}>${x.vis == null ? '—' : x.visOld}</td>
             <td${hv(4)}>${x.visRet == null ? '—' : x.visRet + '%'}</td>
             <td${hv(5)}>${x.n || 0}</td>
-            <td${hv(6)}>${pct(x.n, x.vis)}</td>
-            <td${hv(7)} class="vg-split">${webVis == null ? '—' : webVis}</td>
-            <td${hv(8)}>${webNew == null ? '—' : webNew}</td>
-            <td${hv(9)}>${x.visOldWeb == null ? '—' : x.visOldWeb}</td>
-            <td${hv(10)}>${pct(x.visOldWeb, webVis)}</td>
-            <td${hv(11)}>${webReg == null ? '—' : webReg}</td>
-            <td${hv(12)}>${pct(webReg, webVis)}</td>
-            <td${hv(13)} class="vg-split">${x.visMini == null ? '—' : x.visMini}</td>
-            <td${hv(14)}>${miniNew == null ? '—' : miniNew}</td>
-            <td${hv(15)}>${x.visOldMini == null ? '—' : x.visOldMini}</td>
-            <td${hv(16)}>${pct(x.visOldMini, x.visMini)}</td>
-            <td${hv(17)}>${x.mini == null ? '—' : x.mini}</td>
-            <td${hv(18)}>${pct(x.mini, x.visMini)}</td>
+            <td${hv(6)} class="vg-split">${webVis == null ? '—' : webVis}</td>
+            <td${hv(7)}>${webNew == null ? '—' : webNew}</td>
+            <td${hv(8)}>${x.visOldWeb == null ? '—' : x.visOldWeb}</td>
+            <td${hv(9)}>${pct(x.visOldWeb, webVis)}</td>
+            <td${hv(10)}>${webReg == null ? '—' : webReg}</td>
+            <td${hv(11)} class="vg-split">${x.visMini == null ? '—' : x.visMini}</td>
+            <td${hv(12)}>${miniNew == null ? '—' : miniNew}</td>
+            <td${hv(13)}>${x.visOldMini == null ? '—' : x.visOldMini}</td>
+            <td${hv(14)}>${pct(x.visOldMini, x.visMini)}</td>
+            <td${hv(15)}>${x.mini == null ? '—' : x.mini}</td>
           </tr>`;
         }).join('');
       })();
-      // 顶部总计行：汇总表格当前展示的 60 天窗口。回头率 / 注册率不能逐日相加，
-      // 统一用「合计回头 ÷ 合计访客」「合计注册 ÷ 合计访客」重算；分端口径与逐日一致
-      // （网页访客=vis-visMini、新=访客-回头、注册=n-mini）。
+      // 顶部总计行：汇总表格当前展示的 60 天窗口。回头率不能逐日相加，用「合计回头 ÷ 合计访客」重算；
+      // 分端口径与逐日一致（网页访客=vis-visMini、新=访客-回头、注册=n-mini）。
       // 注册三列是全窗口合计：2026-11-20 站长问「总计为啥比全站少 40 个用户」——此前注册合计跟访客账
       // 同闸，访客账起点（2026-11-05）之前注册的 43 人被漏掉。注册账逐日都有（跟注册日走），
-      // 不该跟访客闸，现在不闸了，分端和恒等于全部。
-      // 访客 / 回头合计只含有账天；注册含账本起点之前的天时，合计注册率是上界
-      // （窗口起点晚于账本起点后分子分母自然对齐）。逐日行的注册率无此问题（同一天同窗）。
+      // 不该跟访客闸，现在不闸了，分端和恒等于全部。访客 / 回头合计只含有账天。
+      // 注册/访客比只在顶部 KPI 出一个参考值，表里不逐端也不能当转化率（分子含后台导入账号）。
       const visTotalRow = (() => {
         const rows = daily.slice(-60).reverse();
         if (!rows.length) return '';
@@ -4165,27 +4168,24 @@
           <td${hv(3)}>${t.visOld}</td>
           <td${hv(4)}>${pct(t.visOld, t.vis)}</td>
           <td${hv(5)}>${t.n}</td>
-          <td${hv(6)}>${pct(t.n, t.vis)}</td>
-          <td${hv(7)} class="vg-split">${t.hasSplit ? t.webVis : dash}</td>
-          <td${hv(8)}>${t.hasSplit ? t.webNew : dash}</td>
-          <td${hv(9)}>${t.hasSplit ? t.visOldWeb : dash}</td>
-          <td${hv(10)}>${t.hasSplit ? pct(t.visOldWeb, t.webVis) : dash}</td>
-          <td${hv(11)}>${t.hasReg ? t.webReg : dash}</td>
-          <td${hv(12)}>${t.hasReg ? pct(t.webReg, t.webVis) : dash}</td>
-          <td${hv(13)} class="vg-split">${t.hasSplit ? t.miniVis : dash}</td>
-          <td${hv(14)}>${t.hasSplit ? t.miniNew : dash}</td>
-          <td${hv(15)}>${t.hasSplit ? t.visOldMini : dash}</td>
-          <td${hv(16)}>${t.hasSplit ? pct(t.visOldMini, t.miniVis) : dash}</td>
-          <td${hv(17)}>${t.hasReg ? t.mini : dash}</td>
-          <td${hv(18)}>${t.hasReg ? pct(t.mini, t.miniVis) : dash}</td>
+          <td${hv(6)} class="vg-split">${t.hasSplit ? t.webVis : dash}</td>
+          <td${hv(7)}>${t.hasSplit ? t.webNew : dash}</td>
+          <td${hv(8)}>${t.hasSplit ? t.visOldWeb : dash}</td>
+          <td${hv(9)}>${t.hasSplit ? pct(t.visOldWeb, t.webVis) : dash}</td>
+          <td${hv(10)}>${t.hasReg ? t.webReg : dash}</td>
+          <td${hv(11)} class="vg-split">${t.hasSplit ? t.miniVis : dash}</td>
+          <td${hv(12)}>${t.hasSplit ? t.miniNew : dash}</td>
+          <td${hv(13)}>${t.hasSplit ? t.visOldMini : dash}</td>
+          <td${hv(14)}>${t.hasSplit ? pct(t.visOldMini, t.miniVis) : dash}</td>
+          <td${hv(15)}>${t.hasReg ? t.mini : dash}</td>
         </tr>`;
       })();
       // 分组表头：每组列出它覆盖的列下标，可见列数 = 未被隐藏的，colspan 随之收缩
       const visGroups = [
         { label: '日期', cls: 'vg-date', cols: [0] },
-        { label: '全部', cls: 'vg-all', cols: [1, 2, 3, 4, 5, 6] },
-        { label: '网页端', cls: 'vg-web', cols: [7, 8, 9, 10, 11, 12] },
-        { label: '小程序端', cls: 'vg-mini', cols: [13, 14, 15, 16, 17, 18] },
+        { label: '全部', cls: 'vg-all', cols: [1, 2, 3, 4, 5] },
+        { label: '网页端', cls: 'vg-web', cols: [6, 7, 8, 9, 10] },
+        { label: '小程序端', cls: 'vg-mini', cols: [11, 12, 13, 14, 15] },
       ];
       const visGroupHead = visGroups.map(g => {
         const span = g.cols.filter(i => !rsColHidden('vis', i)).length;
@@ -4218,27 +4218,23 @@
       panel.innerHTML = `
         <div class="stats" id="rsKpiRow">${rsKpiTilesHtml(d)}</div>
         <div class="promo-src">
-          <h4>注册走势<span>${esc(d.from || '')} ~ ${esc(d.to || '')} · 堆叠柱＝当天新增（网页端 / 小程序）· 折线＝累计 · 空天也补齐 · KPI 指标固定全量口径</span>${range}</h4>
-          ${typeof echarts !== 'undefined' ? '<div id="regTrendChart" style="height:340px"></div>' : dailyRows}
-        </div>
-        <div class="promo-src">
-          <h4>每日访客与回头率<span>分三栏对照：全部 / 网页端 / 小程序端，各含访客·新访客·回头·回头率·注册·注册率 · 回头率 ＝ 回头人数 ÷ 访客总人数 · 注册率 ＝ 注册人数 ÷ 访客总人数 · 访客 = 当天来过的去重访客（登录按账号 / 网页按 IP / 小程序按设备）· 回头客 = 之前也来过的人 · 逐日记录自 ${esc(d.visFrom || '2026-11-05')} 起（此前账本混着爬虫不采用，显示「—」）· 端拆分与小程序访客自 11-16 起有记录 · 合计行的注册为全窗口合计，访客 / 回头合计与两率的分母只含有账的天；小程序访客账 11-16 才起，早期注册没有对应分母，合计注册率可能超过 100%</span></h4>
-          ${typeof echarts !== 'undefined' && hasVis ? '<div id="visTrendChart" style="height:300px"></div>' : ''}
+          <h4>每日访客与回头率<span>分三栏对照：全部 / 网页端 / 小程序端，各含访客·新访客·回头·回头率·注册 · 回头率 ＝ 回头人数 ÷ 访客总人数 · 访客 = 当天来过的去重访客（登录按账号 / 网页按 IP / 小程序按设备）· 回头客 = 之前也来过的人 · 逐日记录自 ${esc(d.visFrom || '2026-11-05')} 起（此前账本混着爬虫不采用，显示「—」）· 端拆分与小程序访客自 11-16 起有记录 · 合计行的注册为全窗口合计 · 注册/访客比仅作参考，见上方 KPI（含后台导入账号，不是转化率）</span></h4>
           ${rsColChipsHtml('vis', visColNames)}
           <div class="rd-scroll"><table class="rd-table">
-            <thead><tr>${visGroupHead}</tr><tr>${visColNames.map((c, i) => `<th${hv(i)}${(i === 7 || i === 13) ? ' class="vg-split"' : ''}>${c}</th>`).join('')}</tr></thead>
+            <thead><tr>${visGroupHead}</tr><tr>${visColNames.map((c, i) => `<th${hv(i)}${(i === 6 || i === 11) ? ' class="vg-split"' : ''}>${c}</th>`).join('')}</tr></thead>
             <tbody>${visTotalRow}${visTableRows}</tbody>
           </table></div>
+          ${typeof echarts !== 'undefined' && hasVis ? '<div id="visTrendChart" style="height:300px;margin-top:14px;border-top:1px dashed #eef0f7;padding-top:12px"></div>' : ''}
         </div>
         <div class="promo-src">
           <h4>注册用户每日活跃与回头率<span>${d.ledgerFrom ? '活跃台账自 ' + esc(d.ledgerFrom) + ' 起逐日记录，之前显示「—」 · ' : ''}只算登录用户 · 回头率 ＝ 当日活跃里「注册早于当天」的占比${d.ret7 != null ? ' · 近 7 天 ' + d.ret7 + '%' : ''}</span></h4>
           ${actNote}
-          ${typeof echarts !== 'undefined' && hasAct ? '<div id="actTrendChart" style="height:300px"></div>' : ''}
           ${rsColChipsHtml('act', actColNames)}
           <div class="rd-scroll"><table class="rd-table">
             <thead><tr>${actColNames.map((c, i) => `<th${ha(i)}>${c}</th>`).join('')}</tr></thead>
             <tbody>${actTableRows}</tbody>
           </table></div>
+          ${typeof echarts !== 'undefined' && hasAct ? '<div id="actTrendChart" style="height:300px;margin-top:14px;border-top:1px dashed #eef0f7;padding-top:12px"></div>' : ''}
         </div>
         <div class="bh-grid">
           <div class="bh-card"><h5>按星期分布<em>窗口内注册发生在星期几</em></h5>${wdRows}</div>
@@ -4256,6 +4252,10 @@
             <thead><tr><th>注册时间</th><th>用户</th><th>来源</th><th>邀请</th><th>标签</th><th>活跃</th></tr></thead>
             <tbody>${recentRows}</tbody>
           </table></div>
+        </div>
+        <div class="promo-src">
+          <h4>注册走势<span>${esc(d.from || '')} ~ ${esc(d.to || '')} · 堆叠柱＝当天新增（网页端 / 小程序）· 折线＝累计 · 空天也补齐 · KPI 指标固定全量口径</span>${range}</h4>
+          ${typeof echarts !== 'undefined' ? '<div id="regTrendChart" style="height:340px"></div>' : dailyRows}
         </div>`;
 
       panel.querySelectorAll('[data-rs-days]').forEach(b => {
