@@ -9767,7 +9767,7 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 }
 .promo-x:hover, .promo-x:focus-visible { opacity: 1; background: #fff; color: #5b3fa8; }
 .promo-x svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; }
-.promo-card:hover .promo-x, .promo-row:hover .promo-x { opacity: 1; }
+.promo-card:hover .promo-x, .promo-row:hover .promo-x, .card[data-native-promo]:hover .promo-x { opacity: 1; }
 @media (max-width: 640px) {
   /* 触屏没有 hover：常显并给足点击尺寸 */
   .promo-x { top: 6px; right: 6px; width: 30px; height: 30px; opacity: .9; }

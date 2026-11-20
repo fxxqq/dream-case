@@ -4642,19 +4642,21 @@ function logSearch(req, q, hits) {
   scheduleSearchLogSave();
 }
 
-// 后台统计：Top N + 今日 / 近 7 天总量 + 「0 结果」次数（缺内容的信号）
+// 后台统计：Top N + 今日 / 近 30 天 / 累计总量 + 「0 结果」次数（缺内容的信号）
+// 2026-11-21 站长拍板把「近 7 天」口径放宽到近 30 天：7 天窗口太短，看不出趋势。
+// 排行仍按累计 n 排（= 所有数据），副标题另给累计数，近 30 天和全部两个口径都能看到。
 function searchStatsForAdmin(limit = 30) {
   const today = dateKey();
-  const weekAgo = dateKey(new Date(Date.now() - 6 * 86400000));
-  let todayN = 0, weekN = 0;
+  const monthAgo = dateKey(new Date(Date.now() - 29 * 86400000));
+  let todayN = 0, monthN = 0;
   const rows = Object.entries(searchLog).map(([k, r]) => {
-    let n7 = 0;
-    Object.entries(r.days || {}).forEach(([d, n]) => { if (d >= weekAgo) n7 += n; });
+    let n30 = 0;
+    Object.entries(r.days || {}).forEach(([d, n]) => { if (d >= monthAgo) n30 += n; });
     todayN += (r.days && r.days[today]) || 0;
-    weekN += n7;
+    monthN += n30;
     // u = 按人去重的人数（花名册留 35 天，所以是「近 35 天搜过这个词的人数」）；
     // 花名册 11-14 起才记录，更早的词不带 u，前端显示「—」而不是误导性的 0
-    const base = { q: r.w || k, n: r.n, zero: r.zero || 0, last: r.last || '', n7 };
+    const base = { q: r.w || k, n: r.n, zero: r.zero || 0, last: r.last || '', n30 };
     if (r.us) base.u = Object.keys(r.us).length;
     return base;
   });
@@ -4669,7 +4671,7 @@ function searchStatsForAdmin(limit = 30) {
   const blockedRows = rows.filter(r => r.blocked);
   return {
     total: rows.reduce((s, r) => s + r.n, 0),
-    todayN, weekN, words: rows.length,
+    todayN, monthN, words: rows.length,
     top: liveRows.slice(0, limit),
     blockedTop: blockedRows.slice(0, limit)
   };
@@ -26374,15 +26376,19 @@ app.post('/api/admin/redemptions/:id/cancel', requireAdmin, (req, res) => {
 });
 
 
-// ---- 用户管理：账号 / 昵称 / 灯火 / 作品数 ----
-// 按最近活跃排序 + 分页（每页 20 条）；q 走服务端搜索
+// ---- 用户管理（含灯火明细，2026-11-21 两页合并）----
+// 一个表头可点的用户表：账号 / 灯火台账 / 作品 / 注册 / 活跃 / IP / 操作；q 走服务端搜索，分页每页 20 条
 app.get('/api/admin/users', requireAdmin, async (req, res) => {
   const q = String(req.query.q || '').trim().toLowerCase();
   const src = normFrKey(req.query.src);   // 按来源渠道筛：链接来的和兑换码来的都在这里
-  const sort = String(req.query.sort || 'active');   // active=最近活跃（默认）· regNew=注册最新 · regOld=注册最早
-  const hasWorks = req.query.hasWorks === '1';   // 只看投过作品的人（后台用户管理默认勾上，免得一堆注册没投稿的号占屏）
+  const sort = String(req.query.sort || 'active');   // 表头点击排序：活跃 / 注册 / 灯火台账各列，Desc/Asc 切换升降序
+  const hasWorks = req.query.hasWorks === '1';   // 只看投过作品的人
+  const hasLights = req.query.hasLights === '1'; // 只看有灯火往来的人（原来灯火明细页的默认筛选）
   const pageSize = 20;
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  // 灯火台账跟原来的「灯火明细」页共用一套计算，合并后一张表直接拿到所有来源 / 消耗列
+  const ledger = buildPointsLedger();
+  const ledgerById = new Map(ledger.rows.map(r => [r.id, r]));
   // 同 IP 疑似同一用户：按注册 IP 聚类。老账号只有哈希（regIp），2026-11-09 起建号
   // 同时有原始 IP（regIpRaw），两种都成组取并集；管理后台只读展示，不写数据。
   const ipGroups = {};
@@ -26398,7 +26404,9 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
   };
   const todayKey = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10); // 北京时间的今天
   let list = users.map(u => {
+    const led = ledgerById.get(u.id) || {};
     return {
+      ...led,
       id: u.id,
       username: u.username,
       name: displayNameOf(u.username),
@@ -26411,6 +26419,7 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
         : null,
       todayVisits: u.actDay === todayKey ? (u.actToday || 0) : 0,
       consumed: (() => { const c = consumedLightsOf(u.id); return { total: c.consumed, promo: c.promoSpent, tip: c.tippedOut }; })(),
+      spendTotal: (Number(led.tipOut) || 0) + (Number(led.promoSpent) || 0),
       works: works.filter(w => w.userId === u.id).length,
       isOwner: isSiteOwner(u),   // 站长：屏蔽作品时按 3 分计（首页最新降权用）
       blockedCount: Array.isArray(u.blocked) ? u.blocked.length : 0,
@@ -26435,12 +26444,37 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
   if (src) list = list.filter(u => u.acqFr === src);
   const totalAll = list.length;   // 搜索/来源筛选后的人数（不含「只看有作品」），页眉用「共 X 位（全部 Y 位）」
   if (hasWorks) list = list.filter(u => u.works > 0);
-  // 排序：默认最近活跃的排前面（没活跃记录的按注册时间垫底）；也可按注册时间正/倒序
+  if (hasLights) list = list.filter(u => ['points', 'checkin', 'wxbind', 'pwa', 'ghBind', 'adTotal', 'adToday', 'tipIn', 'tipOut', 'adminNet', 'promoSpent'].some(k => Number(u[k]) || 0));
+  // 排序：默认最近活跃；其余由后台表头点击切换，键与前端 data-usort / data-ua 一一对应
+  const asTime = v => v ? new Date(v).getTime() : NaN;
+  const byNum = (field, asc) => {
+    list.sort((a, b) => {
+      const av = Number(a[field]) || 0, bv = Number(b[field]) || 0;
+      if (av !== bv) return asc ? av - bv : bv - av;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+  };
+  const numKeys = ['points', 'checkin', 'wxbind', 'ghBind', 'pwa', 'adTotal', 'adToday', 'tipIn', 'tipOut', 'adminNet', 'promoSpent', 'spendTotal', 'works', 'todayVisits', 'blockedCount'];
+  const numMatch = sort.match(/^(\w+)(Asc|Desc)$/);
+  const nameMatch = sort.match(/^name(Asc|Desc)$/);
   if (sort === 'regNew') {
     list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   } else if (sort === 'regOld') {
     list.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  } else if (sort === 'activeOld') {
+    list.sort((a, b) => {
+      const ta = Number.isFinite(asTime(a.lastActiveAt)) ? asTime(a.lastActiveAt) : Infinity;
+      const tb = Number.isFinite(asTime(b.lastActiveAt)) ? asTime(b.lastActiveAt) : Infinity;
+      if (ta !== tb) return ta - tb;
+      return new Date(a.createdAt) - new Date(b.createdAt);
+    });
+  } else if (nameMatch) {
+    const sign = nameMatch[1] === 'Asc' ? 1 : -1;
+    list.sort((a, b) => String(a.name).localeCompare(String(b.name), 'zh-CN') * sign || new Date(b.createdAt) - new Date(a.createdAt));
+  } else if (numMatch && numKeys.includes(numMatch[1])) {
+    byNum(numMatch[1], numMatch[2] === 'Asc');
   } else {
+    // active（默认）：最近活跃的排前面，没活跃记录的按注册时间垫底
     list.sort((a, b) => {
       const ta = a.lastActiveAt ? new Date(a.lastActiveAt).getTime() : 0;
       const tb = b.lastActiveAt ? new Date(b.lastActiveAt).getTime() : 0;
@@ -26469,7 +26503,7 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
     u.workNames = works.filter(w => w.userId === u.id)
       .map(w => ({ id: w.id, title: w.title, hidden: !!w.hidden || w.status === 'rejected' }));
   });
-  res.json({ users: users2, total, totalAll, page, pageSize, hasWorks });
+  res.json({ users: users2, total, totalAll, page, pageSize, hasWorks, hasLights, ledgerTotals: ledger.totals });
 });
 
 // ---- 单个用户的灯火余额（后台「送灯火 / 扣灯火」弹窗用）----
@@ -26496,10 +26530,26 @@ app.get('/api/admin/users/balance', requireAdmin, (req, res) => {
 //   站长送 rec.adminPoints（后台「送灯火 / 扣灯火」的净额：送 +、扣回 −，是净账不是单边）
 //   投放   ad-redemptions.json 的 price − refunded（下单实付扣掉已退；在投还没烧完的也算了，钱已经扣了）
 //   看广告 rec.adReward（今天 count 0~3 / 累计 total；total 是 2026-11-14 中途加的，之前的次数没有记录）
+//        + tips.json 里 via='ad' 的「看广告替作品点灯」次数（观众自己没领灯，但确实看了一支广告；
+//          2026-11-20 站长指出只看 adReward 会恒为 0，这里并进来才算真的「看广告累计」）
 // 不含：作品被解锁的收入（lamp_in）、兑换码（gift）、签到以外的系统奖励（upload/star/os…），
 // 这些在用户自己的「灯光明细」里能逐笔看到；这一页只回答站长最常问的那五个数。
-app.get('/api/admin/points-ledger', requireAdmin, (req, res) => {
-  res.set('Cache-Control', 'no-store');
+// 灯火台账统一计算（2026-11-21）：用户管理 / 灯火明细合并成一张表后共用这一份口径
+function buildPointsLedger() {
+  const workById = new Map(works.map(w => [w.id, w]));
+  const workLabel = id => {
+    const w = workById.get(id);
+    return w ? (w.title || '未命名作品') : (id ? '已删作品 ' + String(id).slice(0, 6) : '作品已删');
+  };
+  // 按作品聚出笔数/盏数，给「被送 / 送出」的小字写清到底送给了哪件作品
+  const bumpWork = (list, tip, amt) => {
+    const id = tip.workId || '';
+    let item = list.find(x => x.workId === id);
+    if (!item) { item = { workId: id, title: workLabel(id), count: 0, amount: 0, adCount: 0 }; list.push(item); }
+    item.count += 1;
+    item.amount += amt;
+    if (tip.via === 'ad') item.adCount += 1;
+  };
   const rows = users.map(u => {
     const rec = shareData.users[u.id] || {};
     const ck = rec.checkin || {};
@@ -26524,11 +26574,16 @@ app.get('/api/admin/points-ledger', requireAdmin, (req, res) => {
       ghBonusAt: rec.ghBindBonusAt || '',
       pwa: rec.pwaBonusAt ? PWA_BONUS_POINTS : 0,
       pwaAt: rec.pwaBonusAt || '',
-      // 看激励视频领灯火（/api/me/ad-reward）：今天看了几次（0~3）+ 累计次数（2026-11-14 起记，ar.total 中途才加的，老号没有就是 0）
+      // 看广告有两条互不相同的通道，都要算「看广告次数」：
+      // ① /api/me/ad-reward 自己看广告领灯（今天 count 0~3 + 累计 total，total 2026-11-14 起才有）
+      // ② /api/works/:id/tip-ad 看完广告替作品点灯（观众不扣灯、平台代送；累计从 tips 里数，历史可补）
       adToday: (ar.day === dateKey() && ar.day) ? Number(ar.count || 0) : 0,
-      adTotal: Number(ar.total || 0),
-      tipIn: 0, tipInAd: 0, tipInCount: 0,
-      tipOut: 0, tipOutCount: 0,
+      adSelfTotal: Number(ar.total || 0),
+      adTipToday: (rec.tipAd && rec.tipAd.day === dateKey()) ? Number(rec.tipAd.count || 0) : 0,
+      adTipTotal: 0,
+      adTotal: Number(ar.total || 0),   // 下面加完 adTipTotal 再回填成两条通道之和
+      tipIn: 0, tipInAd: 0, tipInCount: 0, tipInWorks: [],
+      tipOut: 0, tipOutCount: 0, tipOutWorks: [],
       adminNet: Number(rec.adminPoints || 0),
       promoSpent: 0, promoOrders: 0, promoActive: 0,
       createdAt: u.createdAt || '',
@@ -26539,12 +26594,19 @@ app.get('/api/admin/points-ledger', requireAdmin, (req, res) => {
   for (const t of tips) {
     const amt = Number(t.amount) || 0;
     const from = byId.get(t.fromUserId);
-    if (from && t.via !== 'ad') { from.tipOut += amt; from.tipOutCount += 1; }
+    if (from && t.via !== 'ad') { from.tipOut += amt; from.tipOutCount += 1; bumpWork(from.tipOutWorks, t, amt); }
+    if (from && t.via === 'ad') { from.adTipTotal += 1; from.adTotal += 1; }
     const to = t.toUserId ? byId.get(t.toUserId) : null;
     if (to) {
       to.tipIn += amt; to.tipInCount += 1;
       if (t.via === 'ad') to.tipInAd += amt;
+      bumpWork(to.tipInWorks, t, amt);
     }
+  }
+  // 作品名列表按笔数多的排前面，前端只展示前几个、其余折成「等 N 件」
+  for (const r of rows) {
+    r.tipInWorks.sort((a, b) => b.count - a.count || b.amount - a.amount);
+    r.tipOutWorks.sort((a, b) => b.count - a.count || b.amount - a.amount);
   }
   for (const r of redemptions) {
     const u = byId.get(r.userId);
@@ -26554,7 +26616,7 @@ app.get('/api/admin/points-ledger', requireAdmin, (req, res) => {
     u.promoSpent += Math.max(0, (Number(r.price) || 0) - (Number(r.refunded) || 0));
   }
   const sum = k => rows.reduce((n, r) => n + (Number(r[k]) || 0), 0);
-  res.json({
+  return {
     rows,
     totals: {
       people: rows.length,
@@ -26569,10 +26631,17 @@ app.get('/api/admin/points-ledger', requireAdmin, (req, res) => {
       adminNet: sum('adminNet'),
       promoSpent: sum('promoSpent'),
       adToday: sum('adToday'),
+      adTipToday: sum('adTipToday'),
+      adSelfTotal: sum('adSelfTotal'),
+      adTipTotal: sum('adTipTotal'),
       adTotal: sum('adTotal')
     },
     generatedAt: new Date().toISOString()
-  });
+  };}
+
+app.get('/api/admin/points-ledger', requireAdmin, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(buildPointsLedger());
 });
 
 // ---- 重置密码（后台手动兜底，不依赖邮件）----

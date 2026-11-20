@@ -241,6 +241,8 @@
     .pl-table th.on { color:var(--primary); }
     .pl-table th.on .pl-arrow { opacity:1; }
     .pl-table td .pl-sub { display:block; font-size:10.5px; color:var(--muted); font-weight:400; line-height:1.5; }
+    /* 被送 / 送出的作品名：长标题截断，鼠标停上去看全量明细 */
+    .pl-table td .pl-works { max-width:210px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:help; }
     .pl-table td.pl-who { max-width:220px; overflow:hidden; text-overflow:ellipsis; }
     .pl-table td.pl-zero { color:#c3c6d2; }
     .pl-table td .pl-neg { color:var(--danger); }
@@ -362,14 +364,18 @@
     .row-meta .pvuv { color:#5b5bd6; font-variant-numeric:tabular-nums; cursor:help; }
     .row-meta .row-link { color:#5b5bd6; word-break:break-all; }
     .row-meta .row-link.repo { color:#0a7d43; }
-    /* 用户行里的 IP：等宽字体，点一下复制；后面跟离线库解析出的归属地 */
-    .row-meta .ipv { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:#3b3b52; cursor:pointer; }
-    .row-meta .ipv:hover { color:#5b5bd6; text-decoration:underline dotted; }
     /* 作品行作者名可点 = 弹送灯火弹窗（复用「用户管理」那套，2026-11-13）；无归属账号不包这个壳 */
     .row-meta .au-tip { cursor:pointer; }
     .row-meta .au-tip:hover { color:#5b5bd6; text-decoration:underline dotted; }
-    .row-meta .iploc { margin-left:4px; color:#0a7d43; background:#eef7f1; border-radius:4px; padding:0 5px; font-size:11px; }
-    .row-meta.ip-meta .tag { margin-left:4px; }
+    /* 用户行里的归属地：只显城市，IP 明文藏在悬停提示里，点一下复制 */
+    .row-meta .iploc { margin-left:0; color:#0a7d43; background:#eef7f1; border-radius:4px; padding:0 5px; font-size:11px; cursor:pointer; }
+    .row-meta .iploc:hover { color:#0a5c31; text-decoration:underline dotted; }
+    .row-meta .iploc.none { color:var(--muted); background:#f2f2f6; cursor:default; }
+    .row-meta.ip-meta .tag { margin-left:0; }
+    /* 两列网格：标签一栏、城市一栏，「注册」「最近」上下对齐，长城市名也不把标签挤歪 */
+    .row-meta.ip-meta.ip-grid { display:grid; grid-template-columns:auto 1fr; gap:3px 6px; align-items:center; }
+    .row-meta.ip-meta.ip-grid .tag { font-size:11px; }
+    .row-meta.ip-meta.ip-grid .ip-t { font-size:10.5px; color:var(--muted); }
     .row-actions { display:flex; gap:8px; flex-wrap:wrap; }
     /* 匿名投稿排查：一组一张卡，组头给出判据（同 IP / 同站点）和件数 */
     .anon-group { border-bottom:1px solid var(--border); }
@@ -444,8 +450,45 @@
     /* 最后活跃端：跟时间里贴着，颜色淡一点别抢标签的注意力 */
     .tag.cli { background:#eef7f3; color:#1a7f5a; cursor:help; }
     /* 用户标签：行内编辑器 + 标签库条 */
-    /* 用户行允许换行：标签编辑器要独占一整行，否则会把名字挤成竖排 */
-    .row.row-user { flex-wrap: wrap; }
+    /* 用户管理列表：表头固定列宽，作品名 / IP / 标签再长也只在自己那格里换行 */
+    .user-table-wrap {
+      margin:0 18px 16px; overflow:auto; max-height:calc(100vh - 260px); background:#fff;
+      border:1px solid var(--border); border-radius:12px;
+    }
+    table.user-table { width:100%; min-width:2060px; border-collapse:collapse; table-layout:fixed; }
+    .user-table thead th {
+      position:sticky; top:0; z-index:1;
+      padding:9px 12px; background:#f7f7fc; border-bottom:1px solid var(--border);
+      color:var(--muted); font-size:12px; font-weight:600; text-align:left; white-space:nowrap;
+    }
+    .user-table thead th[data-usort] { cursor:pointer; user-select:none; }
+    .user-table thead th[data-usort]:hover { color:var(--primary); background:#f0f0fb; }
+    .user-table thead th.on { color:var(--primary); }
+    .user-table thead th .su { display:inline-block; margin-left:4px; font-size:11px; color:#b6bad0; font-weight:400; }
+    .user-table thead th.on .su { color:var(--primary); }
+    /* .row 是后台通用 flex 行，这里覆盖回表格行，其他页面的行不受影响 */
+    .user-table tr.row.row-user { display:table-row; align-items:initial; gap:0; padding:0; border-bottom:none; }
+    .user-table tbody tr:nth-child(even) { background:#fcfcff; }
+    .user-table tbody tr.row.row-user:hover { background:#f3f3fd; }
+    .user-table td {
+      padding:11px 12px; border-bottom:1px solid var(--border);
+      vertical-align:top; font-size:12px; line-height:1.65; overflow-wrap:anywhere;
+    }
+    .user-table tr.row.row-user:last-child td { border-bottom:none; }
+    .user-table td.ut-editor-cell { padding:0; border-bottom:none; }
+    .user-table .row-main { flex:none; min-width:0; }
+    .user-table .row-title { margin-bottom:5px; font-weight:600; }
+    .user-table .row-meta { margin-top:2px; }
+    .user-table .works-meta a { display:inline-block; max-width:100%; margin-right:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; }
+    .user-table .row-actions { display:flex; gap:5px; flex-wrap:wrap; }
+    .user-table .row-actions .btn { white-space:nowrap; padding:3px 8px; font-size:11.5px; }
+    .user-table td.num { font-variant-numeric:tabular-nums; }
+    .user-table td.num b { font-weight:600; }
+    .user-table td.num .zero { color:#c3c6d2; }
+    .user-table td.num b.neg { color:var(--danger); }
+    .user-table .cell-sub { display:block; font-size:10.5px; line-height:1.45; color:var(--muted); }
+    .user-table .pl-works { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:help; }
+    .user-table .tags-editor { margin:0 12px 10px; flex-basis:auto; }
     .row .tags-editor {
       display:none; flex-wrap:wrap; align-items:center; gap:8px;
       flex-basis:100%; padding:10px 12px; margin-top:10px;
@@ -1185,7 +1228,6 @@
             <button type="button" class="side-group">用户<svg class="sg-arrow" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             <div class="side-items">
               <button class="tab" data-tab="users">用户管理</button>
-              <button class="tab" data-tab="points">灯火明细</button>
               <button class="tab" data-tab="regstats">注册统计</button>
               <button class="tab" data-tab="reports">投诉处理</button>
               <button class="tab" data-tab="claims">认领申请</button>
@@ -2726,6 +2768,7 @@
       if (repliesTimer) { clearInterval(repliesTimer); repliesTimer = null; }
       if (lhPoll) { clearInterval(lhPoll); lhPoll = null; }
       markTabSeen(tab);
+      if (tab === 'points') tab = 'users';   // 灯火明细已并进用户管理，老收藏页 / 老书签也走合并后的表
       // 搜索框只跟作品列表（全部作品 / 待审核 / 已下架）走，其他 tab 收起；关键词保留，切回来还在
       // 随便逛逛那一格搜索条同理（#dscBar 由 loadDiscover 自己打开），别让两个搜索条同时挂着
       const wb = $('workBar');
@@ -2755,7 +2798,7 @@
       if (tab === 'brands') return loadBrands();
       if (tab === 'promos') return loadPromos();
       if (tab === 'users') return loadUsers();
-      if (tab === 'points') return loadPointsLedger();
+      if (tab === 'points') return loadUsers();   // 兼容旧入口
       if (tab === 'broadcast') return loadBroadcast();
       if (tab === 'replies') return loadReplies();
       if (tab === 'gift') return loadGift();
@@ -3520,7 +3563,7 @@
                 <span title="搜过这个词的人数（账号/设备号去重，前台榜单按这个排；11-14 起才记录，更早的词没有人数）">人数</span>
                 <span title="累计搜索次数">次数</span>
                 <span title="搜了但没搜到任何结果的次数——缺内容的信号">无结果</span>
-                <span>7 天</span>
+                <span title="近 30 天搜索次数（今天 + 前 29 天）">30 天</span>
                 <span>最近</span>
                 <span></span>
               </div>`;
@@ -3530,7 +3573,7 @@
                 <span class="sk-c sk-c-u">${x.u != null ? x.u + '<i>人</i>' : '<i>—</i>'}</span>
                 <span class="sk-c">${x.n || 0}</span>
                 <span class="sk-c${x.zero ? ' sk-c-zero' : ''}" title="${x.zero ? '搜了但没结果' : ''}">${x.zero || 0}</span>
-                <span class="sk-c sk-c-dim">${x.n7 || 0}</span>
+                <span class="sk-c sk-c-dim">${x.n30 || 0}</span>
                 <span class="sk-c sk-c-dim">${(x.last || '').slice(5, 10).replace('-', '/') || '—'}</span>
                 <button class="sk-btn" data-sk-blk="${esc(x.q)}" title="屏蔽：前台「大家最近在搜」不再展示这个词">屏蔽</button>
               </div>`).join('');
@@ -3541,7 +3584,7 @@
             : '<div class="sk-empty">还没有人搜过。站内每执行一次搜索都会记一条，这里会按次数排出来。</div>');
       panel.innerHTML = `
         <div class="promo-src">
-          <h4>站内搜索词<span>今日 ${sk.todayN || 0} 次 · 近 7 天 ${sk.weekN || 0} 次 · 共 ${sk.words || 0} 个词 · 这里按次数排；前台榜单按人数排（账号/设备号去重，IP 仅哈希兜底）</span></h4>
+          <h4>站内搜索词<span>今日 ${sk.todayN || 0} 次 · 近 30 天 ${sk.monthN || 0} 次 · 累计 ${sk.total || 0} 次 · 共 ${sk.words || 0} 个词 · 这里按次数排；前台榜单按人数排（账号/设备号去重，IP 仅哈希兜底）</span></h4>
           ${rows}
           <div class="sk-blocksec">
             <div class="sk-bsec-title">
@@ -3610,12 +3653,14 @@
         ['绑定微信', d.bindWx], ['绑定 GitHub', d.bindGh]
       ].filter(([, v]) => v != null && Number(v) > 0)
        .map(([k, v]) => `<span class="stat-tile"><b>${v}</b><span>${k}</span></span>`);
-      // 注册/访客比只留一个总参考值，不在表里逐日展示：分子含后台导入账号，不是转化率
+      // 注册/访客比：分子分母都只取「有访客账」的天，时间窗一致。
+      // 账本起点（11-05）前的注册没有对应访客分母，旧算法把它算进分子，
+      // 拿全窗口注册除账后访客，比值虚高，现在跟表格总计行用同一个 regOfVis 口径。
       const rsDaily = Array.isArray(d.daily) ? d.daily.slice(-60) : [];
       const rsVis = rsDaily.reduce((a, x) => a + (x.vis != null ? x.vis : 0), 0);
-      const rsReg = rsDaily.reduce((a, x) => a + (x.n || 0), 0);
+      const rsReg = rsDaily.reduce((a, x) => a + (x.vis != null ? (x.n || 0) : 0), 0);
       if (rsVis > 0 && rsReg > 0) {
-        tiles.splice(1, 0, `<span class="stat-tile" title="窗口内注册 ${rsReg} ÷ 有访客账的访客 ${rsVis}；注册含后台导入账号，仅作参考，不是转化率"><b>${Math.round(rsReg / rsVis * 1000) / 10}%</b><span>注册/访客（参考）</span></span>`);
+        tiles.splice(1, 0, `<span class="stat-tile" title="分子分母都只取有访客账的天：同期注册 ${rsReg} ÷ 访客 ${rsVis}；分子含后台导入账号，仅作参考，不是转化率"><b>${Math.round(rsReg / rsVis * 1000) / 10}%</b><span>注册/访客（参考）</span></span>`);
       }
       // 回头率单独放最前：0% 也是有效读数，不能被 >0 过滤掉；访客口径是主打，放更前面
       if (d.activeToday > 0 && d.retToday != null) {
@@ -3997,11 +4042,11 @@
     // 点表头上方的胶囊 = 隐藏 / 恢复该列，隐藏的列 th/td 都打 data-hc="1" 由 CSS 收掉
     let rsColState = {};
     try { rsColState = JSON.parse(localStorage.getItem('rsCols') || '{}') || {}; } catch (e) { rsColState = {}; }
-    // 列显隐按下标存 localStorage；「每日访客与回头率」表去掉逐日注册率列（19 列 → 16 列），
+    // 列显隐按下标存 localStorage；「每日访客与回头率」表恢复逐日注册率列（16 列 → 19 列，三组各在「注册」后），
     // 列下标全变、旧存档不再对应，直接重置该表显隐为「全显示」并升版本号（act 表不受影响）。
-    if (rsColState.visV !== 7) {
+    if (rsColState.visV !== 8) {
       delete rsColState.vis;
-      rsColState.visV = 7;
+      rsColState.visV = 8;
       try { localStorage.setItem('rsCols', JSON.stringify(rsColState)); } catch (e) {}
     }
     function rsColHidden(key, i) { return Array.isArray(rsColState[key]) && rsColState[key].includes(i); }
@@ -4097,24 +4142,22 @@
         </tr>`).join('') : '<tr><td colspan="6" class="sk-empty">这段时间还没有注册。</td></tr>';
 
       // 每日访客与回头率（访客口径，最近 60 天、新的在前）
-      // 三端分组对照表：全部 / 网页端 / 小程序端，各 5 列（访客·新访客·回头·回头率·注册）
-      // 回头率口径 = 回头人数 / 访客总人数；分端同理，可按人数加权回到总数。
-      // 逐日不展示注册率：访客按账号/IP/设备去重，混着已登录老用户，分母不是「可能注册的人」，
-      // 后台也无法区分访客当时登录与否，逐日比值会被回访比例拉偏，不能当转化率读。
-      // 总计行注册格：显示的注册数就是比值的分子——两者都只取「有对应访客账」的天，
-      // 分母取同期访客，于是「显示注册数 ÷ 访客数 = 比值」一眼能对上。
-      // 全窗口注册总数（含访客账起点前的早期）移到 title 里保留，不在格子里跟比值混摆
-      // （小程序访客账 11-16 才起、注册更早就有，若拿全窗口注册除会算出 >100%）。
+      // 三端分组对照表：全部 / 网页端 / 小程序端，各 6 列（访客·新访客·回头·回头率·注册·注册率）
+      // 回头率口径 = 回头人数 / 访客总人数；注册率 = 当天注册 / 当天访客；分端同理，可按人数加权回到总数。
+      // 注册率只是参考读数：分母访客按账号/IP/设备去重，混着已登录老用户，不是「可能注册的人」，
+      // 后台也无法区分访客当时登录与否，比值会被回访比例拉偏，不能当转化率读（表头 title 里注明）。
+      // 关键：注册率的分子分母必须同一时间窗。逐日行天然是同一天；总计行则另取 regOfVis
+      // （只累加有对应访客账的天的注册）配同期访客，不用全窗口注册除账后访客，避免虚高。
       //   x.vis/visNew/visOld/visRet/n 为全部；x.visMini 小程序访客、x.visOldMini 小程序回头、x.visOldWeb 网页回头
       //   网页访客 = x.vis - x.visMini；网页注册 = n - x.mini（x.mini 为小程序注册数）
       //   分端新访客 = 该端访客 - 该端回头；早期无端拆分账（visMini==null）时端列显示「—」
-      const visColNames = ['日期', '访客', '新访客', '回头', '回头率', '注册', '访客', '新访客', '回头', '回头率', '注册', '访客', '新访客', '回头', '回头率', '注册'];
+      const visColNames = ['日期', '访客', '新访客', '回头', '回头率', '注册', '注册率', '访客', '新访客', '回头', '回头率', '注册', '注册率', '访客', '新访客', '回头', '回头率', '注册', '注册率'];
       const hv = i => rsColHidden('vis', i) ? ' data-hc="1"' : '';
       const hasVis = daily.some(x => x.vis != null);
       const pct = (a, b) => (a == null || b == null || !b) ? '—' : (Math.round(a / b * 1000) / 10) + '%';
       const visTableRows = (() => {
         const rows = daily.slice(-60).reverse();
-        if (!rows.length) return '<tr><td colspan="16" class="sk-empty">这段时间没有数据。</td></tr>';
+        if (!rows.length) return '<tr><td colspan="19" class="sk-empty">这段时间没有数据。</td></tr>';
         return rows.map(x => {
           const hasSplit = x.visMini != null;                       // 当天有没有端拆分账
           const webVis = hasSplit ? Math.max(0, x.vis - x.visMini) : null;
@@ -4129,26 +4172,28 @@
             <td${hv(3)}>${x.vis == null ? '—' : x.visOld}</td>
             <td${hv(4)}>${x.visRet == null ? '—' : x.visRet + '%'}</td>
             <td${hv(5)}>${x.n || 0}</td>
-            <td${hv(6)} class="vg-split">${webVis == null ? '—' : webVis}</td>
-            <td${hv(7)}>${webNew == null ? '—' : webNew}</td>
-            <td${hv(8)}>${x.visOldWeb == null ? '—' : x.visOldWeb}</td>
-            <td${hv(9)}>${pct(x.visOldWeb, webVis)}</td>
-            <td${hv(10)}>${webReg == null ? '—' : webReg}</td>
-            <td${hv(11)} class="vg-split">${x.visMini == null ? '—' : x.visMini}</td>
-            <td${hv(12)}>${miniNew == null ? '—' : miniNew}</td>
-            <td${hv(13)}>${x.visOldMini == null ? '—' : x.visOldMini}</td>
-            <td${hv(14)}>${pct(x.visOldMini, x.visMini)}</td>
-            <td${hv(15)}>${x.mini == null ? '—' : x.mini}</td>
+            <td${hv(6)}>${pct(x.n, x.vis)}</td>
+            <td${hv(7)} class="vg-split">${webVis == null ? '—' : webVis}</td>
+            <td${hv(8)}>${webNew == null ? '—' : webNew}</td>
+            <td${hv(9)}>${x.visOldWeb == null ? '—' : x.visOldWeb}</td>
+            <td${hv(10)}>${pct(x.visOldWeb, webVis)}</td>
+            <td${hv(11)}>${webReg == null ? '—' : webReg}</td>
+            <td${hv(12)}>${pct(webReg, webVis)}</td>
+            <td${hv(13)} class="vg-split">${x.visMini == null ? '—' : x.visMini}</td>
+            <td${hv(14)}>${miniNew == null ? '—' : miniNew}</td>
+            <td${hv(15)}>${x.visOldMini == null ? '—' : x.visOldMini}</td>
+            <td${hv(16)}>${pct(x.visOldMini, x.visMini)}</td>
+            <td${hv(17)}>${x.mini == null ? '—' : x.mini}</td>
+            <td${hv(18)}>${pct(x.mini, x.visMini)}</td>
           </tr>`;
         }).join('');
       })();
-      // 顶部总计行：汇总表格当前展示的 60 天窗口。回头率不能逐日相加，
-      // 统一用「合计回头 ÷ 合计访客」重算；分端口径与逐日一致（网页访客=vis-visMini、新=访客-回头）。
-      // 注册三列是全窗口合计：2026-11-20 站长问「总计为啥比全站少 40 个用户」——此前注册合计跟访客账
-      // 同闸，访客账起点（2026-11-05）之前注册的 43 人被漏掉。注册账逐日都有（跟注册日走），
-      // 不该跟访客闸，现在不闸了，分端和恒等于全部。
-      // 注册合计 t.n / t.webReg / t.mini 是全窗口真数，照原样展示、不参与比值。
-      // 比值另取同口径分子（regOfVis 等）：只累加当天有对应访客账的注册，分母用同期访客。
+      // 顶部总计行：汇总表格当前展示的 60 天窗口。回头率 / 注册率不能逐日相加，
+      // 统一用「合计回头 ÷ 合计访客」「合计注册 ÷ 合计访客」重算；分端口径与逐日一致（网页访客=vis-visMini、新=访客-回头）。
+      // 注册合计 t.n / t.webReg / t.mini 是全窗口真数（含访客账起点前的早期注册），照原样展示。
+      // 但注册率不能拿全窗口注册除「只有账后天」的访客——分子分母窗口不一致会虚高（旧版 260÷2484=10.5% 就是这个错）。
+      // 所以比值另取同口径分子 regOfVis / webRegOfVis / miniRegOfVis：只累加当天有对应访客账的注册，
+      // 分母用同期访客；比率格与紧挨着的「可见注册数」格之间，用 title 点明这个差异。
       const visTotalRow = (() => {
         const rows = daily.slice(-60).reverse();
         if (!rows.length) return '';
@@ -4178,25 +4223,28 @@
           <td${hv(2)}>${t.visNew}</td>
           <td${hv(3)}>${t.visOld}</td>
           <td${hv(4)}>${pct(t.visOld, t.vis)}</td>
-          <td${hv(5)} title="注册 ${t.regOfVis} ÷ 访客 ${t.vis}：分子分母都只取有访客账的天，显示的注册数与分子是同一个数。全窗口注册合计 ${t.n}（含访客账起点前的早期）不在此格">${t.regOfVis}<span style="color:var(--muted);font-weight:400"> ${pct(t.regOfVis, t.vis)}</span></td>
-          <td${hv(6)} class="vg-split">${t.hasSplit ? t.webVis : dash}</td>
-          <td${hv(7)}>${t.hasSplit ? t.webNew : dash}</td>
-          <td${hv(8)}>${t.hasSplit ? t.visOldWeb : dash}</td>
-          <td${hv(9)}>${t.hasSplit ? pct(t.visOldWeb, t.webVis) : dash}</td>
-          <td${hv(10)} title="网页注册 ${t.hasSplit ? t.webRegOfVis : dash} ÷ 网页访客 ${t.hasSplit ? t.webVis : dash}：分子分母都只取有网页访客账的天，显示的注册数与分子是同一个数。全窗口网页注册合计 ${t.hasReg ? t.webReg : dash} 不在此格">${t.hasSplit ? t.webRegOfVis : dash}${t.hasSplit ? `<span style="color:var(--muted);font-weight:400"> ${pct(t.webRegOfVis, t.webVis)}</span>` : ''}</td>
-          <td${hv(11)} class="vg-split">${t.hasSplit ? t.miniVis : dash}</td>
-          <td${hv(12)}>${t.hasSplit ? t.miniNew : dash}</td>
-          <td${hv(13)}>${t.hasSplit ? t.visOldMini : dash}</td>
-          <td${hv(14)}>${t.hasSplit ? pct(t.visOldMini, t.miniVis) : dash}</td>
-          <td${hv(15)} title="小程序注册 ${t.hasSplit ? t.miniRegOfVis : dash} ÷ 小程序访客 ${t.hasSplit ? t.miniVis : dash}：分子分母都只取有小程序访客账的天（11-16 起），显示的注册数与分子是同一个数。全窗口小程序注册合计 ${t.hasReg ? t.mini : dash} 不在此格">${t.hasSplit ? t.miniRegOfVis : dash}${t.hasSplit ? `<span style="color:var(--muted);font-weight:400"> ${pct(t.miniRegOfVis, t.miniVis)}</span>` : ''}</td>
+          <td${hv(5)} title="全窗口注册合计 ${t.n}（含访客账起点前的早期注册）。右边注册率的分子不同：只算有访客账的天 ${t.regOfVis}，口径见该格">${t.n}</td>
+          <td${hv(6)} title="注册 ${t.regOfVis} ÷ 访客 ${t.vis}：分子分母都只取有访客账的天，时间窗一致。全窗口注册 ${t.n} 不进分子（账前那些天没有访客分母），故本值低于拿 ${t.n} 硬除的结果">${pct(t.regOfVis, t.vis)}</td>
+          <td${hv(7)} class="vg-split">${t.hasSplit ? t.webVis : dash}</td>
+          <td${hv(8)}>${t.hasSplit ? t.webNew : dash}</td>
+          <td${hv(9)}>${t.hasSplit ? t.visOldWeb : dash}</td>
+          <td${hv(10)}>${t.hasSplit ? pct(t.visOldWeb, t.webVis) : dash}</td>
+          <td${hv(11)} title="全窗口网页注册合计 ${t.hasReg ? t.webReg : dash}（含早期）；右边注册率的分子只算有网页访客账的天">${t.hasReg ? t.webReg : dash}</td>
+          <td${hv(12)} title="网页注册 ${t.hasSplit ? t.webRegOfVis : dash} ÷ 网页访客 ${t.hasSplit ? t.webVis : dash}：都只取有网页访客账的天（11-16 起），时间窗一致">${t.hasSplit ? pct(t.webRegOfVis, t.webVis) : dash}</td>
+          <td${hv(13)} class="vg-split">${t.hasSplit ? t.miniVis : dash}</td>
+          <td${hv(14)}>${t.hasSplit ? t.miniNew : dash}</td>
+          <td${hv(15)}>${t.hasSplit ? t.visOldMini : dash}</td>
+          <td${hv(16)}>${t.hasSplit ? pct(t.visOldMini, t.miniVis) : dash}</td>
+          <td${hv(17)} title="全窗口小程序注册合计 ${t.hasReg ? t.mini : dash}（含早期）；右边注册率的分子只算有小程序访客账的天">${t.hasReg ? t.mini : dash}</td>
+          <td${hv(18)} title="小程序注册 ${t.hasSplit ? t.miniRegOfVis : dash} ÷ 小程序访客 ${t.hasSplit ? t.miniVis : dash}：都只取有小程序访客账的天（11-16 起），时间窗一致">${t.hasSplit ? pct(t.miniRegOfVis, t.miniVis) : dash}</td>
         </tr>`;
       })();
       // 分组表头：每组列出它覆盖的列下标，可见列数 = 未被隐藏的，colspan 随之收缩
       const visGroups = [
         { label: '日期', cls: 'vg-date', cols: [0] },
-        { label: '全部', cls: 'vg-all', cols: [1, 2, 3, 4, 5] },
-        { label: '网页端', cls: 'vg-web', cols: [6, 7, 8, 9, 10] },
-        { label: '小程序端', cls: 'vg-mini', cols: [11, 12, 13, 14, 15] },
+        { label: '全部', cls: 'vg-all', cols: [1, 2, 3, 4, 5, 6] },
+        { label: '网页端', cls: 'vg-web', cols: [7, 8, 9, 10, 11, 12] },
+        { label: '小程序端', cls: 'vg-mini', cols: [13, 14, 15, 16, 17, 18] },
       ];
       const visGroupHead = visGroups.map(g => {
         const span = g.cols.filter(i => !rsColHidden('vis', i)).length;
@@ -4229,10 +4277,10 @@
       panel.innerHTML = `
         <div class="stats" id="rsKpiRow">${rsKpiTilesHtml(d)}</div>
         <div class="promo-src">
-          <h4>每日访客与回头率<span>分三栏对照：全部 / 网页端 / 小程序端 · 回头率 ＝ 回头人数 ÷ 访客总人数 · 访客 = 当天来过的去重访客（登录按账号 / 网页按 IP / 小程序按设备）· 回头客 = 之前也来过的人 · 逐日记录自 ${esc(d.visFrom || '2026-11-05')} 起（此前账本混着爬虫不采用，显示「—」）· 端拆分与小程序访客自 11-16 起有记录</span></h4>
+          <h4>每日访客与回头率<span>分三栏对照：全部 / 网页端 / 小程序端，各含访客·新访客·回头·回头率·注册·注册率 · 回头率 ＝ 回头人数 ÷ 访客总人数 · 注册率 ＝ 注册人数 ÷ 访客总人数（访客含已登录老用户，仅作参考，不是转化率）· 访客 = 当天来过的去重访客（登录按账号 / 网页按 IP / 小程序按设备）· 回头客 = 之前也来过的人 · 逐日记录自 ${esc(d.visFrom || '2026-11-05')} 起（此前账本混着爬虫不采用，显示「—」）· 端拆分与小程序访客自 11-16 起有记录</span></h4>
           ${rsColChipsHtml('vis', visColNames)}
           <div class="rd-scroll"><table class="rd-table">
-            <thead><tr>${visGroupHead}</tr><tr>${visColNames.map((c, i) => `<th${hv(i)}${(i === 6 || i === 11) ? ' class="vg-split"' : ''}${c === '注册' ? ' title="当天新注册账号数；合计行的注册数与右边百分比同分子分母口径（只算有访客账的天），不是转化率"' : ''}>${c}</th>`).join('')}</tr></thead>
+            <thead><tr>${visGroupHead}</tr><tr>${visColNames.map((c, i) => `<th${hv(i)}${(i === 7 || i === 13) ? ' class="vg-split"' : ''}${c === '注册率' ? ' title="注册人数 ÷ 访客人数；访客分母混着已登录老用户，不是「可能注册的人」，仅作参考，不是转化率"' : ''}>${c}</th>`).join('')}</tr></thead>
             <tbody>${visTotalRow}${visTableRows}</tbody>
           </table></div>
           ${typeof echarts !== 'undefined' && hasVis ? '<div id="visTrendChart" style="height:300px;margin-top:14px;border-top:1px dashed #eef0f7;padding-top:12px"></div>' : ''}
@@ -10190,8 +10238,9 @@
     // ---- 用户管理：搜人 / 送灯火 / 贴标签（按最近活跃排序，服务端分页每页 20 条） ----
     let userQuery = '';
     let userSrc = '';   // 来源渠道筛选（链接 ?fr= 或兑换码配的渠道）
-    let userSort = 'active';   // active=最近活跃 · regNew=注册最新 · regOld=注册最早
+    let userSort = 'active';   // active=活跃最近 · activeOld=活跃最早 · regNew/regOld=注册新/旧 · pointsDesc/Asc=灯火 · worksDesc/Asc=作品数
     let userOnlyWorks = true;  // 默认只看投过作品的用户（注册了没投稿的一大堆，默认不占屏）
+    let userOnlyLights = false; // 合并后新增：只看有灯火往来的人
     let userPage = 1;
 
     // ---- 灯火明细（2026-11-14）：一页看清每个人的灯火从哪来、花到哪去 ----
@@ -10210,9 +10259,9 @@
       { key: 'wxbind', label: '绑微信', tip: '老账号绑定微信的一次性奖励（+300 盏）· 小字是领取日期' },
       { key: 'ghBind', label: '绑GitHub', tip: '是否绑定了 GitHub · 小字是 GitHub 用户名。老账号首次绑定一次性 +200 盏（2026-11-16 起）——小字后面带「+200」的表示这笔已经领过' },
       { key: 'pwa', label: 'PWA', tip: '添加到桌面后用图标打开的一次性奖励（+200 盏）· 小字是领取日期' },
-      { key: 'adTotal', label: '看广告', tip: '看激励视频领灯火：主数字是累计次数（2026-11-14 起才记，之前的历史次数没有记录），小字是今天已看 X/3 次' },
-      { key: 'tipIn', label: '被送', tip: '别人打赏给 TA 的合计（含小程序「看广告代送」——那笔平台出，确实进了 TA 账）' },
-      { key: 'tipOut', label: '送出', tip: 'TA 打赏给别人的合计（不含看广告代送：那笔不扣 TA 自己的余额）' },
+      { key: 'adTotal', label: '看广告', tip: '看激励视频的次数，两条通道都算：自己看广告领灯火（累计从 2026-11-14 起记）+ 小程序看广告替作品点灯（平台代送，按 tips.json via=ad 累计，历史可补）· 小字拆开列领灯 / 代送' },
+      { key: 'tipIn', label: '被送', tip: '别人打赏给 TA 的合计（含小程序「看广告代送」——那笔平台出，确实进了 TA 账）· 小字列每笔送到哪件作品' },
+      { key: 'tipOut', label: '送出', tip: 'TA 打赏给别人的合计（不含看广告代送：那笔不扣 TA 自己的余额）· 小字列每笔送给了哪件作品' },
       { key: 'adminNet', label: '站长送', tip: '后台「送灯火 / 扣灯火」的净额：送 +、扣回 −' },
       { key: 'promoSpent', label: '投放', tip: '买推荐位 / 展位的花费 = 下单实付 − 已退回；在投还没烧完的也算（钱已经扣了）' },
       { key: 'spendTotal', label: '总花费', tip: '送出打赏 + 投放：TA 自己花掉的灯火合计' }
@@ -10232,7 +10281,7 @@
 
     function renderPointsLedger() {
       const t = (plData && plData.totals) || {};
-      const tile = (v, label) => `<div class="stat-tile"><b>${v}</b><span>${label}</span></div>`;
+      const tile = (v, label, tip) => `<div class="stat-tile"${tip ? ` title="${esc(tip)}"` : ''}><b>${v}</b><span>${label}</span></div>`;
       panel.innerHTML = `
         <div class="stats">
           ${tile(plNum(t.people), '在账用户')}
@@ -10242,7 +10291,7 @@
           ${tile(plNum(t.tipOut) + ' 盏', '送出打赏')}
           ${tile(plNum(t.adminNet) + ' 盏', '站长送（净）')}
           ${tile(plNum(t.promoSpent) + ' 盏', '投放消耗')}
-          ${tile(plNum(t.adTotal) + ' 次', '看广告累计')}
+          ${tile(plNum(t.adTotal) + ' 次', '看广告累计', `自己看广告领灯 ${plNum(t.adSelfTotal)} 次 · 看广告替作品点灯 ${plNum(t.adTipTotal)} 次（今天领 ${plNum(t.adToday)} / 代送 ${plNum(t.adTipToday)}）`)}
         </div>
         <div class="pl-bar">
           <input type="search" id="plSearch" placeholder="搜账号 / 昵称…" autocomplete="off" value="${esc(plQuery)}" />
@@ -10264,8 +10313,8 @@
           <b>绑微信</b> = 老账号绑微信的一次性奖励 +300，小字是领取日期 ·
           <b>绑GitHub</b> = 只记绑定状态（✓ + GitHub 用户名），绑定本身目前不发灯火 ·
           <b>PWA</b> = 添加到桌面后用图标打开的一次性奖励 +200，小字是领取日期 ·
-          <b>看广告</b> = 小程序看激励视频领灯火（30/30/40 一天 3 次）的次数，主数字是累计次数、小字是今天 X/3；<strong>累计从 2026-11-14 起记</strong>，之前只存了当天次数，历史补不回来 ·
-          <b>被送 / 送出</b> = tips.json 打赏台账全量求和，被送含小程序「看广告代送」（平台出钱、确实进作者账），送出不含（那笔不扣观众余额）·
+          <b>看广告</b> = 两支通道加起来：自己看广告领灯（30/30/40 一天 3 次，累计 <strong>2026-11-14 起才记</strong>，历史补不回来）+ 小程序看广告替作品点灯（平台代送 50 盏/次，观众不扣灯；累计直接从 tips.json 里数，历史可补）；小字拆开写今天和累计各看了几次 ·
+          <b>被送 / 送出</b> = tips.json 打赏台账全量求和，被送含小程序「看广告代送」（平台出钱、确实进作者账），送出不含（那笔不扣观众余额）；小字按作品列出「《作品名》几笔」，鼠标停上去能看到每件作品的盏数和其中几笔是广告代送 ·
           <b>站长送</b> = 后台送灯火 / 扣灯火的<strong>净额</strong>，扣回会抵减 ·
           <b>投放</b> = 推荐位订单「实付 − 已退回」，在投还没烧完的也算花出去了 ·
           不含作品被解锁的收入、兑换码、上传 / star / 开源等系统奖励，那些在用户自己的「灯光明细」里能逐笔看到 ·
@@ -10305,11 +10354,29 @@
         if (d) return d * dir;
         return (Number(b.points) || 0) - (Number(a.points) || 0);
       });
-      const cell = (v, sub) => `<td${v ? '' : ' class="pl-zero"'}><b>${plNum(v)}</b>${sub ? `<span class="pl-sub">${sub}</span>` : ''}</td>`;
+      const cell = (v, sub) => {
+        const subs = (Array.isArray(sub) ? sub : [sub]).filter(Boolean);
+        return `<td${v ? '' : ' class="pl-zero"'}><b>${plNum(v)}</b>${subs.map(s => `<span class="pl-sub">${s}</span>`).join('')}</td>`;
+      };
+      // 作品名只展示前 3 件，鼠标停上去看全量（每件几笔 / 几盏 / 其中几笔广告代送）
+      const workLine = (list, prefix) => {
+        if (!list || !list.length) return '';
+        const full = list.map(x => `《${x.title}》${x.count} 笔 / ${x.amount} 盏${x.adCount ? '（含广告代送 ' + x.adCount + ' 笔）' : ''}`).join('；');
+        const short = list.slice(0, 3).map(x => `《${x.title}》${x.count > 1 ? ' ×' + x.count : ''}`).join('、')
+          + (list.length > 3 ? ` 等 ${list.length} 件` : '');
+        return `<span class="pl-sub pl-works" title="${esc(prefix + full)}">${esc(prefix + short)}</span>`;
+      };
       const body = list.map(r => {
-        const inSub = [r.tipInCount ? r.tipInCount + ' 笔' : '', r.tipInAd ? '含广告代送 ' + plNum(r.tipInAd) : '']
-          .filter(Boolean).join(' · ');
-        const outSub = r.tipOutCount ? r.tipOutCount + ' 笔' : '';
+        const inSub = [
+          [r.tipInCount ? r.tipInCount + ' 笔' : '', r.tipInAd ? '含广告代送 ' + plNum(r.tipInAd) : ''].filter(Boolean).join(' · '),
+          workLine(r.tipInWorks, '收到：')
+        ];
+        const outSub = [r.tipOutCount ? r.tipOutCount + ' 笔' : '', workLine(r.tipOutWorks, '送：')];
+        const todayAds = [r.adToday ? `领 ${r.adToday}/3` : '', r.adTipToday ? `代送 ${r.adTipToday}/3` : ''].filter(Boolean);
+        const adSub = [
+          todayAds.length ? '今天 ' + todayAds.join(' · ') : '',
+          r.adTotal ? `累计 领 ${plNum(r.adSelfTotal)} · 代送 ${plNum(r.adTipTotal)}` : ''
+        ];
         const promoSub = r.promoOrders ? r.promoOrders + ' 单' + (r.promoActive ? ' · 在投 ' + r.promoActive : '') : '';
         const admin = Number(r.adminNet) || 0;
         const adminCell = admin
@@ -10326,7 +10393,7 @@
           ${cell(r.wxbind, r.wxBindAt ? fmtDate(r.wxBindAt).slice(5) : '')}
           ${ghCell}
           ${cell(r.pwa, r.pwaAt ? fmtDate(r.pwaAt).slice(5) : '')}
-          ${cell(r.adTotal, r.adToday ? '今天 ' + r.adToday + '/3' : '')}
+          ${cell(r.adTotal, adSub)}
           ${cell(r.tipIn, inSub)}
           ${cell(r.tipOut, outSub)}
           ${adminCell}
@@ -10373,65 +10440,155 @@
       return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
     }
     function fmtDate(iso) { return fmtDateTime(iso).slice(0, 10); }
+    // 短一点的时间：同年的不写年份，归属地那列窄，省下来的宽度留给城市名
+    function fmtDateTimeShort(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso);
+      const p = n => String(n).padStart(2, '0');
+      const y = d.getFullYear() === new Date().getFullYear() ? '' : d.getFullYear() + '-';
+      return `${y}${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
 
     // IP 一行：注册 IP + 最近活跃 IP（点一下复制，排查小号时直接贴到别处）
+    // 没有原始 IP 的是 2026-11-09 之前建的老账号——当时只存了哈希，补不回来，等 TA 下次活跃自动落档
+    // 归属地一行：注册 / 最近活跃各自的城市（点城市复制 IP，IP 明文只藏在悬停提示里）
     // 没有原始 IP 的是 2026-11-09 之前建的老账号——当时只存了哈希，补不回来，等 TA 下次活跃自动落档
     function ipMetaHtml(u) {
       const reg = u.regIpRaw || '';
       const last = u.lastIp || '';
       const at = u.lastIpAt ? fmtDateTime(u.lastIpAt) : '';
-      // pl/isp 由服务端离线库解析（IPv6、内网、库外 IP 为空，就只显示 IP）
-      const ip = (v, tip, pl, isp) => {
-        const t = [tip, pl, isp].filter(Boolean).join(' · ');
-        return `<b class="ipv" data-copyip="${esc(v)}" title="${esc(t)}（点击复制）">${esc(v)}</b>`
-          + (pl ? `<span class="iploc" title="${esc([pl, isp].filter(Boolean).join(' · '))}">${esc(pl)}</span>` : '');
+      const atShort = u.lastIpAt ? fmtDateTimeShort(u.lastIpAt) : '';
+      const city = (pl, isp, ip, tip) => {
+        if (!ip) return '<span class="iploc none">—</span>';
+        const cp = ` data-copyip="${esc(ip)}" title="${esc([tip, pl, isp, ip].filter(Boolean).join(' · '))}（点击复制 IP）"`;
+        return pl ? `<span class="iploc"${cp}>${esc(pl)}</span>` : `<span class="iploc none"${cp}>未知</span>`;
       };
-      let body = '';
+      const line = (tag, pl, isp, ip, tip) => `<span class="tag">${tag}</span>${city(pl, isp, ip, tip)}`;
       if (reg && last && last !== reg) {
-        body = ip(reg, '注册 IP', u.regIpPlace, u.regIpIsp) + ' <span class="tag">注册</span> · 最近 '
-          + ip(last, '最近一次活跃请求的 IP', u.lastIpPlace, u.lastIpIsp) + (at ? `（${esc(at)}）` : '');
-      } else if (reg) {
-        body = ip(reg, last ? '注册 IP（与最近活跃 IP 相同）' : '注册 IP', u.regIpPlace, u.regIpIsp) + ' <span class="tag">注册</span>'
-          + (at ? ` · 更新于 ${esc(at)}` : '');
-      } else if (last) {
-        body = ip(last, '最近一次活跃请求的 IP', u.lastIpPlace, u.lastIpIsp) + ' <span class="tag">最近</span>' + (at ? `（${esc(at)}）` : '');
-      } else {
-        return `<div class="row-meta ip-meta" style="margin-top:2px;opacity:.55">IP —（老账号没有记录，下次活跃自动补上）</div>`;
+        return `<div class="row-meta ip-meta ip-grid">`
+          + line('注册', u.regIpPlace, u.regIpIsp, reg, '注册 IP')
+          + line('最近', u.lastIpPlace, u.lastIpIsp, last, '最近活跃 IP')
+          + (atShort ? `<span class="ip-t"></span><span class="ip-t" title="${esc(at)}">${esc(atShort)}</span>` : '')
+          + `</div>`;
       }
-      return `<div class="row-meta ip-meta" style="margin-top:2px;opacity:.85">IP ${body}</div>`;
+      if (reg) {
+        return `<div class="row-meta ip-meta ip-grid">`
+          + line('注册', u.regIpPlace, u.regIpIsp, reg, last ? '注册 IP（与最近活跃 IP 相同）' : '注册 IP')
+          + (atShort ? `<span class="ip-t"></span><span class="ip-t" title="${esc(at)}">${esc(atShort)}</span>` : '')
+          + `</div>`;
+      }
+      if (last) {
+        return `<div class="row-meta ip-meta ip-grid">`
+          + line('最近', u.lastIpPlace, u.lastIpIsp, last, '最近活跃 IP')
+          + (atShort ? `<span class="ip-t"></span><span class="ip-t" title="${esc(at)}">${esc(atShort)}</span>` : '')
+          + `</div>`;
+      }
+      return `<div class="row-meta ip-meta" style="margin-top:2px;opacity:.55" title="老账号没有记录 IP，下次活跃自动补上">—（无记录）</div>`;
     }
 
     function userRowHtml(u) {
+      const workLinks = (u.workNames && u.workNames.length)
+        ? `<div class="row-meta works-meta">${u.workNames.map(w => `<a href="/w/${esc(w.id)}" target="_blank" rel="noopener noreferrer" title="${esc(w.title)}${w.hidden ? '（目前不可见）' : ''}"${w.hidden ? ' style="text-decoration:line-through;opacity:.6"' : ''}>${esc(w.title)}</a>`).join('、')}</div>`
+        : '';
+      // 被送 / 送出的小字：作品名只列前 3 件，鼠标停上去看每件几笔几盏
+      const workLine = (list, prefix) => {
+        if (!list || !list.length) return '';
+        const full = list.map(x => `《${x.title}》${x.count} 笔 / ${x.amount} 盏${x.adCount ? '（含广告代送 ' + x.adCount + ' 笔）' : ''}`).join('；');
+        const short = list.slice(0, 3).map(x => `《${x.title}》${x.count > 1 ? ' ×' + x.count : ''}`).join('、')
+          + (list.length > 3 ? ` 等 ${list.length} 件` : '');
+        return `<span class="cell-sub pl-works" title="${esc(prefix + full)}">${esc(prefix + short)}</span>`;
+      };
+      const numCell = (v, sub) => `<td class="num">${v ? `<b>${plNum(v)}</b>` : '<span class="zero">0</span>'}${sub ? `<div class="cell-sub">${sub}</div>` : ''}</td>`;
+      const adSub = [
+        (u.adToday || u.adTipToday) ? `今天 领 ${u.adToday || 0}/3 · 代送 ${u.adTipToday || 0}/3` : '',
+        u.adTotal ? `累计 领 ${plNum(u.adSelfTotal || 0)} · 代送 ${plNum(u.adTipTotal || 0)}` : ''
+      ].filter(Boolean).join('<br />');
+      const admin = Number(u.adminNet) || 0;
       return `
-        <div class="row row-user" data-uid="${esc(u.id)}" data-uname="${esc(u.username)}">
-          <div class="row-main">
+        <tr class="row row-user" data-uid="${esc(u.id)}" data-uname="${esc(u.username)}">
+          <td>
             <div class="row-title">@${esc(u.name)} <span class="tag">${esc(u.username)}</span>
-              ${u.isOwner ? '<span class="tag bad" title="站长：屏蔽作品按 3 分计，一个人就能触发首页「最新」降权">站长</span>' : ''}
+              ${u.isOwner ? '<span class="tag bad" title="站长：屏蔽作品按 3 分计">站长</span>' : ''}
               ${u.blockedCount ? `<span class="tag" title="自己屏蔽过的作品数（只影响 TA 自己的列表）">屏蔽 ${u.blockedCount}</span>` : ''}
               ${u.acqFr ? `<span class="tag src" title="来源渠道（首触${u.acqAt ? ' ' + esc(fmtDate(u.acqAt)) : ''}）">来源 ${esc(u.acqFrName || u.acqFr)}</span>` : ''}
               ${u.regFrom === 'mini' ? '<span class="tag src" title="通过小程序「微信一键登录」建号">小程序</span>' : ''}
-              ${(u.sameIp && u.sameIp.length) ? (() => { const rest = u.sameIp.slice(0, 3).join('、') + (u.sameIp.length > 3 ? ` 等${u.sameIp.length + 1}个号` : ''); return `<span class="tag bad" title="与以下账号注册 IP 相同，疑似同一人/小号（按注册 IP 判断，仅供参考）：${esc(u.sameIp.join('、'))}">⚠ 同IP ×${u.sameIp.length + 1}：${esc(rest)}</span>`; })() : ''}
+              ${(u.sameIp && u.sameIp.length) ? (() => { const rest = u.sameIp.slice(0, 3).join('、') + (u.sameIp.length > 3 ? ` 等${u.sameIp.length + 1}个号` : ''); return `<span class="tag bad" title="与以下账号注册 IP 相同，疑似同一人/小号：${esc(u.sameIp.join('、'))}">⚠ 同IP ×${u.sameIp.length + 1}：${esc(rest)}</span>`; })() : ''}
               ${(u.tags || []).map(t => `<span class="tag utag" data-tag="${esc(t)}">${esc(t)}</span>`).join('')}
             </div>
-            <div class="row-meta">灯火 <b class="pt-val">${u.points}</b> · ${u.works} 件作品 · 注册 ${u.createdAt ? esc(fmtDate(u.createdAt)) : '—'} · 最后活跃 ${u.lastActiveAt ? esc(fmtDateTime(u.lastActiveAt)) : '—'}${u.lastClient ? ` <span class="tag cli" title="最后一次活跃的端 · ${esc(fmtDateTime(u.lastClient.at || u.lastActiveAt))}（PWA 和小程序由客户端自报，早于功能上线的老数据没有记录）">${esc(u.lastClient.text)}</span>` : ''} · 今日访问 ${u.todayVisits || 0} 次</div>
-            <div class="row-meta" style="margin-top:2px;opacity:.85">消耗灯火 <b>${u.consumed ? u.consumed.total : 0}</b> 盏（推荐 ${u.consumed ? u.consumed.promo : 0} · 打赏送出 ${u.consumed ? u.consumed.tip : 0}）</div>
-            ${(u.workNames && u.workNames.length) ? `<div class="row-meta works-meta" style="margin-top:2px;opacity:.85">作品：${u.workNames.map(w => `<a href="/w/${esc(w.id)}" target="_blank" rel="noopener noreferrer" title="${esc(w.title)}${w.hidden ? '（目前不可见）' : ''}"${w.hidden ? ' style="text-decoration:line-through;opacity:.6"' : ''}>${esc(w.title)}</a>`).join('、')}</div>` : ''}
-            ${ipMetaHtml(u)}
-          </div>
-          <div class="row-actions">
-            <button class="btn btn-primary btn-sm rw-open">激励</button>
-            <button class="btn btn-ghost btn-sm tags-edit">标签</button>
-            <button class="btn btn-ghost btn-sm owner-toggle" data-owner="${u.isOwner ? '1' : '0'}" title="站长屏蔽作品时按 3 分计（普通用户 1 分，≥2 分触发首页「最新」降权）">${u.isOwner ? '取消站长' : '设为站长'}</button>
-            <button class="btn btn-ghost btn-sm pt-give">送灯火</button>
-            <button class="btn btn-danger btn-sm pt-take">扣灯火</button>
-            <button class="btn btn-ghost btn-sm pw-reset" title="生成一个临时密码并立即生效（旧密码作废），由你通过提问通道转告本人">重置密码</button>
-          </div>
-          <div class="tags-editor" style="display:none"></div>
-        </div>`;
+          </td>
+          <td class="num"><b class="pt-val">${plNum(u.points)}</b></td>
+          ${numCell(u.checkin, u.checkinDays ? u.checkinDays + ' 天' : '')}
+          ${numCell(u.wxbind, u.wxBindAt ? esc(fmtDate(u.wxBindAt).slice(5)) : '')}
+          <td class="num">${u.ghBind ? '<b>✓</b>' : '<span class="zero">—</span>'}${u.ghBind ? `<div class="cell-sub">${esc(u.ghLogin || '已绑')}${u.ghBonus ? ' · +' + plNum(u.ghBonus) : ''}</div>` : ''}</td>
+          ${numCell(u.pwa, u.pwaAt ? esc(fmtDate(u.pwaAt).slice(5)) : '')}
+          ${numCell(u.adTotal, adSub)}
+          ${numCell(u.tipIn, [u.tipInCount ? u.tipInCount + ' 笔' : '', workLine(u.tipInWorks, '收到：')].filter(Boolean).join('<br />'))}
+          ${numCell(u.tipOut, [u.tipOutCount ? u.tipOutCount + ' 笔' : '', workLine(u.tipOutWorks, '送：')].filter(Boolean).join('<br />'))}
+          <td class="num">${admin ? `<b${admin < 0 ? ' class="neg"' : ''}>${admin < 0 ? '−' + plNum(-admin) : plNum(admin)}</b>` : '<span class="zero">0</span>'}</td>
+          ${numCell(u.promoSpent, u.promoOrders ? u.promoOrders + ' 单' + (u.promoActive ? ' · 在投 ' + u.promoActive : '') : '')}
+          ${numCell(u.spendTotal)}
+          <td><div class="row-meta"><b>${u.works}</b> 件</div>${workLinks}</td>
+          <td><div class="row-meta">${u.createdAt ? esc(fmtDate(u.createdAt)) : '—'}</div></td>
+          <td>
+            <div class="row-meta">${u.lastActiveAt ? esc(fmtDateTime(u.lastActiveAt)) : '—'}</div>
+            <div class="row-meta" style="opacity:.7">今日访问 ${u.todayVisits || 0} 次</div>
+            ${u.lastClient ? `<div class="row-meta"><span class="tag cli" title="最后一次活跃的端 · ${esc(fmtDateTime(u.lastClient.at || u.lastActiveAt))}">${esc(u.lastClient.text)}</span></div>` : ''}
+          </td>
+          <td>${ipMetaHtml(u)}</td>
+          <td>
+            <div class="row-actions">
+              <button class="btn btn-primary btn-sm rw-open">激励</button>
+              <button class="btn btn-ghost btn-sm tags-edit">标签</button>
+              <button class="btn btn-ghost btn-sm owner-toggle" data-owner="${u.isOwner ? '1' : '0'}" title="站长屏蔽作品时按 3 分计">${u.isOwner ? '取消站长' : '设为站长'}</button>
+              <button class="btn btn-ghost btn-sm pt-give">送灯火</button>
+              <button class="btn btn-danger btn-sm pt-take">扣灯火</button>
+              <button class="btn btn-ghost btn-sm pw-reset" title="生成一个临时密码并立即生效">重置密码</button>
+            </div>
+          </td>
+        </tr>
+        <tr class="row row-user-editor" data-uid="${esc(u.id)}" data-uname="${esc(u.username)}">
+          <td class="ut-editor-cell" colspan="17"><div class="tags-editor" style="display:none"></div></td>
+        </tr>`;
+    }
+
+    function userRowOf(el) {
+      const tr = el && el.closest ? el.closest('tr') : null;
+      if (!tr) return null;
+      return tr.classList.contains('row-user-editor') ? tr.previousElementSibling : tr;
     }
 
     let usersCache = [];   // 当前用户列表（标签编辑器从这里取 / 回写 tags）
     let adminTaglib = [];  // 标签库
+
+    // 表头点击排序：每个可排序列一对降序 / 升序键，跟服务端 /api/admin/users 的 sort 参数一一对应
+    const USER_SORT_LABEL = {
+      nameAsc: '用户 A→Z', nameDesc: '用户 Z→A',
+      pointsDesc: '灯火从多到少', pointsAsc: '灯火从少到多',
+      checkinDesc: '签到从多到少', checkinAsc: '签到从少到多',
+      wxbindDesc: '绑微信奖励从多到少', wxbindAsc: '绑微信奖励从少到多',
+      ghBindDesc: '已绑 GitHub 在前', ghBindAsc: '未绑 GitHub 在前',
+      pwaDesc: 'PWA 奖励从多到少', pwaAsc: 'PWA 奖励从少到多',
+      adTotalDesc: '看广告从多到少', adTotalAsc: '看广告从少到多',
+      tipInDesc: '被送从多到少', tipInAsc: '被送从少到多',
+      tipOutDesc: '送出从多到少', tipOutAsc: '送出从少到多',
+      adminNetDesc: '站长送从多到少', adminNetAsc: '站长送从少到多',
+      promoSpentDesc: '投放从多到少', promoSpentAsc: '投放从少到多',
+      spendTotalDesc: '总花费从多到少', spendTotalAsc: '总花费从少到多',
+      worksDesc: '作品从多到少', worksAsc: '作品从少到多',
+      regNew: '注册从新到旧', regOld: '注册从旧到新',
+      active: '活跃从新到旧', activeOld: '活跃从旧到新'
+    };
+    function paintUserSort() {
+      panel.querySelectorAll('th[data-usort]').forEach(th => {
+        const on = th.dataset.usort === userSort || th.dataset.ua === userSort;
+        th.classList.toggle('on', on);
+        const a = th.querySelector('.su');
+        if (a) a.textContent = on ? (th.dataset.usort === userSort ? '↓' : '↑') : '↕';
+      });
+      const sel = $('userSortSel');
+      if (sel && USER_SORT_LABEL[userSort]) sel.value = userSort;
+    }
 
     async function loadUsers() {
       try {
@@ -10439,6 +10596,7 @@
           + (userQuery.trim() ? '&q=' + encodeURIComponent(userQuery.trim()) : '')
           + (userSrc ? '&src=' + encodeURIComponent(userSrc) : '')
           + (userOnlyWorks ? '&hasWorks=1' : '')
+          + (userOnlyLights ? '&hasLights=1' : '')
           + (userSort && userSort !== 'active' ? '&sort=' + encodeURIComponent(userSort) : '');
         const [data, lib] = await Promise.all([
           api('/api/admin/users' + qs), api('/api/admin/taglib')
@@ -10450,13 +10608,55 @@
         const pageCount = Math.max(1, Math.ceil(total / pageSize));
         usersCache = list;
         adminTaglib = Array.isArray(lib) ? lib : [];
+        const lt = data.ledgerTotals || {};
+        const tile = (v, label) => `<div class="stat-tile"><b>${v}</b><span>${label}</span></div>`;
+        const tilesHtml = `<div class="stats" style="margin:0 18px 12px">`
+          + tile(plNum(lt.people), '在账用户')
+          + tile(plNum(lt.points) + ' 盏', '灯火总量')
+          + tile(plNum(lt.checkin) + ' 盏', '签到发放')
+          + tile(plNum(lt.tipIn) + ' 盏', '收到打赏')
+          + tile(plNum(lt.tipOut) + ' 盏', '送出打赏')
+          + tile(plNum(lt.adminNet) + ' 盏', '站长送（净）')
+          + tile(plNum(lt.promoSpent) + ' 盏', '投放消耗')
+          + tile(plNum(lt.adTotal) + ' 次', '看广告累计')
+          + `</div>`;
         const pagerHtml = pageCount > 1 ? `
           <div class="pager" style="display:flex;align-items:center;gap:8px;margin-top:12px">
             <button class="btn btn-ghost btn-sm" id="userPrev" ${userPage <= 1 ? 'disabled' : ''}>上一页</button>
             <span class="hint" style="padding:0">第 ${userPage} / ${pageCount} 页</span>
             <button class="btn btn-ghost btn-sm" id="userNext" ${userPage >= pageCount ? 'disabled' : ''}>下一页</button>
           </div>` : '';
-        panel.innerHTML = `
+        const listHtml = list.length ? `
+          <div class="user-table-wrap">
+            <table class="user-table">
+              <colgroup>
+                <col style="width:210px" /><col style="width:80px" /><col style="width:80px" /><col style="width:80px" />
+                <col style="width:90px" /><col style="width:70px" /><col style="width:110px" /><col style="width:130px" />
+                <col style="width:130px" /><col style="width:90px" /><col style="width:90px" /><col style="width:90px" />
+                <col style="width:180px" /><col style="width:100px" /><col style="width:150px" /><col style="width:160px" /><col style="width:220px" />
+              </colgroup>
+              <thead><tr>
+                <th data-usort="nameDesc" data-ua="nameAsc">用户 <span class="su"></span></th>
+                <th data-usort="pointsDesc" data-ua="pointsAsc" title="当前还剩的灯火">灯火 <span class="su"></span></th>
+                <th data-usort="checkinDesc" data-ua="checkinAsc" title="累计签到拿到的灯火">签到 <span class="su"></span></th>
+                <th data-usort="wxbindDesc" data-ua="wxbindAsc" title="绑微信一次性奖励 +300">绑微信 <span class="su"></span></th>
+                <th data-usort="ghBindDesc" data-ua="ghBindAsc" title="是否绑了 GitHub">绑GitHub <span class="su"></span></th>
+                <th data-usort="pwaDesc" data-ua="pwaAsc" title="添加到桌面后打开的一次性奖励 +200">PWA <span class="su"></span></th>
+                <th data-usort="adTotalDesc" data-ua="adTotalAsc" title="自己看广告领灯 + 小程序看广告替作品点灯">看广告 <span class="su"></span></th>
+                <th data-usort="tipInDesc" data-ua="tipInAsc" title="别人打赏给 TA 的合计，含广告代送">被送 <span class="su"></span></th>
+                <th data-usort="tipOutDesc" data-ua="tipOutAsc" title="TA 打赏给别人的合计">送出 <span class="su"></span></th>
+                <th data-usort="adminNetDesc" data-ua="adminNetAsc" title="后台送 / 扣灯火的净额">站长送 <span class="su"></span></th>
+                <th data-usort="promoSpentDesc" data-ua="promoSpentAsc" title="买推荐位的花费，实付减退款">投放 <span class="su"></span></th>
+                <th data-usort="spendTotalDesc" data-ua="spendTotalAsc" title="送出打赏 + 投放">总花费 <span class="su"></span></th>
+                <th data-usort="worksDesc" data-ua="worksAsc">作品 <span class="su"></span></th>
+                <th data-usort="regNew" data-ua="regOld">注册 <span class="su"></span></th>
+                <th data-usort="active" data-ua="activeOld">活跃 <span class="su"></span></th>
+                <th title="归属地（只显示城市，IP 明文悬停才看得到、点一下复制）">归属地</th><th>操作</th>
+              </tr></thead>
+              <tbody>${list.map(userRowHtml).join('')}</tbody>
+            </table>
+          </div>` : `<div class="empty">没有匹配的用户${userOnlyWorks ? '（试试取消勾选「只看有作品的」）' : ''}</div>`;
+        panel.innerHTML = tilesHtml + `
           <div class="form-inline">
             <input id="userSearch" placeholder="搜索账号或昵称…" />
             <select id="userSrcSel" style="max-width:180px" title="按来源渠道筛选：链接 ?fr= 带来的、或用这个渠道的兑换码领过的">
@@ -10464,24 +10664,31 @@
               ${((lastStats && Array.isArray(lastStats.promo)) ? lastStats.promo : [])
                 .map(p => `<option value="${esc(p.key)}"${userSrc === p.key ? ' selected' : ''}>${esc(p.name || p.key)}${p.fromUsers ? `（${p.fromUsers} 人）` : ''}</option>`).join('')}
             </select>
-            <select id="userSortSel" style="max-width:150px" title="排序方式：默认按最近活跃；也可按注册时间从新到旧 / 从旧到新">
-              <option value="active"${userSort === 'active' ? ' selected' : ''}>按最近活跃</option>
-              <option value="regNew"${userSort === 'regNew' ? ' selected' : ''}>注册最新</option>
-              <option value="regOld"${userSort === 'regOld' ? ' selected' : ''}>注册最早</option>
+            <select id="userSortSel" style="max-width:160px" title="也可以直接点表格上面的「灯火 / 作品 / 注册 / 活跃」表头切换排序">
+              ${Object.entries(USER_SORT_LABEL).map(([v, label]) => `<option value="${v}"${userSort === v ? ' selected' : ''}>${label}</option>`).join('')}
             </select>
-            <label class="chk-inline" title="勾上只列投过作品的人（默认）；不勾就是全部注册用户，含注册后一直没投过稿的"><input type="checkbox" id="userOnlyWorks"${userOnlyWorks ? ' checked' : ''} /> 只看有作品的</label>
-            <span class="hint" style="margin:0 0 0 auto;padding:0">共 ${total} 位用户${userOnlyWorks && totalAll > total ? `（全部 ${totalAll} 位）` : ''} · ${userSort === 'regNew' ? '按注册时间从新到旧' : userSort === 'regOld' ? '按注册时间从旧到新' : '按最近活跃排序'}</span>
+            <label class="chk-inline" title="勾上只列投过作品的人；不勾就是全部注册用户"><input type="checkbox" id="userOnlyWorks"${userOnlyWorks ? ' checked' : ''} /> 只看有作品的</label>
+            <label class="chk-inline" title="勾上只列有灯火往来的人（余额 / 签到 / 打赏 / 投放等任一不为 0）"><input type="checkbox" id="userOnlyLights"${userOnlyLights ? ' checked' : ''} /> 只看有灯火的</label>
+            <span class="hint" style="margin:0 0 0 auto;padding:0">共 ${total} 位用户${userOnlyWorks && totalAll > total ? `（全部 ${totalAll} 位）` : ''} · ${USER_SORT_LABEL[userSort] || '活跃从新到旧'} · 点表头可切换</span>
           </div>
           <details class="hint-fold"><summary title="点开查看激励 / 灯火 / 标签 / IP 说明">!</summary>
-          <div class="hint"><b>激励</b>：贴标签 + 送灯火一键完成（选标签、填灯火数、写附言，提交后一次生效），最常用的入口。只想单独改标签用「标签」，只想单独调灯火用「送灯火 / 扣灯火」。<br />
+          <div class="hint"><b>表头</b>：除 IP / 操作外都能点，点一下切升降序；灯火台账那几列和原来的「灯火明细」是同一份账。<br />
+          <b>激励</b>：贴标签 + 送灯火一键完成（选标签、填灯火数、写附言，提交后一次生效），最常用的入口。只想单独改标签用「标签」，只想单独调灯火用「送灯火 / 扣灯火」。<br />
           灯火：数量和附言在弹窗里填，<b>附言必填</b>（写清来由，会记进对方账本并通知本人）。扣灯火扣到 0 为止。开源作品系统自动送 50 盏；GitHub star 由作者在个人菜单 /「我的」页点「更新 star 奖励」后按 1:1 发放（单仓库每日封顶 2000，超过 100 star 或归属存疑的转人工核定），非 GitHub 仓库一律人工核对发放。<br />
           <b>标签</b>：点用户行的「标签」可以给 TA 贴 / 摘荣誉标签（如「优秀产品体验官」），贴上后展示在 TA 的作品卡片、详情页和作者主页，并通知本人。标签库里可以新增标签、改名（改名会同步所有人身上的标签）。<br />
           <b>⚠ 同IP</b>：注册 IP 相同的账号会互相标记（红色标签列出对方昵称），疑似同一人/小号——注意同一 WiFi 下也可能是不同人，仅供参考。<br />
           <b>IP</b>：每个用户记「注册 IP」和「最近活跃 IP」（换 IP 立刻更新，没换就跟着活跃时间刷新），后面绿色小块是归属地（离线库 ip2region 解析，精确到市，误差和 VPN / 运营商出口有关，仅供参考；IPv6 和内网 IP 不显示归属地），点 IP 可复制；只在这个后台显示，前台和公开接口都不返回。小程序建的号不记注册 IP（运营商 NAT 一个出口几百人共用，会全是误报）。</div></details>
           <div class="taglib-bar" id="taglibBar"></div>
-          <div id="userList">` + (list.length ? list.map(userRowHtml).join('') : `<div class="empty">没有匹配的用户${userOnlyWorks ? '（试试取消勾选「只看有作品的」）' : ''}</div>`) + `</div>` +
+          <div id="userList">` + listHtml + `</div>` +
           pagerHtml;
         $('userSearch').value = userQuery;
+        paintUserSort();
+        panel.querySelectorAll('th[data-usort]').forEach(th => {
+          th.onclick = () => {
+            userSort = (userSort === th.dataset.usort) ? th.dataset.ua : th.dataset.usort;
+            userPage = 1; loadUsers();
+          };
+        });
         let timer = null;
         $('userSearch').oninput = e => {
           clearTimeout(timer);
@@ -10493,6 +10700,8 @@
         if (sortSel) sortSel.onchange = () => { userSort = sortSel.value; userPage = 1; loadUsers(); };
         const onlyWorks = $('userOnlyWorks');
         if (onlyWorks) onlyWorks.onchange = () => { userOnlyWorks = onlyWorks.checked; userPage = 1; loadUsers(); };
+        const onlyLights = $('userOnlyLights');
+        if (onlyLights) onlyLights.onchange = () => { userOnlyLights = onlyLights.checked; userPage = 1; loadUsers(); };
         const prev = $('userPrev'), next = $('userNext');
         if (prev) prev.onclick = () => { if (userPage > 1) { userPage--; loadUsers(); } };
         if (next) next.onclick = () => { userPage++; loadUsers(); };
@@ -10605,7 +10814,7 @@
       }
       // 站长开关：屏蔽权重 3（普通登录用户 1），用于首页「最新」的屏蔽降权
       if (e.target.classList.contains('owner-toggle')) {
-        const row = e.target.closest('.row');
+        const row = userRowOf(e.target);
         const uname = row.dataset.uname || '';
         const isOwner = e.target.dataset.owner === '1';
         if (!isOwner && !confirm(`把 @${uname} 设为站长？\n· TA 屏蔽任何作品时按 3 分计（普通用户 1 分）\n· 门槛是 2 分，也就是 TA 一个人就能让作品在首页「最新」往后退\n· 后台作品列表会单独标出「站长 N」这一票，随时可清除降权`)) return;
@@ -10665,7 +10874,7 @@
 
       // ---- 用户行「标签」按钮：展开 / 收起行内编辑器 ----
       if (e.target.classList.contains('tags-edit')) {
-        const row = e.target.closest('.row');
+        const row = userRowOf(e.target);
         const ed = row.querySelector('.tags-editor');
         const wasOpen = ed.style.display !== 'none';
         panel.querySelectorAll('.tags-editor').forEach(x => { x.style.display = 'none'; }); // 同时只开一个
@@ -10676,7 +10885,7 @@
       // 编辑器里点「企业认证」：贴（先取主体输入框）/ 摘。必须在通用 te-chip 分支之前——
       // 贴标要走自己的确认流程（主体必填），不能落到 toggleUserTag 的无脑贴/摘里
       if (e.target.classList.contains('te-cert')) {
-        const row = e.target.closest('.row');
+        const row = userRowOf(e.target);
         const cur = tagsOf(row) || [];
         if (cur.includes(CERT_TAG)) {
           if (!confirm(`摘掉 @${row.dataset.uname || ''} 的企业认证？\n作品卡片、详情页和作者主页上的认证徽章会一并撤下，并通知本人。`)) return;
@@ -10693,14 +10902,14 @@
 
       // 编辑器里点标签：立即给这个用户贴 / 摘
       if (e.target.classList.contains('te-chip')) {
-        const row = e.target.closest('.row');
+        const row = userRowOf(e.target);
         toggleUserTag(row, e.target.dataset.tag, e.target);
         return;
       }
 
       // 编辑器里新建标签并贴上（自动进标签库）
       if (e.target.classList.contains('te-add')) {
-        const row = e.target.closest('.row');
+        const row = userRowOf(e.target);
         const input = row.querySelector('.te-input');
         const name = (input.value || '').trim();
         if (!name) { input.focus(); return; }
@@ -10722,7 +10931,7 @@
       const give = e.target.classList.contains('pt-give');
       const take = e.target.classList.contains('pt-take');
       if (give || take) {
-        const row = e.target.closest('.row');
+        const row = userRowOf(e.target);
         openPointsModal({
           uid: row.dataset.uid,
           uname: row.dataset.uname || '',
@@ -10735,7 +10944,7 @@
 
       // 重置密码：先确认（旧密码立刻作废），成功后弹窗给出临时密码，站长自己转告
       if (e.target.classList.contains('pw-reset')) {
-        const row = e.target.closest('.row');
+        const row = userRowOf(e.target);
         const uname = row.dataset.uname || '';
         const nm = (row.querySelector('.row-title').textContent.trim().split(/\s+/)[0] || '').replace(/^@/, '');
         if (!confirm(`给 @${uname} 重置登录密码？\n\n· 旧密码立刻作废，临时密码由你转告本人\n· 对方会收到一条站内消息，但消息里不带密码\n· GitHub / Google / 微信 登录不受影响`)) return;

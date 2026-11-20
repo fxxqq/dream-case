@@ -4918,11 +4918,21 @@ function listPromoAd() {
 }
 
 function promoCardHtml(a) {
+  // 「不想看」叉号：第一格以前没有关闭入口，访客只能一直看同一张卡。
+  // 走和横幅广告同一套本地记录（90 天）+ 关闭上报，后台能看见多少人不想看。
+  const xBtn = `<button class="promo-x" type="button" data-ad-close="${escapeHtml(a.id)}"
+      aria-label="不想看，关掉这条推荐" title="不想看，关掉">
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" /></svg>
+    </button>`;
   // 灯火自荐位在作品网格里「当成正常作品」（站长 2026-11-17 口径）：
   // 服务端随广告下发了作品快照 work 时，直接用作品卡模板渲染，交互跟旁边作品一致——
-  // 没有 ×、没有「打开链接」。只在外层挂 data-ad 供曝光/点击埋点用
+  // 没有「打开链接」。只在外层挂 data-ad 供曝光/点击埋点用
   //（后台照常扣投放额度，灯火的消耗口径不变），不加 promo-card 类，
   // 于是 bindCardNode 会照常绑定点赞/收藏/分享/点开详情。
+  // 2026-11-17 伪装时连右上角 × 一起去掉了，站长 11-20 发现关闭按钮没了要求找回：
+  // 网格视图把 × 挂回封面右上角（和「自荐」角标同层），点击走全局 [data-ad-close]
+  // 捕获委托，不会顺带弹出作品详情。列表行视图不加——行右侧本来就有
+  // 点赞/收藏/「不看这个」一排圆钮，再塞一个 × 会挤在一起。
   // 角标 +「我也想推荐」入口 2026-11-18 恢复：角标让第一格不被当成最新作品；
   // 入口是原来推广卡就有的转化引导，伪装时不该一起删掉。
   // 没有 work 的情况（运营广告 / 外链单 / 老缓存没带快照）走下面原推广卡分支，保持旧行为。
@@ -4936,7 +4946,7 @@ function promoCardHtml(a) {
         `<div class="row-title"><span class="promo-row-flag">${flag}</span>`);
     } else {
       html = html.replace('<div class="card-img-wrap">',
-        `<div class="card-img-wrap"><span class="promo-flag${a.source === 'redeem' ? '' : ' is-ad'}">${flag}</span>`);
+        `<div class="card-img-wrap"><span class="promo-flag${a.source === 'redeem' ? '' : ' is-ad'}">${flag}</span>${xBtn}`);
     }
     // 「我也想推荐自己的作品」：11-17 伪装成正常作品时连这句一起删了，11-18 补回。
     // 只给灯火自荐位（redeem）加，后台广告单不引导；点击走全站 [data-join-promote] 捕获委托。
@@ -4964,12 +4974,6 @@ function promoCardHtml(a) {
   // 推荐（积分兑换）：默认点开作品详情弹窗；外链单（extUrl）整卡当链接、新标签打开
   const internal = !a.extUrl && (!!a.workId || /^\/w\//.test(String(a.url || '')));
   const id = a.workId || String(a.url || '').split('/w/')[1] || '';
-  // 「不想看」叉号：第一格以前没有关闭入口，访客只能一直看同一张卡。
-  // 走和横幅广告同一套本地记录（90 天）+ 关闭上报，后台能看见多少人不想看。
-  const xBtn = `<button class="promo-x" type="button" data-ad-close="${escapeHtml(a.id)}"
-      aria-label="不想看，关掉这条推荐" title="不想看，关掉">
-      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" /></svg>
-    </button>`;
   // 列表/无图视图：跟作品行同一套排版（一行缩略图 + 标题 + 一句话），
   // 不再塞网格大卡——不然一张手机截图竖图会把列表撑出老高
   if (isRowView()) {
@@ -18806,18 +18810,23 @@ function renderRedeem() {
     // 真被点开的次数（2026-11-16 加）：曝光包没买点击额度，但广告确实会被人点，作者要看的就是这个。
     // 次数与后台「累计点击」同一本账；人数 11-04 起才记，老单可能只有次数。
     // 2026-11-18 站长提：投放中的单子哪怕一次没被点、也没人关，也把「0」写出来——
-    // 留着空白，作者会以为这里的数据没统计上；写 0 才是「确实还没人动」。
-    // 已结束的老单仍只在 >0 时显示（11-04 前没有明细，硬写 0 反而是假数据）。
+    // 2026-11-21 站长再提：已结束的单子（撤下 / 到期）也一样，0 照实写出来，
+    // 不然「别人点没点，投放者心里没数」。只对明细期（11-04 起）创建的单子生效：
+    // 更早的老单没有这份数据，硬写 0 反而是假数据，仍只在 >0 时显示。排队中的还没上线，不写 0。
+    const detailSince = new Date('2026-11-03T16:00:00Z').getTime();   // 北京时间 2026-11-04 00:00
     const liveAd = !comp && r.status === 'active';
+    const showZero = !comp && (liveAd || (r.status !== 'queued' && (r.createdAt || 0) >= detailSince));
     const realClk = comp ? 0 : (r.clicksReal || 0);
-    const realClkNote = !comp && (realClk > 0 || liveAd)
+    const realClkNote = !comp && (realClk > 0 || showZero)
       ? ` · 被点开 ${realClk} 次${realClk > 0 && r.clickPeople ? `（${r.clickPeople} 人）` : ''}` : '';
+    // 看到的人数（去重 UV）：曝光次数旁边补一句「看到 N 人」，一人反复刷只算一次，投放者才知道触达了多少人
+    const seenNote = !comp && ((r.uv || 0) > 0 || showZero) ? ` · 看到 ${r.uv || 0} 人` : '';
     // 被访客主动关掉的人数 / 次数（2026-11-16 加）：与后台「关闭 N 人 / N 次」同一本账，
     // 11-04 起才记录，更早的单子没有这份数据就不显示。关掉的人偏多时给一条软提示——
     // 多半是同一批访客最近看到这条推荐太频繁、看腻了：只提建议，不影响正常投放。
     const closePv = comp ? 0 : (r.closePv || 0);
     const closeUv = comp ? 0 : (r.closeUv || 0);
-    const closeNote = !comp && (closePv > 0 || liveAd)
+    const closeNote = !comp && (closePv > 0 || showZero)
       ? ` · 关闭 ${closeUv} 人 / ${closePv} 次` : '';
     const closeRate = (r.uv || 0) > 0 ? closeUv / r.uv : 0;
     // 触发条件（2026-11-16 站长定）：关闭 ≥3 人且占看到的人 ≥10%——门槛压低一点，
@@ -18835,8 +18844,8 @@ function renderRedeem() {
       : (queued
       ? `排队第 ${r.queuePos || 1} 位 · 前面这一单投完自动开始（灯火已扣，不消耗）`
       : (clickOnly
-        ? `已点击 ${r.clickUsed || 0}/${r.clicks} 次${r.clickPeople ? `（${r.clickPeople} 人）` : ''}`
-        : `已曝光 ${r.used}/${r.views} 次${r.clicks ? ` · 点击 ${r.clickUsed}/${r.clicks} 次` : realClkNote}`));
+        ? `已点击 ${r.clickUsed || 0}/${r.clicks} 次${(r.clickPeople || 0) > 0 || showZero ? `（${r.clickPeople || 0} 人）` : ''}${seenNote}`
+        : `已曝光 ${r.used}/${r.views} 次${seenNote}${r.clicks ? ` · 点击 ${r.clickUsed}/${r.clicks} 次` : realClkNote}`));
     // 投放中：把「已消耗多少 / 撤下能退多少」直接写出来，花了和退的永远对得上账
     const canBack = comp ? 0 : (r.status === 'active' ? redeemRefundOf(r) : (queued ? (r.price || 0) : 0));
     const spent = comp ? 0 : Math.max(0, (r.price || 0) - canBack);
