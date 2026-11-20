@@ -16,6 +16,19 @@ const SITE_SLOGAN = SITE_TAGLINE;
 // 结构化数据 / RSS 用的事实性描述（标题用标语，描述仍写清收录范围更利于搜索展现）
 const SITE_DESC = '收录大家的网站、个人站、小程序、桌面客户端、机器人等作品，支持搜索、分类浏览、作品榜单与免费投稿。';
 
+// 作品表里的时间有两种：老数据是 ISO 字符串，新数据是毫秒时间戳。
+// meta / JSON-LD 都要 ISO 8601，直接 esc 数字会写出 content="1793441887831" 这种无效时间。
+function isoDate(v) {
+  if (v == null || v === '') return '';
+  const s = String(v);
+  const n = /^\d{10,13}$/.test(s) ? Number(s) : NaN;
+  if (Number.isFinite(n)) {
+    const d = new Date(n < 1e12 ? n * 1000 : n);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  return s;
+}
+
 const TYPE_ICONS = { 'Web': '🌐', 'iOS': '🍎', 'Android': '🤖', 'macOS': '💻', 'Windows': '🪟', 'Linux': '🐧', '小程序': '📱', '浏览器插件': '🧩', '机器人': '🦾', 'API': '🔌' };
 // 形态 → 图标 key（HTML 里一律输出 SVG；TYPE_ICONS 只留给纯文本 / canvas 分享卡这类放不进 SVG 的场景）
 // 没映射的自定义形态统一回退 other 图标（见 typeTextHtml / typeBadges）
@@ -157,8 +170,8 @@ function head(opts) {
     `<meta name="twitter:title" content="${esc(title)}" />`,
     `<meta name="twitter:description" content="${esc(description)}" />`,
     image ? `<meta name="twitter:image" content="${esc(image)}" />` : '',
-    publishedTime ? `<meta property="article:published_time" content="${esc(publishedTime)}" />` : '',
-    modifiedTime ? `<meta property="article:modified_time" content="${esc(modifiedTime)}" />` : ''
+    isoDate(publishedTime) ? `<meta property="article:published_time" content="${esc(isoDate(publishedTime))}" />` : '',
+    isoDate(modifiedTime) ? `<meta property="article:modified_time" content="${esc(isoDate(modifiedTime))}" />` : ''
   ].filter(Boolean);
 
   const ld = jsonLd.filter(Boolean).map(obj =>
@@ -448,6 +461,7 @@ function workLd(base, w, pageUrl) {
     operatingSystem: OS_BY_TYPE[typesOf(w)[0]] || 'Web',
     inLanguage: 'zh-CN',
     datePublished: w.createdAt,
+    dateModified: isoDate(w.updatedAt || w.createdAt),
     author: w.anonymous
       ? { '@type': 'Person', name: '匿名' }
       : { '@type': 'Person', name: nameOf(w), url: absolute(base, authorHref(w)) },

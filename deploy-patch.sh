@@ -31,9 +31,12 @@
 #   ./deploy-patch.sh rollback frontend/app.js 20261114-163000
 set -uo pipefail
 
-# 冒烟探针地址：只要打到同一套应用即可，跟站点对外口径无关（口径由服务器 pm2 的 SITE_ORIGIN 决定）。
-# 保留旧域名是因为本机 curl 走 schannel，对 zm94.com 的证书握手会失败，探针会误报 000 导致回滚。
-SITE_URL="${SITE_URL:-https://idea.v5pc.com}"
+# 冒烟探针：走 ssh 在服务器本机 curl 127.0.0.1，不走公网域名。
+# 原因（2026-11-20 踩）：旧域名 idea.v5pc.com 加了 301 到主域，curl 默认不跟随 → 拿到 301 被误判成失败回滚；
+# 而本机 curl 对 zm94.com 的证书握手本就会失败。绕开域名最稳 —— 探针只关心「同一套应用还活着」。
+# 远端应用端口：脚本里默认 3000（SERVER_PORT 可覆盖），与 pm2 的 ai-works 监听口一致。
+SERVER_PORT="${SERVER_PORT:-3000}"
+SITE_URL="${SITE_URL:-}"   # 保留给需要自定义探针的场合；留空即走本机 ssh 探针
 PM2_APP="${PM2_APP:-ai-works}"
 KEEP_BAK="${KEEP_BAK:-10}"
 
@@ -77,11 +80,28 @@ pull() { # $1=相对路径  $2=落地文件
   fi
 }
 
+# 冒烟探针：$1=路径（相对，如 "/" 或 "/bar"），输出响应体；状态码走全局 PROBE_CODE。
+# SITE_URL 留空 → ssh 到服务器本机 curl 127.0.0.1（绕开 301 和本机证书握手问题，2026-11-20 定）。
+# 显式给了 SITE_URL → 保持老的公网 curl 行为，给需要自定义探针的场合。
+probe() {
+  local pth="${1:-/}"
+  if [ -n "$SITE_URL" ]; then
+    PROBE_BODY="$(curl --noproxy '*' -s -w '\n%{http_code}' "$SITE_URL$pth" || true)"
+  else
+    PROBE_BODY="$($SSH "curl -s -w '\\n%{http_code}' http://127.0.0.1:$SERVER_PORT$pth" 2>/dev/null || true)"
+  fi
+  PROBE_CODE="${PROBE_BODY##*$'\n'}"
+  PROBE_BODY="${PROBE_BODY%$'\n'*}"
+}
+PROBE_CODE=000; PROBE_BODY=""
+
 # 把 diff 拆成 hunk 摘要：序号 <TAB> +行数 <TAB> -行数 <TAB> 首处改动
 # 首处改动会洗成人话：去掉 +/− 号、行首空白、注释符号（// /* * <!-- -->），
 # 只动了括号分号这类没信息量的行会被跳过，取下一行 —— 清单里看的是「改了什么」。
 hunk_summary() { # $1=diff文件
-  awk '
+  # LC_ALL=C 强制按字节处理：BSD awk 在 UTF-8 locale 下对中文 substr 再做正则会报
+  # towc multibyte conversion failure，坏字节混进摘要还会污染调用方变量名 —— 2026-11-20 发版冒烟就崩在这。
+  LC_ALL=C awk '
     function pick() { return (cfirst != "") ? cfirst : first }
     # 一个 hunk 里优先挑「注释行」当摘要：改动的目的通常写在中文注释里，
     # 纯代码行（const x = ...）没有信息量。只扫前 12 行改动，免得大 hunk 拖慢。
@@ -130,7 +150,7 @@ hunk_summary() { # $1=diff文件
 # 一次 awk 出总结：hunk数 <TAB> +行 <TAB> -行 <TAB> 首处改动
 # （plan 每个文件要调一次，别用 grep×3 + cut + head 堆 fork —— msys 下一个 fork 上百毫秒）
 diffstat_one() { # $1=diff文件
-  awk '
+  LC_ALL=C awk '
     /^@@/ { nh++; next }
     /^\+\+\+/ || /^---/ { next }
     /^\+/ { add++; if (nh<=1 && first=="") { s=substr($0,2); gsub(/\t/," ",s); first=substr(s,1,58) } }
@@ -201,10 +221,15 @@ done" 2>/dev/null)
     return 1
   fi
 
-  local st sum f rsum lsum onraw on loc df nh add del first
-  declare -A RM=()
+  local st sum f rsum lsum onraw on loc df nh add del first ri
+  # bash3 没有关联数组（declare -A 是 bash4）：用两条平行数组存「文件 → 状态:md5」，
+  # 查找线性扫（文件最多 10 个）。本机 /bin/bash 3.2 也能跑 plan，publish.sh 不再误报无改动。
+  local -a RM_F=() RM_V=()
   while read -r st sum f; do
-    [ -n "$f" ] && RM["$f"]="$st:$sum"
+    if [ -n "$f" ]; then
+      RM_F+=("$f")
+      RM_V+=("$st:$sum")
+    fi
   done <<< "$remote"
 
   # 第一遍只判状态，把「内容确实不同」的文件收进候选
@@ -213,7 +238,10 @@ done" 2>/dev/null)
     if [ ! -f "$f" ]; then
       printf 'NOLOCAL\t%s\t0\t0\t0\t本地没有\n' "$f"; continue
     fi
-    rsum="${RM[$f]:-}"
+    rsum=""
+    for ri in "${!RM_F[@]}"; do
+      if [ "${RM_F[$ri]}" = "$f" ]; then rsum="${RM_V[$ri]}"; break; fi
+    done
     if [ -z "$rsum" ]; then
       printf 'NOPULL\t%s\t0\t0\t0\t线上查不到\n' "$f"; continue
     fi
@@ -433,7 +461,8 @@ cmd_ship() {
   fi
 
   # 冒烟：站点 200 + 进程 online + 可选的文本断言
-  local code; code=$(curl --noproxy '*' -s -o /dev/null -w '%{http_code}' "$SITE_URL/" || echo 000)
+  probe "/"
+  local code="$PROBE_CODE"
   if [[ "$code" != "200" ]]; then
     c_err "✗ 站点返回 $code，回滚"
     do_rollback "$stamp" "${do_files[@]}"; return 1
@@ -444,10 +473,9 @@ cmd_ship() {
   fi
   for i in "${!expect_paths[@]}"; do
     local p="${expect_paths[$i]}" t="${expect_texts[$i]}" body
-    # 别写成 `curl ... | grep -q`：grep -q 一命中就退出，curl 写剩下的字节吃 SIGPIPE（141），
-    # set -o pipefail 会把整条管道判成失败 —— 断言永远"没找到"，好补丁被误回滚（2026-11-16 踩）。
-    # 先落到变量再按纯 bash 比较，既躲开 SIGPIPE 也躲开 msys 下 grep 的中文匹配问题。
-    body="$(curl --noproxy '*' -s "$SITE_URL$p" || true)"
+    # 先取响应体再按纯 bash 比较：躲开 grep -q 的 SIGPIPE（curl 写剩余字节吃 141 被 pipefail 判失败，
+    # 2026-11-16 踩）和 msys 下 grep 中文匹配问题。probe 已把状态码和 body 分开。
+    probe "$p"; body="$PROBE_BODY"
     if [[ -n "$body" && "$body" == *"$t"* ]]; then
       c_ok "✓ $p 含「$t」"
     else

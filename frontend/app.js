@@ -7187,7 +7187,10 @@ function crStarCardHtml(w, i) {
     '<div class="cr-body">' +
       '<div class="cr-star-title" title="' + escapeHtml(w.title) + '">' + escapeHtml(w.title) + '</div>' +
       '<div class="cr-star-meta">' +
-        '<span class="cr-star-by">' + (w.author ? escapeHtml(w.author) : '匿名') + '</span>' +
+        '<div class="cr-star-author">' +
+          '<span class="cr-star-by">' + (w.author ? escapeHtml(w.author) : '匿名') + '</span>' +
+          crFollowBtnHtml(w) +
+        '</div>' +
         '<span class="cr-star-repo" title="' + escapeHtml(w.repo) + '">' + escapeHtml(String(w.repo || '').replace(/^https?:\/\/(www\.)?github\.com\//i, '').replace(/\/$/, '')) + '</span>' +
       '</div>' +
     '</div>';
@@ -10313,21 +10316,22 @@ async function loadAuthor(name) {
 }
 
 // ---------- 榜单 ----------
-// H5 榜单页：真正的「榜」——按周期（周榜/月榜/总榜）+ 维度（综合/点赞/收藏/灯火/访客）排名，
+// H5 榜单页：真正的「榜」——按周期（7日榜/30日榜/总榜）+ 维度（综合/点赞/收藏/灯火/访客）排名，
 // 数据走专用接口 /api/rank（与 PC 排行榜同一套后端），形态作次级筛选。
 // 不再是首页换皮：首页是「浏览」（形态/分类/时间/最新），榜单是「排名」（周期+维度）。
-// 默认新作周榜（2026-11-20 站长定）：近 7 天上架的作品本来曝光就少，默认给它们一个被看见的位置。
-// 高光榜/月榜/总榜仍是选项，URL ?period= 照旧可指定；高光榜的「最好一周永久留档」荣誉逻辑不动。
-// 2026-11-08 起「本周热榜」下线（与新作周榜高度重叠），后端代码保留、旧链接仍可用。
+// 默认新作7日榜（2026-11-20 站长定）：近 7 天上架的作品本来曝光就少，默认给它们一个被看见的位置。
+// 高光榜/30日榜/总榜仍是选项，URL ?period= 照旧可指定；高光榜的「最好一周永久留档」荣誉逻辑不动。
+// 2026-11-08 起「本周热榜」下线（与新作7日榜高度重叠），后端代码保留、旧链接仍可用。
 const rankH5 = { type: '全部', period: 'week', by: 'hot' };
 let rankPage = 1;
 let rankHasMore = false;
-// 周期：周榜=近 7 天上架 / 月榜=近 30 天 / 总榜=全部作品 / 高光=历史最佳 7 天
+// 周期：7日榜=近 7 天上架 / 30日榜=近 30 天 / 总榜=全部作品 / 高光=历史最佳 7 天
+// 这里说「日」不说「周/月」：滚动窗口按天数算，星梦期刊才按自然周 / 自然月归档，两个概念别混。
 // （weekhot 不再提供选项，但保留在 URL 白名单里，老分享链接 /rank?period=weekhot 仍能打开）
 const RANK_PERIODS = [
   { value: 'peak', label: '高光' },
-  { value: 'week', label: '周榜' },
-  { value: 'month', label: '月榜' },
+  { value: 'week', label: '7日榜' },
+  { value: 'month', label: '30日榜' },
   { value: 'all', label: '总榜' }
 ];
 // 排序维度：与 PC 排行榜的 by 一一对应（hot/likes/favs/tips/uv）。
@@ -10352,7 +10356,7 @@ function rankMetricText(by, w) {
 }
 
 // ---------- 榜单页动态条 ----------
-// 榜单页顶部的一行动态数字。口径＝近 7 天（今天 + 前 6 天，自然日），和周榜对齐，
+// 榜单页顶部的一行动态数字。口径＝近 7 天（今天 + 前 6 天，自然日），和 7日榜 对齐，
 // 也避免「今天 0 件新作品」把整行显示得冷冷清清；文案直接写「近 7 天」，
 // 别写「本周」——那是自然周（周一起算）的读法，会和实际数字对不上。
 // 老接口没有 week 字段时退回今日口径。
@@ -10390,7 +10394,7 @@ async function loadRankToday() {
 // 榜单筛选栏（参考小程序榜单页）：周期分段器 + 维度胶囊行 + 计分说明。
 // 形态筛选不再放到 H5 榜单页（小程序同款没有；/api/rank 的 type 参数仍支持，URL 带参可分享）
 function renderRankFilterBarH5() {
-  // 周期分段器（周榜/月榜/总榜）：胶囊容器里三段平分，选中项白底浮起
+  // 周期分段器（7日榜/30日榜/总榜）：胶囊容器里三段平分，选中项白底浮起
   const periodRow = $('rankPeriodRow');
   if (periodRow) {
     periodRow.innerHTML = RANK_PERIODS.map(p =>
@@ -10532,11 +10536,11 @@ const BY_LEGEND = {
 };
 // weekhot 已下线不再出现在选项里，但 SHORT/HINT/byLegend 三处保留映射：
 // 老分享链接 /rank?period=weekhot 打开时，标签和图例仍能正常显示而不是显示 undefined
-const PERIOD_SHORT = { weekhot: '本周热榜', week: '新作周榜', month: '新作月榜', all: '总榜', peak: '高光榜' };
+const PERIOD_SHORT = { weekhot: '本周热榜', week: '新作7日榜', month: '新作30日榜', all: '总榜', peak: '高光榜' };
 const PERIOD_HINT = {
   weekhot: '本周热榜 · 近 7 天有互动的作品，老作品也能上榜',
-  week: '新作周榜 · 近 7 天上架',
-  month: '新作月榜 · 近 30 天上架',
+  week: '新作7日榜 · 近 7 天上架',
+  month: '新作30日榜 · 近 30 天上架',
   all: '总榜 · 全部作品（上架 14 天内的新作有排序加成）',
   peak: '高光榜 · 每件作品最亮的 7 天，高光时刻永久留档'
 };
@@ -10565,7 +10569,7 @@ function byLegend(by, period) {
 
 // 榜单「形态」下拉：与首页形态下拉同一套数据（TYPES / typeCounts），
 // 只列有作品的形态，已选中的即使为 0 也保留，避免下拉里找不到自己选的那项。
-// 条数口径跟「周期」走：周榜显示的是近 7 天上架的作品数，不是全站总量
+// 条数口径跟「周期」走：7日榜显示的是近 7 天上架的作品数，不是全站总量
 // （数据来自 /api/rank/counts，按周期缓存；没回来前先退回全站数，回来后重绘补上）。
 const rankCountsCache = {};   // period -> { total, counts }
 async function loadRankTypeCounts() {
@@ -10582,7 +10586,7 @@ function renderRankTypePanel() {
   if (!panel) return;
   const pc = rankCountsCache[rankState.period];
   // 候选形态：周期计数（pc）回来后按它过滤，0 条的形态不再展示
-  // （避免周榜里出现「Linux 0」这种选项）；计数没回来时退回全站口径。
+  // （避免7日榜里出现「Linux 0」这种选项）；计数没回来时退回全站口径。
   // 已选中的形态即使 0 也保留，避免下拉里找不到自己选的那项。
   const cntOf = t => pc ? (pc.counts[t] || 0) : (typeCounts[t] || 0);
   const opts = (totalWorks > 0 || pc)
@@ -13177,6 +13181,9 @@ function setupUploadForm() {
     // 审核规则不在表单顶部唠叨，留到点「提交」时的选择弹窗里再说
     $('formHint').textContent = state.user ? `作者：${state.user.nickname || state.user.username}` : '';
     $('formHint').style.display = state.user ? 'block' : 'none';
+    // 换回新投稿 / 别人的作品：把站长编辑专用的暗号条收起来，别残留上一件的明文
+    const accbReset = $('adminClaimCodeBar');
+    if (accbReset) accbReset.style.display = 'none';
     $('authorField').style.display = state.user ? 'none' : 'block';
     form.reset();
     // 按形态的链接框是 JS 动态渲染的，form.reset() 管不到；先塞空值，
@@ -13645,6 +13652,23 @@ function setupUploadForm() {
       : `作者：${dname(w)} · 修改后立即生效`) +
       (gapFocus ? ' · 正在补全「找找」要用的介绍信息' : '');
     $('formHint').style.display = 'block';
+    // 站长编辑：这件作品若设了认领暗号，明文从 ?edit=1 带回来了，只读展示方便核对 / 复制给作者。
+    // 作者自己编辑走不到这个分支（服务端不下发明文），这一条保持收起。
+    const accb = $('adminClaimCodeBar');
+    if (accb) {
+      const code = adminEdit ? (w.claimCodePlain || '') : '';
+      accb.style.display = code ? 'flex' : 'none';
+      if (code) {
+        $('adminClaimCodeText').textContent = code;
+        const bonus = w.claimBonusPlain;
+        const bonusEl = $('adminClaimCodeBonus');
+        if (bonusEl) {
+          const pts = bonus && bonus.points > 0 ? bonus.points : 0;
+          bonusEl.textContent = pts ? `另送 ${pts} 盏` : '';
+          bonusEl.style.display = pts ? '' : 'none';
+        }
+      }
+    }
     setSelectedTypes(typesOf(w));
     fillWorkTitle(w);
     form.prompt.value = w.intro || '';
@@ -14151,6 +14175,14 @@ function setupUploadForm() {
     if (restored) showToast('已恢复上次未提交的草稿（图片需重新选择）', undefined, 'ok');
   };
   $('closeUpload').onclick = tryCloseUpload;
+  // 站长编辑里复制认领暗号：只给站长自己转发给作者用，复制失败就让人手动选中
+  const accbCopy = $('adminClaimCodeCopy');
+  if (accbCopy) accbCopy.onclick = async () => {
+    const code = $('adminClaimCodeText').textContent.trim();
+    if (!code) return;
+    try { await navigator.clipboard.writeText(code); showToast('暗号已复制', undefined, 'ok'); }
+    catch { showToast('复制失败，请手动选中暗号', undefined, 'err'); }
+  };
 
   // 「删除这份草稿」：以前只有 2 份以上才在草稿选择层里能删，只有 1 份时没有任何出口
   // （关弹窗只会再存一遍）。这里补上：删服务端草稿 + 连图片文件一起删 + 表单和角标一起归零。
@@ -19833,7 +19865,7 @@ async function submitGiftCode() {
 }
 
 // ---------- 作者数据看板 ----------
-// 只看自己的作品（发布 + 认领后归属自己的）：累计数据 + 近 14 天浏览趋势
+// 只看自己的作品（发布 + 认领后归属自己的）：累计数据 + 可选范围的浏览趋势
 // days 一起带上：行内小趋势图悬停/点按要显示「哪一天、多少次」，没有日期就只报数值
 function statsSparkline(values, days, w = 88, h = 24) {
   if (!values.length) return '';
@@ -19917,55 +19949,128 @@ function bindRowSpark(body) {
   });
 }
 
-// 趋势图的数值提示：原生 title 要悬停 1 秒才弹、手机点不出来，改成自绘气泡
-function bindStatsBars(body) {
-  const chart = body.querySelector('.stats-chart');
-  const barsBox = body.querySelector('.stats-bars');
-  if (!chart || !barsBox) return;
-  const tip = document.createElement('div');
-  tip.className = 'stats-bar-tip';
-  chart.appendChild(tip);
-  let pinTimer = 0;
+// 顶部趋势折线图：0 日直接贴着底走，不再立一排矮柱子；点数多的时候也不挤成一坨。
+// 折线用固定 viewBox + preserveAspectRatio=none 拉伸，文字另用 HTML 画，窄屏上也看得清。
+const STATS_LINE_W = 700;
+const STATS_LINE_H = 104;
+function statsLineY(v, max) {
+  return STATS_LINE_H - 8 - (v / max) * (STATS_LINE_H - 16);
+}
+function statsLineHtml(days, values) {
+  const n = values.length;
+  const max = Math.max(...values, 1);
+  const pts = values.map((v, i) => `${(n > 1 ? i / (n - 1) * STATS_LINE_W : STATS_LINE_W / 2).toFixed(1)},${statsLineY(v, max).toFixed(1)}`);
+  const linePts = pts.join(' ');
+  const areaPath = `M0,${STATS_LINE_H} L${linePts.replace(/ /g, ' L')} L${STATS_LINE_W},${STATS_LINE_H} Z`;
+  const dots = n <= 31 ? pts.map(p => {
+    const [cx, cy] = p.split(',');
+    return `<circle cx="${cx}" cy="${cy}" r="2.2" class="stats-line-dot" />`;
+  }).join('') : '';
+  // 7 天全标；30 / 180 天只挑 6 个锚点，首尾一定在
+  const labelCount = n <= 7 ? n : 6;
+  const idxs = [...new Set(Array.from({ length: labelCount }, (_, i) =>
+    Math.round(i * (n - 1) / (labelCount - 1))))].sort((a, b) => a - b);
+  const labels = idxs.map(i => {
+    const edge = i === 0 ? ' is-first' : i === n - 1 ? ' is-last' : '';
+    return `<span class="stats-line-label${edge}" style="left:${(n > 1 ? i / (n - 1) * 100 : 50).toFixed(2)}%">${days[i].slice(5).replace('-', '/')}</span>`;
+  }).join('');
+  return `<div class="stats-line" data-vals="${values.join(',')}" data-days="${days.join(',')}">
+    <svg viewBox="0 0 ${STATS_LINE_W} ${STATS_LINE_H}" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="statsLineFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#8b8bf0" stop-opacity=".20" />
+          <stop offset="100%" stop-color="#8b8bf0" stop-opacity="0" />
+        </linearGradient>
+      </defs>
+      <path class="stats-line-area" d="${areaPath}" fill="url(#statsLineFill)" />
+      <polyline class="stats-line-path" points="${linePts}" fill="none" vector-effect="non-scaling-stroke" />
+      <g class="stats-line-dots">${dots}</g>
+      <line class="stats-line-guide" x1="0" y1="0" x2="0" y2="${STATS_LINE_H}" vector-effect="non-scaling-stroke" />
+      <circle class="stats-line-cursor" cx="0" cy="0" r="4" />
+    </svg>
+    <div class="stats-line-hit" tabindex="0" role="img" aria-label="浏览趋势折线图，左右方向键可查看每日数值"></div>
+    <div class="stats-line-x">${labels}</div>
+  </div>`;
+}
 
-  const show = wrap => {
-    const bar = wrap.querySelector('.stats-bar');
-    if (!bar) return;
-    const v = Number(wrap.dataset.val) || 0;
-    const cRect = chart.getBoundingClientRect();
-    const wRect = wrap.getBoundingClientRect();
-    const bRect = bar.getBoundingClientRect();
-    tip.innerHTML = `<b>${v}</b> 次浏览<i>${wrap.dataset.day}</i>`;
-    // 水平对齐柱子中心；贴边时往回收，别被弹窗裁掉（按气泡实际宽度算，日期长的时候也不会出界）
-    const half = tip.offsetWidth / 2 + 2;
-    const left = Math.min(Math.max(wRect.left + wRect.width / 2 - cRect.left, half), Math.max(half, cRect.width - half));
-    tip.style.left = left + 'px';
-    // 停在柱顶上方；最高的那根会顶到标题行，钳在 0 也不出界
-    tip.style.top = Math.max(0, bRect.top - cRect.top - 30) + 'px';
-    tip.classList.add('is-on');
-    barsBox.classList.add('is-focused');
-    // 相邻柱子切换时先摘掉上一根的 highlight，不然会同时亮两根
-    body.querySelectorAll('.stats-bar-wrap.is-hot').forEach(el => { if (el !== wrap) el.classList.remove('is-hot'); });
-    wrap.classList.add('is-hot');
-  };
+// 数值提示：桌面悬停、手机点按，键盘左右键也能走；和行内小趋势图同一套口径。
+function bindStatsLine(body) {
+  const chart = body.querySelector('.stats-chart');
+  const line = body.querySelector('.stats-line');
+  const svg = line && line.querySelector('svg');
+  const hit = line && line.querySelector('.stats-line-hit');
+  if (!chart || !svg || !hit) return;
+  const vals = (line.dataset.vals || '').split(',').map(Number);
+  const dayLabels = (line.dataset.days || '').split(',');
+  const n = vals.length;
+  if (!n) return;
+  const max = Math.max(...vals, 1);
+  const tip = document.createElement('div');
+  tip.className = 'stats-line-tip';
+  chart.appendChild(tip);
+  const guide = svg.querySelector('.stats-line-guide');
+  const cursor = svg.querySelector('.stats-line-cursor');
+  let pinTimer = 0;
+  let current = -1;
+
   const hide = () => {
     tip.classList.remove('is-on');
-    barsBox.classList.remove('is-focused');
-    body.querySelectorAll('.stats-bar-wrap.is-hot').forEach(el => el.classList.remove('is-hot'));
+    guide.style.opacity = 0;
+    cursor.style.opacity = 0;
+    current = -1;
   };
-
-  body.querySelectorAll('.stats-bar-wrap').forEach(wrap => {
-    wrap.addEventListener('mouseenter', () => { clearTimeout(pinTimer); show(wrap); });
-    wrap.addEventListener('focus', () => show(wrap));
-    wrap.addEventListener('blur', hide);
-    // 手机上没法悬停：点一下出数，2.6 秒后自己收
-    wrap.addEventListener('click', e => {
-      e.stopPropagation();
-      show(wrap);
-      clearTimeout(pinTimer);
-      pinTimer = setTimeout(hide, 2600);
-    });
+  const show = idx => {
+    idx = Math.min(n - 1, Math.max(0, idx));
+    current = idx;
+    const v = vals[idx] || 0;
+    tip.innerHTML = `<b>${v}</b> 次浏览<i>${dayLabels[idx] || ''}</i>`;
+    const x = n > 1 ? idx / (n - 1) * STATS_LINE_W : STATS_LINE_W / 2;
+    const y = statsLineY(v, max);
+    guide.setAttribute('x1', x); guide.setAttribute('x2', x);
+    cursor.setAttribute('cx', x); cursor.setAttribute('cy', y);
+    guide.style.opacity = 1;
+    cursor.style.opacity = 1;
+    // SVG 被横向拉伸过，投影到实际像素再定位气泡；贴边时往里收，别被弹窗裁掉。
+    const sRect = svg.getBoundingClientRect();
+    const cRect = chart.getBoundingClientRect();
+    const absX = (x / STATS_LINE_W) * sRect.width + (sRect.left - cRect.left);
+    const absY = (y / STATS_LINE_H) * sRect.height + (sRect.top - cRect.top);
+    const half = tip.offsetWidth / 2 + 2;
+    tip.style.left = Math.min(Math.max(absX, half), Math.max(half, cRect.width - half)) + 'px';
+    tip.style.top = Math.max(0, absY - tip.offsetHeight - 10) + 'px';
+    tip.classList.add('is-on');
+  };
+  const fromClientX = clientX => {
+    const r = svg.getBoundingClientRect();
+    const ratio = r.width ? (clientX - r.left) / r.width : 0;
+    show(Math.round(Math.min(1, Math.max(0, ratio)) * (n - 1)));
+  };
+  hit.addEventListener('mouseenter', e => { clearTimeout(pinTimer); fromClientX(e.clientX); });
+  hit.addEventListener('mousemove', e => { clearTimeout(pinTimer); fromClientX(e.clientX); });
+  hit.addEventListener('mouseleave', () => { clearTimeout(pinTimer); hide(); });
+  hit.addEventListener('blur', hide);
+  // 手机上没悬停：点一下出数，2.6 秒后自己收；别碰纵向滚动。
+  hit.addEventListener('touchstart', e => {
+    clearTimeout(pinTimer);
+    fromClientX(e.touches[0].clientX);
+    pinTimer = setTimeout(hide, 2600);
+  }, { passive: true });
+  hit.addEventListener('touchmove', e => {
+    clearTimeout(pinTimer);
+    fromClientX(e.touches[0].clientX);
+    pinTimer = setTimeout(hide, 2600);
+  }, { passive: true });
+  hit.addEventListener('click', e => {
+    clearTimeout(pinTimer);
+    fromClientX(e.clientX);
+    pinTimer = setTimeout(hide, 2600);
   });
-  barsBox.addEventListener('mouseleave', () => { clearTimeout(pinTimer); hide(); });
+  hit.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    clearTimeout(pinTimer);
+    show(current < 0 ? n - 1 : current + (e.key === 'ArrowRight' ? 1 : -1));
+  });
 }
 
 // 灯光明细：余额 + 逐笔流水。和「作品数据」无关，没作品也能看，所以单独拉接口。
@@ -20069,6 +20174,9 @@ function openClaimByCode() {
   setTimeout(() => { const el = form.querySelector('input[name="code"]'); if (el) el.focus(); }, 60);
 }
 
+// 顶部浏览趋势的默认范围；切档后记住，下次打开数据板还停在这一档
+let statsChartDays = 7;
+
 async function openStats(mode) {
   mode = ['data', 'promo', 'checkin', 'points', 'star'].includes(mode) ? mode : 'data';   // data = 作品数据 / promo = 分享成绩与达人榜 / checkin = 每日签到 / points = 灯光明细 / star = GitHub star 奖励
   if (!state.user) { openAuth('login'); return; }
@@ -20116,7 +20224,7 @@ async function openStats(mode) {
 
   let data;
   try {
-    data = await (await fetch('/api/me/stats')).json();
+    data = await (await fetch(`/api/me/stats?days=${statsChartDays}`, { cache: 'no-store' })).json();
   } catch {
     body.innerHTML = '<div class="stats-loading">加载失败，请稍后重试</div>';
     return;
@@ -20405,15 +20513,10 @@ async function openStats(mode) {
     return;
   }
 
-  const max = Math.max(...trend, 1);
-  const bars = trend.map((v, i) => {
-    const hPct = v ? Math.max(6, Math.round((v / max) * 100)) : 2;
-    return `<div class="stats-bar-wrap" tabindex="0" data-day="${days[i]}" data-val="${v}"
-        aria-label="${days[i]}：${v} 次浏览">
-      <div class="stats-bar ${v ? '' : 'is-empty'}" style="height:${hPct}%"></div>
-      <span class="stats-bar-x">${i % 3 === 0 || i === trend.length - 1 ? days[i].slice(5).replace('-', '/') : ''}</span>
-    </div>`;
-  }).join('');
+  const RANGES = [[7, '近 7 天'], [30, '近 1 个月'], [180, '近半年']];
+  const rangeTabs = RANGES.map(([d, label]) =>
+    `<button type="button" class="stats-range-btn${d === statsChartDays ? ' is-on' : ''}" data-days="${d}"${d === statsChartDays ? ' aria-current="true"' : ''}>${label}</button>`
+  ).join('');
 
   // 体验维度：浏览是「多少人看到」，访问/下载/扫码是「多少人真的去用了」。
   // 扫码是真实扫码（扫码先落到 /go/ 短链，服务器亲眼数到）；小程序码只能记「点开看/存」的意图
@@ -20534,10 +20637,16 @@ async function openStats(mode) {
       <span>开源作品的 GitHub star 按 1:1 换灯火，点一下同步你名下所有开源作品</span>
       <button type="button" class="sw-share" id="dataStarSync">更新 star 奖励</button>
     </div>
-    <div class="stats-chart">
-      <div class="stats-chart-head">近 14 天浏览趋势<span class="stats-chart-hint">${
-        window.matchMedia && window.matchMedia('(hover: none), (pointer: coarse)').matches ? '点柱子看每日数值' : '悬停柱子看每日数值'}</span></div>
-      <div class="stats-bars">${bars}</div>
+    <div class="stats-chart" title="每天一条真实数据，没数据的日子按 0 画">
+      <div class="stats-chart-head">
+        <div class="stats-chart-title">
+          <span>浏览趋势</span>
+          <span class="stats-chart-hint">${
+            window.matchMedia && window.matchMedia('(hover: none), (pointer: coarse)').matches ? '点折线看每日数值' : '悬停折线看每日数值'}</span>
+        </div>
+        <div class="stats-range" role="group" aria-label="浏览趋势时间范围">${rangeTabs}</div>
+      </div>
+      ${statsLineHtml(days, trend)}
     </div>
     <div class="stats-works-head">作品明细</div>
     <div class="stats-works">${rows}</div>
@@ -20555,8 +20664,17 @@ async function openStats(mode) {
       8 个适合发新品的地方，每个都配好了现成文案；也可以打开作品详情页点「外宣包」一键生成。
     </p>`;
 
-  bindStatsBars(body);
+  bindStatsLine(body);
   bindRowSpark(body);
+  body.querySelectorAll('.stats-range-btn').forEach(btn => {
+    btn.onclick = () => {
+      const d = Number(btn.dataset.days);
+      if (d === statsChartDays) return;
+      statsChartDays = d;
+      const top = body.scrollTop;
+      openStats('data').then(() => { body.scrollTop = top; });
+    };
+  });
 
   // 作品明细：每行开源作品显示自己的 star 账；「更新 star 奖励」只放一个。
   // 后端 /api/star/sync 是按人全量结算（一次跑完名下所有开源作品），逐行放按钮会让人
@@ -21563,6 +21681,13 @@ function setupHeader() {
     const a = e.target.closest('a[data-nav]');
     if (a && a.origin === location.origin) {
       e.preventDefault();
+      // 指向作品详情的站内链接统一走 openWork(push=true)：它会把来源页写进 history.state.from，
+      // 关详情 ✕ 时 leaveDetailNav 才能 history.back() 回来源页。若任由 navigate()+route() 走
+      // push=false 那条路，既没有 state.dm:'work'、也没记来源，关详情只能兜底回首页——
+      // 造梦者书架「GitHub Star」榜点详情、点 ✕ 跳首页就是这么中招的（2026-11-20 站长反馈）。
+      // 首页卡片、酒馆作品链早已直接调 openWork；这里补齐其余所有 data-nav 的 /w/ 链接。
+      const m = (a.pathname || '').match(/^\/w\/([A-Za-z0-9_-]+)\/?$/);
+      if (m) { openWork(decodeURIComponent(m[1])); return; }
       navigate(a.pathname);
     }
   });
@@ -22591,6 +22716,33 @@ async function claimPwaBonus() {
   } catch { /* 离线或失败不领，下次用桌面图标打开再试 */ }
 }
 
+// ---------- 站外灵感：链滴 AI 精选 ----------
+// 只渲染标题 / 作者 / 热度 + 原文链接（后端已砍掉正文）；Token 没配时整块隐藏。
+// 链滴文档禁止「以内容填充为目的」，所以这里定位是延伸阅读：卡片自带来源标注，
+// 全部 nofollow + 新窗口，不把对方内容留在本站，也不给它带 SEO 权重。
+async function loadLd246Ai() {
+  const sec = $('ld246Section');
+  if (!sec) return;
+  try {
+    const r = await fetch('/api/ld246/ai', { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.enabled || !Array.isArray(d.items) || !d.items.length) return;
+    const grid = $('ld246Grid');
+    grid.innerHTML = d.items.map(x => {
+      const t = Number(x.at) || 0;
+      const when = t ? formatDate(t > 1e12 ? t : t * 1000) : '';
+      const meta = [x.author || '链滴用户', x.comments ? x.comments + ' 回帖' : '', when].filter(Boolean).join(' · ');
+      const tags = (x.tags || []).length ? '<span class="ld246-tags">' + escapeHtml(x.tags.join(' / ')) + '</span>' : '';
+      return '<a class="ld246-card" href="' + escapeHtml(x.url) + '" target="_blank" rel="noopener nofollow noreferrer">'
+        + '<span class="ld246-title">' + escapeHtml(x.title) + '</span>'
+        + '<span class="ld246-meta">' + escapeHtml(meta) + '</span>'
+        + tags + '</a>';
+    }).join('');
+    if (grid.childElementCount) sec.hidden = false;
+  } catch { /* 站外数据取不到就静默，绝不影响站内浏览 */ }
+}
+
 // ---------- 启动 ----------
 async function init() {
   // SEO 预渲染区块立刻移除（不等任何接口）：它顶在页面上几百像素，等数据回来才塌掉是最大的抖动源
@@ -22615,6 +22767,7 @@ async function init() {
   captureRef();   // 先处理 ?ref=：记下分享者并上报，再把参数从地址栏摘掉
   captureClaimToken();   // 匿名投稿进度页带来的 ?claimToken=：投稿人本人才能认领那个作品
   loadFooterFriends();  // 页脚友情链接（后台可配，空则不展示）
+  loadLd246Ai();        // 站外灵感：链滴 AI 精选（未配 Token 时接口返回 enabled:false，函数直接退出）
   loadFooterStats();    // 页脚站点 PV/UV + 提交作品引导
   loadPlatforms();      // 外宣指南平台清单：顺手预取，详情页点「外宣包」时不用等
   // 支持 /?q=关键词 直接进入搜索结果（与站点搜索结构化数据一致）
@@ -22623,8 +22776,24 @@ async function init() {
     state.q = q;
     $('searchInput').value = q;
   }
-  // 登录态 + 形态元数据并行等（都只有几百字节）：形态图标/名字在画卡片时就要用
-  await Promise.all([loadMe(), loadTypeMeta()]);
+  // 形态元数据只有几百字节，画卡片就要用，先等它；/api/me 带着收藏/认领/草稿，
+  // 不挡首屏——先发起请求，route() 画完页面再等它，登录态相关的初始化随后补上。
+  const hadUser = !!state.user;   // restoreMeSnapshot 画出来的快照态，用来判断要不要补刷详情
+  const meReady = loadMe();
+  await loadTypeMeta();
+  // 先绑详情动作区（含作者页「送灯火」的钩子），再渲染页面：
+  // 它对分类/工具/广告数据零依赖，放后面纯属历史原因——直进作者页时按钮先出来、
+  // 钩子要等几个元数据请求回来才注入，期间点击被静默吞掉（「点了没反应」就是这么来的）。
+  setupDetailActions();
+  // 先把当前页面画出来：该页自己的数据（榜单/列表/详情）立刻开始拉。
+  // 原来这行在 6 个接口串行 await 的最后，/rank 要等 5 个来回才开始请求榜单，
+  // 4G 节流下实测白等 2.6 秒，期间屏幕上还是首页——「换页总先加载首页」就是这么来的。
+  route();
+  // 登录态回来了，补画依赖用户的部分；直进详情页且身份跟快照不一致时按真实登录态刷新一次按钮
+  await meReady;
+  if (location.pathname.startsWith('/w/') && !!state.user !== hadUser) {
+    openWork(location.pathname.slice(3), false, { noTrack: true });
+  }
   // 带着投稿凭据回来的匿名作者：先弹窗确认，再决定登录还是直接提交。
   // 以前已登录就静默提交，链接被转发时对方打开页面就替人把队列占了，所以一律先问一句。
   if (state.pendingClaim) showClaimPrompt();
@@ -22635,14 +22804,6 @@ async function init() {
     loadNotices(true);
   }
   claimPwaBonus();  // PWA（添加到主屏幕）里打开且已登录：一次性领 200 盏灯火
-  // 先绑详情动作区（含作者页「送灯火」的钩子），再渲染页面：
-  // 它对分类/工具/广告数据零依赖，放后面纯属历史原因——直进作者页时按钮先出来、
-  // 钩子要等几个元数据请求回来才注入，期间点击被静默吞掉（「点了没反应」就是这么来的）。
-  setupDetailActions();
-  // 先把当前页面画出来：该页自己的数据（榜单/列表/详情）立刻开始拉。
-  // 原来这行在 6 个接口串行 await 的最后，/rank 要等 5 个来回才开始请求榜单，
-  // 4G 节流下实测白等 2.6 秒，期间屏幕上还是首页——「换页总先加载首页」就是这么来的。
-  route();
   // 剩下的都是「补齐类」元数据：分类、工具清单、广告位，并行拉，回来后再刷新依赖它们的面板
   await Promise.all([loadCategories(), loadTools(), ensureAds()]);
   // route() 在上一行之前就把首页列表拉完了，那时 state.tools 还是空的（工具卡只挂 0 条），

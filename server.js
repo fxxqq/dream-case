@@ -241,6 +241,16 @@ const ADMIN_KEY = (() => {
   catch { return ''; }
 })();
 
+// ---------- 链滴 API Token（站外引用，只拉标题/作者/链接，不抓正文、不落库） ----------
+// 优先环境变量 LD246_TOKEN，其次 data/ld246-token.txt（不入库），都没配时前端模块自动隐藏。
+// 用途严格遵守链滴文档：做「社区联动」的引用卡片，不做内容填充；所有外链 nofollow + 新窗口。
+const LD246_TOKEN = (() => {
+  if (process.env.LD246_TOKEN) return String(process.env.LD246_TOKEN).trim();
+  try { return fs.readFileSync(path.join(DATA_DIR, 'ld246-token.txt'), 'utf-8').trim(); }
+  catch { return ''; }
+})();
+const LD246_TAG = 'AI';   // 链滴标签 URI；想换别的领域改这里
+
 for (const dir of [DATA_DIR, UPLOAD_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
@@ -2714,6 +2724,8 @@ function clientIp(req) {
 // 结构：{ days: { '2026-10-31': { pv: 12, uv: { 'u:<userId>': 1, 'ip:<ip>': 1 } } } }
 // UV 身份：登录用户按账号去重（同一账号多设备算 1 个），未登录按 IP 去重
 const VISIT_RETENTION_DAYS = 90;
+// 作品每日明细单独留久一点：作者数据看板要能看「近半年」趋势，站点级 visits 仍按 90 天清。
+const WORK_VISIT_RETENTION_DAYS = 180;
 let visits = readJSON('visits.json', { days: {} });
 if (!visits || typeof visits !== 'object' || !visits.days) visits = { days: {} };
 
@@ -3631,12 +3643,16 @@ function trackWorkVisit(req, workId, opts) {
     if (!day.uv[uvKey]) rec.uvDays[uvKey] = (rec.uvDays[uvKey] || 0) + 1;   // 该访客今天头一回来：回访天数 +1
     day.uv[uvKey] = (day.uv[uvKey] || 0) + 1;
   }
-  // 每个作品只保留最近 N 天明细
+  // 每个作品只保留最近 N 天明细（比站点级 visits 留得久，供作者看近半年趋势）
   const keys = Object.keys(rec.days).sort();
-  while (keys.length > VISIT_RETENTION_DAYS) delete rec.days[keys.shift()];
+  while (keys.length > WORK_VISIT_RETENTION_DAYS) delete rec.days[keys.shift()];
   // 行为流水：谁在什么时候点开了哪件作品、从哪一块点进来的。
   // 人键就是上面算出来的 uvKey；IP 兜底的 'ip:xxx' 会被 behaviorLog 的格式校验挡掉（认不出人就不记）。
   behaviorLog(uvKey, 'view', { w: workId, f: behaviorSource(o.path) });
+  // 别处点开的详情也算「逛过」（2026-11-20 站长拍板）：发现/最新/最热/榜单/搜索/作者页
+  // 只要点进了详情，就把这件作品写进这个人的已看名单，随便逛逛取卡时一并排除。
+  // 人键与 behavior 同源；ip: 兜底那种认不出人的，markWanderSeen 内部会跳过。
+  markWanderSeen(uvKey, workId);
   scheduleWorkVisitSave();
 }
 
@@ -4151,6 +4167,21 @@ function expoUserRec(key) {
   if (!Array.isArray(r.ids)) r.ids = [];
   if (!Array.isArray(r.delivered)) r.delivered = [];
   return r;
+}
+// 别处（发现/最新/最热/榜单/搜索/作者主页）点开详情也算「逛过」（2026-11-20 站长拍板）。
+// 只把作品塞进这个人的 ids（随便逛逛去重名单），不碰作品侧 s/c —— CTR 口径是「模块内曝光」，
+// 别处的浏览混进去会把 CTR 分母搞脏。走和 recordExpo 一样的 LRU 截断，名单封顶不变。
+// key 只认 u:/d:/v: 三套，ip: 兜底（behaviorLog 也挡）直接跳过，宁可少记不可记错人。
+function markWanderSeen(key, wid) {
+  if (!key || !/^[udv]:[A-Za-z0-9_-]{3,64}$/.test(key)) return;
+  if (!wid || typeof wid !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(wid)) return;
+  const ur = expoUserRec(key);
+  const ii = ur.ids.indexOf(wid);
+  if (ii >= 0) ur.ids.splice(ii, 1);   // 老位置拿掉再push = LRU：最近点开的排最后
+  ur.ids.push(wid);
+  while (ur.ids.length > EXPO_USER_IDS_CAP) ur.ids.shift();
+  ur.at = Date.now();
+  scheduleExpoSave();
 }
 // 「发过」名单：发卡即记（不管用户有没有真看），只服务于左计数与去重。
 // 与 ids（曝光 ≥50% 500ms 才写）彻底分开——作品侧 s/c 曝光点击统计不碰，CTR 口径不变。
@@ -5897,6 +5928,32 @@ app.use((req, res, next) => {
 
 app.use(siteMeta.middleware({ dataDir: DATA_DIR }));
 
+// 公共只读接口的缓存头（2026-11-20）：这几条只依赖站内配置，跟登录态无关。
+// max-age=0 让浏览器每次回源拿 304（后台改了配置能马上看到），s-maxage 给共享缓存 5 分钟。
+// 白名单之外的接口一律不碰，尤其别把 /api/me、/api/works 这类带用户态的也缓存了。
+const PUBLIC_API_CACHE = new Set([
+  '/api/platforms', '/api/categories', '/api/type-meta',
+  '/api/scene-meta', '/api/site-stats', '/api/friends'
+]);
+app.use((req, res, next) => {
+  if (req.method === 'GET' && PUBLIC_API_CACHE.has(req.path)) {
+    res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=300, stale-while-revalidate=600');
+  }
+  next();
+});
+
+// 旧域名收口（2026-11-20）：idea.v5pc.com 的请求 301 到主域，路径和 query 原样带过去。
+// 探活和证书校验放行，别把健康检查 / ACME 也跳走。
+app.use((req, res, next) => {
+  const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+  const fwdHost = String(req.headers['x-forwarded-host'] || '').toLowerCase().split(',')[0].trim().replace(/:\d+$/, '');
+  const effective = host || fwdHost;
+  if (!LEGACY_SITE_HOSTS.includes(effective)) return next();
+  if (req.path === '/api/health' || req.path.startsWith('/.well-known/')) return next();
+  res.setHeader('Vary', 'Host');
+  return res.redirect(301, SITE_ORIGIN_DEFAULT + (req.originalUrl || req.url || '/'));
+});
+
 // 二维码图片：给分享卡片用。同一文本指纹命中后长缓存，省得重复计算
 const qrCache = new Map();
 app.get('/api/qr', (req, res) => {
@@ -6960,6 +7017,81 @@ app.post('/api/admin/featured', requireAdmin, (req, res) => {
     return res.json({ ok: true, tag: featuredTagCss() });
   }
   return res.status(400).json({ error: '未知 action' });
+});
+
+// ---------- 链滴 AI 精选：站外引用卡片（不抓正文、不落库） ----------
+// 合规边界：链滴 API 文档写明「禁止用于以内容填充为目的应用或站点」。
+// 这里只取标题 / 作者 / 热度 / 原文链接，作为「延伸阅读」推荐，正文一个字都不带回来。
+// 前端卡片固定标注来源 + nofollow + 新窗口，读者点开去链滴看原文。
+// Token 未配置时 /api/ld246/ai 直接返回 enabled:false，前端整块隐藏，零外部请求。
+const LD246_CACHE_MS = 60 * 60 * 1000;   // 正常结果缓存 1 小时（文档要求每 IP <120 次/分钟）
+const LD246_RETRY_MS = 5 * 60 * 1000;    // 失败 5 分钟后重试，别在故障时反复打人家
+let ld246Cache = { at: 0, data: null, pending: null };
+
+async function fetchLd246Ai() {
+  const now = Date.now();
+  const ttl = ld246Cache.data && ld246Cache.data.ok ? LD246_CACHE_MS : LD246_RETRY_MS;
+  if (ld246Cache.data && now - ld246Cache.at < ttl) return ld246Cache.data;
+  if (ld246Cache.pending) return ld246Cache.pending;
+
+  const p = (async () => {
+    const data = { enabled: true, ok: false, items: [], updatedAt: now };
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      let resp;
+      try {
+        resp = await fetch('https://ld246.com/api/v2/articles/tag/' + encodeURIComponent(LD246_TAG) + '/hot?p=1', {
+          headers: {
+            'User-Agent': 'DreamCase/2.0 (+' + SITE_ORIGIN_DEFAULT + ')',
+            'Authorization': 'token ' + LD246_TOKEN,
+            'Accept': 'application/json',
+          },
+          signal: ctrl.signal,
+        });
+      } finally { clearTimeout(timer); }
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const json = await resp.json();
+      if (json && json.code !== 0) throw new Error('code ' + json.code + ' ' + (json.msg || ''));
+      const d = json && json.data;
+      const raw = Array.isArray(d) ? d : (d && (d.articles || d.list || d.items)) || [];
+      // 只映射引用所需的字段；articleContent 一概不读、不回传
+      data.items = raw.slice(0, 6).map(a => {
+        const id = String(a.articleId || a.oId || a.id || '');
+        const title = String(a.articleTitle || a.title || '').replace(/<[^>]*>/g, '').trim().slice(0, 120);
+        const au = a.articleAuthor || {};
+        const author = String(au.userNickname || au.nickname || au.userName || a.articleAuthorName || a.authorName || '链滴用户').slice(0, 40);
+        const tags = String(a.articleTags || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 3);
+        return {
+          id, title, author, tags,
+          comments: Number(a.articleCommentCount || a.articleReplyCount || a.commentCount) || 0,
+          views: Number(a.articleViewCount || a.viewCount) || 0,
+          at: Number(a.articleCreateTime || a.articleUpdated || a.createdAt) || 0,
+          url: /^https?:\/\//.test(String(a.articlePermalink || '')) ? a.articlePermalink : 'https://ld246.com/article/' + encodeURIComponent(id),
+        };
+      }).filter(x => x.id && x.title);
+      data.ok = data.items.length > 0;
+      data.updatedAt = Date.now();
+    } catch (e) {
+      // 站外数据取不到就静默降级；详情写日志，不给前台暴露 token 或内部信息
+      logLine('error.log', '[ld246] ' + errText(e));
+      data.items = [];
+      data.ok = false;
+    }
+    ld246Cache.at = Date.now();
+    ld246Cache.data = data;
+    ld246Cache.pending = null;
+    return data;
+  })();
+  ld246Cache.pending = p;
+  return p;
+}
+
+app.get('/api/ld246/ai', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!LD246_TOKEN) return res.json({ enabled: false, items: [] });
+  try { return res.json(await fetchLd246Ai()); }
+  catch (e) { return res.json({ enabled: true, ok: false, items: [], updatedAt: Date.now() }); }
 });
 
 // 轻量健康检查：给 uptime 监控 / 发布后自检用（不含任何敏感信息）
@@ -11218,7 +11350,7 @@ app.get('/api/me/claims', (req, res) => {
     .map(c => ({ id: c.id, workId: c.workId, status: c.status, createdAt: c.createdAt })));
 });
 
-// 作者数据看板：我发布 / 已认领的作品，含累计数据与近 14 天浏览趋势
+// 作者数据看板：我发布 / 已认领的作品，含累计数据与可选范围（7/30/180 天）的浏览趋势
 // ---------- 灯光明细（只读） ----------
 // 数据来自 share.json 里的逐笔流水（addPoints / pushShareLog 记的 {t, kind, workId, points}）。
 // 目的只有一个：让用户看清每一盏灯火从哪来、花到哪去，不用靠站内消息那一下弹窗去记。
@@ -11366,9 +11498,12 @@ app.get('/api/me/points-log', (req, res) => {
 app.get('/api/me/stats', (req, res) => {
   const user = requireUser(req, res);
   if (!user) return;
+  // 趋势图范围：7 天 / 1 个月 / 半年。不传时保持老的 14 天，避免别的调用方被悄悄改口径。
+  const wantDays = Number(req.query.days);
+  const rangeDays = [7, 30, 180].includes(wantDays) ? wantDays : 14;
   const days = [];
   const now = new Date();
-  for (let i = 13; i >= 0; i--) days.push(dateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)));
+  for (let i = rangeDays - 1; i >= 0; i--) days.push(dateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)));
 
   const mine = works.filter(w => w.userId === user.id && !w.deleted);
   const shareRec = shareData.users[user.id] || { points: 0, visits: 0, regs: 0, works: {} };
@@ -16266,7 +16401,7 @@ function mulberry32(seed) {
 // 精选候选：所有公开作品按近 7 天综合分降序（完整榜单，供精选出榜与后台看板取用）。
 //   API 与 SEO 首屏预载共用这一份，免得两处各算一遍、预载的图和真展示的图对不上。
 //   排名本体按 15s 缓存：500 件作品时一次全量算要 0.1~0.3s，而首页 HTML 的预载
-//   和 /api/featured 都会调它，页面渲染再来一遍不值得。本周精选本来就是周榜，
+//   和 /api/featured 都会调它，页面渲染再来一遍不值得。本周精选本来就是 7 日榜口径，
 //   15 秒的时差看不出来；屏蔽过滤按人做，不进缓存。
 let featuredCache = { at: 0, rows: null };
 function featuredRankAll(agg) {
@@ -16696,7 +16831,7 @@ function bootJsonOf(obj) {
 }
 
 // ---------- 本周增量统计（「本周热榜」专用） ----------
-// 周榜/月榜看的是「谁上架得晚」，本周热榜看的是「这周谁表现好」：
+// 7日榜/30日榜看的是「谁上架得晚」，本周热榜看的是「这周谁表现好」：
 // 老作品只要本周有人点赞/收藏/评论/送灯火/访问，就能和新作品同台排名。
 // 点赞 2026-11-07 起才有时间戳（like-log.json），之前的赞算历史累计、不进本周增量。
 const WEEKHOT_DAYS = 7;
@@ -16819,7 +16954,7 @@ function weekHotActive(w, agg) {
 // 高光榜让每件作品的最好一周永久留档；新作品窗口不足 7 天按实际天数算，发布当天就能上榜。
 // 防刷：热榜刷一次会被冲掉，这里刷一次就永久挂榜，所以设上榜门槛（窗口内访客数）。
 // 误刷/误榜可走后台把作品下架，下架即出榜。
-const PEAK_WINDOW_DAYS = 7;     // 窗口长度：与「新作周榜」同一个时间口径，作者容易理解；观察后想调就改这里
+const PEAK_WINDOW_DAYS = 7;     // 窗口长度：与「新作7日榜」同一个时间口径，作者容易理解；观察后想调就改这里
 // 门槛支持 env 覆盖：本地演示数据访客很少，预览时用 PEAK_MIN_UV=1 就能看到榜
 const PEAK_MIN_UV = Number(process.env.PEAK_MIN_UV) || 10;        // 上榜门槛：窗口内独立访客下限，把「发布当天朋友点几下」挡在榜外
 // 互动门槛：2026-11-08 起默认 0（不再要求互动）。
@@ -17078,9 +17213,9 @@ const BADGE_DEFS = [
     note: '一件是兴致，三件才撑得起一扇橱窗。不要求同类，也不要求连续。' },
   { key: 'views1000', t: 'L2', icon: 'chart', name: '千人驻足', cond: '单件作品访问量破 1000',
     note: '橱窗前有人停下脚步，才叫陈列。按作品累计访问算，不看点赞和收藏。' },
-  { key: 'week_top', t: 'L2', icon: 'podium', name: '一梦当先', cond: '新作周榜第一名',
-    note: '七天里最亮的那件新作。周榜每周重排，出刊后再过 7 天名次定稿——定稿那一刻的第一才算数，拿过就留在身上。' },
-  { key: 'month_top', t: 'L2', icon: 'crown', name: '独占一窗', cond: '月榜第一名',
+  { key: 'week_top', t: 'L2', icon: 'podium', name: '一梦当先', cond: '星梦期刊周榜第一名',
+    note: '七天里最亮的那件新作。期刊周榜每周重排，出刊后再过 7 天名次定稿——定稿那一刻的第一才算数，拿过就留在身上。' },
+  { key: 'month_top', t: 'L2', icon: 'crown', name: '独占一窗', cond: '星梦期刊月榜第一名',
     note: '一整个月，最好的位置就那一扇窗。每月重排，名次定稿后才揭晓归属，拿过就留在身上。' },
   { key: 'all_top', t: 'L2', icon: 'steps', name: '众梦之首', cond: '总榜第一名',
     note: '全站所有作品里排在最前的那一件。不是一周也不是一月，得一直有人记着它。' },
@@ -17642,7 +17777,7 @@ app.get('/api/rank', (req, res) => {
 });
 
 // 榜单形态下拉的条数：按所选周期统计，与 /api/rank 完全同一套过滤口径（上架时间 + 公开）。
-// 否则下拉里的数字是全站总量，「周榜 + Web」显示 14 件、列表里其实只有 8 件，口径对不上。
+// 否则下拉里的数字是全站总量，「新作7日榜 + Web」显示 14 件、列表里其实只有 8 件，口径对不上。
 app.get('/api/rank/counts', (req, res) => {
   const period = ['week', 'month', 'all', 'weekhot', 'peak'].includes(req.query.period) ? req.query.period : 'week';
   const isWeekHot = period === 'weekhot';
@@ -17656,7 +17791,7 @@ app.get('/api/rank/counts', (req, res) => {
     ? w => weekHotActive(w, weekAgg())          // 本周热榜：本周有互动的作品
     : period === 'peak'
       ? w => !!peakWindowOf(w, 'hot')           // 高光榜：有一个窗口达到上榜门槛
-      : w => new Date(w.createdAt).getTime() >= since;   // 周榜/月榜：周期内上架
+      : w => new Date(w.createdAt).getTime() >= since;   // 7日榜/30日榜：周期内上架
   pool.filter(hit).forEach(w => {
     total++;
     typesOf(w).forEach(t => { counts[t] = (counts[t] || 0) + 1; });
@@ -18544,6 +18679,11 @@ app.get('/api/works/:id', (req, res) => {
     out.qrcode = w.qrcode || '';
     if (w.links && Object.keys(w.links).length) out.links = w.links; else delete out.links;
     out.lampLocked = false;
+    // 站长编辑入口：认领暗号明文只在这条「站长 + ?edit=1」路径下发，给站长核对 / 转发给作者。
+    // 普通浏览（含站长本人看别人的作品）仍然只有 claimCodeOn，明文永不下发。
+    // 保存时编辑器不带这个键回去，服务端「不传就不碰」的口径保证不会被前端抹掉。
+    out.claimCodePlain = w.claimCode || '';
+    out.claimBonusPlain = claimBonusOf(w);
   }
   res.json(out);
 });
@@ -24473,9 +24613,9 @@ app.post('/api/admin/works/:id/merge', requireAdmin, (req, res) => {
       dd.pv = (dd.pv || 0) + (sd.pv || 0);
       Object.keys(sd.uv || {}).forEach(k => { dd.uv[k] = 1; });
     });
-    // 与 trackWorkVisit 同口径：每件作品只留最近 N 天明细
+    // 与 trackWorkVisit 同口径：每件作品只留最近 N 天明细（近半年）
     const keys = Object.keys(dv.days).sort();
-    while (keys.length > VISIT_RETENTION_DAYS) delete dv.days[keys.shift()];
+    while (keys.length > WORK_VISIT_RETENTION_DAYS) delete dv.days[keys.shift()];
     delete workVisits[src.id];
     scheduleWorkVisitSave();
   }
@@ -25185,21 +25325,38 @@ function githubStarPicks() {
     picks = JSON.parse(fs.readFileSync(STAR_PICKS_FILE, 'utf8'));
   } catch { starPicksCache = { at: 0, data: { at: '', items: [] } }; return starPicksCache.data; }
   const byId = new Map(works.map(w => [w.id, w]));
+  const usersById = new Map(users.map(u => [u.id, u]));
+  const ownerNames = new Set((siteOwners || []).concat(['匿名']));  // 跟作者榜同口径：站长/匿名账号不给关注
   const items = (Array.isArray(picks.items) ? picks.items : [])
     .filter(p => p && p.id && Number(p.star) > 100)
     .filter(p => { const w = byId.get(p.id); return !w || isVisible(w); })
     .sort((a, b) => Number(b.star) - Number(a.star))
-    .map(p => ({
-      id: p.id,
-      title: String(p.title || ''),
-      author: String(p.author || ''),
-      thumb: String(p.thumb || p.image || ''),
-      image: String(p.image || p.thumb || ''),
-      link: String(p.link || ''),
-      repo: String(p.repo || ''),
-      star: Number(p.star),
-      url: '/w/' + encodeURIComponent(p.id)
-    }));
+    .map(p => {
+      // 可关注的作者：快照里的作品能在本地库查到、实名投稿、作者账号存在且不是站长/「匿名」账号。
+      // 只给这些出关注按钮（前端 crFollowBtnHtml 见 uid 才渲染）；匿名投稿、无账号的照常显示但不给关注。
+      const w = byId.get(p.id);
+      let uid = '', followers = 0;
+      if (w && w.userId && w.anonymous !== true) {
+        const u = usersById.get(w.userId);
+        if (u && !ownerNames.has(u.username)) {
+          uid = w.userId;
+          followers = followerCount(uid);
+        }
+      }
+      return {
+        id: p.id,
+        title: String(p.title || ''),
+        author: String(p.author || ''),
+        thumb: String(p.thumb || p.image || ''),
+        image: String(p.image || p.thumb || ''),
+        link: String(p.link || ''),
+        repo: String(p.repo || ''),
+        star: Number(p.star),
+        uid,
+        followers,
+        url: '/w/' + encodeURIComponent(p.id)
+      };
+    });
   const out = { at: String(picks.at || ''), note: String(picks.note || ''), items };
   starPicksCache = { at: Date.now(), data: out };
   return out;

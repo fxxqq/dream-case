@@ -53,6 +53,7 @@
 | 关注关系 | `data/follows.json` 一张边表（`{from,to,at}`）+ 内存双向索引；`POST/DELETE /api/authors/:ref/follow`、`GET /api/me/following`；作品第一次对公众可见时给关注者发站内信，**同一作者 24 小时内只打扰一次**（连发多件合并成一条），作者自己也会收到合并后的「N 人关注了你」 |
 | 用户私信 | `/api/dm/*`：一对一私聊（会话列表 / 发送 / 已读 / 免打扰 / 清空 / 「只接收聊过的人」开关）；拉黑复用 user.blockedUsers；未读以合成条目并入 `/api/me/notices` 的「消息」栏。**内测中（2026-11-15）**：默认只对站长开放（`site-owners.json` / `SITE_OWNERS`），`/api/me` 下发 `dmBeta` 控制前端入口显隐；例外是站长主动发起的会话对方可回话。正式开放加环境变量 `DM_BETA=open` 即可，代码不用改（线上已于 2026-11-16 设 `open` 并 pm2 save）。**使用资格（2026-11-16）**：放开不等于人人可用——`dmEligibleOf` 卡「注册满 7 天 + 酒馆非灌水发言满 10 条」（帖子 ≥15 字、回应 ≥10 字，想法不算），文案口径是防骚扰 / 垃圾营销号、给出还差多少的可达成提示；站长豁免（对站长说话不受限，覆盖「站长找上来的会话对方可回」）；资格不足走 `dmCanSend` 统一拦截，`/api/dm/with` 与会话载荷下发 `canSend:false + reason`，前端锁输入框就地显示原因。**举报与保留期（2026-11-15）**：`POST /api/dm/threads/:id/report` 举报时随单快照「被举报那条 + 前后各 2 条」进 `reports.json`（`target: 'dm'`，后台同一列表处理）——不给后台开「读所有人私信」的口子；同一人对同一会话 24 小时内只落一条（再举只累加 `count`）；后台用 `/api/admin/reports/:id/dm-close` 关闭会话（`t.closed`，双方不能再发、历史读到保留期满），`takedown` 对私信投诉会明确拒绝。正文保留 `DM_RETAIN_DAYS = 180` 天，`pruneDms()` 启动时 + 每 6 小时清一次（超期消息逐条删、清空的会话连壳删）；`DM_MAX_THREADS` 兜底也只淘汰超保留期的会话，不静默删活跃会话；保留期经 `/api/dm/threads` 的 `retainDays` 下发给前端显示 |
 | 限流 | 内存滑动窗口，按 IP / 用户 / 动作 |
+| 站外引用（链滴） | `LD246_TOKEN` 或 `data/ld246-token.txt`；`GET /api/ld246/ai` 拉链滴 AI 标签热帖的标题 / 作者 / 回帖数 / 原文链接，在首页渲染「站外灵感」卡片。**只做引用，正文不请求、不落库**，外链 `nofollow` + 新窗口；结果缓存 1 小时、失败 5 分钟后重试，未配 Token 时接口返回 `enabled:false`，前端整块隐藏，零外部请求。刻意遵守链滴 API 文档「禁止用于以内容填充为目的」的使用原则 |
 | 访问统计 | 全站 PV/UV、流量构成（来源 / 设备 / 落地页）、外宣渠道、作品维度统计 |
 | 反刷闸门 | 单 IP / 单访客 / 单作品多维配额，分享归因熔断 |
 | 热搜 | 真实搜索词 + 冷启动种子词（`search-seed.json` 里 `enabled:false` 一键关闭） |
@@ -114,7 +115,7 @@
 | `categories.json` / `types.json` / `tools.json` | 分类、作品形态、同类工具推荐 |
 | `chronicle.json` / `feedback.json` / `ideas.json` | 编年史、意见反馈、想法 |
 | `gift-codes.json` / `codes.json` / `tips.json` | 站长激励码、作品兑换码、打赏 |
-| `oauth.json` / `admin-key.txt` / `zhipu-key.txt` | 密钥类，均不入库 |
+| `oauth.json` / `admin-key.txt` / `zhipu-key.txt` / `ld246-token.txt` | 密钥类，均不入库 |
 
 ## 灯火账本设计
 

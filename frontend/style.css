@@ -3317,6 +3317,8 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   font-size: 11px; font-weight: 500; color: #8a5a12;
   background: #fff3d9; border-radius: 5px; padding: 2px 8px;
 }
+/* 角标排在标题/上架天数后面时，和前面的小字留一点空隙 */
+.rank-age + .rank-fresh { margin-left: 8px; }
 /* 高光窗口还在刷新（结束日=今天/昨天）的作品标「冲榜中」，青绿色区别于「新晋」橙 */
 .rank-live {
   display: inline-block; margin-right: 8px; vertical-align: 1px;
@@ -3425,6 +3427,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   .rank-today-hint { margin-left: 0; width: 100%; }
   .rank-today-motto { margin-left: 0; white-space: normal; }
   .rank-fresh { margin-right: 6px; }
+  .rank-age + .rank-fresh { margin-left: 6px; }
   .rank-live { margin-right: 6px; }
 }
 
@@ -5861,28 +5864,47 @@ body.on-work .load-more-wrap { display: none !important; }
 
 .stats-chart { margin-bottom: 20px; position: relative; }
 .stats-chart-head {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
-  font-size: 13px; font-weight: 600; margin-bottom: 34px;   /* 底部留白给悬停气泡 */
+  display: flex; align-items: flex-start; justify-content: space-between;
+  flex-wrap: wrap; gap: 8px 12px; margin-bottom: 10px;
 }
+.stats-chart-title { display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 600; }
 .stats-chart-hint { font-size: 11px; font-weight: 400; color: var(--muted); }
-.stats-bars { display: flex; align-items: flex-end; gap: 4px; height: 96px; }
-.stats-bar-wrap {
-  flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end;
-  align-items: center; cursor: default; outline: none;
+.stats-range {
+  display: flex; flex: none; gap: 2px; padding: 2px;
+  background: #f1f1f7; border-radius: 8px;
 }
-.stats-bar-wrap:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px; }
-.stats-bar {
-  width: 100%; max-width: 22px; border-radius: 4px 4px 2px 2px;
-  background: linear-gradient(180deg, #8b8bf0, var(--primary)); min-height: 2px;
-  transition: filter .15s, opacity .15s;
+.stats-range-btn {
+  border: 0; background: transparent; padding: 4px 9px; border-radius: 6px;
+  color: var(--muted); font-family: inherit; font-size: 11px; line-height: 1.4;
+  cursor: pointer; transition: background .15s, color .15s;
 }
-.stats-bar.is-empty { background: #e8e8f4; }
-.stats-bars.is-focused .stats-bar { opacity: .38; }
-.stats-bars.is-focused .stats-bar-wrap.is-hot .stats-bar,
-.stats-bar-wrap:hover .stats-bar { opacity: 1; filter: brightness(1.05); }
-.stats-bar-x { font-size: 10px; color: var(--muted); height: 14px; line-height: 14px; white-space: nowrap; }
-/* 悬停 / 点按柱子时的数值气泡 */
-.stats-bar-tip {
+.stats-range-btn:hover { color: var(--primary-dark); }
+.stats-range-btn.is-on {
+  background: #fff; color: var(--primary-dark); font-weight: 600;
+  box-shadow: 0 1px 4px rgba(45, 45, 90, .10);
+}
+.stats-line { position: relative; height: 114px; }
+.stats-line svg { display: block; width: 100%; height: 96px; overflow: visible; }
+.stats-line-path {
+  stroke: #7c7ce8; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round;
+}
+.stats-line-dot { fill: #fff; stroke: #7c7ce8; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.stats-line-guide { stroke: #c3c3ea; stroke-width: 1; stroke-dasharray: 3 3; opacity: 0; }
+.stats-line-cursor {
+  fill: #fff; stroke: #5f5fd6; stroke-width: 2; vector-effect: non-scaling-stroke;
+  opacity: 0; filter: drop-shadow(0 1px 3px rgba(60, 60, 130, .25));
+}
+.stats-line-hit { position: absolute; top: 0; left: 0; right: 0; height: 96px; cursor: crosshair; outline: none; }
+.stats-line-hit:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; border-radius: 6px; }
+.stats-line-x { position: relative; height: 16px; margin-top: 2px; }
+.stats-line-label {
+  position: absolute; top: 0; transform: translateX(-50%);
+  font-size: 10px; color: var(--muted); white-space: nowrap;
+}
+.stats-line-label.is-first { transform: none; }
+.stats-line-label.is-last { transform: translateX(-100%); }
+/* 悬停 / 点按折线时的数值气泡 */
+.stats-line-tip {
   position: absolute; z-index: 3; transform: translateX(-50%);
   display: flex; align-items: baseline; gap: 5px;
   padding: 4px 9px; border-radius: 8px; white-space: nowrap;
@@ -5890,9 +5912,14 @@ body.on-work .load-more-wrap { display: none !important; }
   box-shadow: 0 6px 16px rgba(28, 28, 60, .18);
   opacity: 0; pointer-events: none; transition: opacity .12s;
 }
-.stats-bar-tip.is-on { opacity: 1; }
-.stats-bar-tip b { font-size: 13px; font-weight: 700; }
-.stats-bar-tip i { font-style: normal; color: rgba(255, 255, 255, .6); }
+.stats-line-tip.is-on { opacity: 1; }
+.stats-line-tip b { font-size: 13px; font-weight: 700; }
+.stats-line-tip i { font-style: normal; color: rgba(255, 255, 255, .6); }
+@media (max-width: 520px) {
+  .stats-chart-head { align-items: stretch; }
+  .stats-range { width: 100%; }
+  .stats-range-btn { flex: 1; }
+}
 
 /* ---------- 灯光明细（我的 → 灯火） ---------- */
 /* 灯火沿用签到徽章那套琥珀色（#d48806 / #fff7e6），不引入新色系；
@@ -8476,6 +8503,27 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .form-hint.claim-bonus-tip { color: #8a5a06; background: #fdf6e6; border: 1px solid #f2e2ba; margin: 8px 0 0; }
 .form-hint.os-bonus-tip b { color: #b26a00; }
 
+/* 站长编辑里的认领暗号条：明文只在 ?edit=1 下发，只读给站长核对 / 复制发给作者，暖色和后台一致 */
+.admin-claim-code-bar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 9px 12px; margin: 0 0 14px;
+  color: #8a5a06; background: #fdf6e6; border: 1px solid #f2e2ba; border-radius: 8px;
+  font-size: 12.5px;
+}
+.accb-label { font-weight: 600; flex: none; }
+.accb-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px; font-weight: 700; letter-spacing: .5px; color: #7a4a00;
+  background: #fff; border: 1px solid #f0dca8; border-radius: 5px; padding: 2px 8px;
+  user-select: all;
+}
+.accb-copy {
+  flex: none; border: 1px solid #e8c984; background: #fff; color: #8a5a06;
+  border-radius: 6px; padding: 3px 10px; font-size: 12px; cursor: pointer;
+}
+.accb-copy:hover { background: #fbeac6; }
+.accb-bonus { color: #b26a00; font-weight: 600; }
+
 /* 投稿承诺：两项勾选贴着提交按钮，勾选框不吃点击热区（label 只包文字） */
 .agree-box {
   margin: 4px 0 14px; padding: 12px 14px;
@@ -10455,7 +10503,7 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 }
 .disc-pc .cat-main { flex: 1; min-width: 0; }
 .disc-pc .cat-head { margin-bottom: 14px; }
-.disc-pc .cat-head h1 { font-size: 24px; font-weight: 700; color: var(--text); margin: 0 0 5px; }
+.disc-pc .cat-head h1, .disc-pc .cat-head h2 { font-size: 24px; font-weight: 700; color: var(--text); margin: 0 0 5px; }
 .disc-pc .cat-head p { font-size: 13px; color: var(--muted); margin: 0; }
 .disc-pc .cat-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .disc-pc .cat-chips { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -13469,7 +13517,7 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
 
 /* ===== 造梦者书架 /creators（2026-11-20，从独立页并入 SPA，类名统一 cr- 前缀）===== */
 .cr-hd { padding: 8px 0 22px; text-align: center; }
-.cr-hd h1 { font-size: 22px; font-weight: 600; letter-spacing: .4px; }
+.cr-hd h1, .cr-hd h2 { font-size: 22px; font-weight: 600; letter-spacing: .4px; }
 .cr-sub { font-size: 13px; color: var(--muted); margin-top: 5px; }
 .cr-tally { font-size: 12px; color: #9aa0b3; margin-top: 7px; }
 /* 排序胶囊 + 搜索：标题正下方一行，手机上胶囊居中、搜索框占满 */
@@ -13520,7 +13568,10 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
 .cr-star-card .cr-body { padding-bottom: 15px; }
 .cr-star-title { font-size: 13.5px; font-weight: 600; line-height: 1.45; min-height: 2.9em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .cr-star-meta { display: flex; flex-direction: column; gap: 3px; margin-top: 9px; font-size: 11.5px; color: var(--muted); }
-.cr-star-by { color: var(--text); font-weight: 500; }
+.cr-star-author { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cr-star-by { color: var(--text); font-weight: 500; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Star 卡作者名后的关注按钮：比作者卡的小一号，整行别把窄卡撑破 */
+.cr-star-author .cr-follow { flex: 0 0 auto; padding: 3px 8px; font-size: 10.5px; }
 .cr-star-repo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #9aa0b3; }
 .cr-more { display: flex; justify-content: center; margin-top: 26px; }
 .cr-more button { font-size: 13px; color: var(--primary); background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 9px 22px; cursor: pointer; }
@@ -13532,5 +13583,121 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
   .cr-search input { width: 150px; }
   .cr-follow { padding: 4px 8px; font-size: 11px; }
   .cr-stats { gap: 10px; }
+}
+
+/* ============================================================
+   创作者主页 · 视觉与体验增强（2026-11-20）
+   只作用于 .author-hero 内部，不碰任何业务 JS 与数据结构。
+   所有文字色一律走 --hero-ink / --hero-ink-2 变量，
+   因此 12 种深浅皮肤（含纸韵 / 雪原等浅底）自动适配，无需逐皮肤覆盖。
+   SSR（/u/ 直出）与 SPA（#authorView）共用本文件，一次改动两边同步。
+   ============================================================ */
+
+/* --- 1. 头像：双层描边 + 柔和光晕，首字母更精致 --- */
+.author-hero .author-avatar {
+  width: 92px; height: 92px; font-size: 34px; font-weight: 600;
+  border: 3px solid rgba(255, 255, 255, .95);
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, .22), 0 8px 24px rgba(20, 14, 52, .28);
+  letter-spacing: .5px;
+  text-shadow: 0 1px 2px rgba(20, 14, 52, .25);
+}
+.author-hero .author-avatar img { border-radius: 50%; }
+/* 浅底皮肤上，白色描边的光晕改用深色系才托得住头像 */
+:is(.hs-paper, .hs-mist, .hs-candy, .hs-snow, .hs-sakura, .hs-grid, .hs-window) ~ .author-hero-main .author-avatar {
+  border-color: #fff;
+  box-shadow: 0 0 0 4px rgba(35, 42, 54, .08), 0 6px 18px rgba(35, 42, 54, .16);
+}
+
+/* --- 2. 作者信息：名字更有分量，徽章与名字对齐 --- */
+.author-hero .author-info h1,
+.author-hero .author-info .author-title {
+  font-size: 24px; font-weight: 700; line-height: 1.25; letter-spacing: -.2px;
+}
+.author-hero .author-badges { margin-top: 9px; gap: 7px; }
+.author-hero .author-meta { margin-top: 6px; gap: 6px 0; font-size: 13.5px; }
+/* 个人介绍：给一点最大宽内的行高与字重，读起来不费力 */
+.author-hero .author-bio { font-size: 13.5px; line-height: 1.7; }
+
+/* --- 3. 按钮：关注作为主行动，加一点立体与光泽；_other 胶囊更收敛 --- */
+.author-hero .author-follow-btn {
+  font-size: 13px; padding: 7px 15px;
+  box-shadow: 0 3px 12px rgba(28, 24, 66, .26), inset 0 1px 0 rgba(255, 255, 255, .9);
+  transition: transform .15s, box-shadow .15s, background .15s, color .15s;
+}
+.author-hero .author-follow-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 16px rgba(28, 24, 66, .3), inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+.author-hero .author-follow-btn:active { transform: translateY(0) scale(.97); }
+
+/* --- 4. 六格数据看板：数字更醒目、标签更清楚、hover 提亮 --- */
+.author-hero .author-stat-grid .as-cell {
+  padding: 15px 6px 13px; gap: 4px;
+  transition: background .18s;
+}
+.author-hero .author-stat-grid .as-cell:hover { background: var(--hero-chip-bg); }
+.author-hero .author-stat-grid .as-ico { opacity: .85; }
+.author-hero .author-stat-grid .as-val {
+  font-size: 21px; font-weight: 800; letter-spacing: -.3px; line-height: 1.15;
+}
+.author-hero .author-stat-grid .as-label { font-size: 12px; font-weight: 500; opacity: .9; }
+
+/* --- 5. 整体呼吸感：卡头圆角与内外间距微调 --- */
+.author-hero { border-radius: 18px; margin: 30px 0 26px; }
+.author-hero .author-hero-main { padding: 26px 26px 22px; }
+
+@media (max-width: 640px) {
+  .author-hero .author-avatar { width: 70px; height: 70px; font-size: 27px; box-shadow: 0 0 0 4px rgba(255,255,255,.2), 0 6px 18px rgba(20,14,52,.24); }
+  .author-hero .author-info h1,
+  .author-hero .author-info .author-title { font-size: 19px; }
+  .author-hero .author-hero-main { padding: 18px 14px 16px; gap: 12px; }
+  /* 手机端按钮收紧：关注 + 送灯火要能同名字挤在一行，别把「送灯火」顶到第二行 */
+  .author-hero .author-follow-btn { font-size: 12px; padding: 5px 11px; }
+  .author-hero .author-name-row { gap: 7px; }
+  .author-hero .author-stat-grid .as-val { font-size: 18px; }
+  .author-hero .author-stat-grid .as-cell { padding: 11px 4px 10px; }
+}
+
+/* --- 6. 作品区与页面节奏：给头图与作品流之间留一口气 --- */
+/* SSR：作者卡之后紧跟 gallery；SPA：#authorGallery 在左栏。统一加一点上边距，
+   让「名片」和「作品」之间有清晰分层，不会黏在一起 */
+.author-hero + .gallery,
+#authorGallery:not(:empty) { margin-top: 22px; }
+/* 入驻引导卡与上方内容拉开一点，避免贴太紧 */
+.author-join { margin-top: 30px; border-radius: 14px; }
+
+/* 减少动效偏好：取消头像/按钮的位移动画（皮肤本身的呼吸动画已有各自处理） */
+@media (prefers-reduced-motion: reduce) {
+  .author-hero .author-follow-btn,
+  .author-hero .author-follow-btn:hover,
+  .author-hero .author-follow-btn:active { transform: none; transition: none; }
+}
+
+/* ---------- 站外灵感：链滴 AI 精选 ----------
+   和「本周精选」刻意区分：灰底小卡、无封面、固定标注来源，一眼看出是站外引用。
+   链滴文档禁止以内容填充为目的，所以这里只做延伸阅读；未配 Token 时整块 hidden。 */
+.ld246-section { margin-top: 30px; }
+.ld246-head { justify-content: space-between; }
+.ld246-more { font-size: 13px; color: var(--muted); text-decoration: none; }
+.ld246-more:hover { color: var(--primary); }
+.ld246-note { font-size: 12.5px; color: var(--muted); margin: -6px 0 12px; line-height: 1.6; }
+.ld246-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.ld246-card {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--card); color: var(--text); text-decoration: none;
+  transition: border-color .15s ease, transform .15s ease;
+}
+.ld246-card:hover { border-color: var(--primary); transform: translateY(-2px); }
+.ld246-title {
+  font-size: 14px; font-weight: 500; line-height: 1.55;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ld246-meta { font-size: 12px; color: var(--muted); }
+.ld246-tags { font-size: 11.5px; color: var(--primary); }
+@media (max-width: 900px) { .ld246-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px) { .ld246-grid { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) {
+  .ld246-card, .ld246-card:hover { transform: none; transition: none; }
 }
 

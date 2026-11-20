@@ -361,6 +361,17 @@
         <button class="btn-ghost" id="loadMore" style="display:none">加载更多</button>
       </div>
 
+      <!-- 站外灵感：链滴 AI 精选（需配置 LD246_TOKEN，未配置时整块 hidden，不占位）。
+           只展示标题 / 作者 / 热度 + 原文链接，明确标注来源，新窗口 + nofollow，不转载正文。 -->
+      <section class="ld246-section" id="ld246Section" hidden>
+        <div class="section-head ld246-head">
+          <h2><i class="ico" data-ico="sparkle"></i> 站外灵感 · 链滴 AI 精选</h2>
+          <a class="ld246-more" href="https://ld246.com/tag/AI" target="_blank" rel="noopener nofollow">去链滴看更多 ›</a>
+        </div>
+        <p class="ld246-note">以下内容来自链滴社区，仅作延伸阅读推荐，标题与链接指向原文，本站不转载正文。</p>
+        <div class="ld246-grid" id="ld246Grid"></div>
+      </section>
+
       <!-- 服务端直出的「按分类逛 / 最新收录」区块：真人与爬虫同一份 HTML。
            放在 #homeView 内，SPA 切到别的视图时会随 homeView 一起隐藏，不会闪现在首屏顶部。 -->
       <!--SEO_HOME-->
@@ -371,7 +382,7 @@
          样式类名统一 cr- 前缀，避开主站 .card/.cover/.grid 等。数据走公开 /api/creators。 -->
     <section id="creatorsView" style="display:none">
       <header class="cr-hd">
-        <h1>造梦者书架</h1>
+        <h2>造梦者书架</h2>
         <p class="cr-sub">每一件作品背后，都是一个在认真造梦的人</p>
         <div class="cr-tally" id="crTally"></div>
         <div class="cr-tools">
@@ -422,12 +433,12 @@
         <div class="dd-filter" id="rankPeriodDD">
           <button type="button" class="dd-btn" id="rankPeriodBtn">
             <span class="dd-ico"><i class="ico" data-ico="calendar"></i></span><span class="dd-label">周期</span>
-            <b class="dd-value" id="rankPeriodValue">新作周榜</b><span class="dd-caret">▾</span>
+            <b class="dd-value" id="rankPeriodValue">新作7日榜</b><span class="dd-caret">▾</span>
           </button>
           <div class="dd-panel" id="rankPeriodPanel">
             <button type="button" class="dd-opt" data-period="peak"><span class="dd-opt-label"><i class="ico" data-ico="bolt"></i> 高光榜</span><small class="dd-opt-desc">每件作品最亮的 7 天，高光时刻永久留档</small></button>
-            <button type="button" class="dd-opt active" data-period="week"><span class="dd-opt-label"><i class="ico" data-ico="week"></i> 新作周榜</span><small class="dd-opt-desc">只排近 7 天上架的新作品</small></button>
-            <button type="button" class="dd-opt" data-period="month"><span class="dd-opt-label"><i class="ico" data-ico="month"></i> 新作月榜</span><small class="dd-opt-desc">只排近 30 天上架的新作品</small></button>
+            <button type="button" class="dd-opt active" data-period="week"><span class="dd-opt-label"><i class="ico" data-ico="week"></i> 新作7日榜</span><small class="dd-opt-desc">只排近 7 天上架的新作品</small></button>
+            <button type="button" class="dd-opt" data-period="month"><span class="dd-opt-label"><i class="ico" data-ico="month"></i> 新作30日榜</span><small class="dd-opt-desc">只排近 30 天上架的新作品</small></button>
             <button type="button" class="dd-opt" data-period="all"><span class="dd-opt-label"><i class="ico" data-ico="all"></i> 总榜</span><small class="dd-opt-desc">全部作品，按上架以来的累计成绩</small></button>
           </div>
         </div>
@@ -963,7 +974,7 @@
         <div class="cat-main">
           <div class="cat-head">
             <div>
-              <h1 id="discPcTitle">全部作品</h1>
+              <h2 id="discPcTitle">全部作品</h2>
               <p id="discPcDesc">按用途逛一逛，找到刚好能帮上忙的那一个</p>
             </div>
           </div>
@@ -1181,6 +1192,13 @@
         <button class="close-btn" id="closeUpload">✕</button>
       </div>
       <p class="form-hint" id="formHint"></p>
+      <!-- 站长编辑：这件作品的认领暗号（明文只在 ?edit=1 路径下发），只读展示方便站长核对 / 转发给作者 -->
+      <div class="admin-claim-code-bar" id="adminClaimCodeBar" style="display:none">
+        <span class="accb-label">认领暗号</span>
+        <code class="accb-code" id="adminClaimCodeText"></code>
+        <button type="button" class="accb-copy" id="adminClaimCodeCopy" title="复制暗号发给作者">复制</button>
+        <span class="accb-bonus" id="adminClaimCodeBonus" style="display:none"></span>
+      </div>
       <p class="form-hint howto-hint" id="howtoHint">第一次投稿？<a href="/howto" target="_blank">看投稿指南 →</a>，2 分钟搞懂每一栏怎么填<button type="button" class="howto-hint-close" id="howtoHintClose">不再提示</button></p>
       <form id="uploadForm" novalidate>
         <!-- 草稿条：正在续填某份草稿时出现。只有一份草稿时不会弹选择层，
@@ -1529,7 +1547,7 @@
     </div>
   </div>
 
-  <!-- 数据与推荐：我的作品浏览/点赞/收藏/评论 + 近 14 天趋势 + 推荐入口 -->
+  <!-- 数据与推荐：我的作品浏览/点赞/收藏/评论 + 可切范围的浏览趋势 + 推荐入口 -->
   <div class="modal-mask" id="statsModal" style="display:none">
     <div class="modal modal-stats">
       <div class="modal-head">
@@ -2326,7 +2344,7 @@
         <details class="rr-qa">
           <summary><i class="ico" data-ico="bolt"></i> 新作加成是什么</summary>
           <div class="rr-a">
-            <p>总榜按综合排序时，上架 14 天内的作品会乘一个排序系数：<b>首 7 天 ×1.3、8–14 天 ×1.15，之后恢复 1</b>。老作品攒分的时间天然更长，不加这层，总榜前排只会被最早的作品长期占着，新来的做得再好也得从榜尾爬起。加成<b>只影响排序，不改任何数字</b>：行上显示的综合分永远是真实的累计分，带「新作加成中」角标的行说明它排序时占了这层便宜。系数是乘法不是固定加分——零互动的作品乘完还是排不上去，被放大的是真实互动，认真攒口碑的作品不吃亏。周榜、月榜不需要它：那两榜本身就是同期作品同场竞技。</p>
+            <p>总榜按综合排序时，上架 14 天内的作品会乘一个排序系数：<b>首 7 天 ×1.3、8–14 天 ×1.15，之后恢复 1</b>。老作品攒分的时间天然更长，不加这层，总榜前排只会被最早的作品长期占着，新来的做得再好也得从榜尾爬起。加成<b>只影响排序，不改任何数字</b>：行上显示的综合分永远是真实的累计分，带「新作加成中」角标的行说明它排序时占了这层便宜。系数是乘法不是固定加分——零互动的作品乘完还是排不上去，被放大的是真实互动，认真攒口碑的作品不吃亏。新作7日榜、新作30日榜不需要它：那两榜本身就是同期作品同场竞技。</p>
           </div>
         </details>
         <details class="rr-qa">
@@ -2378,7 +2396,7 @@
         <details class="rr-qa">
           <summary>排序与周期怎么定</summary>
           <div class="rr-a">
-            <p>列表按所选维度降序排列，当前维度的数字会加粗显示。周期决定哪些作品能上榜：周榜＝近 7 天上架、月榜＝近 30 天上架、总榜＝全部作品；综合分、点赞、收藏、灯火、打赏人数用的是上架以来的累计数，访问次数与访问人数按所选周期统计（访客分也用同一周期的访客人数）。想看全站所有作品的长期热度，选「总榜」。</p>
+            <p>列表按所选维度降序排列，当前维度的数字会加粗显示。周期决定哪些作品能上榜：新作7日榜＝近 7 天上架、新作30日榜＝近 30 天上架、总榜＝全部作品（「近 7 / 30 天」是滚动窗口，不是自然周 / 自然月；星梦期刊才按自然周 / 月出一期）；综合分、点赞、收藏、灯火、打赏人数用的是上架以来的累计数，访问次数与访问人数按所选周期统计（访客分也用同一周期的访客人数）。想看全站所有作品的长期热度，选「总榜」。</p>
           </div>
         </details>
       </div>

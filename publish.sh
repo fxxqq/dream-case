@@ -66,13 +66,20 @@ PER_FILE_HUNKS=6   # 详版里单个文件最多展开几处改动，其余折�
 PLAN_TOTAL=0
 
 # 按显示宽度截断（中文算 2 列）
+# LC_ALL=C 按字节处理，避开 UTF-8 locale 下逐字节 substr 中文触发的 towc multibyte failure（2026-11-20 踩）。
+# 预建 256 字节→数值表判断 UTF-8 首字节：ASCII 计 1 列，汉字等首字节计 2 列并跳过 2/3 个续字节。
 wcut() { # $1=最大宽度 $2=文本
-  awk -v s="$2" -v maxw="$1" 'BEGIN {
-    out = ""; w = 0
-    for (i = 1; i <= length(s); i++) {
-      c = substr(s, i, 1); cw = (c ~ /^[ -~]$/) ? 1 : 2
+  LC_ALL=C awk -v s="$2" -v maxw="$1" 'BEGIN {
+    for (n = 0; n < 256; n++) ord[sprintf("%c", n)] = n
+    out = ""; w = 0; i = 1; len = length(s)
+    while (i <= len) {
+      b = ord[substr(s, i, 1)]
+      step = 1; cw = 1
+      if (b >= 240)      { step = 4; cw = 2 }   # 4 字节（emoji 等）
+      else if (b >= 224) { step = 3; cw = 2 }   # 3 字节（常用汉字）
+      else if (b >= 192) { step = 2; cw = 2 }   # 2 字节
       if (w + cw > maxw) break
-      out = out c; w += cw
+      out = out substr(s, i, step); w += cw; i += step
     }
     printf "%s", out
   }'
@@ -84,7 +91,8 @@ has_wide() { LC_ALL=C grep -q '[^ -~]' <<< "$1"; }
 # 每个文件挑一句「功能摘要」：优先带中文的那条 hunk 摘要，都没有就取第一条
 file_summary() { # $1=文件名
   local i best=""
-  for i in ${HIDX["$1"]:-}; do
+  for i in "${!H_FILE[@]}"; do
+    [ "${H_FILE[$i]}" = "$1" ] || continue
     [[ -z "$best" ]] && best="${H_TXT[$i]}"
     if has_wide "${H_TXT[$i]}"; then printf '%s' "${H_TXT[$i]}"; return; fi
   done
@@ -100,33 +108,25 @@ render_plan() {
   printf '\n  \033[1m待发改动\033[0m \033[2m%s 个文件 · %s 处（本地有、线上还没有）\033[0m\n\n' \
     "${#P_FILE[@]}" "$PLAN_TOTAL"
 
-  local -A FNO=() NHOF=() AOF=() DOF=() HIDX=()
-  for i in "${!P_FILE[@]}"; do
-    f="${P_FILE[$i]}"
-    FNO["$f"]=$((i+1)); NHOF["$f"]="${P_NH[$i]}"
-    AOF["$f"]="${P_ADD[$i]}"; DOF["$f"]="${P_DEL[$i]}"
-  done
-  for i in "${!H_FILE[@]}"; do
-    f="${H_FILE[$i]}"
-    HIDX["$f"]+="$i "
-  done
-
+  # bash3 没有关联数组（local -A 是 bash4）：文件编号直接用 P_FILE 的下标 i+1，
+  # 详版按文件分组线性扫 H_FILE（文件与 hunk 都是个位数，遍历成本可忽略）。
   if ((mode)); then
-    # 详版：清单以「改了什么」为主，一条改动一行，文件名只在每组开头出现一次当分组标签
-    local -A RCNT=()
-    for i in "${!H_FILE[@]}"; do
-      f="${H_FILE[$i]}"
-      RCNT["$f"]=$(( ${RCNT["$f"]:-0} + 1 ))
-      if [ "${RCNT[$f]}" -eq 1 ]; then
-        printf '   \033[36m%s\033[0m  \033[2m%-18s %2s 处  +%s -%s\033[0m\n' \
-          "${FNO[$f]:--}" "${f#frontend/}" "${NHOF[$f]:-0}" "${AOF[$f]:-0}" "${DOF[$f]:-0}"
-      fi
-      if [ "${RCNT[$f]}" -le "$PER_FILE_HUNKS" ]; then
-        printf '        \033[2m%-8s\033[0m %s\n' "+${H_ADD[$i]} -${H_DEL[$i]}" "${H_TXT[$i]}"
-      fi
-      if [ "${RCNT[$f]}" -eq "${NHOF[$f]:-0}" ] && [ "${RCNT[$f]}" -gt "$PER_FILE_HUNKS" ]; then
-        printf '      \033[2m… 另 %d 处（m → 1 看完整差异，或 s%s 逐个挑）\033[0m\n' \
-          "$(( ${RCNT[$f]} - PER_FILE_HUNKS ))" "${FNO[$f]}"
+    local fi hi fcnt
+    for fi in "${!P_FILE[@]}"; do
+      f="${P_FILE[$fi]}"
+      printf '   \033[36m%s\033[0m  \033[2m%-18s %2s 处  +%s -%s\033[0m\n' \
+        "$((fi+1))" "${f#frontend/}" "${P_NH[$fi]}" "${P_ADD[$fi]}" "${P_DEL[$fi]}"
+      fcnt=0
+      for hi in "${!H_FILE[@]}"; do
+        [ "${H_FILE[$hi]}" = "$f" ] || continue
+        fcnt=$((fcnt+1))
+        if [ "$fcnt" -le "$PER_FILE_HUNKS" ]; then
+          printf '        \033[2m%-8s\033[0m %s\n' "+${H_ADD[$hi]} -${H_DEL[$hi]}" "${H_TXT[$hi]}"
+        fi
+      done
+      if [ "$fcnt" -gt "$PER_FILE_HUNKS" ]; then
+        printf '      \033[2m… 另 %d 处（m → 1 看完整差异，或 s%d 逐个挑）\033[0m\n' \
+          "$((fcnt - PER_FILE_HUNKS))" "$((fi+1))"
       fi
     done
   else
