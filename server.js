@@ -122,7 +122,17 @@ const sms = createSmsService({
 // ---------- 人机验证（滑块拼图） ----------
 // 发码接口对未登录开放，没有这道闸，频控只是「限损」：别人换号换 IP 照样能把余额刷空。
 // 细节与强度边界见 captcha.js 头部注释。
-const captcha = createCaptchaService({ log: (kind, extra) => secLog(kind, null, extra) });
+// 这里用 try 包一层：captcha.js 是后加的新文件，若只单独发 server.js（deploy-patch 支持按文件发），
+// 直接 require 会让整个进程 MODULE_NOT_FOUND 起不来——一个短信功能把全站带走不值得。
+// 缺模块时不是「悄悄放行」，而是让发码接口明确拒绝并报错：宁可注册暂时发不出码（人立刻会发现），
+// 也不能无声地退回到没有滑块的状态（那才是真的被刷）。
+let captcha = null;
+try {
+  const { createCaptchaService } = require('./captcha');
+  captcha = createCaptchaService({ log: (kind, extra) => secLog(kind, null, extra) });
+} catch (e) {
+  console.error('[captcha] captcha.js 缺失，发码接口将拒绝服务：', e.message);
+}
 
 // 什么时候必须过滑块：通道真开着才强制。本地降级模式（没配密钥）不强制，
 // 否则开发时每发一次码都得拖一次拼图；要连本地也测，起服务时加 CAPTCHA_FORCE=1。
@@ -7612,6 +7622,7 @@ const NAME_RE = /^[\w\u4e00-\u9fa5·]{2,20}$/;
 // 两个接口都不需要登录（注册页就得用），所以只按 IP 限速降温，真正的闸是 captcha 内部的失败锁定。
 // 响应一律 no-store：题是一次性的，浏览器缓存住了会让用户拖一张过期的题。
 app.get('/api/captcha/challenge', (req, res) => {
+  if (!captcha) return res.status(503).json({ error: '验证服务不可用，请联系管理员', code: 'CAPTCHA_UNAVAILABLE' });
   const ip = clientIp(req);
   if (!rateLimit('cap:' + ip, 60, 3600e3)) {
     return res.status(429).json({ error: '请求过于频繁，请稍后再试' });
@@ -7621,6 +7632,7 @@ app.get('/api/captcha/challenge', (req, res) => {
 });
 
 app.post('/api/captcha/verify', (req, res) => {
+  if (!captcha) return res.status(503).json({ error: '验证服务不可用，请联系管理员', code: 'CAPTCHA_UNAVAILABLE' });
   const ip = clientIp(req);
   if (!rateLimit('capv:' + ip, 40, 3600e3)) {
     return res.status(429).json({ error: '请求过于频繁，请稍后再试' });
@@ -7641,9 +7653,15 @@ app.post('/api/sms/send', async (req, res) => {
   }
   // 票一次性、绑 IP、90 秒有效（见 captcha.js）。这里消费掉，一张票只换一条短信——
   // 不消费的话，过一次滑块就能拿同一张票发无数条，前面所有频控都白设。
-  if (captchaRequired() && !captcha.consume(ip, req.body && req.body.ticket)) {
-    secLog('sms_send', req, secCtx(req, { ok: false, d: 'NEED_CAPTCHA' }));
-    return res.status(403).json({ error: '请先完成滑块验证', code: 'NEED_CAPTCHA' });
+  if (captchaRequired()) {
+    if (!captcha) {
+      secLog('sms_send', req, secCtx(req, { ok: false, d: 'CAPTCHA_UNAVAILABLE' }));
+      return res.status(503).json({ error: '验证服务暂不可用，请稍后再试', code: 'CAPTCHA_UNAVAILABLE' });
+    }
+    if (!captcha.consume(ip, req.body && req.body.ticket)) {
+      secLog('sms_send', req, secCtx(req, { ok: false, d: 'NEED_CAPTCHA' }));
+      return res.status(403).json({ error: '请先完成滑块验证', code: 'NEED_CAPTCHA' });
+    }
   }
   const phone = String((req.body && req.body.phone) || '');
   const r = await sms.send(phone, ip);
