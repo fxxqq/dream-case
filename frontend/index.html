@@ -198,7 +198,7 @@
         <h1>每一个用心的作品，<br class="hero-br" />都值得<span class="grad">被更多人看见</span></h1>
         <!-- 手机端才显示的一行定位：大标题在窄屏是藏掉的，没有这行新访客不知道这是什么站 -->
         <p class="hero-tagline"><b>大家的作品</b> · 网站 / 小程序 / 智能体 / 软件，每周更新，点开就能直接用，<button type="button" class="hero-link hero-link-mini hero-mini-open" title="点开看本站小程序码，微信扫码直达">小程序版更顺手 ›</button></p>
-        <p class="hero-sub">收录独立开发者、创作者自制的网站、小程序、智能体、软件、游戏，<br class="hero-sub-br" />你可以<button type="button" class="hero-link" id="heroSubmitLink" title="提交你的作品">提交作品</button>、<a class="hero-link" href="/bar" title="去造梦酒馆投递灵感">投递灵感</a>，也可以<button type="button" class="hero-link" id="heroLightLink" title="登录后点亮灯火，把喜欢的作品送上星梦榜">点亮灯火</button>，让好作品在<a class="hero-link" href="/rank" data-nav title="去星梦榜看看灯火最多的作品">星梦榜</a>上脱颖而出。没灵感的时候，去翻翻 GitHub 上的<a class="hero-link" href="/open" title="站外收录的开源项目，只放外链">开源好物</a>。</p>
+        <p class="hero-sub">收录独立开发者、创作者自制的网站、小程序、智能体、软件、游戏，<br class="hero-sub-br" />你可以<button type="button" class="hero-link hero-link-submit" id="heroSubmitLink" title="提交你的作品">提交作品</button>、<a class="hero-link" href="/bar" title="去造梦酒馆投递灵感">投递灵感</a>，也可以<button type="button" class="hero-link" id="heroLightLink" title="登录后点亮灯火，把喜欢的作品送上星梦榜">点亮灯火</button>，让好作品在<a class="hero-link" href="/rank" data-nav title="去星梦榜看看灯火最多的作品">星梦榜</a>上脱颖而出。没灵感的时候，去翻翻 GitHub 上的<a class="hero-link" href="/open" title="站外收录的开源项目，只放外链">开源好物</a>。</p>
         <!-- 手机端常驻搜索胶囊（对齐小程序首页）：点了打开头部搜索覆盖层，不占头部一行 -->
         <!-- 原来的「已收录 X 件作品」统计行已删：与列表头「共 X 件」重复 -->
         <button type="button" class="hero-search" id="heroSearchBtn" aria-label="搜索"><i class="ico" data-ico="search"></i><span>搜作品、作者、关键词</span></button>
@@ -810,7 +810,7 @@
               <span class="cc-ico" aria-hidden="true"><i class="ico" data-ico="chart"></i></span>
               <div class="cc-title">
                 <b>作品数据</b>
-                <span>作品的浏览、点赞、收藏与评论都在这里</span>
+                <span>浏览、点赞、收藏、评论都在这里</span>
               </div>
             </div>
             <button type="button" class="cc-btn" id="ccEnterBtn">查看作品数据<i class="ico" data-ico="arrowout"></i></button>
@@ -1289,7 +1289,7 @@
           </span></label>
         <input type="text" name="wname" placeholder="好记的名字，最长 20（汉字算 2），如：星空邮局" />
         <label>一句话介绍 *（20 字以内）</label>
-        <input type="text" name="wtag" maxlength="20" placeholder="它帮谁做什么，20 字内，如：把心事寄给陌生人" />
+        <input type="text" name="wtag" maxlength="20" placeholder="它帮谁做什么，别重复作品名，20 字内，如：把心事寄给陌生人" />
         <!-- 搜索和「找找」打分时这句话在标题档（权重最高的一档），但作者不知道——用一句提示点破 -->
         <p class="form-hint">别人记不住名字时，全靠这句话找到你：写清「帮谁做什么」（动词 + 对象），别写口号。</p>
 
@@ -3609,7 +3609,7 @@
           <li>长按（或截图保存）这张码，也能发给朋友让他们直接进</li>
         </ol>
       </div>
-      <p class="wxmini-note"><b>网站账号能接着用</b>：小程序里点「我的 → 绑定已有账号」，填一遍网站账号密码，收藏、点赞、灯火和投稿就都归到同一份，以后微信进小程序免密登录。</p>
+      <p class="wxmini-note"><b>自己注册的才是主账号</b>：微信 wx 开头那串是自动建的辅助号。小程序里点「我的 → 绑定已有账号」，填一遍网站账号密码，收藏、点赞、灯火和投稿就都并回主账号，以后微信进小程序免密登录。</p>
       <button type="button" class="mini-link" id="miniToInstall">想在手机桌面装网页版橱窗（PWA）？看安装指引 ›</button>
       <button type="button" class="btn-primary btn-block" id="miniKnow">知道了</button>
     </div>
@@ -3788,12 +3788,10 @@
        不再为首屏多发两个请求。没有直出数据时这里什么都不输出，app.js 照旧走接口。 -->
   <!--SSR_BOOT-->
   <script>if (window.Icons) Icons.hydrate();</script>
-  <script src="/vendor/qrcode.js"></script>
-  <script src="/qr-guard.js"></script>
+  <!-- 首屏用不到的四个脚本交给 app.js 按需加载（点分享卡 / 发短信验证码 / 选投稿二维码 / 开安装弹窗时才拉）：
+       qrcode、qr-guard、sharecard、captcha。原来它们和 app.js 一起同步下载，白占首屏带宽和解析时间。
+       md.js 留在同步列表：投稿简介的文案生成会直接用 MiniMd.plain，拿不到就退化成原始 markdown 文本。 -->
   <script src="/md.js"></script>
-  <script src="/sharecard.js"></script>
-  <!-- 人机验证：发码前过滑块。必须排在 app.js 前面——app.js 顶层就会去摸 window.ZmCaptcha -->
-  <script src="/captcha.js"></script>
   <!-- app.js 保持挂在 body 末尾（2026-11-15 试过挪到 head + defer：解析期间就开始下，
        实测 Fast3G 下跟阻塞的 style.css 抢带宽，FCP 反而晚 0.4~2.7s，已回退）。 -->
   <script src="/app.js"></script>

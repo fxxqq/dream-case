@@ -4,7 +4,7 @@
 
 ![Node.js](https://img.shields.io/badge/node.js-18%2B-339933) ![Express](https://img.shields.io/badge/express-4-black) ![Frontend](https://img.shields.io/badge/frontend-zero%20build-f7df1e) ![License](https://img.shields.io/badge/license-MIT-blue)
 
-**简体中文（主文档）：[README.md](README.md)** · Live demo: <https://idea.v5pc.com> · License: MIT
+**简体中文（主文档）：[README.md](README.md)** · Live demo: <https://zm94.com> · License: MIT
 
 An open-source showcase and discovery platform for AI-built products: websites, WeChat mini programs, mobile apps, agents, desktop tools and browser extensions. Visitors browse, like, bookmark, comment and tip. Authors earn **Lanterns** (灯火, the in-site points currency) from their work and spend them to give their own submissions more exposure.
 

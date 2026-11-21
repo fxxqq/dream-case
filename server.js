@@ -2332,6 +2332,12 @@ function checkPassword(user, password) {
   const a = Buffer.from(h), b = Buffer.from(user.pass);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
+// 微信扫码/小程序无感登录自动建的号，账号名是 wx<openid 尾部>（老数据也可能是 wx_ 前缀）。
+// 站长口径：这是「辅助账号」，用户自己注册的才是「主账号」。只按账号名前缀认，
+// 不碰 s/c 那些统计，也不改用户数据；合并进主账号后这个号会被删掉，自然不计。
+function isWxAuxUser(u) {
+  return /^wx/i.test(String((u && u.username) || ''));
+}
 // ================= 展示名（昵称） =================
 // 账号名（username）是身份主键：登录、作品归属、/u/ 作者页、作者徽章都认它。
 // 昵称只影响「显示成什么」，改了不动任何历史数据：
@@ -3653,6 +3659,8 @@ function trackWorkVisit(req, workId, opts) {
   // 只要点进了详情，就把这件作品写进这个人的已看名单，随便逛逛取卡时一并排除。
   // 人键与 behavior 同源；ip: 兜底那种认不出人的，markWanderSeen 内部会跳过。
   markWanderSeen(uvKey, workId);
+  // 口味画像：同一次有效详情点击，顺手学这个人的兴趣。作者本人早在函数开头 return，进不来。
+  recordTaste(uvKey, w);
   scheduleWorkVisitSave();
 }
 
@@ -3988,6 +3996,8 @@ function behaviorClear(personKey) {
     try { fs.writeFileSync(full, keep.length ? keep.join('\n') + '\n' : ''); } catch { /* 写不进去就下次再清 */ }
   }
   if (removed) { behaviorSizeCache.clear(); behaviorStatsCache.clear(); }
+  // 口味画像跟着一起清：这是「忘掉这个人」的操作，不能清了流水却留着偏好继续影响推荐。
+  tasteClear(p);
   return { removed };
 }
 
@@ -4112,6 +4122,22 @@ const EXPO_IP_DEVICES_PER_WORK_DAY = 3;// 单 IP 单作品每天最多计 3 个�
 const EXPO_REPORT_RPH = 240;           // 单 IP 每小时上报请求数（一屏合并一次，正常浏览用不到零头）
 const DISCOVER_RPH = 300;              // 取卡接口限频：取卡本身只写「已看名单」，不碰 n
 
+// 个人口味加权（2026-11-21）：取卡时在等概率抽样上乘两个小系数，都只作用在「发卡顺序」，
+// 不碰作品侧 s/c、榜单、已看名单，关掉 cfg.smart 就退回纯手动加权/纯随机。
+//   兴趣：点开详情时把那件作品的分类/形态/关键词记进这个人的口味画像；取卡时同口味的冷门件优先。
+//         「冷门」按模块内曝光人数 s 判定（本身就是「曝光少」的正确口径），s 大的不吃这份加权，
+//         免得热门件越推越热。半衰期 30 天，口味会随时间淡掉。
+//   质量：逛逛内被点开过的件按平滑 CTR 给一点点加成，让好作品从一堆没数据的件里冒头。
+//         幅度压得比手动 +1 档还小，按比率（c/s）不按绝对数，避免老件靠积累的绝对数一直占便宜。
+const TASTE_HALF_DAYS = 30;            // 口味半衰期：30 天没再点过同类，权重减半
+const TASTE_LABEL_CAP = 40;            // 每类标签最多留 40 个（按权重保留高的）
+const TASTE_COLD_S = 30;               // 模块内曝光 >= 30 人就算「不算曝光少」，不吃兴趣加权
+const TASTE_BOOST = 0.6;               // 兴趣加权最大加成 60%（满匹配 + 最冷门才到顶）
+const TASTE_SAT = 6;                   // 匹配分饱和常数：raw/(raw+6)，要一定点击量才接近满权重
+const CLICK_MIN_S = 8;                 // 平滑 CTR 的样本门槛：模块内曝光不到 8 人不参与质量加权
+const CLICK_BOOST = 0.25;              // 质量加权最大加成 25%（比手动 +1 档的 30% 还克制）
+const CLICK_BASE = 0.12;               // CTR 基线：低于此不加成（(c+1)/(s+6) 的平滑值）
+
 let expoData = (() => {
   const raw = readJSON('expo.json', null);
   const d = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -4124,6 +4150,8 @@ let expoData = (() => {
   if (!d.days || typeof d.days !== 'object') d.days = {};
   if (!d.cfg || typeof d.cfg !== 'object') d.cfg = {};
   d.cfg.on = d.cfg.on === true;
+  // 口味/质量加权总开关：默认开；老数据没有这个字段时按开处理。关掉后取卡退回纯手动加权/纯随机。
+  d.cfg.smart = d.cfg.smart !== false;
   const k = Number(d.cfg.k);
   d.cfg.k = Number.isFinite(k) ? Math.min(DISCOVER_K_MAX, Math.max(0, k)) : 0.3;
   const dks = Object.keys(d.days).sort();
@@ -4181,6 +4209,58 @@ function markWanderSeen(key, wid) {
   ur.ids.push(wid);
   while (ur.ids.length > EXPO_USER_IDS_CAP) ur.ids.shift();
   ur.at = Date.now();
+  scheduleExpoSave();
+}
+// 口味画像（2026-11-21）：点开详情时顺手把那件作品的分类/形态/关键词记进这个人的兴趣档案。
+// 只从「点开详情」学，不从列表曝光学——刷到不算喜欢，点进去才算（和 markWanderSeen 同一时机）。
+// 调用方 trackWorkVisit 已经在入口挡掉了作者本人，这里再用同一套人键正则挡掉 ip: 兜底，
+// 所以「作者自己点 / 认不出人的」都不会进画像；同 IP 的不同人各有各的人键，天然不混。
+// 权重按半衰期衰减：距上次记录越久，旧标签越淡，口味会跟着人变，不会一次点击记一辈子。
+// 只写 users[key].taste，不碰 ids/delivered（去重）和作品侧 s/c（CTR 口径）。
+function recordTaste(key, w) {
+  if (!key || !/^[udv]:[A-Za-z0-9_-]{3,64}$/.test(key)) return;
+  if (!w) return;
+  const cats = catsOf(w), types = typesOf(w), kws = keyWordsOf(w);
+  if (!cats.length && !types.length && !kws.length) return;
+  const ur = expoUserRec(key);
+  let t = ur.taste;
+  if (!t || typeof t !== 'object' || !t.cats || !t.types || !t.kws) {
+    t = ur.taste = { cats: {}, types: {}, kws: {}, at: 0 };
+  }
+  const now = Date.now();
+  // 时间衰减：先按距上次记录的间隔把老标签整体缩小，再叠本次点击。
+  // 间隔极短（连点几件）几乎不衰减；隔了 30 天老标签减半；隔半年基本淡光。
+  if (t.at) {
+    const decay = Math.pow(0.5, Math.max(0, now - t.at) / (TASTE_HALF_DAYS * 86400000));
+    for (const bag of [t.cats, t.types, t.kws]) {
+      for (const k in bag) {
+        const v = (bag[k] || 0) * decay;
+        if (v < 0.05) delete bag[k]; else bag[k] = v;
+      }
+    }
+  }
+  // 分类权重 1.0、形态 0.4、关键词 0.3：分类最能代表口味，形态太粗（Web 谁都有），关键词噪声多。
+  for (const c of cats) t.cats[c] = (t.cats[c] || 0) + 1;
+  for (const y of types) t.types[y] = (t.types[y] || 0) + 0.4;
+  for (const k of kws) t.kws[k] = (t.kws[k] || 0) + 0.3;
+  // 每类标签封顶：只留权重最高的若干个，防一个人乱点把档案撑爆。
+  for (const bag of [t.cats, t.types, t.kws]) {
+    const keys = Object.keys(bag);
+    if (keys.length > TASTE_LABEL_CAP) {
+      keys.sort((a, b) => bag[b] - bag[a]);
+      for (const k of keys.slice(TASTE_LABEL_CAP)) delete bag[k];
+    }
+  }
+  t.at = now;
+  scheduleExpoSave();
+}
+// 清空口味画像：用户主动「清空浏览记录」时一并忘掉，免得嘴上说清了、推荐还偷偷记着偏好。
+// 只删 users[key].taste，不动 ids/delivered（那是「重新推荐一遍」的职责）和作品侧 s/c。
+function tasteClear(key) {
+  if (!key || !/^[udv]:[A-Za-z0-9_-]{3,64}$/.test(key)) return;
+  const ur = expoData.users[key];
+  if (!ur || !ur.taste) return;
+  delete ur.taste;
   scheduleExpoSave();
 }
 // 「发过」名单：发卡即记（不管用户有没有真看），只服务于左计数与去重。
@@ -4334,15 +4414,49 @@ function strSeed32(str) {
   return (h ^= h >>> 16) >>> 0;
 }
 
+// 取卡权重（2026-11-21）：在后台手动加权之上叠两个小系数，都只改变「被抽中的概率」，
+// 不写回作品侧 s/c、不改已看名单、不动榜单——和手动加权同一立场，纯发卡顺序。
+//   兴趣：这个人的口味画像命中的分类/形态/关键词越多、作品曝光越少，加成越大。
+//         s >= TASTE_COLD_S（不算「曝光少」）就完全不吃这份加权，专门帮冷门件找到对的人。
+//   质量：逛逛内平滑 CTR = (点击+1)/(曝光+6)，过了基线才加一点点；按比率不按绝对数，
+//         曝光大的作品 CTR 会被自然稀释，不会因为历史积累一直霸位。
+// 概率下限仍钳在 0.1；三个系数都是乘上去的，没有画像、没手动加权时 weight=1，退化成纯洗牌。
+function discoverWeightOf(w, k, taste) {
+  const lv = expoManualLv(w.id);
+  let weight = Math.max(0.1, 1 + k * lv);
+  if (!taste) return weight;
+  const rec = expoData.works[w.id];
+  const s = rec && Array.isArray(rec.s) ? rec.s.length : 0;
+  const c = rec && Array.isArray(rec.c) ? rec.c.length : 0;
+
+  // 兴趣加权：只给「曝光少」的件。raw = 命中的分类/形态/关键词加权和，
+  // 经 raw/(raw+SAT) 饱和到 (0,1)，再乘冷门度，最多 +TASTE_BOOST。
+  if (s < TASTE_COLD_S) {
+    let raw = 0;
+    for (const x of catsOf(w)) raw += (taste.cats[x] || 0);
+    for (const x of typesOf(w)) raw += (taste.types[x] || 0);
+    for (const x of keyWordsOf(w)) raw += (taste.kws[x] || 0);
+    if (raw > 0) {
+      const cold = 1 - s / TASTE_COLD_S;
+      const sat = raw / (raw + TASTE_SAT);
+      weight *= 1 + TASTE_BOOST * cold * sat;
+    }
+  }
+  // 质量加权：样本够（s>=门槛）且 CTR 过基线才加，幅度封顶 CLICK_BOOST。
+  if (s >= CLICK_MIN_S) {
+    const ctr = (c + 1) / (s + 6);
+    if (ctr > CLICK_BASE) {
+      weight *= 1 + CLICK_BOOST * Math.min(1, (ctr - CLICK_BASE) / (1 - CLICK_BASE));
+    }
+  }
+  return weight;
+}
 // 全池抽样（2026-11-15 起）：Efraimidis–Spirakis，key = rand^(1/w)，key 大者胜，无放回一次出 take 张。
-// 唯一的权重来源是后台手动加权 lv∈[-2,+2]：w = max(0.1, 1 + k·lv)。没有任何手动加权时所有
-// w 都等于 1，退化成纯洗牌——和「每件作品概率相等」完全一致，不用分两条路径。
-// 概率下限钳在 0.1：−2 档配合大 k 也不能把一件作品完全抽不到，留个兜底。
-function discoverManualSample(list, take, k) {
+// taste 为 null 时权重只来自手动加权（或纯洗牌）；有画像时叠兴趣/质量两个小系数。
+function discoverManualSample(list, take, k, taste) {
   return list
     .map(w => {
-      const lv = expoManualLv(w.id);
-      const weight = Math.max(0.1, 1 + k * lv);
+      const weight = discoverWeightOf(w, k, taste);
       return { w, key: Math.pow(Math.random() + 1e-12, 1 / weight) };
     })
     .sort((a, b) => b.key - a.key)
@@ -4415,10 +4529,11 @@ function discoverPick(req, key, size, exclude) {
   const poolOpen = skip.size ? pool.filter(w => !skip.has(w.id)) : pool;
   if (!poolOpen.length) return { state: 'drained', list: [], revisit: [], total: all.length, left: unseenTotal };
 
-  // 全池等概率抽样：k 只放大后台手动加权档位（见 discoverManualSample）。
-  // 没有任何手动加权时就是纯洗牌，每件作品概率相等（2026-11-15 口径）。
+  // 全池抽样：k 放大后台手动加权档位；有口味画像时再叠兴趣/质量两个小系数（见 discoverWeightOf）。
+  // 三种系数都没有时就是纯洗牌，每件作品概率相等（2026-11-15 口径，cfg.smart=false 时回到这条）。
   const k = Number(expoData.cfg.k) || 0;
-  const out = discoverManualSample(poolOpen, Math.min(size, poolOpen.length), k);
+  const taste = expoData.cfg.smart !== false && seenRec && seenRec.taste ? seenRec.taste : null;
+  const out = discoverManualSample(poolOpen, Math.min(size, poolOpen.length), k, taste);
   const revisit = [];
 
   // 有序补齐：填不满一屏才从全站随机混填，打「重温」角标（2026-11-11 起池子已含没看过的
@@ -4512,6 +4627,7 @@ function expoOverview() {
   return {
     cfg: {
       envEnabled: DISCOVER_ENABLED, on: expoData.cfg.on === true, k: Number(expoData.cfg.k) || 0,
+      smart: expoData.cfg.smart !== false,
       kMax: DISCOVER_K_MAX, sCap: EXPO_S_CAP, userTtlDays: EXPO_USER_TTL_DAYS
     },
     totals: {
@@ -6831,6 +6947,8 @@ app.post('/api/admin/discover', requireAdmin, (req, res) => {
   // 开关与加权强度：k 只放大手动加权档位，k=0 时连手动加权也不生效（完全纯随机），没有第二套代码路径
   if (body.action === 'cfg') {
     if (body.on !== undefined) expoData.cfg.on = body.on === true;
+    // 口味/质量加权总开关：关掉后取卡只认手动加权档位，退回纯随机（2026-11-21）。
+    if (body.smart !== undefined) expoData.cfg.smart = body.smart === true;
     if (body.k !== undefined) {
       const k = Number(body.k);
       if (!Number.isFinite(k) || k < 0 || k > DISCOVER_K_MAX) {
@@ -6839,7 +6957,7 @@ app.post('/api/admin/discover', requireAdmin, (req, res) => {
       expoData.cfg.k = k;
     }
     saveExpoNow();
-    return res.json({ ok: true, cfg: { on: expoData.cfg.on === true, k: expoData.cfg.k } });
+    return res.json({ ok: true, cfg: { on: expoData.cfg.on === true, k: expoData.cfg.k, smart: expoData.cfg.smart !== false } });
   }
   // 手动加权：在等概率随机的基础上提高/降低被抽中的机会（w = 1 + k·lv），lv=0 即撤销；默认 14 天自动失效
   // 2026-11-13 增「不推荐」：lv=-9 = 从随便逛逛彻底移出（推广/导流件用），days=0 表示长期不失效
@@ -9807,7 +9925,8 @@ const PROFILE_LINKS_HINT = PROFILE_LINK_SITES.map(s => s.label).join(' / ');
 const HERO_SKINS = [
   'meteor', 'dots', 'galaxy', 'aurora', 'trail', 'deep',        // 星空
   'dawn', 'rain', 'neon', 'ocean', 'paper', 'dune',              // 别样（非星空）
-  'mist', 'candy', 'film', 'snow', 'sakura', 'window', 'vinyl', 'grid'  // 质感
+  'mist', 'candy', 'film', 'snow', 'sakura', 'window', 'vinyl', 'grid',  // 质感
+  'lake', 'cloud', 'forest', 'peak', 'ink', 'moon'                       // 静态壁纸（无动画）
 ];
 const HERO_SKIN_DEFAULT = 'meteor';
 // 库里的值可能是旧数据/脏值（手改过 json、删过皮肤），取不到就退回默认
@@ -22121,6 +22240,13 @@ app.get('/api/admin/sms-config', requireAdmin, (req, res) => {
 
 app.post('/api/admin/sms-config', requireAdmin, (req, res) => {
   // 只改额度：不动开关。后台那个数字框单独提交，避免「改个数字顺手把开关也拨了」
+  // 验证码有效期同理：单独一个口，写入 data/sms.json 后 reload() 由 sms-auth 内部处理。
+  if (req.body && req.body.validTime !== undefined) {
+    const r = sms.setValidTime(req.body.validTime);
+    if (!r.ok) return res.status(400).json({ error: r.error });
+    secLog('sms_switch', req, secCtx(req, { ok: true, d: 'validTime:' + r.validTime }));
+    return res.json({ ok: true, validTime: r.validTime });
+  }
   if (req.body && req.body.verifyBonus !== undefined) {
     const r0 = sms.setVerifyBonus(req.body.verifyBonus);
     if (!r0.ok) return res.status(400).json({ error: r0.error });
@@ -22611,29 +22737,41 @@ function regStatsForAdmin(daysRaw) {
   const weekAgo = dateKey(new Date(Date.now() - 6 * 86400e3));
   const monthAgo = dateKey(new Date(Date.now() - 29 * 86400e3));
 
+  // 注册口径（2026-11-21 站长改回）：统计全部账号，wx 开头的微信辅助号也算注册。
+  // n = 全部账号；main / aux 仍分开记，但只给格子 title / 来源卡参考，不当注册口径。
+  // 注册列和注册率分子统一取 n，数和率严格同一个数。
   let usersToday = 0, users7 = 0, users30 = 0;
-  const byDay = new Map();          // 注册日 -> { n, mini, invited, gh, wx }
+  let mainToday = 0, main7 = 0, main30 = 0;
+  let auxToday = 0, aux7 = 0, aux30 = 0;
+  const byDay = new Map();          // 注册日 -> { n, main, aux, mini, miniMain, miniAux, invited, gh, wx }
   const weekday = [0, 0, 0, 0, 0, 0, 0];   // 周一..周日，窗口内
   let miniAll = 0, invitedAll = 0, tempAll = 0, bindWx = 0, bindGh = 0;
+  let mainAll = 0, auxAll = 0;
   const tagCount = new Map();
   const withAt = [];
 
   users.forEach(u => {
     const at = u.createdAt ? new Date(u.createdAt) : null;
     const d = at ? dateKey(at) : '';
-    if (d === today) usersToday += 1;
-    if (d && d >= weekAgo) users7 += 1;
-    if (d && d >= monthAgo) users30 += 1;
+    const aux = isWxAuxUser(u);
+    if (d === today) { usersToday += 1; aux ? auxToday += 1 : mainToday += 1; }
+    if (d && d >= weekAgo) { users7 += 1; aux ? aux7 += 1 : main7 += 1; }
+    if (d && d >= monthAgo) { users30 += 1; aux ? aux30 += 1 : main30 += 1; }
     if (at && (!fromMs || at.getTime() >= fromMs)) {
-      const o = byDay.get(d) || { n: 0, mini: 0, invited: 0, gh: 0, wx: 0 };
+      const o = byDay.get(d) || { n: 0, main: 0, aux: 0, mini: 0, miniMain: 0, miniAux: 0, invited: 0, gh: 0, wx: 0 };
       o.n += 1;
-      if (u.regFrom === 'mini') o.mini += 1;
+      if (aux) o.aux += 1; else o.main += 1;
+      if (u.regFrom === 'mini') {
+        o.mini += 1;
+        if (aux) o.miniAux += 1; else o.miniMain += 1;
+      }
       if (u.invitedBy) o.invited += 1;
       if (u.github) o.gh += 1;
       if (u.wechat) o.wx += 1;
       byDay.set(d, o);
-      weekday[(at.getDay() + 6) % 7] += 1;
+      weekday[(at.getDay() + 6) % 7] += 1;   // 星期分布按全部账号（含微信辅助号，都是真实用户）
     }
+    if (aux) auxAll += 1; else mainAll += 1;
     if (u.regFrom === 'mini') miniAll += 1;
     if (u.invitedBy) invitedAll += 1;
     if (u.tempAcct) tempAll += 1;
@@ -22645,10 +22783,13 @@ function regStatsForAdmin(daysRaw) {
 
   // 窗口起点：days=0 从第一个注册日起；空天也补齐，曲线才连续
   const startDay = days > 0 ? dateKey(new Date(fromMs)) : ([...byDay.keys()].sort()[0] || today);
-  let cum = users.filter(u => {
+  const beforeStart = users.filter(u => {
     const dd = u.createdAt ? dateKey(new Date(u.createdAt)) : '';
     return dd && dd < startDay;
-  }).length;
+  });
+  let cum = beforeStart.length;
+  let cumMain = beforeStart.filter(u => !isWxAuxUser(u)).length;
+  let cumAux = beforeStart.length - cumMain;
 
   // 每日活跃 / 回头率：读 data/user-days.json 台账（touchActive 逐日记）。
   // 回头率 ＝ 当日活跃里「注册早于当天」的用户占比；注册当天就来玩的算「新用户活跃」。
@@ -22723,12 +22864,14 @@ function regStatsForAdmin(daysRaw) {
   const daily = [];
   for (let t = new Date(startDay + 'T00:00:00'); dateKey(t) <= today; t = new Date(t.getTime() + 86400e3)) {
     const k = dateKey(t);
-    const o = byDay.get(k) || { n: 0, mini: 0, invited: 0, gh: 0, wx: 0 };
+    const o = byDay.get(k) || { n: 0, main: 0, aux: 0, mini: 0, miniMain: 0, miniAux: 0, invited: 0, gh: 0, wx: 0 };
     cum += o.n;
+    cumMain += o.main;
+    cumAux += o.aux;
     const a = actOf(k);
     // 账本起点之后没桶的天按「访客 0」补齐（真没记录的天用「—」区分：起点之前才有）
     const vv = visitorDaily[k] || (k >= VISITOR_LEDGER_FROM ? { vis: 0, visNew: 0, visOld: 0, visRet: null, visMini: null, visOldMini: null, visOldWeb: null } : {});
-    daily.push(Object.assign({ d: k, n: o.n, mini: o.mini, invited: o.invited, gh: o.gh, wx: o.wx, cum }, a || {}, vv));
+    daily.push(Object.assign({ d: k, n: o.n, main: o.main, aux: o.aux, mini: o.mini, miniMain: o.miniMain, miniAux: o.miniAux, invited: o.invited, gh: o.gh, wx: o.wx, cum, cumMain, cumAux }, a || {}, vv));
   }
 
   // 近 7 天回头率：窗口最后 7 天里有台账的天加总（老用户活跃 / 总活跃）
@@ -22750,6 +22893,7 @@ function regStatsForAdmin(daysRaw) {
       from: u.regFrom === 'mini' ? '小程序' : '网页',
       invited: u.invitedBy || '',
       temp: !!u.tempAcct,
+      aux: isWxAuxUser(u),
       tags: (Array.isArray(u.tags) ? u.tags : []).join('、'),
       actDay: u.actDay || '',
       gh: (u.github && u.github.login) || '',
@@ -22762,7 +22906,10 @@ function regStatsForAdmin(daysRaw) {
     to: today,
     visFrom: VISITOR_LEDGER_FROM,
     total: users.length,
+    mainAll, auxAll,
     usersToday, users7, users30,
+    mainToday, main7, main30,
+    auxToday, aux7, aux30,
     activeToday: users.filter(u => u.actDay === today).length,
     visToday: vToday ? vToday.vis : null,
     visRetToday: vToday ? vToday.visOld : null,
@@ -26559,6 +26706,7 @@ function buildPointsLedger() {
       username: u.username,
       name: displayNameOf(u.username),
       isOwner: isSiteOwner(u),
+      acctKind: isWxAuxUser(u) ? 'aux' : 'main',   // wx 开头 = 微信自动建的辅助号；自己注册的是主账号
       points: rec.points || 0,
       works: works.filter(w => w.userId === u.id).length,
       checkin: Number(ck.total || 0),

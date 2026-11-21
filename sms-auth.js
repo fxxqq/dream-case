@@ -15,7 +15,7 @@
  * 配置放 data/sms.json（不进仓库）：
  *   { "enabled": true, "accessKeyId": "...", "accessKeySecret": "...",
  *     "signName": "恒创联众", "templateCode": "100001",
- *     "templateParam": "{\"code\":\"##code##\",\"min\":\"##min##\"}", "validTime": 300 }
+ *     "templateParam": "{\"code\":\"##code##\",\"min\":\"##min##\"}", "validTime": 21600 }
  *
  * enabled=false（或配置缺失）时全部降级为「控制台打印验证码」，
  * 本地能把注册、绑定、校验整条链跑通，不需要真实密钥、不产生费用。
@@ -143,6 +143,14 @@ const RULE = {
   alertAt: [0.6, 0.8, 1],
 };
 
+// 验证码有效期（2026-11-21 站长拍板）：默认 6 小时。站点只有实名合规这一处用短信，
+// 站长想省短信费——码在 6 小时内都能用，就不用为了同一个动作反复发。代价是泄露窗口变大，
+// 所以上限就卡在 6 小时，后台也能随时调短。阿里云 ValidTime 单位是秒，没有文档化的上限，
+// 这里自己设上限比让配置失控要好。
+const DEFAULT_VALID_TIME = 6 * 60 * 60;
+const MIN_VALID_TIME = 60;
+const MAX_VALID_TIME = 6 * 60 * 60;
+
 function today() { return new Date().toISOString().slice(0, 10); }
 
 function createSmsService(opts) {
@@ -205,6 +213,31 @@ function createSmsService(opts) {
     return { ok: true, verifyBonus: verifyBonus() };
   }
 
+  // 验证码有效期：发码、短信模板里的分钟数、后台展示都读这一个口径，别各算各的。
+  function validTime() {
+    const n = Number(conf.validTime);
+    if (!Number.isFinite(n) || n < MIN_VALID_TIME || n > MAX_VALID_TIME) return DEFAULT_VALID_TIME;
+    return Math.round(n);
+  }
+  function validTimeText(sec) {
+    const min = Math.max(1, Math.round(Number(sec) / 60));
+    return min >= 60 ? `${Math.round(min / 6) / 10} 小时` : `${min} 分钟`;
+  }
+  function setValidTime(v) {
+    loadConf();                                   // 先读一次，别把后台之外手改的字段覆盖掉
+    const n = Math.round(Number(v));
+    if (!Number.isFinite(n) || n < MIN_VALID_TIME || n > MAX_VALID_TIME) {
+      return { ok: false, error: '验证码有效期需在 1–360 分钟之间' };
+    }
+    conf.validTime = n;
+    try {
+      fs.writeFileSync(confFile, JSON.stringify(conf, null, 2) + '\n', { mode: 0o600 });
+    } catch (e) {
+      return { ok: false, error: '写入 data/sms.json 失败：' + (e.code || e.message) };
+    }
+    return { ok: true, validTime: validTime() };
+  }
+
   // 运行中改开关（后台「实名核验」页调它）。
   // 刻意只保留 enabled 一个开关：它同时决定「发不发真短信」和「要不要强制核验」。
   // 拆成两个的话，「强制核验开着、通道关着」会让注册页收不到码，等于把注册锁死。
@@ -224,7 +257,7 @@ function createSmsService(opts) {
   // 这份 Map 会落盘到 data/sms-rate.json，明文键等于把号码又抄进了另一个文件，
   // users.json 那边的 AES 加密就白做了。
   const phoneKey = (phone) => cipher.hash(String(phone || ''));
-  const byPhone = new Map();   // phoneHash -> { day, n, lastAt, fails, lockUntil, times[] }
+  const byPhone = new Map();   // phoneHash -> { day, n, lastAt, lastSentAt, sentCount, fails, lockUntil, times[] }
   const byIp = new Map();      // ip        -> { day, n, times[] }
   // 全站当日总量。这不是防单个用户，是防「有人用一堆 IP 分摊着刷」——
   // 单 IP/单号的天级限制挡不住代理池，只有总闸门能把一天的损失锁在固定金额内。
@@ -250,7 +283,7 @@ function createSmsService(opts) {
   function phoneBucket(key) {
     const d = today();
     let b = byPhone.get(key);
-    if (!b) { b = { day: d, n: 0, lastAt: 0, fails: 0, lockUntil: 0, times: [] }; byPhone.set(key, b); }
+    if (!b) { b = { day: d, n: 0, lastAt: 0, lastSentAt: 0, sentCount: 0, fails: 0, lockUntil: 0, times: [] }; byPhone.set(key, b); }
     // 跨天只清天级计数与失败次数；lockUntil 不清——原实现跨零点把锁一起解了，
     // 等于给爆破的人一个「等到 00:00 就能继续试」的免费窗口。
     if (b.day !== d) { b.day = d; b.n = 0; b.fails = 0; }
@@ -277,11 +310,13 @@ function createSmsService(opts) {
     const now = Date.now();
     const out = { day: d, globalN: global.day === d ? global.n : 0, phones: {}, ips: {} };
     for (const [k, v] of byPhone) {
-      // 昨天的桶只有在还锁着的时候才值得留（跨天锁要继续生效），其余不写进文件
-      if (v.day !== d && v.lockUntil <= now) continue;
+      // 昨天的桶：锁还没解，或刚发的码还在有效期内（码可以跨天有效），都要留着；其余丢掉
+      const lastSentAt = Number(v.lastSentAt) || 0;
+      if (v.day !== d && v.lockUntil <= now && lastSentAt + MAX_VALID_TIME <= now) continue;
       out.phones[k] = {
         n: v.day === d ? v.n : 0,
-        lastAt: v.lastAt, fails: v.fails, lockUntil: v.lockUntil,
+        lastAt: v.lastAt, lastSentAt, sentCount: Number(v.sentCount) || 0,
+        fails: v.fails, lockUntil: v.lockUntil,
         times: v.times.slice(-12),
       };
     }
@@ -304,19 +339,26 @@ function createSmsService(opts) {
   (function loadRate() {
     try {
       const o = JSON.parse(fs.readFileSync(rateFile, 'utf8')) || {};
-      if (o.day !== today()) return;           // 昨天的文件直接不管，天级本来就从 0 开始
-      global = { day: o.day, n: Number(o.globalN) || 0 };
+      const now = Date.now();
+      const d = today();
+      const sameDay = o.day === d;   // 天级计数跨天归零，但锁和「刚发过码」要接着算
+      global = sameDay ? { day: d, n: Number(o.globalN) || 0 } : { day: d, n: 0 };
       Object.entries(o.phones || {}).forEach(([k, v]) => {
         if (!v) return;
+        const lastSentAt = Number(v.lastSentAt) || 0;
+        const lockUntil = Number(v.lockUntil) || 0;
+        if (!sameDay && lockUntil <= now && lastSentAt + MAX_VALID_TIME <= now) return;
         byPhone.set(k, {
-          day: o.day, n: Number(v.n) || 0, lastAt: Number(v.lastAt) || 0,
-          fails: Number(v.fails) || 0, lockUntil: Number(v.lockUntil) || 0,
-          times: Array.isArray(v.times) ? v.times.filter(Number.isFinite) : [],
+          day: d, n: sameDay ? (Number(v.n) || 0) : 0,
+          lastAt: sameDay ? (Number(v.lastAt) || 0) : 0, lastSentAt,
+          sentCount: Number(v.sentCount) || 0,
+          fails: sameDay ? (Number(v.fails) || 0) : 0, lockUntil,
+          times: sameDay && Array.isArray(v.times) ? v.times.filter(Number.isFinite) : [],
         });
       });
       Object.entries(o.ips || {}).forEach(([k, v]) => {
-        if (!v) return;
-        byIp.set(k, { day: o.day, n: Number(v.n) || 0, times: Array.isArray(v.times) ? v.times.filter(Number.isFinite) : [] });
+        if (!v || !sameDay) return;
+        byIp.set(k, { day: d, n: Number(v.n) || 0, times: Array.isArray(v.times) ? v.times.filter(Number.isFinite) : [] });
       });
     } catch { /* 首次运行或文件损坏：从零开始，不影响发码 */ }
   })();
@@ -395,6 +437,14 @@ function createSmsService(opts) {
     if (pb.lastAt && now - pb.lastAt < RULE.phoneIntervalMs) {
       return limited('PHONE_FAST', '发送太频繁，请稍后再试', Math.ceil((RULE.phoneIntervalMs - (now - pb.lastAt)) / 1000));
     }
+    // 站长 2026-11-21 拍板：旧码还在有效期内允许重发一次，第二次之后才锁到有效期结束。
+    // 只认「真发出去过的码」——调用失败不记，否则一次通道故障就白占一次机会。
+    const vt = validTime();
+    if (pb.lastSentAt && now - pb.lastSentAt >= vt * 1000) pb.sentCount = 0;
+    if (pb.lastSentAt && now - pb.lastSentAt < vt * 1000 && (Number(pb.sentCount) || 0) >= 2) {
+      const wait = Math.ceil((vt * 1000 - (now - pb.lastSentAt)) / 1000);
+      return limited('PHONE_RESEND_LIMIT', `已经重发过一次，${validTimeText(wait)}内不能再次获取，请用刚收到的验证码`, wait);
+    }
     if (countSince(pb.times, now, 3600e3) >= RULE.phonePerHour) {
       return limited('PHONE_HOUR', '该手机号请求过于频繁，请稍后再试');
     }
@@ -431,20 +481,21 @@ function createSmsService(opts) {
     checkAlert();
 
     if (!ready()) {
-      // 降级模式：控制台打码。6 位纯数字，5 分钟有效，与线上口径一致，避免本地测出来的行为和线上不一样。
+      // 降级模式：控制台打码。6 位纯数字，有效期跟线上一个口径（默认 6 小时），避免本地测出来的行为和线上不一样。
       if (mode() === 'misconfigured') {
         return { ok: false, error: '短信通道配置不完整，请联系管理员', code: 'NOT_CONFIGURED' };
       }
       const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
-      localCodes.set(phone, { code, exp: now + (Number(conf.validTime) || 300) * 1000, fails: 0 });
-      console.log(`[sms:local] ${mask(phone)} 验证码 ${code}（5 分钟内有效，未配置通道仅本机可见）`);
+      localCodes.set(phone, { code, exp: now + validTime() * 1000, fails: 0 });
+      console.log(`[sms:local] ${mask(phone)} 验证码 ${code}（${Math.round(validTime() / 60)} 分钟内有效，未配置通道仅本机可见）`);
+      pb.lastSentAt = now; pb.sentCount = (Number(pb.sentCount) || 0) + 1; saveRateSoon();
       return { ok: true, mode: 'local' };
     }
 
     try {
       // 模板参数：##code## 由阿里云替换成它生成的验证码；##min## 由我们按 validTime 换算成分钟，
       // 这样改了有效期不用同步改模板参数，否则短信里写的分钟数是假的。
-      const minutes = Math.max(1, Math.round((Number(conf.validTime) || 300) / 60));
+      const minutes = Math.max(1, Math.round(validTime() / 60));
       const tparam = String(conf.templateParam || '{"code":"##code##","min":"##min##"}')
         .replace(/##min##/g, String(minutes));
       const model = await callApi('SendSmsVerifyCode', {
@@ -455,12 +506,13 @@ function createSmsService(opts) {
         TemplateParam: tparam,
         CodeType: 1,                                  // 纯数字
         CodeLength: Number(conf.codeLength) || 6,      // 默认 4 位太短，6 位
-        ValidTime: Number(conf.validTime) || 300,
+        ValidTime: validTime(),
         DuplicatePolicy: 1,                            // 新码覆盖旧码，避免旧码还能用
         Interval: 60,                                  // 与本地频控对齐
         ReturnVerifyCode: false,                       // 生产绝不开：开了验证码会明文回到响应里
       }, conf);
       log('sms_send', { phone: mask(phone), ip, ok: true, biz: model && model.BizId ? String(model.BizId).slice(0, 40) : '' });
+      pb.lastSentAt = now; pb.sentCount = (Number(pb.sentCount) || 0) + 1; saveRateSoon();
       return { ok: true, mode: 'live' };
     } catch (e) {
       log('sms_send', { phone: mask(phone), ip, ok: false, d: e.code || e.message });
@@ -534,6 +586,7 @@ function createSmsService(opts) {
     check,
     setEnabled,
     setVerifyBonus,
+    setValidTime,
     verifyBonus,
     encPhone: (v) => cipher.enc(v),
     decPhone: (v) => cipher.dec(v),
@@ -550,7 +603,7 @@ function createSmsService(opts) {
         configured: !!(conf.accessKeyId && conf.accessKeySecret && conf.signName && conf.templateCode),
         sign: conf.signName || '',
         template: conf.templateCode || '',
-        validTime: Number(conf.validTime) || 300,
+        validTime: validTime(),
         globalPerDay: gLimit,
         // 今日用量走内存/落盘计数（重启不丢），与后台那个「读安全日志算出来的条数」是同一件事的两种口径：
         // 日志口径是事后取证，这个口径是实时闸门，两个数偶尔差 1~2 条（写日志失败/进程崩溃）属正常。

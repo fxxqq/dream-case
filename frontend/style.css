@@ -24,7 +24,13 @@ html { scrollbar-gutter: stable; }
 
 body {
   font-family: "PingFang SC", "Microsoft YaHei", -apple-system, sans-serif;
-  background: var(--bg);
+  /* 底不是一张纯色：先铺一层几乎看不见的纸纹，再压两团很淡的环境光。
+     全部是静态背景图，滚动时不重绘、不新增合成层，比再加一个 fixed 装饰层省。 */
+  background-color: var(--bg);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E"),
+    radial-gradient(780px 420px at 8% -8%, rgba(112, 102, 226, .07), transparent 70%),
+    radial-gradient(680px 380px at 96% 6%, rgba(216, 128, 202, .05), transparent 72%);
   color: var(--text);
   min-height: 100vh;
   display: flex;
@@ -262,26 +268,35 @@ nav { display: flex; gap: 8px; flex: 1; }
 .aurora i:nth-child(1) {
   width: min(78vw, 500px); aspect-ratio: 1 / 1; left: -6%; top: -28%;
   background: radial-gradient(circle closest-side at 46% 46%,
-    rgba(91, 91, 214, .30) 0%, rgba(91, 91, 214, .13) 48%, rgba(91, 91, 214, 0) 100%);
-  animation: aurA 26s ease-in-out infinite alternate;
+    rgba(91, 91, 214, .27) 0%, rgba(91, 91, 214, .12) 46%, rgba(91, 91, 214, 0) 100%);
+  animation: aurA 34s ease-in-out infinite;
 }
 .aurora i:nth-child(2) {
   width: min(70vw, 460px); aspect-ratio: 1 / 1; right: 0; top: -38%;
-  /* 2026-11-18：峰值 .26 → .21、中段 .11 → .09。它是三团里最艳的一团，又是唯一贴着
-     右上角的那团（箭头指的位置），压两档后标题区不再泛成一片粉，紫蓝两团的层次反而清楚了。 */
+  /* 峰值压在 .19：它是最艳的一团，又是唯一贴右上角的那团。
+     改成 0/50/100 三段往复后，光晕不会再「弹」回起点，像真的在慢慢呼吸。 */
   background: radial-gradient(circle closest-side at 50% 50%,
-    rgba(224, 112, 201, .21) 0%, rgba(224, 112, 201, .09) 50%, rgba(224, 112, 201, 0) 100%);
-  animation: aurB 32s ease-in-out infinite alternate;
+    rgba(224, 112, 201, .19) 0%, rgba(224, 112, 201, .08) 50%, rgba(224, 112, 201, 0) 100%);
+  animation: aurB 41s ease-in-out infinite;
 }
 .aurora i:nth-child(3) {
   width: min(62vw, 420px); aspect-ratio: 1 / 1; left: 30%; top: 14%;
   background: radial-gradient(circle closest-side at 50% 50%,
-    rgba(120, 190, 255, .24) 0%, rgba(120, 190, 255, .10) 50%, rgba(120, 190, 255, 0) 100%);
-  animation: aurC 38s ease-in-out infinite alternate;
+    rgba(120, 190, 255, .21) 0%, rgba(120, 190, 255, .09) 50%, rgba(120, 190, 255, 0) 100%);
+  animation: aurC 47s ease-in-out infinite;
 }
-@keyframes aurA { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(56px, 34px, 0) scale(1.16); } }
-@keyframes aurB { from { transform: translate3d(0, 0, 0) scale(1.06); } to { transform: translate3d(-48px, 44px, 0) scale(.94); } }
-@keyframes aurC { from { transform: translate3d(0, 0, 0) scale(.96); } to { transform: translate3d(40px, -26px, 0) scale(1.1); } }
+@keyframes aurA {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: .72 }
+  50% { transform: translate3d(38px, 24px, 0) scale(1.1); opacity: 1 }
+}
+@keyframes aurB {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.04); opacity: .66 }
+  50% { transform: translate3d(-34px, 30px, 0) scale(.95); opacity: 1 }
+}
+@keyframes aurC {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(.96); opacity: .6 }
+  50% { transform: translate3d(30px, -20px, 0) scale(1.08); opacity: 1 }
+}
 /* 注意必须 !important：每个光球自己的 :nth-child 规则特异性更高，否则这里关不掉 */
 @media (prefers-reduced-motion: reduce) { .aurora i { animation: none !important; } }
 @media (max-width: 640px) {
@@ -420,6 +435,16 @@ nav { display: flex; gap: 8px; flex: 1; }
   transition: background-color .15s, color .15s;
 }
 .hero-link-mini:hover { background: rgba(91, 91, 214, .22); border-bottom-color: transparent; }
+/* 副标题里的「提交作品」：句内胶囊，比旁边的纯文字入口略重一点就够。
+   原先用的实心紫底白字，夹在一行灰字里像突然塞了颗按钮；改成淡紫底紫字，
+   跟「小程序版更顺手」那颗同一路数，扫得到但不抢标题和下面的作品卡。
+   hero 高度是反复调过的，所以只换配色、不换行不改尺寸。 */
+.hero-link-submit {
+  padding: 2px 10px 3px; border-radius: 999px; border-bottom: 0;
+  background: rgba(91, 91, 214, .12); color: var(--primary);
+  transition: background-color .15s, color .15s;
+}
+.hero-link-submit:hover { background: rgba(91, 91, 214, .22); color: var(--primary-dark); border-bottom: 0; }
 .hero-br { display: none; }   /* 移动端才启用：在逗号后手动换行，避免 balance 把词组拆开 */
 @media (prefers-reduced-motion: no-preference) {
   .hero h1, .hero .hero-title, .hero .hero-sub { animation: hero-in .55s ease both; }
@@ -432,6 +457,18 @@ nav { display: flex; gap: 8px; flex: 1; }
 /* 同一标签页刷新不再重播进场动画：head 内联脚本读到 dm_hero_played 标记就给 <html> 加这个类 */
 .no-hero-anim .hero h1, .no-hero-anim .hero .hero-title, .no-hero-anim .hero .hero-sub { animation: none !important; }
 
+/* 页面切换：视图由 route() 加 .dm-view-enter，只在内容层轻轻浮上来。
+   不碰 transform，避免给整页里可能的 fixed 元素造出一个新的包含块。 */
+main > section.dm-view-enter { animation: dmViewIn .34s cubic-bezier(.16, 1, .3, 1) both; }
+@keyframes dmViewIn {
+  from { opacity: 0; translate: 0 8px }
+  to { opacity: 1; translate: 0 0 }
+}
+@media (prefers-reduced-motion: reduce) {
+  main > section.dm-view-enter,
+  .author-hero-band.band-skin.is-swapping { animation: none !important; }
+}
+
 /* ---------- 卡片滚动渐显（2026-11-09） ----------
    列表卡片进入视口时轻轻上浮淡入。四条约束：
      1) 只有 html.rv-on（app.js 判定环境支持才加）时才会先把卡片藏起来 ——
@@ -439,10 +476,13 @@ nav { display: flex; gap: 8px; flex: 1; }
      2) 首屏已在视口内的卡不会被标记 .rv，它们可能是 LCP，不能为动效拖慢首屏；
      3) 用独立的 translate 属性，不用 transform —— .card:hover 已经占了 transform，会打架；
      4) 云枕静音（html.dm-quiet）期间强制显示，别让用户以为内容丢了。 */
-html.rv-on .rv { opacity: 0; translate: 0 18px; }
+html.rv-on .rv { opacity: 0; translate: 0 14px; scale: .992; }
 html.rv-on .rv.in {
-  opacity: 1; translate: 0 0;
-  transition: opacity .48s ease, translate .55s cubic-bezier(.2, .7, .3, 1);
+  opacity: 1; translate: 0 0; scale: 1;
+  transition:
+    opacity .46s ease,
+    translate .62s cubic-bezier(.16, 1, .3, 1),
+    scale .62s cubic-bezier(.16, 1, .3, 1);
   transition-delay: var(--rv-d, 0ms);
 }
 html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transition: none !important; }
@@ -899,11 +939,12 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
 
 /* Modal */
 .modal-mask {
-  position: fixed; inset: 0; background: rgba(20,20,35,.5); z-index: 100;
+  position: fixed; inset: 0; background: rgba(18,19,34,.48); z-index: 100;
   display: flex; align-items: center; justify-content: center; padding: 20px;
   /* 遮罩上没有可读内容，禁掉选择：鼠标按下后手抖几像素就不会被浏览器判成拖选，
      也就不会触发 pointercancel 把「点遮罩关闭」这次点击吞掉（弹窗内的文字仍可正常选） */
   user-select: none; -webkit-user-select: none;
+  animation: dmMaskIn .2s ease both;
 }
 .modal {
   background: var(--card); border-radius: 16px; padding: 24px;
@@ -911,6 +952,22 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
   /* 遮罩的 user-select:none 会以 auto 链路连累弹窗内容也选不中（介绍卡复制不了），
      这里显式放开：弹窗内文字恢复正常选中复制，遮罩本身仍是禁选的 */
   user-select: text; -webkit-user-select: text;
+  box-shadow: 0 24px 80px rgba(24, 22, 52, .22), 0 2px 8px rgba(24, 22, 52, .08);
+  animation: dmModalIn .34s cubic-bezier(.16, 1, .3, 1) both;
+}
+/* 桌面端给遮罩加一点背景虚化，让「弹层在前、页面在后」的层次成立；
+   手机端跳过——全屏 backdrop-filter 在低端机上比动画本身更费。 */
+@media (min-width: 641px) {
+  .modal-mask { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+}
+@keyframes dmMaskIn { from { opacity: 0 } to { opacity: 1 } }
+@keyframes dmModalIn {
+  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(.975) }
+  to { opacity: 1; transform: none }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-mask, .modal { animation: none !important; }
+  .modal-mask { -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 .modal.detail { max-width: 1040px; padding: 0; overflow: hidden; display: flex; }
 /* 提交作品弹窗内容密（分类宫格、Markdown 编辑器），比默认弹窗放宽一档 */
@@ -3457,500 +3514,660 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   position: absolute; inset: 0 0 auto 0; height: 100%; z-index: 0;
 }
 
-/* ---- 主页星空（2026-11-14）----
-   渐变带上的动效皮肤，作者自己在「换背景」里挑，访客看到同一种。
-   纯 CSS 实现：不引图片、不用 canvas、不跑 JS 逐帧，切页面也不掉帧。
-   一个 .hs-* 类同时挂在两处——作者页的 .author-hero-band、弹层里的预览小条 .skin-thumb，
-   所以加一种星空只改这一块。默认 meteor（流星）。 */
-.band-skin, .skin-thumb { position: relative; overflow: hidden; }
+/* ---- 主页背景皮肤（2026-11-21 质感重做）----
+   二十六套纯 CSS 皮肤（二十套动效 + 六套静态壁纸），作者页 .author-hero-band 和弹层 .skin-thumb 共用同一套 .hs-*。
+   这次重做的重点不是加特效，而是让光、材质、景深有来源：
+     · 底色叠多层渐变，先有环境光再有材质，不平铺一张「图案」了事；
+     · 星空分远近两层，粒子大小和亮度有差，闪烁只动 opacity；
+     · 雨、雪、花瓣这类平铺动画只动 transform 或 background-position，且给足出血防止接缝；
+     · 所有动画都有 prefers-reduced-motion 兜底，云枕静音由全站 .dm-quiet 统一接管。 */
+.band-skin, .skin-thumb {
+  position: relative; overflow: hidden; isolation: isolate; contain: paint;
+  /* 三组共用星场：远景细密、近景少量带辉光、深空更密。
+     写成变量是为了让各皮肤复用同一批坐标，不重复堆一长串 radial-gradient。 */
+  --stars-far:
+    radial-gradient(circle 1.1px at 7% 24%, rgba(255,255,255,.64) 98%, transparent),
+    radial-gradient(circle .9px at 16% 68%, rgba(255,255,255,.46) 98%, transparent),
+    radial-gradient(circle 1.3px at 25% 36%, rgba(255,255,255,.58) 98%, transparent),
+    radial-gradient(circle .8px at 33% 78%, rgba(255,255,255,.42) 98%, transparent),
+    radial-gradient(circle 1.2px at 42% 18%, rgba(255,255,255,.56) 98%, transparent),
+    radial-gradient(circle .9px at 51% 56%, rgba(255,255,255,.5) 98%, transparent),
+    radial-gradient(circle 1.4px at 59% 30%, rgba(255,255,255,.6) 98%, transparent),
+    radial-gradient(circle .8px at 68% 72%, rgba(255,255,255,.44) 98%, transparent),
+    radial-gradient(circle 1.1px at 77% 22%, rgba(255,255,255,.54) 98%, transparent),
+    radial-gradient(circle 1.3px at 85% 52%, rgba(255,255,255,.58) 98%, transparent),
+    radial-gradient(circle .9px at 93% 34%, rgba(255,255,255,.46) 98%, transparent);
+  --stars-near:
+    radial-gradient(circle 4px at 11% 31%, rgba(255,255,255,.96) 0 16%, rgba(178,198,255,.42) 38%, transparent 78%),
+    radial-gradient(circle 3.4px at 29% 61%, rgba(255,255,255,.8) 0 17%, rgba(178,198,255,.34) 40%, transparent 78%),
+    radial-gradient(circle 4.6px at 47% 26%, #fff 0 15%, rgba(198,188,255,.44) 36%, transparent 78%),
+    radial-gradient(circle 3.6px at 64% 78%, rgba(255,255,255,.84) 0 17%, rgba(178,198,255,.34) 40%, transparent 78%),
+    radial-gradient(circle 4.2px at 81% 42%, #fff 0 15%, rgba(198,188,255,.42) 36%, transparent 78%),
+    radial-gradient(circle 3.2px at 95% 68%, rgba(255,255,255,.76) 0 18%, rgba(178,198,255,.3) 40%, transparent 78%);
+  --stars-dense:
+    radial-gradient(circle 1px at 4% 18%, rgba(255,255,255,.62) 98%, transparent),
+    radial-gradient(circle 1.5px at 12% 58%, rgba(255,255,255,.8) 98%, transparent),
+    radial-gradient(circle .9px at 19% 34%, rgba(255,255,255,.54) 98%, transparent),
+    radial-gradient(circle 1.8px at 27% 76%, rgba(255,255,255,.86) 98%, transparent),
+    radial-gradient(circle 1.2px at 35% 22%, rgba(255,255,255,.66) 98%, transparent),
+    radial-gradient(circle 2.1px at 43% 54%, #fff 98%, transparent),
+    radial-gradient(circle 1px at 50% 14%, rgba(255,255,255,.58) 98%, transparent),
+    radial-gradient(circle 1.6px at 57% 82%, rgba(255,255,255,.78) 98%, transparent),
+    radial-gradient(circle 2.2px at 65% 36%, #fff 98%, transparent),
+    radial-gradient(circle 1.1px at 72% 66%, rgba(255,255,255,.62) 98%, transparent),
+    radial-gradient(circle 1.7px at 79% 18%, rgba(255,255,255,.82) 98%, transparent),
+    radial-gradient(circle 1px at 86% 74%, rgba(255,255,255,.56) 98%, transparent),
+    radial-gradient(circle 2px at 92% 44%, rgba(255,255,255,.88) 98%, transparent),
+    radial-gradient(circle 1.2px at 98% 84%, rgba(255,255,255,.6) 98%, transparent);
+  /* 一张静态噪点：深色皮肤掺一点就能消掉「塑料渐变」的平，不参与动画 */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.075'/%3E%3C/svg%3E");
+}
 .band-skin::before, .band-skin::after,
 .skin-thumb::before, .skin-thumb::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
+  content: ''; position: absolute; inset: -8%; pointer-events: none;
 }
 .bs-m { display: none; }
-@keyframes hsTwinkle { 0%, 100% { opacity: .32 } 50% { opacity: 1 } }
-@keyframes hsShoot {
-  /* 用 left/top 而不是 translate：translate 写死像素的话，窄屏（64px 高）还没划完就被裁掉了 */
-  0% { left: -170px; top: 2px; opacity: 0 }
-  4% { opacity: 1 }
-  38% { left: 100%; top: 52px; opacity: .95 }
-  42%, 100% { left: 106%; top: 58px; opacity: 0 }
-}
-@keyframes hsDrift { 0% { transform: translate3d(-6%, 0, 0) } 100% { transform: translate3d(6%, 0, 0) } }
-@keyframes hsAurora {
-  0% { transform: translate3d(-4%, 0, 0) scaleY(1) }
-  50% { transform: translate3d(0, 0, 0) scaleY(1.09) }
-  100% { transform: translate3d(4%, 0, 0) scaleY(1.02) }
-}
-@keyframes hsTrail { 0%, 100% { opacity: .42 } 50% { opacity: 1 } }
 
-/* 1 · 流星（默认）：两层星点错拍呼吸，两颗流星不定时划过 */
-.hs-meteor .bs-m {
-  display: block; position: absolute; width: 150px; height: 2px; border-radius: 2px; opacity: 0;
-  transform: rotate(14deg);
-  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.75) 55%, #fff 96%);
-  filter: drop-shadow(0 0 5px rgba(255,255,255,.9));
+@keyframes hsTwinkle { 0%, 100% { opacity: .46 } 50% { opacity: 1 } }
+@keyframes hsBreath { 0%, 100% { opacity: .62; transform: scale(.985) } 50% { opacity: 1; transform: scale(1.015) } }
+@keyframes hsShoot {
+  0%   { transform: translate3d(0, 0, 0) rotate(18deg) scaleX(.35); opacity: 0 }
+  5%   { opacity: .95 }
+  26%  { transform: translate3d(78vw, 22vw, 0) rotate(18deg) scaleX(1); opacity: .9 }
+  34%  { transform: translate3d(105vw, 30vw, 0) rotate(18deg) scaleX(1.15); opacity: 0 }
+  100% { transform: translate3d(105vw, 30vw, 0) rotate(18deg) scaleX(1.15); opacity: 0 }
 }
-.hs-meteor .bs-m1 { top: 2px; left: -170px; animation: hsShoot 9s linear infinite; }
-.hs-meteor .bs-m2 { top: 2px; left: -110px; width: 84px; animation: hsShoot 9s linear infinite 4.2s; }
-.hs-meteor::before {
+@keyframes hsDrift {
+  0%   { transform: translate3d(-2.5%, 0, 0) }
+  50%  { transform: translate3d(1%, -1%, 0) }
+  100% { transform: translate3d(2.5%, 0, 0) }
+}
+@keyframes hsAurora {
+  0%   { transform: translate3d(-3%, 1%, 0) scaleY(.96); opacity: .7 }
+  50%  { transform: translate3d(1%, -1%, 0) scaleY(1.1); opacity: 1 }
+  100% { transform: translate3d(3%, 1%, 0) scaleY(1); opacity: .78 }
+}
+@keyframes hsTrail { 0%, 100% { opacity: .38 } 50% { opacity: .92 } }
+@keyframes hsGlow {
+  0%, 100% { opacity: .7; transform: scale(.97) }
+  50% { opacity: 1; transform: scale(1.06) }
+}
+@keyframes hsRain {
+  0% { transform: translate3d(0, 0, 0) }
+  100% { transform: translate3d(-36px, 36px, 0) }
+}
+@keyframes hsScan { 0% { opacity: .58; transform: translate3d(-1%, 0, 0) } 100% { opacity: 1; transform: translate3d(1%, 0, 0) } }
+@keyframes hsGrid { 0% { transform: translate3d(0, 0, 0) } 100% { transform: translate3d(28px, 18px, 0) } }
+@keyframes hsWave {
+  0% { transform: translate3d(-2%, 1%, 0) }
+  50% { transform: translate3d(1%, -1.5%, 0) }
+  100% { transform: translate3d(-2%, 1%, 0) }
+}
+@keyframes hsFog {
+  0% { opacity: .52; transform: translate3d(-2%, 0, 0) }
+  100% { opacity: .96; transform: translate3d(2%, -1%, 0) }
+}
+@keyframes hsBead {
+  0% { background-position: 0 0, 0 0, 0 0 }
+  100% { background-position: 18px 9px, -13px 11px, 9px -8px }
+}
+@keyframes hsSheen {
+  0% { transform: translate3d(-52%, 0, 0) rotate(8deg) }
+  100% { transform: translate3d(52%, 0, 0) rotate(8deg) }
+}
+@keyframes hsLeak {
+  0% { opacity: .58; transform: translate3d(-2%, 0, 0) }
+  100% { opacity: 1; transform: translate3d(2%, 0, 0) }
+}
+@keyframes hsSnow {
+  0% { background-position: 0 0, 0 0, 0 0 }
+  100% { background-position: -8px 32px, 6px 32px, -3px 32px }
+}
+@keyframes hsPetal {
+  0% { background-position: 0 0, 0 0 }
+  100% { background-position: -18px 156px, 14px 156px }
+}
+@keyframes hsDrip {
+  0% { background-position: 22% -32%, 41% -20%, 64% -42%, 85% -24% }
+  100% { background-position: 22% 100%, 41% 100%, 64% 100%, 85% 100% }
+}
+
+/* 1 · 流星：深蓝夜空 + 星云余光，远近星点错拍呼吸，两颗流星一前一后划过 */
+.hs-meteor {
+  background-color: #7d5bd6;
   background-image:
-    radial-gradient(circle 2px at 8% 26%, rgba(255,255,255,.8) 98%, transparent),
-    radial-gradient(circle 1.4px at 17% 64%, rgba(255,255,255,.5) 98%, transparent),
-    radial-gradient(circle 1.6px at 26% 34%, rgba(255,255,255,.6) 98%, transparent),
-    radial-gradient(circle 2.4px at 34% 74%, rgba(255,255,255,.45) 98%, transparent),
-    radial-gradient(circle 1.3px at 43% 18%, rgba(255,255,255,.6) 98%, transparent),
-    radial-gradient(circle 2px at 51% 56%, rgba(255,255,255,.65) 98%, transparent),
-    radial-gradient(circle 1.5px at 58% 30%, rgba(255,255,255,.45) 98%, transparent),
-    radial-gradient(circle 2.2px at 66% 68%, rgba(255,255,255,.6) 98%, transparent),
-    radial-gradient(circle 1.4px at 73% 22%, rgba(255,255,255,.5) 98%, transparent),
-    radial-gradient(circle 1.8px at 81% 52%, rgba(255,255,255,.55) 98%, transparent),
-    radial-gradient(circle 2.4px at 88% 32%, rgba(255,255,255,.6) 98%, transparent),
-    radial-gradient(circle 1.4px at 95% 70%, rgba(255,255,255,.45) 98%, transparent);
-  animation: hsTwinkle 5.4s ease-in-out infinite;
+    var(--grain),
+    radial-gradient(120% 160% at 82% -18%, rgba(166, 142, 255, .48), transparent 62%),
+    radial-gradient(90% 120% at 8% 118%, rgba(80, 92, 218, .44), transparent 70%),
+    linear-gradient(124deg, #242454 0%, #3b3288 46%, #5b48a0 74%, #7d5bd6 100%);
+  background-size: 180px 180px, 100% 100%, 100% 100%, 100% 100%;
+}
+.hs-meteor::before {
+  background-image: var(--stars-dense), var(--stars-near);
+  animation: hsTwinkle 7.2s ease-in-out infinite;
 }
 .hs-meteor::after {
   background-image:
-    radial-gradient(circle 1.6px at 11% 72%, rgba(255,255,255,.5) 98%, transparent),
-    radial-gradient(circle 2.2px at 22% 18%, rgba(255,255,255,.55) 98%, transparent),
-    radial-gradient(circle 1.3px at 31% 48%, rgba(255,255,255,.4) 98%, transparent),
-    radial-gradient(circle 1.8px at 39% 84%, rgba(255,255,255,.5) 98%, transparent),
-    radial-gradient(circle 2.6px at 48% 36%, rgba(255,255,255,.6) 98%, transparent),
-    radial-gradient(circle 1.4px at 57% 66%, rgba(255,255,255,.42) 98%, transparent),
-    radial-gradient(circle 1.9px at 69% 14%, rgba(255,255,255,.55) 98%, transparent),
-    radial-gradient(circle 1.5px at 78% 76%, rgba(255,255,255,.45) 98%, transparent),
-    radial-gradient(circle 2.3px at 86% 58%, rgba(255,255,255,.5) 98%, transparent),
-    radial-gradient(circle 1.6px at 93% 26%, rgba(255,255,255,.42) 98%, transparent);
-  animation: hsTwinkle 7.8s ease-in-out infinite .9s;
+    linear-gradient(112deg, transparent 16%, rgba(196, 174, 255, .15) 42%, transparent 68%),
+    radial-gradient(ellipse 68% 66% at 88% 104%, rgba(255, 202, 170, .22), transparent 72%);
+  mix-blend-mode: screen;
 }
+.hs-meteor .bs-m {
+  display: block; position: absolute; left: -24%; top: 6%;
+  width: 190px; height: 2px; border-radius: 999px; opacity: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.18) 22%, rgba(255,255,255,.92) 88%, #fff 100%);
+  box-shadow: 0 0 8px 1px rgba(255,255,255,.72), 0 0 22px 4px rgba(160,180,255,.34);
+  animation: hsShoot 11s cubic-bezier(.22,.6,.24,1) infinite;
+}
+.hs-meteor .bs-m2 { top: 2%; width: 112px; animation-delay: 5.4s; opacity: 0; }
 
-/* 1/2/4 号共用原来那条紫渐变（带子上本来就是它，缩略图也要有）*/
-.hs-meteor, .hs-dots, .hs-aurora { background: linear-gradient(135deg, #6d6df0 0%, #5b5bd6 55%, #7d5bd6 100%); }
-
-/* 2 · 星点（原版）：静止小圆点，最省电的一种 */
+/* 2 · 星点：最省电的一款，静止但有远近层次 */
+.hs-dots { background: linear-gradient(135deg, #1f2454 0%, #34357f 54%, #6a55b4 100%); }
+.hs-dots::before {
+  background-image: var(--stars-far);
+  opacity: .72;
+}
 .hs-dots::after {
-  background-image:
-    radial-gradient(circle 2.5px at 12% 30%, rgba(255,255,255,.55) 98%, transparent),
-    radial-gradient(circle 1.5px at 28% 68%, rgba(255,255,255,.4) 98%, transparent),
-    radial-gradient(circle 2px at 46% 24%, rgba(255,255,255,.45) 98%, transparent),
-    radial-gradient(circle 1.5px at 63% 62%, rgba(255,255,255,.35) 98%, transparent),
-    radial-gradient(circle 2.5px at 78% 30%, rgba(255,255,255,.5) 98%, transparent),
-    radial-gradient(circle 1.5px at 90% 66%, rgba(255,255,255,.4) 98%, transparent);
+  background-image: var(--stars-near);
+  opacity: .82;
 }
 
-/* 3 · 银河：深紫夜空 + 一条斜着的银河带 + 两团星云，整层极慢地左右漂 */
-.hs-galaxy { background: radial-gradient(130% 200% at 12% 40%, #3b2a83 0%, #241a5e 48%, #170f3c 100%); }
+/* 3 · 银河：斜贯的银河带 + 两团星云，整层极慢漂 */
+.hs-galaxy { background: radial-gradient(130% 190% at 16% 34%, #45308e 0%, #241a5e 50%, #110d32 100%); }
 .hs-galaxy::before {
+  inset: -16%;
   background-image:
-    linear-gradient(112deg, rgba(255,255,255,0) 26%, rgba(186,166,255,.34) 44%, rgba(255,255,255,.26) 50%, rgba(186,166,255,.34) 56%, rgba(255,255,255,0) 74%),
-    radial-gradient(ellipse 26% 90% at 20% 62%, rgba(150,110,255,.55) 0%, rgba(150,110,255,0) 72%),
-    radial-gradient(ellipse 22% 80% at 80% 26%, rgba(80,180,255,.42) 0%, rgba(80,180,255,0) 72%);
-  filter: blur(4px);
-  animation: hsDrift 24s ease-in-out infinite alternate;
+    linear-gradient(112deg, transparent 25%, rgba(198,180,255,.2) 40%, rgba(255,255,255,.3) 49%, rgba(198,180,255,.22) 58%, transparent 73%),
+    radial-gradient(ellipse 28% 92% at 18% 64%, rgba(150,110,255,.58), transparent 72%),
+    radial-gradient(ellipse 22% 84% at 82% 24%, rgba(86,184,255,.44), transparent 72%);
+  filter: blur(7px) saturate(1.1);
+  mix-blend-mode: screen;
+  animation: hsDrift 34s ease-in-out infinite;
 }
 .hs-galaxy::after {
-  background-image:
-    radial-gradient(circle 1.6px at 5% 30%, #fff 98%, transparent),
-    radial-gradient(circle 2.2px at 12% 66%, rgba(255,255,255,.85) 98%, transparent),
-    radial-gradient(circle 1.2px at 19% 22%, rgba(255,255,255,.7) 98%, transparent),
-    radial-gradient(circle 1.8px at 26% 82%, rgba(255,255,255,.8) 98%, transparent),
-    radial-gradient(circle 2.4px at 33% 40%, #fff 98%, transparent),
-    radial-gradient(circle 1.3px at 40% 14%, rgba(255,255,255,.66) 98%, transparent),
-    radial-gradient(circle 1.7px at 47% 60%, rgba(255,255,255,.8) 98%, transparent),
-    radial-gradient(circle 1.2px at 54% 34%, rgba(255,255,255,.6) 98%, transparent),
-    radial-gradient(circle 2px at 61% 78%, #fff 98%, transparent),
-    radial-gradient(circle 1.4px at 68% 26%, rgba(255,255,255,.75) 98%, transparent),
-    radial-gradient(circle 1.9px at 75% 58%, rgba(255,255,255,.85) 98%, transparent),
-    radial-gradient(circle 1.2px at 82% 20%, rgba(255,255,255,.6) 98%, transparent),
-    radial-gradient(circle 2.3px at 88% 74%, #fff 98%, transparent),
-    radial-gradient(circle 1.5px at 94% 42%, rgba(255,255,255,.8) 98%, transparent),
-    radial-gradient(circle 1.3px at 97% 16%, rgba(255,255,255,.65) 98%, transparent);
-  animation: hsTwinkle 6.6s ease-in-out infinite;
+  background-image: var(--stars-near), var(--stars-far);
+  animation: hsTwinkle 8.4s ease-in-out infinite .8s;
 }
 
-/* 4 · 极光：三道近竖直的青绿/蓝/紫光帘，往下淡出，整层左右轻微游动（像天上挂着的帘子） */
+/* 4 · 极光：多道光帘 + 竖向纹理，光帘自己起伏而不是整张图平移 */
+.hs-aurora { background: linear-gradient(180deg, #0b1538 0%, #142a55 48%, #252665 100%); }
 .hs-aurora::before {
+  inset: -14%;
   background-image:
-    linear-gradient(96deg, rgba(120,255,214,0) 14%, rgba(120,255,214,.62) 19%, rgba(150,255,230,.3) 24%, rgba(120,255,214,0) 29%),
-    linear-gradient(94deg, rgba(120,200,255,0) 40%, rgba(140,205,255,.5) 46%, rgba(120,200,255,0) 53%),
-    linear-gradient(98deg, rgba(205,150,255,0) 64%, rgba(215,160,255,.44) 71%, rgba(205,150,255,0) 79%);
-  filter: blur(4px);
-  -webkit-mask-image: linear-gradient(180deg, #000 6%, rgba(0,0,0,.35) 74%, transparent 100%);
-  mask-image: linear-gradient(180deg, #000 6%, rgba(0,0,0,.35) 74%, transparent 100%);
-  animation: hsAurora 14s ease-in-out infinite alternate;
+    linear-gradient(96deg, transparent 12%, rgba(112,255,210,.6) 17%, rgba(160,255,232,.28) 22%, transparent 28%),
+    linear-gradient(94deg, transparent 38%, rgba(118,201,255,.52) 45%, transparent 52%),
+    linear-gradient(99deg, transparent 62%, rgba(208,150,255,.48) 70%, transparent 78%),
+    repeating-linear-gradient(92deg, rgba(255,255,255,.08) 0 1px, transparent 1px 9px);
+  filter: blur(5px);
+  -webkit-mask-image: linear-gradient(180deg, #000 3%, rgba(0,0,0,.75) 56%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 3%, rgba(0,0,0,.75) 56%, transparent 100%);
+  mix-blend-mode: screen;
+  animation: hsAurora 18s ease-in-out infinite;
 }
 .hs-aurora::after {
-  background-image:
-    radial-gradient(circle 1.8px at 9% 34%, rgba(255,255,255,.8) 98%, transparent),
-    radial-gradient(circle 1.3px at 21% 72%, rgba(255,255,255,.55) 98%, transparent),
-    radial-gradient(circle 2px at 34% 26%, rgba(255,255,255,.7) 98%, transparent),
-    radial-gradient(circle 1.4px at 45% 62%, rgba(255,255,255,.5) 98%, transparent),
-    radial-gradient(circle 1.7px at 57% 34%, rgba(255,255,255,.72) 98%, transparent),
-    radial-gradient(circle 1.3px at 68% 78%, rgba(255,255,255,.5) 98%, transparent),
-    radial-gradient(circle 2.1px at 79% 28%, rgba(255,255,255,.7) 98%, transparent),
-    radial-gradient(circle 1.4px at 89% 60%, rgba(255,255,255,.55) 98%, transparent);
-  animation: hsTwinkle 7s ease-in-out infinite;
+  background-image: var(--stars-far);
+  animation: hsTwinkle 7.6s ease-in-out infinite 1.2s;
 }
 
-/* 5 · 星轨：长曝光那味儿——以带子下方为圆心的一圈圈弧线，慢慢亮暗呼吸 */
-.hs-trail { background: radial-gradient(150% 240% at 50% 118%, #2b3070 0%, #1d1a52 46%, #140f39 100%); }
+/* 5 · 星轨：长曝光弧线 + 地平线余辉 */
+.hs-trail { background: radial-gradient(150% 250% at 50% 122%, #323a86 0%, #1e1c55 46%, #100d36 100%); }
 .hs-trail::before {
-  background-image: repeating-radial-gradient(circle at 50% 122%,
-    rgba(255,255,255,0) 0 17px,
-    rgba(200,215,255,.30) 17px 18px,
-    rgba(255,255,255,0) 18px 36px);
-  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.9) 0%, rgba(0,0,0,.55) 62%, transparent 96%);
-  mask-image: linear-gradient(180deg, rgba(0,0,0,.9) 0%, rgba(0,0,0,.55) 62%, transparent 96%);
-  animation: hsTrail 16s ease-in-out infinite;
+  background-image:
+    repeating-radial-gradient(circle at 50% 126%,
+      transparent 0 20px, rgba(206,220,255,.28) 20px 21px, transparent 21px 44px),
+    radial-gradient(ellipse 60% 30% at 50% 108%, rgba(150,170,255,.24), transparent 74%);
+  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.92) 0%, rgba(0,0,0,.5) 62%, transparent 96%);
+  mask-image: linear-gradient(180deg, rgba(0,0,0,.92) 0%, rgba(0,0,0,.5) 62%, transparent 96%);
+  animation: hsTrail 18s ease-in-out infinite;
 }
 .hs-trail::after {
-  background-image:
-    radial-gradient(circle 1.6px at 9% 30%, #fff 98%, transparent),
-    radial-gradient(circle 1.3px at 24% 62%, rgba(255,255,255,.8) 98%, transparent),
-    radial-gradient(circle 1.9px at 38% 26%, #fff 98%, transparent),
-    radial-gradient(circle 1.3px at 53% 70%, rgba(255,255,255,.75) 98%, transparent),
-    radial-gradient(circle 1.6px at 67% 34%, #fff 98%, transparent),
-    radial-gradient(circle 1.3px at 82% 58%, rgba(255,255,255,.8) 98%, transparent),
-    radial-gradient(circle 1.8px at 93% 22%, #fff 98%, transparent);
-  animation: hsTwinkle 7.4s ease-in-out infinite 1.1s;
+  background-image: var(--stars-near), var(--stars-far);
+  animation: hsTwinkle 8s ease-in-out infinite 1.4s;
 }
 
-/* 6 · 深空：整条带压成深夜蓝紫，星更密、留一点上部星云的光 */
-.hs-deep { background: linear-gradient(135deg, #090f2c 0%, #131a44 52%, #241a4c 100%); }
+/* 6 · 深空：更暗的底、更密的星、两团若有若无的星云 */
+.hs-deep {
+  background:
+    radial-gradient(120% 180% at 80% -10%, rgba(94,82,190,.4), transparent 60%),
+    linear-gradient(135deg, #080e2b 0%, #121944 52%, #241a4c 100%);
+}
 .hs-deep::before {
-  background-image:
-    radial-gradient(circle 1.5px at 6% 22%, #fff 98%, transparent),
-    radial-gradient(circle 2px at 13% 62%, rgba(255,255,255,.85) 98%, transparent),
-    radial-gradient(circle 1.2px at 20% 34%, rgba(255,255,255,.7) 98%, transparent),
-    radial-gradient(circle 1.7px at 27% 78%, rgba(255,255,255,.8) 98%, transparent),
-    radial-gradient(circle 2.2px at 34% 20%, #fff 98%, transparent),
-    radial-gradient(circle 1.3px at 41% 56%, rgba(255,255,255,.7) 98%, transparent),
-    radial-gradient(circle 1.8px at 48% 36%, rgba(255,255,255,.85) 98%, transparent),
-    radial-gradient(circle 1.2px at 55% 74%, rgba(255,255,255,.65) 98%, transparent),
-    radial-gradient(circle 2.1px at 62% 26%, #fff 98%, transparent),
-    radial-gradient(circle 1.4px at 69% 62%, rgba(255,255,255,.75) 98%, transparent),
-    radial-gradient(circle 1.8px at 76% 30%, rgba(255,255,255,.85) 98%, transparent),
-    radial-gradient(circle 1.2px at 83% 72%, rgba(255,255,255,.65) 98%, transparent),
-    radial-gradient(circle 2.3px at 90% 38%, #fff 98%, transparent),
-    radial-gradient(circle 1.5px at 96% 66%, rgba(255,255,255,.75) 98%, transparent);
-  animation: hsTwinkle 5.8s ease-in-out infinite;
+  background-image: var(--stars-dense);
+  animation: hsTwinkle 6.8s ease-in-out infinite;
 }
 .hs-deep::after {
+  inset: -16%;
   background-image:
-    radial-gradient(ellipse 60% 120% at 78% 8%, rgba(126,110,255,.5) 0%, rgba(126,110,255,0) 72%),
-    radial-gradient(ellipse 40% 90% at 16% 90%, rgba(90,160,255,.32) 0%, rgba(90,160,255,0) 70%);
-  animation: hsTwinkle 9s ease-in-out infinite .6s;
+    radial-gradient(ellipse 62% 120% at 78% 6%, rgba(126,110,255,.5), transparent 72%),
+    radial-gradient(ellipse 44% 90% at 14% 94%, rgba(80,160,255,.34), transparent 70%);
+  filter: blur(10px);
+  animation: hsDrift 42s ease-in-out infinite;
 }
 
-
-/* ---- 非星空的一组（2026-11-14 晚）----
-   站长说「不一定是星空」，于是补六种别的气质：晨光 / 雨幕 / 霓虹 / 海面 / 纸韵 / 沙丘。
-   跟星空那六种一样是纯 CSS，一个 .hs-* 类同时管作者页带子和弹层缩略图。 */
-
-/* 7 · 晨光：紫夜到金橙的过渡，右下角一轮将出的太阳，两条淡云慢慢漂 */
-.hs-dawn { background: linear-gradient(118deg, #2b2352 0%, #5d3a78 24%, #a95a78 50%, #e08a6e 74%, #ffc98d 100%); }
+/* 7 · 晨光：夜到日的过渡、带柔光的低太阳、两层慢慢飘的云 */
+.hs-dawn { background: linear-gradient(112deg, #191a44 0%, #4a315f 22%, #a45874 48%, #e58d6f 74%, #ffd09a 100%); }
 .hs-dawn::before {
   background-image:
-    radial-gradient(circle 58px at 79% 84%, rgba(255,246,216,.98) 0%, rgba(255,214,158,.72) 40%, rgba(255,160,140,0) 76%),
-    radial-gradient(ellipse 34% 100% at 79% 96%, rgba(255,225,180,.5) 0%, rgba(255,225,180,0) 72%),
-    radial-gradient(ellipse 60% 80% at 12% 0%, rgba(110,110,220,.38) 0%, rgba(110,110,220,0) 72%);
-  filter: blur(3px);
-  animation: hsGlow 9s ease-in-out infinite alternate;
+    radial-gradient(circle 64px at 82% 86%, rgba(255,250,226,.98) 0%, rgba(255,224,170,.84) 38%, rgba(255,164,132,.24) 68%, transparent 86%),
+    radial-gradient(ellipse 40% 110% at 82% 104%, rgba(255,206,158,.5), transparent 72%);
+  animation: hsGlow 11s ease-in-out infinite;
 }
 .hs-dawn::after {
+  inset: -12%;
   background-image:
-    linear-gradient(180deg, rgba(255,255,255,0) 48%, rgba(255,226,206,.30) 60%, rgba(255,255,255,0) 70%),
-    linear-gradient(180deg, rgba(255,255,255,0) 70%, rgba(255,198,178,.24) 80%, rgba(255,255,255,0) 92%);
-  animation: hsDrift 19s ease-in-out infinite alternate;
+    radial-gradient(ellipse 42% 18% at 20% 46%, rgba(255,236,222,.34), transparent 74%),
+    radial-gradient(ellipse 38% 15% at 60% 62%, rgba(255,216,196,.3), transparent 76%),
+    radial-gradient(ellipse 50% 20% at 86% 78%, rgba(255,204,174,.24), transparent 74%),
+    linear-gradient(180deg, transparent 68%, rgba(28,18,52,.18) 100%);
+  filter: blur(3px);
+  animation: hsDrift 24s ease-in-out infinite;
 }
 
-/* 8 · 雨幕：阴天灰蓝 + 两层斜雨往下落 + 地面一点湿光 */
-.hs-rain { background: linear-gradient(135deg, #46566e 0%, #37455c 52%, #29344a 100%); }
+/* 8 · 雨幕：两层速度不同的斜雨 + 地面湿光 */
+.hs-rain {
+  background:
+    radial-gradient(120% 120% at 70% -20%, rgba(190,214,240,.28), transparent 60%),
+    linear-gradient(135deg, #4c5d76 0%, #37465e 52%, #252f44 100%);
+}
 .hs-rain::before {
-  background-image: repeating-linear-gradient(135deg,
-    rgba(210,232,255,0) 0 7px,
-    rgba(210,232,255,.28) 7px 8px,
-    rgba(210,232,255,0) 8px 16px);
-  animation: hsRain 1s linear infinite;
+  /* 两层雨共用 36px 平铺单元，整层只做 transform，不逐帧重绘 background-position；
+     inset 留出 60px 出血，挪动一个单元也不会在边缘露缝。 */
+  inset: -60px;
+  background-image:
+    repeating-linear-gradient(112deg, transparent 0 7px, rgba(216,234,255,.26) 7px 8px, transparent 8px 18px),
+    repeating-linear-gradient(118deg, transparent 0 13px, rgba(226,240,255,.18) 13px 14px, transparent 14px 28px);
+  background-size: 36px 36px;
+  animation: hsRain 1.1s linear infinite;
 }
 .hs-rain::after {
   background-image:
-    radial-gradient(ellipse 60% 34% at 30% 108%, rgba(190,220,255,.30) 0%, rgba(190,220,255,0) 72%),
-    radial-gradient(ellipse 46% 26% at 78% 112%, rgba(190,220,255,.22) 0%, rgba(190,220,255,0) 72%),
-    repeating-linear-gradient(128deg,
-    rgba(230,244,255,0) 0 13px,
-    rgba(230,244,255,.18) 13px 14px,
-    rgba(230,244,255,0) 14px 28px);
-  animation: hsRain 1.7s linear infinite reverse;
+    radial-gradient(ellipse 64% 26% at 30% 110%, rgba(188,220,255,.34), transparent 72%),
+    radial-gradient(ellipse 46% 22% at 78% 112%, rgba(188,220,255,.24), transparent 72%);
 }
 
-/* 9 · 霓虹：深紫夜 + 青色网格 + 一道粉蓝地平线光，光是缓慢扫的 */
+/* 9 · 霓虹：透视网格 + 地平线光带，光带缓慢呼吸 */
 .hs-neon {
-  background-image:
-    radial-gradient(ellipse 42% 130% at 6% 108%, rgba(60,240,255,.26) 0%, rgba(60,240,255,0) 72%),
-    radial-gradient(ellipse 38% 120% at 92% 0%, rgba(255,80,205,.24) 0%, rgba(255,80,205,0) 72%),
-    radial-gradient(120% 220% at 24% 108%, #33155e 0%, #190c34 54%, #0a0620 100%);
+  background:
+    radial-gradient(ellipse 42% 130% at 6% 108%, rgba(60,240,255,.28), transparent 72%),
+    radial-gradient(ellipse 38% 120% at 92% 0%, rgba(255,80,205,.26), transparent 72%),
+    radial-gradient(120% 220% at 24% 108%, #33155e 0%, #190c34 54%, #090620 100%);
 }
 .hs-neon::before {
+  inset: -40px;
   background-image:
-    repeating-linear-gradient(90deg, rgba(120,255,255,.18) 0 1px, rgba(120,255,255,0) 1px 26px),
-    repeating-linear-gradient(0deg, rgba(255,120,220,.14) 0 1px, rgba(255,120,220,0) 1px 17px);
-  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.22) 0%, rgba(0,0,0,.9) 64%, #000 100%);
-  mask-image: linear-gradient(180deg, rgba(0,0,0,.22) 0%, rgba(0,0,0,.9) 64%, #000 100%);
+    repeating-linear-gradient(90deg, rgba(120,255,255,.2) 0 1px, transparent 1px 28px),
+    repeating-linear-gradient(0deg, rgba(255,120,220,.16) 0 1px, transparent 1px 18px);
+  background-size: 28px 100%, 100% 18px;
+  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.14) 0%, rgba(0,0,0,.9) 64%, #000 100%);
+  mask-image: linear-gradient(180deg, rgba(0,0,0,.14) 0%, rgba(0,0,0,.9) 64%, #000 100%);
+  animation: hsGrid 12s linear infinite;
 }
 .hs-neon::after {
-  background-image: linear-gradient(180deg,
-    rgba(255,255,255,0) 60%,
-    rgba(255,80,210,.85) 61.2%,
-    rgba(180,180,255,.9) 62.4%,
-    rgba(120,255,255,.9) 63.4%,
-    rgba(255,255,255,0) 65%);
-  filter: drop-shadow(0 0 6px rgba(180,140,255,.9));
-  animation: hsScan 7s ease-in-out infinite alternate;
+  background-image:
+    linear-gradient(180deg, transparent 58%, rgba(255,80,210,.82) 60%, rgba(180,180,255,.9) 61.2%, rgba(120,255,255,.88) 62.4%, transparent 65%),
+    linear-gradient(104deg, transparent 42%, rgba(255,255,255,.16) 50%, transparent 58%);
+  filter: drop-shadow(0 0 7px rgba(180,140,255,.85));
+  animation: hsScan 8s ease-in-out infinite alternate;
 }
 
-/* 10 · 海面：从深碧到浅青，横向波纹缓慢起伏，波光一闪一闪 */
-.hs-ocean { background: linear-gradient(160deg, #13405c 0%, #1a5f7f 40%, #2d90a6 74%, #5cc6c2 100%); }
+/* 10 · 海面：一层层涌动的波纹 + 零星反光 */
+.hs-ocean { background: linear-gradient(160deg, #0d354f 0%, #176b8c 42%, #3fa8ae 76%, #69cfc6 100%); }
 .hs-ocean::before {
+  inset: 0;
   background-image:
-    repeating-radial-gradient(circle at 50% 300%,
-    rgba(255,255,255,0) 0 21px,
-    rgba(255,255,255,.34) 21px 23px,
-    rgba(255,255,255,0) 23px 45px),
-    linear-gradient(180deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.02) 42%, rgba(255,255,255,.14) 100%);
-  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.15) 0%, rgba(0,0,0,.55) 46%, #000 100%);
-  mask-image: linear-gradient(180deg, rgba(0,0,0,.15) 0%, rgba(0,0,0,.55) 46%, #000 100%);
-  animation: hsWave 6.4s ease-in-out infinite alternate;
+    repeating-radial-gradient(ellipse 140% 82% at 50% 320%,
+      transparent 0 20px, rgba(255,255,255,.2) 20px 22px, transparent 22px 48px),
+    linear-gradient(180deg, rgba(255,255,255,.13) 0%, transparent 40%, rgba(255,255,255,.14) 100%);
+  -webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.12) 0%, rgba(0,0,0,.58) 46%, #000 100%);
+  mask-image: linear-gradient(180deg, rgba(0,0,0,.12) 0%, rgba(0,0,0,.58) 46%, #000 100%);
+  animation: hsWave 8s ease-in-out infinite;
 }
 .hs-ocean::after {
   background-image:
-    radial-gradient(circle 2.2px at 14% 76%, rgba(255,255,255,.9) 98%, transparent),
-    radial-gradient(circle 1.6px at 28% 64%, rgba(255,255,255,.7) 98%, transparent),
-    radial-gradient(circle 2.6px at 41% 82%, rgba(255,255,255,.85) 98%, transparent),
-    radial-gradient(circle 1.7px at 55% 68%, rgba(255,255,255,.7) 98%, transparent),
-    radial-gradient(circle 2.2px at 69% 86%, rgba(255,255,255,.8) 98%, transparent),
-    radial-gradient(circle 1.6px at 82% 70%, rgba(255,255,255,.65) 98%, transparent),
-    radial-gradient(circle 2.4px at 93% 84%, rgba(255,255,255,.8) 98%, transparent);
-  animation: hsTwinkle 4.4s ease-in-out infinite;
+    radial-gradient(circle 2.1px at 14% 76%, rgba(255,255,255,.9) 98%, transparent),
+    radial-gradient(circle 1.5px at 28% 64%, rgba(255,255,255,.68) 98%, transparent),
+    radial-gradient(circle 2.5px at 41% 82%, rgba(255,255,255,.86) 98%, transparent),
+    radial-gradient(circle 1.6px at 55% 68%, rgba(255,255,255,.68) 98%, transparent),
+    radial-gradient(circle 2.1px at 69% 86%, rgba(255,255,255,.8) 98%, transparent),
+    radial-gradient(circle 1.5px at 82% 70%, rgba(255,255,255,.64) 98%, transparent),
+    radial-gradient(circle 2.3px at 93% 84%, rgba(255,255,255,.78) 98%, transparent);
+  animation: hsTwinkle 5.2s ease-in-out infinite 1s;
 }
 
-/* 11 · 纸韵：灰紫的旧纸，细纸纹 + 两团淡墨 + 一道钢笔横线 */
-.hs-paper { background: linear-gradient(148deg, #efe8d8 0%, #e2d8c4 46%, #cfc2a9 100%); }
+/* 11 · 纸韵：旧纸纤维 + 淡墨晕 + 一道钢笔线 */
+.hs-paper { background: linear-gradient(148deg, #f4eedf 0%, #e4d9c5 48%, #cbbda3 100%); }
 .hs-paper::before {
   background-image:
-    repeating-linear-gradient(0deg, rgba(120,100,70,.06) 0 1px, rgba(120,100,70,0) 1px 4px),
-    repeating-linear-gradient(90deg, rgba(120,100,70,.045) 0 1px, rgba(120,100,70,0) 1px 5px),
-    radial-gradient(ellipse 22% 92% at 17% 44%, rgba(62,54,44,.30) 0%, rgba(62,54,44,0) 70%),
-    radial-gradient(ellipse 15% 70% at 63% 78%, rgba(72,60,48,.20) 0%, rgba(72,60,48,0) 72%);
-  filter: blur(1.2px);
-  animation: hsDrift 26s ease-in-out infinite alternate;
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='.12'/%3E%3C/svg%3E"),
+    repeating-linear-gradient(0deg, rgba(120,100,70,.055) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(90deg, rgba(120,100,70,.04) 0 1px, transparent 1px 5px),
+    radial-gradient(ellipse 22% 92% at 17% 44%, rgba(62,54,44,.3), transparent 70%),
+    radial-gradient(ellipse 15% 70% at 63% 78%, rgba(72,60,48,.2), transparent 72%);
+  background-size: 180px 180px, 100% 4px, 5px 100%, 100% 100%, 100% 100%;
+  opacity: .74;
+  animation: hsDrift 36s ease-in-out infinite;
 }
 .hs-paper::after {
+  inset: 0;
   background-image:
-    radial-gradient(circle 7px at 85% 42%, rgba(184,62,50,.80) 0%, rgba(184,62,50,.5) 64%, rgba(184,62,50,0) 80%),
-    linear-gradient(90deg, rgba(70,60,48,0) 5%, rgba(70,60,48,.42) 10%, rgba(70,60,48,.42) 80%, rgba(70,60,48,0) 86%);
+    radial-gradient(circle 6px at 85% 42%, rgba(184,62,50,.78) 0%, rgba(184,62,50,.46) 62%, transparent 80%),
+    linear-gradient(90deg, transparent 5%, rgba(70,60,48,.4) 10%, rgba(70,60,48,.4) 80%, transparent 86%);
   background-size: 100% 100%, 100% 1.4px;
   background-position: 0 0, 0 68%;
   background-repeat: no-repeat;
 }
 
-/* 12 · 沙丘：暮色里的沙丘脊线，一层层弧线 + 一颗低垂的落日 */
-.hs-dune { background: linear-gradient(168deg, #3a2b46 0%, #6f4757 26%, #b0755a 58%, #dba86e 86%, #f0cd93 100%); }
+/* 12 · 沙丘：暮色、低太阳、三层沙脊 */
+.hs-dune { background: linear-gradient(168deg, #342848 0%, #71475a 26%, #b5775c 58%, #ddaa72 86%, #f3d09a 100%); }
 .hs-dune::before {
-  /* 沙丘的脊线用一段内联 SVG 画（两条波状剪影），比纯渐变描得出形状；仍是不引外部资源的写法 */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 84' preserveAspectRatio='none'%3E%3Cpath d='M0,84 L0,52 C170,30 300,60 460,50 C630,39 740,12 890,28 C1030,42 1120,60 1200,52 L1200,84 Z' fill='%23c98d5e' fill-opacity='.55'/%3E%3Cpath d='M0,84 L0,68 C190,52 340,76 510,68 C690,59 810,40 950,54 C1075,66 1140,74 1200,68 L1200,84 Z' fill='%235a3346' fill-opacity='.82'/%3E%3C/svg%3E");
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 84' preserveAspectRatio='none'%3E%3Cpath d='M0,84 L0,54 C170,30 300,62 460,50 C630,37 740,10 890,28 C1030,44 1120,62 1200,52 L1200,84 Z' fill='%23d49b68' fill-opacity='.44'/%3E%3Cpath d='M0,84 L0,66 C190,50 340,76 510,67 C690,57 810,38 950,53 C1075,66 1140,75 1200,67 L1200,84 Z' fill='%238c5a52' fill-opacity='.68'/%3E%3Cpath d='M0,84 L0,76 C180,66 300,82 460,74 C620,66 700,58 850,70 C1000,82 1100,78 1200,72 L1200,84 Z' fill='%23452c45' fill-opacity='.88'/%3E%3C/svg%3E");
   background-size: 100% 100%;
-  background-repeat: no-repeat;
   background-position: 0 100%;
+  background-repeat: no-repeat;
 }
 .hs-dune::after {
   background-image:
-    radial-gradient(circle 22px at 86% 60%, rgba(255,246,208,.98) 0%, rgba(255,216,160,.68) 44%, rgba(255,200,150,0) 82%),
-    radial-gradient(ellipse 62% 92% at 86% 58%, rgba(255,196,146,.34) 0%, rgba(255,196,146,0) 76%);
-  animation: hsGlow 11s ease-in-out infinite alternate;
+    radial-gradient(circle 21px at 86% 60%, rgba(255,246,208,.98) 0%, rgba(255,216,160,.7) 44%, transparent 82%),
+    radial-gradient(ellipse 62% 92% at 86% 58%, rgba(255,196,146,.36), transparent 76%);
+  animation: hsGlow 12s ease-in-out infinite;
 }
 
-/* ---- 第三组「质感」（2026-11-14 深夜）：雾山 / 糖纸 / 胶片 / 雪原 / 樱花 / 雨窗 / 唱片 / 稿纸 ----
-   仍然是一个 .hs-* 类同时管带子和弹层缩略图。浅底那几种（雪原/樱花/稿纸/雾山）
-   注意别把白色调太满，否则「换背景」胶囊和头像白描边会糊在一起。 */
-
-/* 13 · 雾山：几层青灰远山叠在山脚，雾从下面漫上来、自己慢慢漂 */
-.hs-mist { background: linear-gradient(180deg, #e2eaf2 0%, #c6d3e0 44%, #a9b8c8 100%); }
+/* 13 · 雾山：三层远山 + 从山脚漫上来的雾 */
+.hs-mist { background: linear-gradient(180deg, #e6edf5 0%, #c9d6e4 44%, #a8b9cc 100%); }
 .hs-mist::before {
-  /* 三道山脊还是一次性画进内联 SVG：远淡近深，比纯渐变能描出起伏 */
-  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%201200%2084'%20preserveAspectRatio='none'%3E%3Cpath%20d='M0,84%20L0,46%20C120,22%20240,54%20360,40%20C470,28%20520,10%20640,26%20C760,42%20830,54%20940,36%20C1050,20%201120,40%201200,44%20L1200,84%20Z'%20fill='%238094a9'%20fill-opacity='.62'/%3E%3Cpath%20d='M0,84%20L0,62%20C150,48%20260,72%20400,60%20C540,48%20620,34%20760,50%20C900,66%201010,70%201200,56%20L1200,84%20Z'%20fill='%235a7187'%20fill-opacity='.8'/%3E%3Cpath%20d='M0,84%20L0,74%20C180,64%20300,80%20460,72%20C620,64%20700,56%20850,68%20C1000,80%201100,76%201200,70%20L1200,84%20Z'%20fill='%233a4e63'%20fill-opacity='.92'/%3E%3C/svg%3E");
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 84' preserveAspectRatio='none'%3E%3Cpath d='M0,84 L0,46 C120,22 240,54 360,40 C470,28 520,10 640,26 C760,42 830,54 940,36 C1050,20 1120,40 1200,44 L1200,84 Z' fill='%238094a9' fill-opacity='.5'/%3E%3Cpath d='M0,84 L0,62 C150,48 260,72 400,60 C540,48 620,34 760,50 C900,66 1010,70 1200,56 L1200,84 Z' fill='%235a7187' fill-opacity='.68'/%3E%3Cpath d='M0,84 L0,74 C180,64 300,80 460,72 C620,64 700,56 850,68 C1000,80 1100,76 1200,70 L1200,84 Z' fill='%233a4e63' fill-opacity='.84'/%3E%3C/svg%3E");
   background-size: 100% 100%;
-  background-repeat: no-repeat;
   background-position: 0 100%;
+  background-repeat: no-repeat;
 }
 .hs-mist::after {
-  background-image: linear-gradient(180deg, rgba(255,255,255,0) 40%, rgba(255,255,255,.40) 66%, rgba(255,255,255,.72) 100%);
-  animation: hsFog 17s ease-in-out infinite alternate;
+  background-image: linear-gradient(180deg, transparent 38%, rgba(255,255,255,.42) 64%, rgba(255,255,255,.76) 100%);
+  animation: hsFog 18s ease-in-out infinite alternate;
 }
 
-/* 14 · 糖纸：粉紫黄三色底，一层小圆点像糖纸上的印花，一条斜白光慢慢扫 */
-.hs-candy { background: linear-gradient(125deg, #ffe1ee 0%, #f2daff 38%, #dbe9ff 64%, #fff5c9 100%); }
+/* 14 · 糖纸：低饱和糖果底 + 印花糖粒 + 斜向反光 */
+.hs-candy { background: linear-gradient(125deg, #ffe4ef 0%, #f3dcff 38%, #dceaff 64%, #fff7d0 100%); }
 .hs-candy::before {
   background-image:
-    radial-gradient(circle at 6px 7px, rgba(255,255,255,.95) 0 2.6px, transparent 3px),
-    radial-gradient(circle at 19px 18px, rgba(255,164,203,.9) 0 3.4px, transparent 3.8px),
-    radial-gradient(circle at 31px 8px, rgba(255,222,116,.95) 0 2.2px, transparent 2.6px);
-  background-size: 36px 34px, 36px 34px, 36px 34px;
-  animation: hsBead 26s linear infinite alternate;
+    radial-gradient(circle at 6px 7px, rgba(255,255,255,.95) 0 2.4px, transparent 2.9px),
+    radial-gradient(circle at 19px 18px, rgba(255,164,203,.85) 0 3.2px, transparent 3.7px),
+    radial-gradient(circle at 31px 8px, rgba(255,222,116,.9) 0 2px, transparent 2.5px);
+  background-size: 36px 34px;
+  animation: hsBead 28s linear infinite alternate;
 }
 .hs-candy::after {
-  background-image: linear-gradient(104deg, rgba(255,255,255,0) 38%, rgba(255,255,255,.6) 48%, rgba(255,255,255,.16) 56%, rgba(255,255,255,0) 66%);
+  background-image: linear-gradient(104deg, transparent 36%, rgba(255,255,255,.62) 48%, rgba(255,255,255,.16) 57%, transparent 68%);
   animation: hsSheen 13s ease-in-out infinite alternate;
 }
 
-/* 15 · 胶片：暖黑的片基，一层细颗粒，右侧一条橙红漏光、一道竖向划痕 */
-.hs-film { background: linear-gradient(140deg, #1d1813 0%, #2b2219 52%, #171210 100%); }
+/* 15 · 胶片：颗粒、片孔、橙红漏光与一道竖划痕 */
+.hs-film { background: linear-gradient(140deg, #1c1814 0%, #2d231a 52%, #161210 100%); }
 .hs-film::before {
-  /* 颗粒用 feTurbulence 现算，先 saturate=0 去色，否则噪点是彩的、像电视雪花 */
-  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='140'%20height='140'%3E%3Cfilter%20id='n'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='0.55'%20numOctaves='3'/%3E%3CfeColorMatrix%20type='saturate'%20values='0'/%3E%3C/filter%3E%3Crect%20width='140'%20height='140'%20filter='url(%23n)'%20opacity='0.68'/%3E%3C/svg%3E");
-  background-size: 100px 100px;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.62' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.68'/%3E%3C/svg%3E"),
+    radial-gradient(circle at 11px 11px, rgba(8,8,10,.78) 0 3px, transparent 3.6px),
+    radial-gradient(circle at 129px 11px, rgba(8,8,10,.78) 0 3px, transparent 3.6px);
+  background-size: 110px 110px, 140px 34px, 140px 34px;
   opacity: .46;
 }
 .hs-film::after {
   background-image:
-    linear-gradient(90deg, rgba(255,132,64,0) 60%, rgba(255,132,64,.42) 82%, rgba(255,190,112,.72) 94%, rgba(255,120,60,0) 100%),
-    linear-gradient(90deg, rgba(96,144,255,.28) 0%, rgba(96,144,255,0) 20%),
-    linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.52) 26%, rgba(255,255,255,.18) 62%, rgba(255,255,255,0) 100%);
+    linear-gradient(90deg, transparent 58%, rgba(255,132,64,.4) 82%, rgba(255,190,112,.7) 94%, transparent 100%),
+    linear-gradient(90deg, rgba(96,144,255,.26) 0%, transparent 20%),
+    linear-gradient(180deg, transparent 0%, rgba(255,255,255,.46) 26%, rgba(255,255,255,.14) 62%, transparent 100%);
   background-size: 100% 100%, 100% 100%, 1.6px 100%;
   background-position: 0 0, 0 0, 68% 0;
   background-repeat: no-repeat;
-  animation: hsLeak 9s ease-in-out infinite alternate;
+  animation: hsLeak 10s ease-in-out infinite alternate;
 }
 
-/* 16 · 雪原：冷白压到淡蓝，细雪粒一层层往下落，脚下一条雪坡反光 */
-.hs-snow { background: linear-gradient(180deg, #eef6ff 0%, #cfe3f8 46%, #a9c7e6 100%); }
+/* 16 · 雪原：三层不同大小的雪粒 + 脚下雪坡 */
+.hs-snow { background: linear-gradient(180deg, #eff6ff 0%, #d2e5f9 46%, #aac8e7 100%); }
 .hs-snow::before {
-  /* 别给雪点描边：一圈淡蓝灰在浅底上会变成"泡泡纸"。靠压深底色 + 白点柔光就够了 */
   background-image:
-    radial-gradient(circle at 5px 6px, #fff 0 1.2px, rgba(255,255,255,.26) 1.9px, transparent 2.5px),
-    radial-gradient(circle at 14px 13px, #fff 0 .9px, rgba(255,255,255,.22) 1.5px, transparent 2px),
+    radial-gradient(circle at 5px 6px, #fff 0 1.2px, rgba(255,255,255,.3) 1.9px, transparent 2.5px),
+    radial-gradient(circle at 14px 13px, #fff 0 .9px, rgba(255,255,255,.24) 1.5px, transparent 2px),
     radial-gradient(circle at 22px 8px, #fff 0 1.5px, rgba(255,255,255,.3) 2.3px, transparent 3px);
-  background-size: 29px 29px, 29px 29px, 29px 29px;
-  animation: hsSnow 6.2s linear infinite;
+  background-size: 29px 29px, 37px 37px, 49px 49px;
+  animation: hsSnow 6.4s linear infinite;
 }
 .hs-snow::after {
   background-image:
-    radial-gradient(ellipse 118% 72% at 24% 120%, rgba(255,255,255,.88) 0%, rgba(255,255,255,0) 62%),
-    radial-gradient(ellipse 96% 58% at 88% 124%, rgba(146,182,222,.5) 0%, rgba(146,182,222,0) 62%);
+    radial-gradient(ellipse 118% 72% at 24% 122%, rgba(255,255,255,.9), transparent 62%),
+    radial-gradient(ellipse 96% 58% at 88% 126%, rgba(146,182,222,.46), transparent 62%);
 }
 
-/* 17 · 樱花：淡粉底，一层椭圆花瓣斜着往左下飘，再叠一层更淡的远端花瓣 */
-.hs-sakura { background: linear-gradient(132deg, #fff5f9 0%, #ffe3ed 46%, #ffd3e4 100%); }
+/* 17 · 樱花：两层不同速度的花瓣，近处大而清楚、远处小而淡 */
+.hs-sakura { background: linear-gradient(132deg, #fff6fa 0%, #ffe4ee 46%, #ffd4e5 100%); }
 .hs-sakura::before {
-  /* 椭圆点排得太整齐，像壁纸上的圆点。改用内联 SVG 画真花瓣：带旋转、有大有小 */
-  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20180%20130'%3E<path%20transform='translate(30,24)%20rotate(-22)%20scale(0.72)'%20d='M0,-8%20C7,-7%2010,-1%207,4%20C4,9%20-4,9%20-7,4%20C-10,-1%20-7,-7%200,-8%20Z'%20fill='%23f58bb2'%20opacity='.9'/><path%20transform='translate(96,12)%20rotate(40)%20scale(0.55)'%20d='M0,-8%20C7,-7%2010,-1%207,4%20C4,9%20-4,9%20-7,4%20C-10,-1%20-7,-7%200,-8%20Z'%20fill='%23ffb8d0'%20opacity='.78'/><path%20transform='translate(156,40)%20rotate(-6)%20scale(0.82)'%20d='M0,-8%20C7,-7%2010,-1%207,4%20C4,9%20-4,9%20-7,4%20C-10,-1%20-7,-7%200,-8%20Z'%20fill='%23f58bb2'%20opacity='.9'/><path%20transform='translate(58,74)%20rotate(62)%20scale(0.6)'%20d='M0,-8%20C7,-7%2010,-1%207,4%20C4,9%20-4,9%20-7,4%20C-10,-1%20-7,-7%200,-8%20Z'%20fill='%23ffb8d0'%20opacity='.78'/><path%20transform='translate(124,86)%20rotate(-40)%20scale(0.7)'%20d='M0,-8%20C7,-7%2010,-1%207,4%20C4,9%20-4,9%20-7,4%20C-10,-1%20-7,-7%200,-8%20Z'%20fill='%23f58bb2'%20opacity='.9'/><path%20transform='translate(176,104)%20rotate(14)%20scale(0.5)'%20d='M0,-8%20C7,-7%2010,-1%207,4%20C4,9%20-4,9%20-7,4%20C-10,-1%20-7,-7%200,-8%20Z'%20fill='%23ffb8d0'%20opacity='.78'/><path%20transform='translate(10,100)%20rotate(-64)%20scale(0.58)'%20d='M0,-8%20C7,-7%2010,-1%207,4%20C4,9%20-4,9%20-7,4%20C-10,-1%20-7,-7%200,-8%20Z'%20fill='%23f58bb2'%20opacity='.9'/>%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 130'%3E<path transform='translate(30,24) rotate(-22) scale(0.72)' d='M0,-8 C7,-7 10,-1 7,4 C4,9 -4,9 -7,4 C-10,-1 -7,-7 0,-8 Z' fill='%23f58bb2' opacity='.9'/><path transform='translate(96,12) rotate(40) scale(0.55)' d='M0,-8 C7,-7 10,-1 7,4 C4,9 -4,9 -7,4 C-10,-1 -7,-7 0,-8 Z' fill='%23ffb8d0' opacity='.78'/><path transform='translate(156,40) rotate(-6) scale(0.82)' d='M0,-8 C7,-7 10,-1 7,4 C4,9 -4,9 -7,4 C-10,-1 -7,-7 0,-8 Z' fill='%23f58bb2' opacity='.9'/><path transform='translate(58,74) rotate(62) scale(0.6)' d='M0,-8 C7,-7 10,-1 7,4 C4,9 -4,9 -7,4 C-10,-1 -7,-7 0,-8 Z' fill='%23ffb8d0' opacity='.78'/><path transform='translate(124,86) rotate(-40) scale(0.7)' d='M0,-8 C7,-7 10,-1 7,4 C4,9 -4,9 -7,4 C-10,-1 -7,-7 0,-8 Z' fill='%23f58bb2' opacity='.9'/><path transform='translate(176,104) rotate(14) scale(0.5)' d='M0,-8 C7,-7 10,-1 7,4 C4,9 -4,9 -7,4 C-10,-1 -7,-7 0,-8 Z' fill='%23ffb8d0' opacity='.78'/><path transform='translate(10,100) rotate(-64) scale(0.58)' d='M0,-8 C7,-7 10,-1 7,4 C4,9 -4,9 -7,4 C-10,-1 -7,-7 0,-8 Z' fill='%23f58bb2' opacity='.9'/>%3C/svg%3E");
   background-size: 216px 156px;
-  background-repeat: repeat;
   animation: hsPetal 9.5s linear infinite;
 }
 .hs-sakura::after {
   background-image:
-    radial-gradient(ellipse 58% 104% at 84% 0%, rgba(255,255,255,.5) 0%, rgba(255,255,255,0) 72%),
-    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20180%20130'%3E<path%20transform='translate(26,28)%20rotate(-26)%20scale(1.0)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23f793b8'%20opacity='.92'/><path%20transform='translate(82,15)%20rotate(34)%20scale(0.78)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23ffb3cd'%20opacity='.8'/><path%20transform='translate(138,36)%20rotate(-10)%20scale(1.12)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23f793b8'%20opacity='.92'/><path%20transform='translate(52,76)%20rotate(58)%20scale(0.9)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23ffb3cd'%20opacity='.8'/><path%20transform='translate(110,88)%20rotate(-44)%20scale(1.0)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23f793b8'%20opacity='.92'/><path%20transform='translate(164,100)%20rotate(16)%20scale(0.72)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23ffb3cd'%20opacity='.8'/><path%20transform='translate(8,96)%20rotate(-68)%20scale(0.84)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23f793b8'%20opacity='.92'/><path%20transform='translate(94,116)%20rotate(104)%20scale(0.8)'%20d='M0,-9%20C6,-6%209.5,0.5%206,6.5%20C3,10.5%20-3,10.5%20-6,6.5%20C-9.5,0.5%20-6,-6%200,-9%20Z'%20fill='%23ffb3cd'%20opacity='.8'/>%3C/svg%3E");
+    radial-gradient(ellipse 58% 104% at 84% 0%, rgba(255,255,255,.5), transparent 72%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 130'%3E<path transform='translate(26,28) rotate(-26) scale(1)' d='M0,-9 C6,-6 9.5,0.5 6,6.5 C3,10.5 -3,10.5 -6,6.5 C-9.5,0.5 -6,-6 0,-9 Z' fill='%23f793b8' opacity='.92'/><path transform='translate(82,15) rotate(34) scale(0.78)' d='M0,-9 C6,-6 9.5,0.5 6,6.5 C3,10.5 -3,10.5 -6,6.5 C-9.5,0.5 -6,-6 0,-9 Z' fill='%23ffb3cd' opacity='.8'/><path transform='translate(138,36) rotate(-10) scale(1.12)' d='M0,-9 C6,-6 9.5,0.5 6,6.5 C3,10.5 -3,10.5 -6,6.5 C-9.5,0.5 -6,-6 0,-9 Z' fill='%23f793b8' opacity='.92'/><path transform='translate(52,76) rotate(58) scale(0.9)' d='M0,-9 C6,-6 9.5,0.5 6,6.5 C3,10.5 -3,10.5 -6,6.5 C-9.5,0.5 -6,-6 0,-9 Z' fill='%23ffb3cd' opacity='.8'/><path transform='translate(110,88) rotate(-44) scale(1)' d='M0,-9 C6,-6 9.5,0.5 6,6.5 C3,10.5 -3,10.5 -6,6.5 C-9.5,0.5 -6,-6 0,-9 Z' fill='%23f793b8' opacity='.92'/><path transform='translate(164,100) rotate(16) scale(0.72)' d='M0,-9 C6,-6 9.5,0.5 6,6.5 C3,10.5 -3,10.5 -6,6.5 C-9.5,0.5 -6,-6 0,-9 Z' fill='%23ffb3cd' opacity='.8'/><path transform='translate(8,96) rotate(-68) scale(0.84)' d='M0,-9 C6,-6 9.5,0.5 6,6.5 C3,10.5 -3,10.5 -6,6.5 C-9.5,0.5 -6,-6 0,-9 Z' fill='%23f793b8' opacity='.92'/>%3C/svg%3E");
   background-size: 100% 100%, 268px 194px;
   background-repeat: no-repeat, repeat;
-  opacity: .42;
+  opacity: .46;
   animation: hsPetal 19s linear infinite reverse;
 }
 
-/* 18 · 雨窗：糊掉的窗外色，玻璃上一批大小不一的雨珠，几条水痕往下淌 */
-.hs-window { background: linear-gradient(156deg, #c6d5e2 0%, #a5b9ca 48%, #8da2b6 100%); }
+/* 18 · 雨窗：模糊的窗外光斑 + 大小不一的水珠 + 往下淌的水痕 */
+.hs-window { background: linear-gradient(156deg, #cbd9e6 0%, #a9bdcf 48%, #8ba2b7 100%); }
 .hs-window::before {
-  /* 水珠要有体积：中心亮、下面渐淡、最外缘压一点灰蓝；纯白圆点看着像雪 */
   background-image:
-    radial-gradient(circle 8px at 8% 44%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
-    radial-gradient(circle 5px at 17% 74%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
-    radial-gradient(circle 6.5px at 27% 26%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
-    radial-gradient(circle 4px at 36% 60%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
-    radial-gradient(circle 9px at 45% 84%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
-    radial-gradient(circle 5.5px at 54% 38%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
-    radial-gradient(circle 7px at 63% 68%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
-    radial-gradient(circle 4.5px at 72% 22%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
-    radial-gradient(circle 8px at 81% 52%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
-    radial-gradient(circle 5px at 90% 78%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%),
-    radial-gradient(circle 6px at 96% 34%, rgba(255,255,255,.96) 0 42%, rgba(255,255,255,.6) 60%, rgba(88,110,136,.36) 82%, rgba(88,110,136,0) 92%);
+    radial-gradient(ellipse 12% 46% at 14% 12%, rgba(255,255,255,.2), transparent 74%),
+    radial-gradient(ellipse 9% 38% at 74% 4%, rgba(255,224,186,.18), transparent 76%),
+    radial-gradient(circle 4px at 8% 44%, rgba(255,255,255,.8) 0 34%, rgba(255,255,255,.42) 58%, rgba(88,110,136,.26) 82%, transparent 94%),
+    radial-gradient(circle 2.6px at 17% 74%, rgba(255,255,255,.76) 0 34%, rgba(255,255,255,.4) 58%, rgba(88,110,136,.24) 82%, transparent 94%),
+    radial-gradient(circle 3.4px at 27% 26%, rgba(255,255,255,.8) 0 34%, rgba(255,255,255,.42) 58%, rgba(88,110,136,.26) 82%, transparent 94%),
+    radial-gradient(circle 2px at 36% 60%, rgba(255,255,255,.72) 0 34%, rgba(255,255,255,.36) 58%, rgba(88,110,136,.22) 82%, transparent 94%),
+    radial-gradient(circle 4.6px at 45% 84%, rgba(255,255,255,.8) 0 34%, rgba(255,255,255,.42) 58%, rgba(88,110,136,.26) 82%, transparent 94%),
+    radial-gradient(circle 2.8px at 54% 38%, rgba(255,255,255,.76) 0 34%, rgba(255,255,255,.4) 58%, rgba(88,110,136,.24) 82%, transparent 94%),
+    radial-gradient(circle 3.6px at 63% 68%, rgba(255,255,255,.78) 0 34%, rgba(255,255,255,.4) 58%, rgba(88,110,136,.24) 82%, transparent 94%),
+    radial-gradient(circle 2.2px at 72% 22%, rgba(255,255,255,.72) 0 34%, rgba(255,255,255,.36) 58%, rgba(88,110,136,.22) 82%, transparent 94%),
+    radial-gradient(circle 4.2px at 81% 52%, rgba(255,255,255,.78) 0 34%, rgba(255,255,255,.4) 58%, rgba(88,110,136,.24) 82%, transparent 94%),
+    radial-gradient(circle 2.6px at 90% 78%, rgba(255,255,255,.74) 0 34%, rgba(255,255,255,.38) 58%, rgba(88,110,136,.22) 82%, transparent 94%);
 }
 .hs-window::after {
-  /* 四条粗细不等的水痕，底端亮一点（水积在那儿），整体极慢地往下淌 */
   background-image:
-    linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.4) 62%, rgba(255,255,255,.86) 100%),
-    linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.34) 66%, rgba(255,255,255,.78) 100%),
-    linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.36) 70%, rgba(255,255,255,.74) 100%),
-    linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.3) 74%, rgba(255,255,255,.64) 100%);
-  background-size: 5px 90%, 3.6px 78%, 4.4px 86%, 2.8px 66%;
+    linear-gradient(180deg, transparent 0%, rgba(255,255,255,.18) 62%, rgba(255,255,255,.5) 100%),
+    linear-gradient(180deg, transparent 0%, rgba(255,255,255,.16) 66%, rgba(255,255,255,.44) 100%),
+    linear-gradient(180deg, transparent 0%, rgba(255,255,255,.17) 70%, rgba(255,255,255,.42) 100%),
+    linear-gradient(180deg, transparent 0%, rgba(255,255,255,.14) 74%, rgba(255,255,255,.36) 100%);
+  background-size: 3px 90%, 2px 78%, 2.6px 86%, 1.6px 66%;
   background-position: 22% -32%, 41% -20%, 64% -42%, 85% -24%;
   background-repeat: no-repeat;
-  animation: hsDrip 11s ease-in-out infinite;
+  animation: hsDrip 12s ease-in-out infinite;
 }
 
-/* 19 · 唱片：深黑片基，一圈圈细纹，两块斜白反光极慢地亮暗（不整体旋转，带子会被切边） */
-.hs-vinyl { background: radial-gradient(circle at 78% 190%, #2a2a31 0%, #17171d 44%, #0a0a0e 100%); }
+/* 19 · 唱片：细密沟纹 + 唱片反光 */
+.hs-vinyl { background: radial-gradient(circle at 78% 190%, #2d2d35 0%, #18181f 44%, #0a0a0e 100%); }
 .hs-vinyl::before {
   background-image: repeating-radial-gradient(circle at 78% 190%,
-    rgba(255,255,255,0) 0 4px,
-    rgba(255,255,255,.085) 4px 5.1px,
-    rgba(255,255,255,0) 5.1px 7.6px);
+    transparent 0 4px, rgba(255,255,255,.085) 4px 5px, transparent 5px 7.6px);
 }
 .hs-vinyl::after {
   background-image:
-    linear-gradient(108deg, rgba(255,255,255,0) 16%, rgba(255,255,255,.14) 28%, rgba(255,255,255,0) 40%),
-    linear-gradient(108deg, rgba(255,255,255,0) 58%, rgba(255,255,255,.10) 68%, rgba(255,255,255,0) 78%);
-  animation: hsGlow 10s ease-in-out infinite alternate;
+    linear-gradient(108deg, transparent 16%, rgba(255,255,255,.15) 28%, transparent 40%),
+    linear-gradient(108deg, transparent 58%, rgba(255,255,255,.1) 68%, transparent 78%);
+  animation: hsBreath 11s ease-in-out infinite;
 }
 
-/* 20 · 稿纸：浅绿底 + 十几行横线格 + 左侧一道红色边线 */
-.hs-grid { background: linear-gradient(180deg, #fafcf4 0%, #f1f8e8 100%); }
+/* 20 · 稿纸：纸纤维 + 横线格 + 左侧红边线 */
+.hs-grid { background: linear-gradient(180deg, #fbfcf5 0%, #f1f8e8 100%); }
 .hs-grid::before {
-  background-image: repeating-linear-gradient(180deg,
-    rgba(122,164,130,0) 0 14px,
-    rgba(122,164,130,.42) 14px 15px);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.09'/%3E%3C/svg%3E"),
+    repeating-linear-gradient(180deg, transparent 0 14px, rgba(122,164,130,.4) 14px 15px);
+  background-size: 160px 160px, 100% 15px;
 }
 .hs-grid::after {
+  inset: 0;
   background-image:
-    linear-gradient(90deg, rgba(212,122,122,0) 6.2%, rgba(214,126,126,.72) 6.5% 6.85%, rgba(212,122,122,0) 7.1%),
-    linear-gradient(180deg, rgba(150,180,150,.14) 0%, rgba(150,180,150,0) 30%);
+    linear-gradient(90deg, transparent 6.2%, rgba(214,126,126,.7) 6.5% 6.85%, transparent 7.1%),
+    linear-gradient(180deg, rgba(150,180,150,.12) 0%, transparent 30%),
+    radial-gradient(circle at 2.2% 50%, rgba(120,120,120,.18) 0 2px, transparent 2.6px);
+  background-size: 100% 100%, 100% 100%, 100% 42px;
 }
 
-@keyframes hsGlow { 0% { opacity: .84; transform: scale(1) } 100% { opacity: 1; transform: scale(1.05) } }
-@keyframes hsRain {
-  0% { background-position: 0 0 }
-  100% { background-position: -16px 22px }
+/* 系统要求减少动效时，星空道具直接不出现，其余层停在当前画面 */
+@media (prefers-reduced-motion: reduce) {
+  .band-skin::before, .band-skin::after,
+  .skin-thumb::before, .skin-thumb::after,
+  .hs-meteor .bs-m { animation: none !important; }
+  .hs-meteor .bs-m { display: none !important; }
 }
-@keyframes hsScan { 0% { opacity: .72 } 100% { opacity: 1 } }
-@keyframes hsWave {
-  0% { transform: translate3d(0, 2px, 0) }
-  100% { transform: translate3d(-8px, -2px, 0) }
+
+/* 换背景时让新皮肤轻轻落下来：只动 opacity，切旧类到新类不会看到硬切。
+   class 由 paintBandSkin() 加，动画结束自动留在终态。 */
+.author-hero-band.band-skin.is-swapping { animation: dmSkinSwap .42s ease both; }
+@keyframes dmSkinSwap { from { opacity: .45 } to { opacity: 1 } }
+
+/* ---- 静态壁纸（2026-11-21 新增）----
+   和上面那二十套带动效的皮肤不同，这一组从头到尾不写 animation：
+   多层渐变堆出景深和光，噪点压住「塑料渐变」的平，安静地当一张背景。
+   仍然是 .hs-* 一套样式两处生效：换背景弹层的小条 + 作者页铺满的卡头。
+   两个坑记一下：radial-gradient 的 circle 不能写百分比半径（整层会被丢掉），
+   圆形光斑一律 ellipse x% y%；山形用 clip-path 裁，别拿几个椭圆硬凑，会像盘子。 */
+
+/* 1 · 暮湖：太阳沉进远山，湖面把剩下的暖光揉成一道道碎金 */
+.hs-lake {
+  background-color: #1b2a45;
+  background-image:
+    var(--grain),
+    linear-gradient(180deg, #eaa383 0%, #d68c8b 16%, #8a6b9c 40%, #33486b 64%, #0e1a2e 100%);
 }
-@keyframes hsFog {
-  0% { opacity: .62 }
-  100% { opacity: 1 }
+.hs-lake::before {
+  background-image:
+    radial-gradient(ellipse 11% 32% at 66% 28%, rgba(255,206,150,.42) 0 40%, transparent 78%),
+    radial-gradient(ellipse 5% 16% at 66% 28%, rgba(255,246,214,.98) 0 52%, rgba(255,206,150,.7) 72%, transparent 92%),
+    radial-gradient(ellipse 44% 18% at 6% 68%, rgba(26,36,62,.95) 0 58%, transparent 62%),
+    radial-gradient(ellipse 54% 15% at 56% 66%, rgba(42,50,80,.9) 0 58%, transparent 62%),
+    radial-gradient(ellipse 38% 12% at 96% 68%, rgba(22,32,58,.95) 0 58%, transparent 62%),
+    repeating-linear-gradient(180deg, rgba(255,228,190,.16) 0 1px, transparent 1px 11px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 44%;
+  background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 100%;
+  background-repeat: no-repeat;
 }
-/* 平铺的花纹要挪 background-position，不能 translate，否则边上会露一条缝 */
-@keyframes hsBead {
-  0% { background-position: 0 0, 0 0, 0 0 }
-  100% { background-position: 17px 9px, -13px 11px, 9px -7px }
+.hs-lake::after {
+  background-image:
+    radial-gradient(ellipse 4% 30% at 66% 84%, rgba(255,206,150,.4), transparent 80%),
+    linear-gradient(180deg, rgba(9,15,30,.3) 0%, transparent 28%, transparent 60%, rgba(6,12,26,.4) 100%),
+    radial-gradient(130% 110% at 50% 46%, transparent 40%, rgba(7,12,28,.34) 100%);
 }
-@keyframes hsSheen {
-  0% { transform: translate3d(-14%, 0, 0) }
-  100% { transform: translate3d(14%, 0, 0) }
+
+/* 2 · 云海：天还青着，云先从谷底一层层浮起来，边上被日头镶了金 */
+.hs-cloud {
+  background-color: #3f5776;
+  background-image:
+    var(--grain),
+    linear-gradient(180deg, #223a5a 0%, #48698b 36%, #86a3b9 66%, #c2beb5 100%);
 }
-@keyframes hsLeak { 0% { opacity: .74 } 100% { opacity: 1 } }
-@keyframes hsSnow {
-  0% { background-position: 0 0, 0 0, 0 0 }
-  100% { background-position: -6px 29px, 4px 29px, -2px 29px }
+.hs-cloud::before {
+  background-image:
+    radial-gradient(ellipse 56% 20% at 76% 44%, rgba(255,222,176,.42), transparent 74%),
+    radial-gradient(ellipse 44% 16% at 10% 54%, rgba(255,255,255,.34) 0 55%, transparent 74%),
+    radial-gradient(ellipse 52% 14% at 76% 58%, rgba(255,255,255,.3) 0 55%, transparent 74%),
+    radial-gradient(ellipse 32% 20% at 16% 78%, rgba(255,255,255,.72) 0 54%, rgba(226,234,243,.28) 68%, transparent 80%),
+    radial-gradient(ellipse 38% 18% at 56% 84%, rgba(255,255,255,.68) 0 52%, rgba(226,234,243,.24) 68%, transparent 80%),
+    radial-gradient(ellipse 30% 16% at 92% 74%, rgba(255,255,255,.58) 0 54%, rgba(226,234,243,.2) 70%, transparent 82%);
 }
-@keyframes hsPetal {
-  0% { background-position: 0 0, 0 0 }
-  100% { background-position: -20px 156px, 16px 156px }
+.hs-cloud::after {
+  background-image:
+    linear-gradient(180deg, rgba(12,24,44,.36) 0%, transparent 34%, transparent 62%, rgba(20,28,46,.28) 100%),
+    radial-gradient(140% 120% at 50% 40%, transparent 42%, rgba(14,24,44,.32) 100%);
 }
-@keyframes hsDrip {
-  0% { background-position: 22% -32%, 41% -20%, 64% -42%, 85% -24% }
-  100% { background-position: 22% 100%, 41% 100%, 64% 100%, 85% 100% }
+
+/* 3 · 林间：几道斜进来的晨光，树干是剪影，边缘留半格过渡，别硬得像木条 */
+.hs-forest {
+  background-color: #16241f;
+  background-image:
+    var(--grain),
+    linear-gradient(180deg, #2a4438 0%, #345344 38%, #22392f 70%, #101b18 100%);
+}
+.hs-forest::before {
+  background-image:
+    radial-gradient(ellipse 50% 32% at 74% 4%, rgba(255,244,200,.44), transparent 72%),
+    linear-gradient(102deg, transparent 0 26%, rgba(255,242,198,.18) 26% 33%, transparent 33% 100%),
+    linear-gradient(99deg, transparent 0 58%, rgba(255,242,198,.13) 58% 64%, transparent 64% 100%),
+    linear-gradient(90deg, transparent 0 6%, rgba(12,24,21,.12) 6%, rgba(12,24,21,.82) 6.5% 10%, rgba(12,24,21,.12) 10.5%, transparent 11% 100%),
+    linear-gradient(91deg, transparent 0 34%, rgba(18,32,27,.7) 34.4% 36%, transparent 36.4% 100%),
+    linear-gradient(89deg, transparent 0 59%, rgba(11,22,19,.12) 59%, rgba(11,22,19,.84) 59.5% 62%, rgba(11,22,19,.12) 62.5%, transparent 63% 100%),
+    linear-gradient(91deg, transparent 0 88%, rgba(10,21,18,.84) 88.4% 90.6%, transparent 91% 100%);
+}
+.hs-forest::after {
+  background-image:
+    linear-gradient(180deg, transparent 0 40%, rgba(214,232,214,.16) 54%, rgba(206,224,204,.24) 70%, transparent 88%),
+    linear-gradient(180deg, rgba(8,16,14,.28), transparent 36%, transparent 64%, rgba(6,12,10,.5)),
+    radial-gradient(140% 110% at 50% 42%, transparent 40%, rgba(5,12,10,.38) 100%);
+}
+
+/* 4 · 雪山：曲线山脊 + 垂直渐变当雪线；沿用原有雾山的 SVG 路子，比多边形裁剪自然 */
+.hs-peak {
+  background-color: #1a2c47;
+  background-image:
+    var(--grain),
+    radial-gradient(130% 100% at 50% 40%, transparent 42%, rgba(8,16,32,.38) 100%),
+    linear-gradient(180deg, #1d3354 0%, #3d5e81 36%, #89a5bd 70%, #c2d0da 100%);
+}
+.hs-peak::before {
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 300' preserveAspectRatio='none'%3E%0A%3Cdefs%3E%3ClinearGradient id='m' gradientUnits='userSpaceOnUse' x1='0' y1='80' x2='0' y2='300'%3E%0A%3Cstop offset='0%' stop-color='%23f0f7fc'/%3E%3Cstop offset='15%' stop-color='%23dceaf4'/%3E%0A%3Cstop offset='35%' stop-color='%238aa9c8'/%3E%3Cstop offset='68%' stop-color='%233d5e81'/%3E%0A%3Cstop offset='100%' stop-color='%23233d5d'/%3E%3C/linearGradient%3E%3C/defs%3E%0A%3Cpath d='M0,300 L0,185 C110,160 210,180 320,145 C430,110 510,60 620,85 C730,110 820,155 930,130 C1040,105 1130,140 1200,160 L1200,300 Z' fill='%238ba7c2' fill-opacity='.5'/%3E%0A%3Cpath d='M0,300 L0,235 C130,215 250,235 370,200 C480,168 560,80 690,105 C810,128 890,190 1010,175 C1110,162 1160,195 1200,210 L1200,300 Z' fill='url(%23m)'/%3E%0A%3C/svg%3E");
+  background-size: 100% 100%;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+}
+.hs-peak::after {
+  background-image: linear-gradient(180deg, transparent 0 62%, rgba(226,238,246,.18) 74%, transparent 90%);
+}
+
+/* 5 · 水墨：留白多一点，远山淡近山浓，山腰横一道雾；右上角只点一颗朱红 */
+.hs-ink {
+  background-color: #2a3034;
+  background-image:
+    var(--grain),
+    radial-gradient(ellipse 1.2% 4% at 82% 18%, rgba(206,92,76,.92) 0 56%, transparent 78%),
+    linear-gradient(180deg, #3a4245 0%, #4c5558 40%, #6d7770 72%, #9aa196 100%);
+}
+.hs-ink::before {
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 300' preserveAspectRatio='none'%3E%0A%3Cpath d='M0,300 L0,200 C140,175 260,205 390,170 C520,135 620,100 750,140 C880,180 1010,200 1200,165 L1200,300 Z' fill='%232a3337' fill-opacity='.46'/%3E%0A%3Cpath d='M0,300 L0,250 C150,225 290,260 430,225 C560,192 650,155 790,190 C930,225 1060,250 1200,215 L1200,300 Z' fill='%23192024' fill-opacity='.82'/%3E%0A%3C/svg%3E");
+  background-size: 100% 100%;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+}
+.hs-ink::after {
+  background-image: linear-gradient(180deg, transparent 0 52%, rgba(226,230,220,.42) 58% 65%, transparent 72%);
+}
+/* 6 · 月夜：月盘带几块暗斑，云丝很薄，底下压一条树线的黑 */
+.hs-moon {
+  background-color: #0d142c;
+  background-image:
+    var(--grain),
+    radial-gradient(120% 90% at 76% 18%, rgba(74,92,158,.5), transparent 62%),
+    linear-gradient(180deg, #101a36 0%, #1b2a4c 46%, #2a3a5e 76%, #0f182e 100%);
+}
+.hs-moon::before {
+  background-image:
+    radial-gradient(ellipse 14% 44% at 72% 24%, rgba(206,222,255,.22) 0 40%, transparent 76%),
+    radial-gradient(ellipse 7% 21% at 72% 24%, #f2f1e6 0 58%, #d8dccf 74%, rgba(216,220,207,.6) 86%, transparent 94%),
+    radial-gradient(ellipse 1.6% 5% at 69% 20%, rgba(150,158,152,.5) 0 56%, transparent 78%),
+    radial-gradient(ellipse 1.2% 4% at 75% 27%, rgba(150,158,152,.44) 0 56%, transparent 78%),
+    radial-gradient(ellipse .9% 3% at 71% 29%, rgba(150,158,152,.42) 0 56%, transparent 78%),
+    radial-gradient(ellipse 46% 6% at 26% 40%, rgba(170,188,224,.18), transparent 74%),
+    radial-gradient(ellipse 38% 5% at 62% 58%, rgba(170,188,224,.13), transparent 74%),
+    radial-gradient(ellipse 60% 12% at 22% 96%, rgba(6,10,24,.9) 0 60%, transparent 64%),
+    radial-gradient(ellipse 52% 9% at 82% 98%, rgba(6,10,24,.9) 0 60%, transparent 64%);
+}
+.hs-moon::after {
+  background-image:
+    linear-gradient(180deg, rgba(6,10,24,.22), transparent 30%, transparent 66%, rgba(4,8,20,.5)),
+    radial-gradient(130% 110% at 50% 44%, transparent 42%, rgba(4,8,20,.4) 100%);
 }
 
 /* ---- 铺满后的皮肤微调（2026-11-14）----
@@ -3995,12 +4212,16 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .skin-item {
   display: block; width: 100%; padding: 7px; cursor: pointer; font-family: inherit;
   border: 1px solid var(--border); border-radius: 12px; background: #fff;
-  transition: border-color .15s, box-shadow .15s, transform .15s;
+  transition: border-color .18s ease, box-shadow .22s ease, transform .28s cubic-bezier(.16, 1, .3, 1);
 }
-.skin-item:hover { border-color: var(--primary); transform: translateY(-1px); }
-.skin-item.is-on { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(91,91,214,.16); }
-/* 缩略图不再自带底色：底色交给各自的 .hs-*，否则弹层里十二格全长一样 */
-.skin-thumb { display: block; height: 46px; border-radius: 8px; background-color: #5b5bd6; }
+.skin-item:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: 0 6px 18px rgba(62, 56, 130, .12); }
+.skin-item:active { transform: translateY(0) scale(.99); }
+.skin-item.is-on { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(91,91,214,.16), 0 5px 16px rgba(62,56,130,.1); }
+/* 缩略图不再自带底色：底色交给各自的 .hs-*；内阴影让 46px 小条也有材质边界 */
+.skin-thumb {
+  display: block; height: 46px; border-radius: 8px; background-color: #5b5bd6;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.18), inset 0 -10px 18px rgba(12,10,30,.12);
+}
 .skin-name { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 7px; font-size: 12.5px; color: var(--muted); }
 .skin-item.is-on .skin-name { color: var(--primary); font-weight: 600; }
 .skin-modal-hint { margin: 0; font-size: 12.5px; color: var(--muted); }
@@ -13699,5 +13920,86 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
 @media (max-width: 640px) { .ld246-grid { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) {
   .ld246-card, .ld246-card:hover { transform: none; transition: none; }
+}
+
+/* ============================================================
+   创作者主页 · 紧凑排版微调（2026-11-21）
+   截图反馈：名片区太高，首屏下面只露出一点作品封面；右栏说明折两行。
+   只收垂直间距 / 略缩头像和数字，不改结构、不碰业务 JS；
+   深浅皮肤仍走 --hero-ink 系列变量，SSR（/u/）与 SPA 同步生效。
+   ============================================================ */
+.author-hero { margin: 22px 0 20px; }
+.author-hero .author-hero-main { padding: 20px 24px 16px; }
+.author-hero .author-avatar {
+  width: 78px; height: 78px; font-size: 29px;
+  box-shadow: 0 0 0 4px rgba(255,255,255,.2), 0 6px 18px rgba(20,14,52,.24);
+}
+.author-hero .author-info { padding-top: 30px; }
+.author-hero .author-info h1,
+.author-hero .author-info .author-title { font-size: 22px; }
+.author-hero .author-badges { margin-top: 7px; gap: 6px; }
+.author-hero .author-badge { white-space: nowrap; }   /* 窄屏别把「常驻第2期第1年」拆成两行 */
+.author-hero .author-meta { margin-top: 4px; }
+.author-hero .author-bio { margin-top: 6px; font-size: 13px; line-height: 1.6; }
+.author-hero .author-edit-btn { margin-top: 30px; padding: 7px 15px; font-size: 12.5px; }
+
+/* 统计行：保留六格与竖线，只把每格压矮；数字仍然最大 */
+.author-hero .author-stat-grid .as-cell { padding: 10px 6px 9px; gap: 3px; }
+.author-hero .author-stat-grid .as-ico svg { width: 14px; height: 14px; }
+.author-hero .author-stat-grid .as-val { font-size: 19px; }
+.author-hero .author-stat-grid .as-label { font-size: 11.5px; }
+
+/* 功能入口 / tab：同样收垂直间距，图标不缩太多，保持好点 */
+.author-acts { padding: 6px 6px 5px; }
+.author-acts .au-act { gap: 5px; padding: 5px 4px; font-size: 12px; }
+.author-acts .au-act-ico, .author-acts .au-act-ico svg { width: 21px; height: 21px; }
+.au-tab { padding: 10px 4px 9px; font-size: 13.5px; }
+
+/* 名片和作品流之间少留一点，首屏多露出一行封面 */
+.author-hero + .gallery,
+#authorGallery:not(:empty) { margin-top: 18px; }
+
+/* 右栏：作品数据卡收紧，说明改成一行 */
+.creator-card { padding: 14px; }
+.creator-card .cc-ico { width: 38px; height: 38px; }
+.creator-card .cc-ico svg { width: 19px; height: 19px; }
+.creator-card .cc-title b { font-size: 14px; }
+.creator-card .cc-title span { font-size: 11.5px; }
+.creator-card .cc-btn { margin-top: 11px; padding: 8px 0; font-size: 13px; }
+.author-side { margin-top: 24px; }
+.author-medals { padding: 12px 14px 14px; }
+
+@media (max-width: 640px) {
+  .author-hero .author-avatar { width: 64px; height: 64px; font-size: 25px; }
+  .author-hero .author-info { padding-top: 24px; }
+  .author-hero .author-edit-btn { margin-top: 24px; padding: 6px 12px; }
+  .author-hero .author-stat-grid .as-val { font-size: 17px; }
+  .au-tab { font-size: 13px; padding: 9px 2px 8px; }
+}
+
+/* ---- 紫色只盖顶部（2026-11-21 站长反馈「紫色部分太大了」）----
+   原来皮肤铺满整张卡（11-14 的要求），现在收成只包住头像/名字/简介这一块，
+   统计、功能入口、tab 回到白底深字。用 grid 让皮肤层自动跟随第一行高度，
+   不管作者填没填简介、手机上折几行，紫色底边都刚好贴着信息区，不会露白字也不会多出一块紫。
+   旧规则里 .author-hero-band.band-skin 是 absolute + height:100%，这里整组覆盖。 */
+.author-hero { display: grid; grid-template-columns: minmax(0, 1fr); }
+.author-hero-band.band-skin {
+  position: relative; inset: auto; height: auto; align-self: stretch;
+  grid-column: 1; grid-row: 1; z-index: 0;
+}
+.author-hero-main { grid-column: 1; grid-row: 1; z-index: 1; }
+.author-stat-grid { grid-column: 1; grid-row: 2; }
+.author-acts { grid-column: 1; grid-row: 3; }
+.author-tabs { grid-column: 1; grid-row: 4; }
+/* 白底那三行：不管什么皮肤都按深字走，别继承紫色带上的 --hero-ink 白字 */
+.author-hero .author-stat-grid,
+.author-hero .author-acts,
+.author-hero .author-tabs {
+  --hero-ink: #232a36;
+  --hero-ink-2: rgba(35, 42, 54, .72);
+  --hero-line: rgba(35, 42, 54, .14);
+  --hero-chip-bg: rgba(35, 42, 54, .06);
+  --hero-chip-bd: rgba(35, 42, 54, .14);
+  background: #fff;
 }
 

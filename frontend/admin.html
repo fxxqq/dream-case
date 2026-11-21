@@ -447,6 +447,9 @@
     .tag.ok { background:#e7f8ec; color:var(--ok); }
     .tag.utag { background:#fff7e6; color:#b8860b; font-weight:600; }
     .tag.src { background:#eef4ff; color:#2f6bff; cursor:pointer; }
+    /* 账号类型：wx 开头是微信自动建的辅助号，自己注册的是主号 */
+    .tag.acct-main { background:#f2f5f9; color:#63708a; font-weight:500; }
+    .tag.acct-aux { background:#fff2e8; color:#c2611a; font-weight:600; cursor:help; }
     /* 最后活跃端：跟时间里贴着，颜色淡一点别抢标签的注意力 */
     .tag.cli { background:#eef7f3; color:#1a7f5a; cursor:help; }
     /* 用户标签：行内编辑器 + 标签库条 */
@@ -1221,7 +1224,7 @@
     <div id="adminBox" style="display:none">
       <div class="admin-layout">
         <aside class="side" id="tabs">
-          <!-- 2026-11-20 按业务口径重排侧栏：用户 / 产品 / 流量 / 搜索 / 推广 / 系统。
+          <!-- 2026-11-20 按业务口径重排侧栏：用户 / 流量 / 产品 / 搜索 / 推广 / 系统（11-21 把流量提到第二位）。
                每个 tab 只出现一次（重复会造成 active/badge 双份、移动端横排重影）；
                默认只展开「产品」组（含落地页待审核），六组组名一屏可见；开合状态记 localStorage。 -->
           <div class="side-block" data-sgroup="用户">
@@ -1240,6 +1243,17 @@
               <button class="tab" data-tab="gift">兑换码</button>
             </div>
           </div>
+          <div class="side-block" data-sgroup="流量">
+            <button type="button" class="side-group">流量<svg class="sg-arrow" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <div class="side-items">
+              <button class="tab" data-tab="discover">随便逛逛</button>
+              <button class="tab" data-tab="traffic">流量构成</button>
+              <button class="tab" data-tab="behavior">行为流水</button>
+              <button class="tab" data-tab="outlinks">外链点击</button>
+              <button class="tab" data-tab="linkhealth">外链巡检</button>
+              <button class="tab" data-tab="friends">友情链接</button>
+            </div>
+          </div>
           <div class="side-block" data-sgroup="产品" data-open="1">
             <button type="button" class="side-group">产品<svg class="sg-arrow" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
             <div class="side-items">
@@ -1255,17 +1269,6 @@
               <button class="tab" data-tab="categories">分类管理</button>
               <button class="tab" data-tab="scenes">场景归类</button>
               <button class="tab" data-tab="types">形态管理</button>
-            </div>
-          </div>
-          <div class="side-block" data-sgroup="流量">
-            <button type="button" class="side-group">流量<svg class="sg-arrow" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-            <div class="side-items">
-              <button class="tab" data-tab="discover">随便逛逛</button>
-              <button class="tab" data-tab="traffic">流量构成</button>
-              <button class="tab" data-tab="behavior">行为流水</button>
-              <button class="tab" data-tab="outlinks">外链点击</button>
-              <button class="tab" data-tab="linkhealth">外链巡检</button>
-              <button class="tab" data-tab="friends">友情链接</button>
             </div>
           </div>
           <div class="side-block" data-sgroup="搜索">
@@ -3319,7 +3322,7 @@
           : pct >= 60 ? { t: '用量偏高', c: '#b26a00' }
             : { t: '正常', c: '#1a7f37' };
       const cost = (used * 0.039).toFixed(2);
-      const toMin = Math.max(1, Math.round(Number(d.validTime || 300) / 60));
+      const toMin = Math.max(1, Math.round(Number(d.validTime || 21600) / 60));
       panel.innerHTML = `
         <div class="hint" style="padding:16px 18px 14px;line-height:1.85;font-size:12.5px">
           依据《网络安全法》第二十四条，提供<b>信息发布</b>（作品投稿、酒馆发帖与回应、想法池）和<b>即时通讯</b>（私信）服务，
@@ -3338,7 +3341,18 @@
         <div class="row">
           <div class="row-main">
             <div class="row-title">通道</div>
-            <div class="row-meta">${esc(modeText)} · 签名「${esc(d.sign || '—')}」· 模板 ${esc(d.template || '—')} · 验证码 ${toMin} 分钟有效 · 全站每日上限 ${Number(d.globalPerDay) || 200} 条</div>
+            <div class="row-meta">${esc(modeText)} · 签名「${esc(d.sign || '—')}」· 模板 ${esc(d.template || '—')} · 全站每日上限 ${Number(d.globalPerDay) || 200} 条</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">验证码有效期 ${toMin} 分钟</div>
+            <div class="row-meta">默认 6 小时（360 分钟）：实名核验这一处用短信；码在有效期内可以一直用，允许重发一次，第二次之后再点就不发了，省短信。改完下次发码生效，已经发出去的码不变；短信模板里的分钟数会自动跟着改。范围 1–360 分钟。</div>
+          </div>
+          <div class="row-actions">
+            <input id="smsValidMin" type="number" min="1" max="360" step="1" value="${toMin}"
+                   style="width:88px;padding:6px 8px;border:1px solid #ddd;border-radius:8px"${adminReadOnly() ? ' disabled' : ''} />
+            <button class="btn btn-ghost btn-sm" id="smsValidSave"${adminReadOnly() ? ' disabled title="只有站长能改"' : ''}>保存</button>
           </div>
         </div>
         <div class="row">
@@ -3424,6 +3438,27 @@
             loadSmsAuth();
           } catch (e) {
             bonusSave.disabled = false;
+            alert(e.message || '保存失败');
+          }
+        };
+      }
+      // 有效期同样单独提交：数字框只动 validTime，不碰核验开关和奖励额度
+      const validSave = $('smsValidSave');
+      if (validSave && !adminReadOnly()) {
+        validSave.onclick = async () => {
+          const m = Number($('smsValidMin').value);
+          if (!Number.isInteger(m) || m < 1 || m > 360) return alert('请填 1–360 之间的整数分钟');
+          validSave.disabled = true;
+          try {
+            await api('/api/admin/sms-config', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ validTime: m * 60 })
+            });
+            toast('已保存：之后发的验证码按新有效期');
+            loadSmsAuth();
+          } catch (e) {
+            validSave.disabled = false;
             alert(e.message || '保存失败');
           }
         };
@@ -3644,23 +3679,29 @@
     // 2026-11-12 站长拍板：作品/互动那排卡（总数/审核/投诉/浏览/点赞…）跟注册无关，不再挪到这里，
     // 相关数字在各自 tab（全部作品 / 投诉处理 / 意见反馈…）里看。
     function rsKpiTilesHtml(d) {
+      // 2026-11-21 站长定：注册按全部账号算，wx 开头的微信辅助号也是小程序来的真实用户
+      // （只是没自己设账号名，用户名微信那边生成），同样计入。主/辅只作构成展示，不当注册口径。
       const tiles = [
-        ['累计注册', d.total], ['今日新增', d.usersToday], ['近 7 天新增', d.users7],
-        ['近 30 天', d.users30], ['小程序注册', d.miniAll],
-        ['今日访客', d.visToday], ['今日回头访客', d.visRetToday],
-        ['今日活跃', d.activeToday],
-        ['今日活跃 · 网页', d.actTodayWeb], ['今日活跃 · 小程序', d.actTodayMini],
-        ['绑定微信', d.bindWx], ['绑定 GitHub', d.bindGh]
+        ['累计账号', d.total, '主账号 + 微信辅助号；注册统计按全部账号算'],
+        ['主账号', d.mainAll, '用户自己设账号名的账号'],
+        ['微信辅助号', d.auxAll, 'wx 开头，小程序来的真实用户，账号名由微信生成；同样计入注册'],
+        ['今日新增', d.usersToday, '今日新增账号，含微信辅助号'],
+        ['近 7 天新增', d.users7, '近 7 天新增账号，含微信辅助号'],
+        ['近 30 天新增', d.users30, '近 30 天新增账号，含微信辅助号'],
+        ['小程序注册', d.miniAll, '端来源口径，含该端微信辅助号'],
+        ['今日访客', d.visToday, ''], ['今日回头访客', d.visRetToday, ''],
+        ['今日活跃', d.activeToday, ''],
+        ['今日活跃 · 网页', d.actTodayWeb, ''], ['今日活跃 · 小程序', d.actTodayMini, ''],
+        ['绑定微信', d.bindWx, '含微信辅助号自己带的绑定'], ['绑定 GitHub', d.bindGh, '']
       ].filter(([, v]) => v != null && Number(v) > 0)
-       .map(([k, v]) => `<span class="stat-tile"><b>${v}</b><span>${k}</span></span>`);
-      // 注册/访客比：分子分母都只取「有访客账」的天，时间窗一致。
-      // 账本起点（11-05）前的注册没有对应访客分母，旧算法把它算进分子，
-      // 拿全窗口注册除账后访客，比值虚高，现在跟表格总计行用同一个 regOfVis 口径。
+       .map(([k, v, t]) => `<span class="stat-tile"${t ? ` title="${esc(t)}"` : ''}><b>${v}</b><span>${k}</span></span>`);
+      // 注册/访客比：分子用窗口内「全部账号注册」，和表格「注册」列严格同一个数；
+      // 分母是有账以来的访客。账前注册没有分母、访客含已登录老用户，只作参考。
       const rsDaily = Array.isArray(d.daily) ? d.daily.slice(-60) : [];
       const rsVis = rsDaily.reduce((a, x) => a + (x.vis != null ? x.vis : 0), 0);
-      const rsReg = rsDaily.reduce((a, x) => a + (x.vis != null ? (x.n || 0) : 0), 0);
+      const rsReg = rsDaily.reduce((a, x) => a + (x.n != null ? x.n : 0), 0);
       if (rsVis > 0 && rsReg > 0) {
-        tiles.splice(1, 0, `<span class="stat-tile" title="分子分母都只取有访客账的天：同期注册 ${rsReg} ÷ 访客 ${rsVis}；分子含后台导入账号，仅作参考，不是转化率"><b>${Math.round(rsReg / rsVis * 1000) / 10}%</b><span>注册/访客（参考）</span></span>`);
+        tiles.splice(3, 0, `<span class="stat-tile" title="窗口内新增账号 ${rsReg}（含微信辅助号）÷ 有访客账的访客 ${rsVis}；账前注册没有分母，仅作参考，不是转化率"><b>${Math.round(rsReg / rsVis * 1000) / 10}%</b><span>注册/访客（参考）</span></span>`);
       }
       // 回头率单独放最前：0% 也是有效读数，不能被 >0 过滤掉；访客口径是主打，放更前面
       if (d.activeToday > 0 && d.retToday != null) {
@@ -4086,9 +4127,11 @@
 
       // 每天一行：新增条最长＝那天注册最多；累计数缀在后面，肉眼能看到增长斜率
       // （echarts 加载失败时的兜底展示；正常情况画下面的堆叠柱状图）
-      const maxN = Math.max(...daily.map(x => x.n || 0), 1);
+      const regOfDay = x => x.n || 0;
+      const maxN = Math.max(...daily.map(regOfDay), 1);
       const dailyRows = daily.length ? daily.map(x => {
         const extra = [];
+        if (x.aux) extra.push(`其中微信辅助号 ${x.aux}`);
         if (x.mini) extra.push(`小程序 ${x.mini}`);
         if (x.invited) extra.push(`邀请 ${x.invited}`);
         if (x.vis != null) extra.push(`访客 ${x.vis} · 回头 ${x.visOld == null ? '—' : x.visOld}${x.visOldWeb != null ? `（网页 ${x.visOldWeb} / 小程序 ${x.visOldMini}）` : ''} · 回头率 ${x.visRet == null ? '—' : x.visRet + '%'}`);
@@ -4096,8 +4139,8 @@
         return `
         <div class="ps-row">
           <span class="ps-name" style="min-width:52px">${x.d.slice(5).replace('-', '/')}</span>
-          <span class="ps-bar"><i style="width:${Math.max(x.n ? 3 : 1, Math.round((x.n || 0) / maxN * 100))}%"></i></span>
-          <span class="ps-num"><b>${x.n || 0}</b> 人 · 累计 ${x.cum || 0}${extra.length ? ' · ' + extra.join(' · ') : ''}</span>
+          <span class="ps-bar"><i style="width:${Math.max(regOfDay(x) ? 3 : 1, Math.round(regOfDay(x) / maxN * 100))}%"></i></span>
+          <span class="ps-num"><b>${regOfDay(x)}</b> 人 · 累计 ${x.cum || 0}${extra.length ? ' · ' + extra.join(' · ') : ''}</span>
         </div>`;
       }).join('') : '<div class="sk-empty">这段时间还没有注册。</div>';
 
@@ -4112,7 +4155,10 @@
         </div>`).join('');
 
       // 来源：邀请注册和端来源口径有重叠（小程序注册也可能带邀请人），不追求加总等于总数
+      // 主账号 / 微信辅助号是全部账号的构成（辅助号也是真实用户，账号名微信生成），都算注册
       const srcRows = [
+        ['主账号', d.mainAll || 0],
+        ['微信辅助号', d.auxAll || 0],
         ['网页注册', d.total - d.miniAll || 0],
         ['小程序注册', d.miniAll || 0],
         ['邀请注册', d.invitedAll || 0],
@@ -4134,7 +4180,7 @@
       const recentRows = recent.length ? recent.map(x => `
         <tr>
           <td>${fmtRsTime(x.at)}</td>
-          <td>${esc(x.name)}${x.temp ? ' <span class="ps-tag" title="没设密码的临时账号">临时</span>' : ''}</td>
+          <td>${esc(x.name)}${x.aux ? ' <span class="ps-tag" title="wx 开头，微信自动建的辅助账号；可在小程序合并进自己的主账号">辅助</span>' : (x.temp ? ' <span class="ps-tag" title="没设密码的临时账号">临时</span>' : '')}</td>
           <td>${esc(x.from)}${x.wx ? ' · 微信' : ''}${x.gh ? ' · GitHub' : ''}</td>
           <td>${x.invited ? '由 ' + esc(x.invited) + ' 邀请' : '—'}</td>
           <td>${x.tags ? esc(x.tags) : '—'}</td>
@@ -4143,13 +4189,13 @@
 
       // 每日访客与回头率（访客口径，最近 60 天、新的在前）
       // 三端分组对照表：全部 / 网页端 / 小程序端，各 6 列（访客·新访客·回头·回头率·注册·注册率）
-      // 回头率口径 = 回头人数 / 访客总人数；注册率 = 当天注册 / 当天访客；分端同理，可按人数加权回到总数。
-      // 注册率只是参考读数：分母访客按账号/IP/设备去重，混着已登录老用户，不是「可能注册的人」，
-      // 后台也无法区分访客当时登录与否，比值会被回访比例拉偏，不能当转化率读（表头 title 里注明）。
-      // 关键：注册率的分子分母必须同一时间窗。逐日行天然是同一天；总计行则另取 regOfVis
-      // （只累加有对应访客账的天的注册）配同期访客，不用全窗口注册除账后访客，避免虚高。
-      //   x.vis/visNew/visOld/visRet/n 为全部；x.visMini 小程序访客、x.visOldMini 小程序回头、x.visOldWeb 网页回头
-      //   网页访客 = x.vis - x.visMini；网页注册 = n - x.mini（x.mini 为小程序注册数）
+      // 回头率口径 = 回头人数 / 访客总人数；注册率 = 当天全部账号注册 / 当天访客；分端同理。
+      // 2026-11-21 站长定：注册按全部账号算。wx 开头的微信辅助号也是小程序来的真实用户，
+      // （只是账号名由微信生成，没自己设），同样计入。注册列和注册率分子统一取 n / mini，
+      // 数和率严格同一个分子；main / aux 只作构成在 title 里带一句。
+      //   分母仍是访客（含已登录老用户，不是可能注册的人），只作参考。
+      //   x.n 全部账号注册、x.main 其中主账号、x.aux 其中微信辅助号、x.mini 小程序端全部注册
+      //   网页访客 = x.vis - x.visMini；网页端注册 = n - mini
       //   分端新访客 = 该端访客 - 该端回头；早期无端拆分账（visMini==null）时端列显示「—」
       const visColNames = ['日期', '访客', '新访客', '回头', '回头率', '注册', '注册率', '访客', '新访客', '回头', '回头率', '注册', '注册率', '访客', '新访客', '回头', '回头率', '注册', '注册率'];
       const hv = i => rsColHidden('vis', i) ? ' data-hc="1"' : '';
@@ -4158,12 +4204,16 @@
       const visTableRows = (() => {
         const rows = daily.slice(-60).reverse();
         if (!rows.length) return '<tr><td colspan="19" class="sk-empty">这段时间没有数据。</td></tr>';
+        // 全部账号口径：n / mini 服务端一直都有，直接取；没有就兜底 0
+        const regOf = x => x.n || 0;
+        const miniRegOf = x => x.mini || 0;
         return rows.map(x => {
           const hasSplit = x.visMini != null;                       // 当天有没有端拆分账
           const webVis = hasSplit ? Math.max(0, x.vis - x.visMini) : null;
-          const webReg = x.mini != null ? Math.max(0, (x.n || 0) - x.mini) : null;
+          const webReg = Math.max(0, regOf(x) - miniRegOf(x));
           const webNew = hasSplit ? Math.max(0, webVis - x.visOldWeb) : null;
           const miniNew = hasSplit ? Math.max(0, x.visMini - x.visOldMini) : null;
+          const auxTip = x.aux ? `；其中微信辅助号 ${x.aux} 人（小程序来的真实用户，账号名微信生成）` : '';
           return `
           <tr>
             <td${hv(0)}>${x.d.slice(5).replace('-', '/')}${x.d === d.to ? ' <span class="ps-tag">今天</span>' : ''}</td>
@@ -4171,48 +4221,43 @@
             <td${hv(2)}>${x.vis == null ? '—' : x.visNew}</td>
             <td${hv(3)}>${x.vis == null ? '—' : x.visOld}</td>
             <td${hv(4)}>${x.visRet == null ? '—' : x.visRet + '%'}</td>
-            <td${hv(5)}>${x.n || 0}</td>
-            <td${hv(6)}>${pct(x.n, x.vis)}</td>
+            <td${hv(5)} title="当天新增账号 ${regOf(x)}${auxTip}">${regOf(x)}</td>
+            <td${hv(6)}>${pct(regOf(x), x.vis)}</td>
             <td${hv(7)} class="vg-split">${webVis == null ? '—' : webVis}</td>
             <td${hv(8)}>${webNew == null ? '—' : webNew}</td>
             <td${hv(9)}>${x.visOldWeb == null ? '—' : x.visOldWeb}</td>
             <td${hv(10)}>${pct(x.visOldWeb, webVis)}</td>
-            <td${hv(11)}>${webReg == null ? '—' : webReg}</td>
+            <td${hv(11)} title="当天网页端新增账号 ${webReg}">${webReg}</td>
             <td${hv(12)}>${pct(webReg, webVis)}</td>
             <td${hv(13)} class="vg-split">${x.visMini == null ? '—' : x.visMini}</td>
             <td${hv(14)}>${miniNew == null ? '—' : miniNew}</td>
             <td${hv(15)}>${x.visOldMini == null ? '—' : x.visOldMini}</td>
             <td${hv(16)}>${pct(x.visOldMini, x.visMini)}</td>
-            <td${hv(17)}>${x.mini == null ? '—' : x.mini}</td>
-            <td${hv(18)}>${pct(x.mini, x.visMini)}</td>
+            <td${hv(17)} title="当天小程序端新增账号 ${miniRegOf(x)}">${miniRegOf(x)}</td>
+            <td${hv(18)}>${pct(miniRegOf(x), x.visMini)}</td>
           </tr>`;
         }).join('');
       })();
-      // 顶部总计行：汇总表格当前展示的 60 天窗口。回头率 / 注册率不能逐日相加，
+      // 顶部总计行：汇总表格当前展示的窗口。回头率 / 注册率不能逐日相加，
       // 统一用「合计回头 ÷ 合计访客」「合计注册 ÷ 合计访客」重算；分端口径与逐日一致（网页访客=vis-visMini、新=访客-回头）。
-      // 注册合计 t.n / t.webReg / t.mini 是全窗口真数（含访客账起点前的早期注册），照原样展示。
-      // 但注册率不能拿全窗口注册除「只有账后天」的访客——分子分母窗口不一致会虚高（旧版 260÷2484=10.5% 就是这个错）。
-      // 所以比值另取同口径分子 regOfVis / webRegOfVis / miniRegOfVis：只累加当天有对应访客账的注册，
-      // 分母用同期访客；比率格与紧挨着的「可见注册数」格之间，用 title 点明这个差异。
+      // 注册合计 t.n / t.webReg / t.mini 按全部账号算，注册率就拿这三个数做分子，
+      // 与紧挨着的注册列显示值严格一致。其中主账号 / 微信辅助号的构成累计在 t.main / t.aux，只写进 title。
       const visTotalRow = (() => {
         const rows = daily.slice(-60).reverse();
         if (!rows.length) return '';
-        const t = { vis:0, visNew:0, visOld:0, n:0, webVis:0, webNew:0, visOldWeb:0, webReg:0, miniVis:0, miniNew:0, visOldMini:0, mini:0, hasSplit:false, hasReg:false, regOfVis:0, webRegOfVis:0, miniRegOfVis:0 };
+        const t = { vis:0, visNew:0, visOld:0, n:0, main:0, aux:0, webVis:0, webNew:0, visOldWeb:0, webReg:0, miniVis:0, miniNew:0, visOldMini:0, mini:0, hasSplit:false };
         rows.forEach(x => {
-          if (x.vis != null) { t.vis += x.vis; t.visNew += (x.visNew || 0); t.visOld += (x.visOld || 0); t.regOfVis += (x.n || 0); }
-          t.n += (x.n || 0);   // 注册跟注册日走，不跟访客账闸（见上注释）
-          if (x.mini != null) {   // 注册分端逐日都有账，合计=全窗口，分端和恒等于全部
-            t.hasReg = true;
-            t.webReg += Math.max(0, (x.n || 0) - x.mini);
-            t.mini += x.mini;
-          }
+          if (x.vis != null) { t.vis += x.vis; t.visNew += (x.visNew || 0); t.visOld += (x.visOld || 0); }
+          t.n += x.n || 0;   // 注册跟注册日走，不跟访客账闸（见上注释）
+          t.main += x.main || 0;
+          t.aux += x.aux || 0;
+          t.mini += x.mini || 0;
+          t.webReg = Math.max(0, t.n - t.mini);
           if (x.visMini != null) {
             t.hasSplit = true;
             const webVis = Math.max(0, x.vis - x.visMini);
             t.webVis += webVis; t.webNew += Math.max(0, webVis - (x.visOldWeb || 0)); t.visOldWeb += (x.visOldWeb || 0);
             t.miniVis += x.visMini; t.miniNew += Math.max(0, x.visMini - (x.visOldMini || 0)); t.visOldMini += (x.visOldMini || 0);
-            t.webRegOfVis += Math.max(0, (x.n || 0) - (x.mini || 0));
-            t.miniRegOfVis += (x.mini || 0);
           }
         });
         const dash = '—';
@@ -4223,20 +4268,20 @@
           <td${hv(2)}>${t.visNew}</td>
           <td${hv(3)}>${t.visOld}</td>
           <td${hv(4)}>${pct(t.visOld, t.vis)}</td>
-          <td${hv(5)} title="全窗口注册合计 ${t.n}（含访客账起点前的早期注册）。右边注册率的分子不同：只算有访客账的天 ${t.regOfVis}，口径见该格">${t.n}</td>
-          <td${hv(6)} title="注册 ${t.regOfVis} ÷ 访客 ${t.vis}：分子分母都只取有访客账的天，时间窗一致。全窗口注册 ${t.n} 不进分子（账前那些天没有访客分母），故本值低于拿 ${t.n} 硬除的结果">${pct(t.regOfVis, t.vis)}</td>
+          <td${hv(5)} title="窗口内新增账号合计 ${t.n}（其中主账号 ${t.main}、微信辅助号 ${t.aux}，辅助号是小程序真实用户、同样计入）。右边注册率就拿 ${t.n} 做分子">${t.n}</td>
+          <td${hv(6)} title="新增账号 ${t.n} ÷ 访客 ${t.vis}：分子就是左边显示的注册合计。账前注册没有对应访客分母，结果仅作参考">${pct(t.n, t.vis)}</td>
           <td${hv(7)} class="vg-split">${t.hasSplit ? t.webVis : dash}</td>
           <td${hv(8)}>${t.hasSplit ? t.webNew : dash}</td>
           <td${hv(9)}>${t.hasSplit ? t.visOldWeb : dash}</td>
           <td${hv(10)}>${t.hasSplit ? pct(t.visOldWeb, t.webVis) : dash}</td>
-          <td${hv(11)} title="全窗口网页注册合计 ${t.hasReg ? t.webReg : dash}（含早期）；右边注册率的分子只算有网页访客账的天">${t.hasReg ? t.webReg : dash}</td>
-          <td${hv(12)} title="网页注册 ${t.hasSplit ? t.webRegOfVis : dash} ÷ 网页访客 ${t.hasSplit ? t.webVis : dash}：都只取有网页访客账的天（11-16 起），时间窗一致">${t.hasSplit ? pct(t.webRegOfVis, t.webVis) : dash}</td>
+          <td${hv(11)} title="窗口内网页端新增账号合计 ${t.webReg}；右边注册率就拿这个数做分子">${t.webReg}</td>
+          <td${hv(12)} title="网页端新增账号 ${t.webReg} ÷ 网页访客 ${t.hasSplit ? t.webVis : dash}：分子就是左边显示的注册合计；网页访客账从 11-16 才有，账前注册没有分母，仅作参考">${t.hasSplit ? pct(t.webReg, t.webVis) : dash}</td>
           <td${hv(13)} class="vg-split">${t.hasSplit ? t.miniVis : dash}</td>
           <td${hv(14)}>${t.hasSplit ? t.miniNew : dash}</td>
           <td${hv(15)}>${t.hasSplit ? t.visOldMini : dash}</td>
           <td${hv(16)}>${t.hasSplit ? pct(t.visOldMini, t.miniVis) : dash}</td>
-          <td${hv(17)} title="全窗口小程序注册合计 ${t.hasReg ? t.mini : dash}（含早期）；右边注册率的分子只算有小程序访客账的天">${t.hasReg ? t.mini : dash}</td>
-          <td${hv(18)} title="小程序注册 ${t.hasSplit ? t.miniRegOfVis : dash} ÷ 小程序访客 ${t.hasSplit ? t.miniVis : dash}：都只取有小程序访客账的天（11-16 起），时间窗一致">${t.hasSplit ? pct(t.miniRegOfVis, t.miniVis) : dash}</td>
+          <td${hv(17)} title="窗口内小程序端新增账号合计 ${t.mini}；右边注册率就拿这个数做分子">${t.mini}</td>
+          <td${hv(18)} title="小程序端新增账号 ${t.mini} ÷ 小程序访客 ${t.hasSplit ? t.miniVis : dash}：分子就是左边显示的注册合计；小程序访客账从 11-16 才有，账前注册没有分母，仅作参考">${t.hasSplit ? pct(t.mini, t.miniVis) : dash}</td>
         </tr>`;
       })();
       // 分组表头：每组列出它覆盖的列下标，可见列数 = 未被隐藏的，colspan 随之收缩
@@ -4263,7 +4308,7 @@
         return rows.map(x => `
           <tr>
             <td${ha(0)}>${x.d.slice(5).replace('-', '/')}${x.d === d.to ? ' <span class="ps-tag">今天</span>' : ''}</td>
-            <td${ha(1)}>${x.n || 0}（网页 ${Math.max(0, (x.n || 0) - (x.mini || 0))} · 小程序 ${x.mini || 0}）</td>
+            <td${ha(1)} title="全部账号新增，含 wx 开头的微信辅助号（小程序真实用户）">${x.n || 0}（网页 ${Math.max(0, (x.n || 0) - (x.mini || 0))} · 小程序 ${x.mini || 0}）</td>
             <td${ha(2)}>${x.act == null ? '—' : '<b>' + x.act + '</b>'}</td>
             <td${ha(3)}>${x.act == null ? '—' : x.actNew}</td>
             <td${ha(4)}>${x.act == null ? '—' : x.actOld}</td>
@@ -4277,10 +4322,10 @@
       panel.innerHTML = `
         <div class="stats" id="rsKpiRow">${rsKpiTilesHtml(d)}</div>
         <div class="promo-src">
-          <h4>每日访客与回头率<span>分三栏对照：全部 / 网页端 / 小程序端，各含访客·新访客·回头·回头率·注册·注册率 · 回头率 ＝ 回头人数 ÷ 访客总人数 · 注册率 ＝ 注册人数 ÷ 访客总人数（访客含已登录老用户，仅作参考，不是转化率）· 访客 = 当天来过的去重访客（登录按账号 / 网页按 IP / 小程序按设备）· 回头客 = 之前也来过的人 · 逐日记录自 ${esc(d.visFrom || '2026-11-05')} 起（此前账本混着爬虫不采用，显示「—」）· 端拆分与小程序访客自 11-16 起有记录</span></h4>
+          <h4>每日访客与回头率<span title="注册列与注册率的分子都按全部账号算（含 wx 开头的微信辅助号——小程序来的真实用户，账号名由微信生成）；构成见注册格悬停提示">分三栏对照：全部 / 网页端 / 小程序端，各含访客·新访客·回头·回头率·注册·注册率 · 回头率 ＝ 回头人数 ÷ 访客总人数 · 注册率 ＝ 注册人数 ÷ 访客总人数（注册含全部账号；访客含已登录老用户，仅作参考，不是转化率）· 访客 = 当天来过的去重访客（登录按账号 / 网页按 IP / 小程序按设备）· 回头客 = 之前也来过的人 · 逐日记录自 ${esc(d.visFrom || '2026-11-05')} 起（此前账本混着爬虫不采用，显示「—」）· 端拆分与小程序访客自 11-16 起有记录</span></h4>
           ${rsColChipsHtml('vis', visColNames)}
           <div class="rd-scroll"><table class="rd-table">
-            <thead><tr>${visGroupHead}</tr><tr>${visColNames.map((c, i) => `<th${hv(i)}${(i === 7 || i === 13) ? ' class="vg-split"' : ''}${c === '注册率' ? ' title="注册人数 ÷ 访客人数；访客分母混着已登录老用户，不是「可能注册的人」，仅作参考，不是转化率"' : ''}>${c}</th>`).join('')}</tr></thead>
+            <thead><tr>${visGroupHead}</tr><tr>${visColNames.map((c, i) => `<th${hv(i)}${(i === 7 || i === 13) ? ' class="vg-split"' : ''}${c === '注册率' ? ' title="全部账号新增 ÷ 访客（含微信辅助号）。访客分母混着已登录老用户，不是「可能注册的人」，仅作参考，不是转化率"' : (c === '注册' ? ' title="全部账号新增，含 wx 开头的微信辅助号（小程序真实用户，账号名微信生成）"' : '')}>${c}</th>`).join('')}</tr></thead>
             <tbody>${visTotalRow}${visTableRows}</tbody>
           </table></div>
           ${typeof echarts !== 'undefined' && hasVis ? '<div id="visTrendChart" style="height:300px;margin-top:14px;border-top:1px dashed #eef0f7;padding-top:12px"></div>' : ''}
@@ -4296,8 +4341,8 @@
           ${typeof echarts !== 'undefined' && hasAct ? '<div id="actTrendChart" style="height:300px;margin-top:14px;border-top:1px dashed #eef0f7;padding-top:12px"></div>' : ''}
         </div>
         <div class="bh-grid">
-          <div class="bh-card"><h5>按星期分布<em>窗口内注册发生在星期几</em></h5>${wdRows}</div>
-          <div class="bh-card"><h5>注册来源<em>「邀请」与端来源口径有重叠，不求加总相等</em></h5>${srcRows}</div>
+          <div class="bh-card"><h5>按星期分布<em title="窗口内全部账号注册（含微信辅助号）发生在星期几">窗口内注册发生在星期几</em></h5>${wdRows}</div>
+          <div class="bh-card"><h5>注册来源<em title="主账号 / 微信辅助号是全部账号的构成，辅助号也算注册；「邀请」与端来源口径有重叠，不求加总相等">「邀请」与端来源口径有重叠，不求加总相等</em></h5>${srcRows}</div>
         </div>
         <div class="bh-grid">
           <div class="bh-card"><h5>身份标签<em>后台「用户管理」里挂的标签，全量口径取前 12 个</em></h5>${tagRows}</div>
@@ -4306,14 +4351,14 @@
           </div>
         </div>
         <div class="promo-src">
-          <h4>最近注册<span>最新 20 条 · 跟随上方时间窗</span></h4>
+          <h4>最近注册<span title="全部账号：wx 开头的微信辅助号是小程序来的真实用户（账号名微信生成），带「辅助」标记；自己设账号名的是主号">最新 20 条 · 跟随上方时间窗</span></h4>
           <div class="rd-scroll"><table class="rd-table">
             <thead><tr><th>注册时间</th><th>用户</th><th>来源</th><th>邀请</th><th>标签</th><th>活跃</th></tr></thead>
             <tbody>${recentRows}</tbody>
           </table></div>
         </div>
         <div class="promo-src">
-          <h4>注册走势<span>${esc(d.from || '')} ~ ${esc(d.to || '')} · 堆叠柱＝当天新增（网页端 / 小程序）· 折线＝累计 · 空天也补齐 · KPI 指标固定全量口径</span>${range}</h4>
+          <h4>注册走势<span title="堆叠柱按全部账号新增（网页端 / 小程序），含 wx 开头的微信辅助号；折线是累计账号">${esc(d.from || '')} ~ ${esc(d.to || '')} · 堆叠柱＝当天新增（网页端 / 小程序）· 折线＝累计 · 空天也补齐 · KPI 指标固定全量口径</span>${range}</h4>
           ${typeof echarts !== 'undefined' ? '<div id="regTrendChart" style="height:340px"></div>' : dailyRows}
         </div>`;
 
@@ -4344,6 +4389,7 @@
                 const x = daily[i] || {};
                 const lines = [esc(x.d || '')].concat(params.map(p =>
                   `${p.marker}${p.seriesName}　<b>${p.value || 0}</b>${p.seriesType === 'bar' ? ' 人' : ' 人'}`));
+                if (x.aux) lines.push(`其中微信辅助号 ${x.aux} 人（已计入注册）`);
                 if (x.invited) lines.push(`其中邀请注册 ${x.invited} 人`);
                 return lines.join('<br/>');
               }
@@ -4365,7 +4411,7 @@
                 data: daily.map(x => Math.max(0, (x.n || 0) - (x.mini || 0))) },
               { name: '小程序', type: 'bar', stack: 'reg', barMaxWidth: 18,
                 data: daily.map(x => x.mini || 0) },
-              { name: '累计注册', type: 'line', yAxisIndex: 1, smooth: true, symbol: 'none',
+              { name: '累计账号', type: 'line', yAxisIndex: 1, smooth: true, symbol: 'none',
                 lineStyle: { width: 2 }, data: daily.map(x => x.cum || 0) }
             ],
             dataZoom: daily.length > 45 ? [{ type: 'inside' }, { type: 'slider', height: 20, bottom: 8 }] : []
@@ -4390,7 +4436,7 @@
                 const lines = [esc(x.d || '')].concat(params.map(p =>
                   `${p.marker}${p.seriesName}　<b>${p.value == null ? '—' : p.value}</b>${p.seriesName === '回头率' ? '%' : ' 人'}`));
                 if (x.visMini != null) lines.push(`其中小程序访客 ${x.visMini} 人`);
-                if (x.n) lines.push(`当日注册 ${x.n} 人`);
+                if (x.n) lines.push(`当日注册 ${x.n} 人（含微信辅助号）`);
                 return lines.join('<br/>');
               }
             },
@@ -10488,6 +10534,11 @@
     }
 
     function userRowHtml(u) {
+      // 账号类型：服务端带 acctKind；老响应兜底按 wx 前缀认，不改数据
+      const acctAux = u.acctKind ? u.acctKind === 'aux' : /^wx/i.test(String(u.username || ''));
+      const acctTag = acctAux
+        ? '<span class="tag acct-aux" title="wx 开头，微信扫码/小程序自动建的辅助账号；可在小程序合并进自己的主账号">辅助</span>'
+        : '<span class="tag acct-main" title="自己注册的主账号">主号</span>';
       const workLinks = (u.workNames && u.workNames.length)
         ? `<div class="row-meta works-meta">${u.workNames.map(w => `<a href="/w/${esc(w.id)}" target="_blank" rel="noopener noreferrer" title="${esc(w.title)}${w.hidden ? '（目前不可见）' : ''}"${w.hidden ? ' style="text-decoration:line-through;opacity:.6"' : ''}>${esc(w.title)}</a>`).join('、')}</div>`
         : '';
@@ -10508,7 +10559,7 @@
       return `
         <tr class="row row-user" data-uid="${esc(u.id)}" data-uname="${esc(u.username)}">
           <td>
-            <div class="row-title">@${esc(u.name)} <span class="tag">${esc(u.username)}</span>
+            <div class="row-title">@${esc(u.name)} ${acctTag} <span class="tag">${esc(u.username)}</span>
               ${u.isOwner ? '<span class="tag bad" title="站长：屏蔽作品按 3 分计">站长</span>' : ''}
               ${u.blockedCount ? `<span class="tag" title="自己屏蔽过的作品数（只影响 TA 自己的列表）">屏蔽 ${u.blockedCount}</span>` : ''}
               ${u.acqFr ? `<span class="tag src" title="来源渠道（首触${u.acqAt ? ' ' + esc(fmtDate(u.acqAt)) : ''}）">来源 ${esc(u.acqFrName || u.acqFr)}</span>` : ''}
@@ -10636,7 +10687,7 @@
                 <col style="width:180px" /><col style="width:100px" /><col style="width:150px" /><col style="width:160px" /><col style="width:220px" />
               </colgroup>
               <thead><tr>
-                <th data-usort="nameDesc" data-ua="nameAsc">用户 <span class="su"></span></th>
+                <th data-usort="nameDesc" data-ua="nameAsc" title="主号＝自己注册；辅助＝wx 开头、微信扫码/小程序自动建的号">用户 <span class="su"></span></th>
                 <th data-usort="pointsDesc" data-ua="pointsAsc" title="当前还剩的灯火">灯火 <span class="su"></span></th>
                 <th data-usort="checkinDesc" data-ua="checkinAsc" title="累计签到拿到的灯火">签到 <span class="su"></span></th>
                 <th data-usort="wxbindDesc" data-ua="wxbindAsc" title="绑微信一次性奖励 +300">绑微信 <span class="su"></span></th>
@@ -11427,6 +11478,7 @@
         <div class="form-inline" style="align-items:center;border-bottom:1px solid var(--border)">
           <b style="font-size:14px">模块开关</b>
           <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="dscOn" ${cfg.on ? 'checked' : ''} /> 后台启用</label>
+          <label style="display:flex;align-items:center;gap:6px" title="按点开详情攒下的口味，优先推对味的冷门作品；被很多人看过的作品不吃这份加权。关掉就退回只按手动加权/等概率随机。"><input type="checkbox" id="dscSmart" ${cfg.smart !== false ? 'checked' : ''} /> 口味优先</label>
           <span>加权强度 k</span>
           <input id="dscK" type="number" step="0.05" min="0" max="${cfg.kMax || 0.6}" value="${cfg.k ?? 0.3}" style="width:80px" />
           <button class="btn btn-primary btn-sm" id="dscSave">保存</button>
@@ -11482,7 +11534,7 @@
           try {
             const r = await api('/api/admin/discover', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'cfg', on: $('dscOn').checked, k: Number($('dscK').value) })
+              body: JSON.stringify({ action: 'cfg', on: $('dscOn').checked, smart: $('dscSmart').checked, k: Number($('dscK').value) })
             });
             if (r && r.error) return alert(r.error);
             loadDiscover();

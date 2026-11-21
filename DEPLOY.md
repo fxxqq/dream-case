@@ -36,8 +36,8 @@ ai-works-site/
 
 1. 打开 https://github.com/settings/developers → **New OAuth App**，填写：
    - Application name：随便写，例如 `造梦橱窗`
-   - Homepage URL：`https://idea.v5pc.com`
-   - Authorization callback URL：`https://idea.v5pc.com/api/auth/github/callback`（**必须完全一致**，本地调试再建一个应用填 `http://localhost:3000/api/auth/github/callback`）
+   - Homepage URL：`https://zm94.com`
+   - Authorization callback URL：`https://zm94.com/api/auth/github/callback`（**必须完全一致**，本地调试再建一个应用填 `http://localhost:3000/api/auth/github/callback`）
 2. 拿到 Client ID，点 **Generate a new client secret** 拿到 Secret。
 3. 配置给服务（二选一，推荐第一种）：
    - 环境变量：`GITHUB_CLIENT_ID=xxx GITHUB_CLIENT_SECRET=yyy pm2 restart ai-works --update-env`
@@ -60,7 +60,7 @@ ai-works-site/
 1. 打开 https://console.cloud.google.com/ → 用 Gmail 登录 → 左上角创建项目（名字随意）。
 2. 「APIs & Services」→「OAuth consent screen」：User Type 选 **External**，填应用名、支持邮箱，一路下一步，然后 **Publish App** 发布到生产（保持 Testing 模式会导致授权 7 天过期，且要手动加测试用户）。
 3. 「APIs & Services」→「Credentials」→「Create Credentials」→「OAuth client ID」→ 类型选 **Web application**：
-   - Authorized redirect URIs 填 `https://idea.v5pc.com/api/auth/google/callback`（本地调试再加 `http://localhost:3000/api/auth/google/callback`）
+   - Authorized redirect URIs 填 `https://zm94.com/api/auth/google/callback`（本地调试再加 `http://localhost:3000/api/auth/google/callback`）
 4. 配置给服务（二选一）：
    - 环境变量：`GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=yyy pm2 restart ai-works --update-env`
    - 或写文件 `data/oauth.json`（与 GitHub 同一个文件）：
@@ -129,15 +129,10 @@ ai-works-site/
 3. 把 token 交给服务，两种方式任选：
    - 环境变量：`deploy.sh` 顶部 `BAIDU_PUSH_TOKEN="..."`（发版时随 PM2 注入）
    - 或文件：`echo '你的token' > data/baidu-push-token.txt`（`data/` 不参与发布，发版不会覆盖，推荐）
-4. 补推历史链接（可选，先 `--dry` 看条数，配额有限别全量硬推）：
-   ```bash
-   node tools/baidu-push.js --dry           # 只打印，不发送
-   node tools/baidu-push.js --no-pages      # 只推作品详情页
-   ```
+4. 补推历史链接（可选，配额有限别全量硬推）：`POST /api/admin/baidu-push`（带 `x-admin-key`），body 可传 `{"all":false}` 只推作品详情页、`{"force":true}` 跳过 24 小时去重强制推
 5. 看状态：`GET /api/admin/baidu-push`（带 `x-admin-key`），返回是否配置、累计推送数、最近一次结果与百度给的剩余配额
 
 > 推送只是「告诉百度这里有个新链接」，收不收录、多久收录由百度决定；真实收录量只能在站长平台后台看。
-> 相关回归：`node tools/test-baidu-push.js`（本机 mock 端点，19 项断言，不会真打百度）。
 
 
 ## 本地运行
@@ -168,7 +163,7 @@ Windows 也可以直接双击 `dev.cmd`（等同 `npm start`，会先检查 3000
 - 会话 cookie 会被改写成 localhost 可用（去掉 `Domain`/`Secure`），所以切过去后要**在线上账号下重新登录一次**；本地的 `sid` 线上不认。
 - 生产 · 接口模式下，本地数据里没有的作品详情页会自动转给线上，不会报假 404。
 - 状态存在 `data/dev-env.json`（不入库、不随部署上传），重启保持上次选择；想回到默认删掉这个文件即可。
-- 目标地址默认 `https://idea.v5pc.com`，可用环境变量 `DEV_PROD_ORIGIN` 覆盖。
+- 目标地址默认 `https://zm94.com`，可用环境变量 `DEV_PROD_ORIGIN` 覆盖。
 - **安全边界**：`dev-env.js` 检测到 pm2（`process.env.pm_id`）就整个功能关闭，`/__dev/env` 只接受 127.0.0.1 / ::1 的请求，`DEV_ENV=0` 可强制关闭。因此这份代码即使被部署到线上也是空壳。
 
 ## 阿里云部署（一键脚本，推荐）

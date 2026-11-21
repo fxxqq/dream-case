@@ -20,6 +20,33 @@
 // 站点图标（统一在 /icons.js 里定义）：取不到就返回空串，不影响页面其他内容
 const ic = (name, size) => (window.Icons ? Icons.icon(name, size) : '');
 
+// ---------- 非首屏脚本按需加载 ----------
+// 分享卡、短信滑块、投稿二维码体检、PWA 安装二维码只在具体交互里用到，
+// 没必要跟着 app.js 在每个页面首屏同步下载。promise 缓存保证同页只插一次 <script>。
+// 解析失败也 resolve(false)，调用方各走自己的兜底文案，不制造未捕获 rejection。
+const lazyScripts = Object.create(null);
+function ensureScript(src, globalName) {
+  if (window[globalName]) return Promise.resolve(true);
+  if (lazyScripts[src]) return lazyScripts[src];
+  lazyScripts[src] = new Promise(resolve => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = () => resolve(!!window[globalName]);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+  return lazyScripts[src];
+}
+
+// 三处「生成分享卡片」入口共用：等脚本真正加载完再开，避免刚改成就点、脚本还没到。
+function openShareCard(w) {
+  if (!w) return;
+  ensureScript('/sharecard.js', 'ShareCard').then(ok => {
+    if (ok && window.ShareCard) window.ShareCard.open(w);
+    else showToast('分享卡片没加载出来，请刷新页面重试', undefined, 'err');
+  });
+}
+
 // 图片地址：本站上传的图走 /t/<宽>/<文件名>（服务端按需转 webp 并缓存），
 // 站外图片（广告位、外链封面）原样返回。卡片只给 400 档，详情页才给 1200。
 // 注意（2026-11-14 记录，未改）：存量数据的 thumb 存的是本站绝对地址
@@ -2855,6 +2882,7 @@ function showLoginUpgrade(username, password, remember) {
         }
         throw new Error(msg);
       }
+      smsForgetSent(payload.phone);    // 注册成功 = 这个码已经消费掉，别再提示还能用
       afterAuth(data);
       // 预填的随机名刚好被别人占了：服务端换了一个，告诉用户一声（名字变了别以为是 bug）
       if (data.nickAdjusted && data.nickname) showToast(`「${payload.nickname}」刚被别人用了，给你换成了「${data.nickname}」`, undefined, 'ok');
@@ -2880,7 +2908,39 @@ async function smsStatus(force) {
   return smsStatusCache;
 }
 
-// 发码按钮的 60 秒倒计时（服务端还有同号 5 条/天、IP 10 条/天，这只是最表层的体验）。
+// 发码记录只记「什么时候发的、多久有效、发了几次」，不存验证码本身。
+// 站长 2026-11-21 定的口径：默认 6 小时有效，允许重发一次，第二次之后再点就不让发了
+// （重发会作废旧码 + 多花一条短信）。记录放 sessionStorage，关弹窗 / 刷新页面都还在；
+// 核验收功后清掉，免得拿一个用完的码继续算次数。
+const SMS_SENT_KEY = 'dm:smsSent:';
+function smsSentKey(phone) { return SMS_SENT_KEY + String(phone || '').replace(/\D/g, ''); }
+function smsGetSent(phone) {
+  try {
+    const raw = sessionStorage.getItem(smsSentKey(phone));
+    if (!raw) return null;
+    const rec = JSON.parse(raw);
+    const at = Number(rec && rec.at), ttl = Number(rec && rec.ttl);
+    if (!at || !ttl) return null;
+    if (Date.now() - at >= ttl * 1000) { sessionStorage.removeItem(smsSentKey(phone)); return null; }
+    return { at, ttl, n: Math.max(1, Number(rec && rec.n) || 1) };
+  } catch { return null; }
+}
+function smsRememberSent(phone, ttl) {
+  const prev = smsGetSent(phone);
+  const n = (prev ? prev.n : 0) + 1;
+  try { sessionStorage.setItem(smsSentKey(phone), JSON.stringify({ at: Date.now(), ttl: Number(ttl) || 21600, n })); }
+  catch { /* 隐私模式下写不了，顶多少一次提醒，不影响发码 */ }
+}
+function smsForgetSent(phone) {
+  try { sessionStorage.removeItem(smsSentKey(phone)); } catch { /* 同上 */ }
+}
+function smsTtlText(sec) {
+  const min = Math.max(1, Math.round(Number(sec || 21600) / 60));
+  return min >= 60 ? `${Math.round(min / 6) / 10} 小时` : `${min} 分钟`;
+}
+
+// 发码按钮的 60 秒重发间隔（服务端还有同号 5 条/天、IP 10 条/天，这只是最表层的体验）。
+// 跟验证码「多久过期」是两回事：有效期由服务端 validTime 定，按钮只管别让人连点。
 // 弹窗中途关掉计时继续走没关系：按钮是同一个，重新打开接着倒，倒完才能再点。
 function smsCountdown(btn) {
   let n = 60;
@@ -2897,13 +2957,23 @@ async function smsSendCode(phone, btn, retried) {
   const p = String(phone || '').trim();
   if (!/^1[3-9]\d{9}$/.test(p)) { showToast('请先填写正确的手机号', undefined, 'err'); return false; }
 
+  // 有效期内能重发一次，第二次之后才拦：服务端同样按次数闸，这里先挡一层别白过滑块。
+  const prev = smsGetSent(p);
+  const resending = !!(prev && prev.n >= 1);
+  if (prev && prev.n >= 2) {
+    const leftSec = Math.max(1, Math.ceil((prev.ttl * 1000 - (Date.now() - prev.at)) / 1000));
+    showToast(`已经重发过一次，${smsTtlText(leftSec)}内不能再次获取，请用刚收到的验证码`, 5000, 'ok');
+    return false;
+  }
+
   // 人机验证在发码之前：拿不到票就不发请求。
   // 服务端同样硬校验（没票直接 403 NEED_CAPTCHA），这里挡在前面只是不让用户
   // 点了「获取验证码」才吃到一堆错误——先让他看懂要做什么。
   const st = await smsStatus();
   let ticket = '';
   if (st && st.captcha) {
-    if (!window.ZmCaptcha) { showToast('验证组件没加载出来，请刷新页面重试', undefined, 'err'); return false; }
+    const captchaReady = await ensureScript('/captcha.js', 'ZmCaptcha');
+    if (!captchaReady || !window.ZmCaptcha) { showToast('验证组件没加载出来，请刷新页面重试', undefined, 'err'); return false; }
     ticket = await window.ZmCaptcha.open();
     if (!ticket) return false;      // 用户关掉了验证：安静退出，别弹错误提示
   }
@@ -2924,7 +2994,12 @@ async function smsSendCode(phone, btn, retried) {
     }
     if (!r.ok) { showToast(d.error || '验证码发送失败，稍后再试', undefined, 'err'); btn.disabled = false; return false; }
     smsCountdown(btn);
-    showToast('验证码已发送，几分钟内注意查收短信', undefined, 'ok');
+    smsRememberSent(p, d.ttl);
+    // 有效期跟服务端走，别在前端写死「5 分钟」——后台改了 duration 后文案会跟着变
+    const ttlText = smsTtlText(d.ttl);
+    showToast(resending
+      ? `已重发（这是最后一次，${ttlText}内不能再获取），注意查收短信`
+      : `验证码已发送，${ttlText}内有效，注意查收短信`, resending ? 6000 : 4000, 'ok');
     return true;
   } catch { btn.disabled = false; showToast('网络异常，稍后再试', undefined, 'err'); return false; }
 }
@@ -3003,6 +3078,7 @@ function setupPhoneVerify() {
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || '核验失败，请稍后再试');
+      smsForgetSent(phone);                          // 码已经用掉了，别再拿它提示「还能用」
       if (state.user) state.user.hasPhone = true;   // 内存立刻置位：后续发布动作不再弹窗
       smsStatus(true);
       hideModal($('phoneModal'));
@@ -3224,10 +3300,10 @@ async function startWxScanLogin() {
           stopWxScanPoll();
           wxScanBackToForms();
           afterAuth(s);   // 结构与 /api/login 响应一致（username/nickname/displayName）
-          // 这个微信没绑过账号时后端会直接建号登录（不再让用户在手机上二选一），
-          // 得说一句，不然用户会纳闷"我什么时候注册的"；老账号的收藏和作品能在小程序里合并过来
+          // 这个微信没绑过账号时后端会直接建辅助号登录（不再让用户在手机上二选一），
+          // 得说一句，不然用户会纳闷"我什么时候注册的"；自己注册的主号能在小程序里并回来
           if (s.created) {
-            showToast(`已用这个微信创建新账号（${s.nickname || s.username}）。以前有账号的话，到小程序「我的 → 绑定已有账号」可以把作品和收藏合并过来，灯火留两边多的那份，另补 300 盏绑定奖励`, 8000);
+            showToast(`已用这个微信建好辅助账号（${s.nickname || s.username}）。你自己注册的那个才是主账号，到小程序「我的 → 绑定已有账号」能把作品和收藏并回去，灯火留两边多的那份，另补 300 盏绑定奖励`, 8000);
           }
           return;
         }
@@ -6747,7 +6823,8 @@ function renderFiltersPC() {
         ${c.opts.map(o => {
           let n;
           if (c.kind === 'range') n = null;   // 时间档没有可用的现成计数，不显示数字
-          else if (o === '全部') n = totalWorks;
+          // 计数还没回来时先不写 0：面板里一排「全部 0」像站点没作品，其实是接口没到。
+          else if (o === '全部') n = totalWorks > 0 ? totalWorks : null;
           else if (c.kind === 'type') n = typeCounts[o] || 0;
           else if (c.kind === 'os') n = o === '开源' ? (osCounts.open || 0) : (osCounts.closed || 0);
           else if (c.kind === 'scene') n = (SCENES.find(s => s.name === o) || {}).count || 0;
@@ -7107,8 +7184,30 @@ function navigate(path) {
 // 「我的收藏 / 我的点赞」已收编成独立页面 /favs、/likes（2026-11-12），
 // 原先从其他页跳首页再滚到列表区的 scrollWorksHeadSoon 不再有使用场景，函数已删。
 
+const SPA_VIEW_IDS = ['homeView', 'rankView', 'wishView', 'miniView', 'guideView', 'howtoView', 'authorView', 'promoteView', 'discoverView', 'creatorsView', 'meView', 'settingsView', 'tasksView', 'favView', 'likeView', 'followView'];
+function motionOff() {
+  return document.documentElement.classList.contains('dm-quiet')
+    || !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+// 视图进场动画要「每次切进来都重播」：先摘 class、读一次布局强制生效，再加回去。
+// 只动 opacity/translate，不影响列表滚动位置和详情弹窗的返回链路。
+function showView(id) {
+  const el = $(id);
+  if (!el) return;
+  el.style.display = 'block';
+  el.classList.remove('dm-view-enter');
+  if (motionOff()) return;
+  void el.offsetWidth;
+  el.classList.add('dm-view-enter');
+}
+
 function closeAllViews() {
-  ['homeView', 'rankView', 'wishView', 'miniView', 'guideView', 'howtoView', 'authorView', 'promoteView', 'discoverView', 'creatorsView', 'meView', 'settingsView', 'tasksView', 'favView', 'likeView', 'followView'].forEach(id => { $(id).style.display = 'none'; });
+  SPA_VIEW_IDS.forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    el.style.display = 'none';
+    el.classList.remove('dm-view-enter');
+  });
   hideModal(detailModal);
   hideModal(statsModal);   // 灯火/数据面板是弹层：路由切走（比如点了榜单行去作者主页）必须一起收，别盖在新页面上
   closeQrZoom();   // 详情被关掉时二维码放大层一起收，别留一张盖住全屏的图
@@ -8257,6 +8356,7 @@ function renderSettingsPage() {
     return;
   }
   const u = state.user;
+  const isWxAux = /^wx/i.test(String(u.username || ''));
   const ghOn = !!(state.providers && state.providers.github);
   const gOn = !!(state.providers && state.providers.google);
   const nBlocked = (state.blocked || []).length + (state.blockedUsers || []).length;
@@ -8282,7 +8382,7 @@ function renderSettingsPage() {
     </button>
     <button type="button" class="st-row" id="stNick">
       <span class="st-ico">${ic('edit', 18)}</span>
-      <span class="st-main"><b>${u.nickname ? '改昵称' : '设昵称'}</b><i>昵称是别人看到的名字（作品署名、评论）；账号 @${escapeHtml(u.username || '')} 只用于登录</i></span>
+      <span class="st-main"><b>${u.nickname ? '改昵称' : '设昵称'}</b><i>昵称是别人看到的名字（作品署名、评论）；@${escapeHtml(u.username || '')} 只用于登录${isWxAux ? '，这是微信建的辅助号，自己注册的是主账号' : ''}</i></span>
       <span class="st-val${u.nickname ? '' : ' st-dim'}">${u.nickname ? escapeHtml(u.nickname) : '未设置'}</span>
       <span class="st-more">›</span>
     </button>
@@ -8294,7 +8394,7 @@ function renderSettingsPage() {
     </button>
     <button type="button" class="st-row" id="stPass">
       <span class="st-ico">${ic('key', 18)}</span>
-      <span class="st-main"><b>${canSetAlias ? '账号与密码' : '登录密码'}</b><i>${canSetAlias ? '登录名（别名）和密码都在这里改' : '账号名 @' + escapeHtml(u.username || '') + ' 注册时就定了，这里只改密码'}${setupAvail ? ` · 设置好送 ${setupPts} 盏灯火` : ''}</i></span>
+      <span class="st-main"><b>${canSetAlias ? '账号与密码' : '登录密码'}</b><i>${canSetAlias ? (isWxAux ? '微信辅助号的登录名和密码在这里改；想并回主号，去小程序「我的 → 绑定已有账号」' : '登录名（别名）和密码都在这里改') : '账号名 @' + escapeHtml(u.username || '') + ' 注册时就定了，这里只改密码'}${setupAvail ? ` · 设置好送 ${setupPts} 盏灯火` : ''}</i></span>
       <span class="st-more">›</span>
     </button>
     <button type="button" class="st-row" id="stMute">
@@ -8385,8 +8485,9 @@ function renderMePage() {
   const following = Number(state.user.followingCount || 0);
   const taskClaimable = Number(state.user.taskClaimable || 0);   // 任务中心还能领多少盏（服务端算）
   const name = state.user.nickname || state.user.username;
-  // 「账号名」小标签只给微信/OAuth 自动建的临时号：上面那串是系统给的，需要一句话解释。
-  // PC 正常注册的账号（账号名注册时就定了）名字就是自己起的，再标「账号名」是重复信息
+  // 「账号名」小标签只给自动建的临时号：上面那串是系统给的，需要一句话解释。
+  // 微信 wx 开头的明说成「微信辅助号」，自己注册的是主账号；不新增弹窗，只改这行现有小字
+  const isWxAux = /^wx/i.test(String(state.user.username || ''));
   const showNameTag = !state.user.nickname && (state.user.passSet === false || state.user.tempAcct === true);
   // 手机端不放「我的想法」「我的收藏」两个区块（用户要求去掉；PC 保留），
   // 收藏预览的请求也一并跳过，省一次全量拉取
@@ -8398,9 +8499,9 @@ function renderMePage() {
         <div class="me-hero-main">
           <div class="me-hero-name">
             <b>${escapeHtml(name)}</b>
-            ${showNameTag ? '<i class="me-name-tag">账号名</i>' : ''}
+            ${showNameTag ? `<i class="me-name-tag"${isWxAux ? ' title="微信扫码/小程序自动建的辅助账号；你自己注册的才是主账号"' : ''}>${isWxAux ? '辅助号' : '账号名'}</i>` : ''}
           </div>
-          <span>账号 @${escapeHtml(state.user.username || '')}</span>
+          <span${isWxAux ? ' title="微信辅助账号：可在小程序「我的 → 绑定已有账号」并回自己注册的主账号"' : ''}>账号 @${escapeHtml(state.user.username || '')}</span>
         </div>
       </div>
       <div class="me-stats">
@@ -9147,14 +9248,14 @@ function route() {
     return;
   }
   if (path.startsWith('/u/')) {
-    $('authorView').style.display = 'block';
+    showView('authorView');
     if (!keepList) loadAuthor(decodeURIComponent(path.slice(3)));
     updateNavActive();
     restoreScroll();
     return;
   }
   if (path === '/creators') {
-    $('creatorsView').style.display = 'block';
+    showView('creatorsView');
     setTitle('造梦者书架');
     if (!keepList) loadCreators();
     updateNavActive();
@@ -9162,7 +9263,7 @@ function route() {
     return;
   }
   if (path === '/rank') {
-    $('rankView').style.display = 'block';
+    showView('rankView');
     setTitle(isH5View() ? '榜单' : '星梦榜');
     // 支持 /rank?period=week&by=likes&type=Web&category=效率工具 这类可分享、可被收录的筛选链接（H5 / PC 共用 period·by·type）
     const rqs = new URLSearchParams(location.search);
@@ -9188,7 +9289,7 @@ function route() {
     return;
   }
   if (path === '/bar') {
-    $('wishView').style.display = 'block';
+    showView('wishView');
     setTitle('造梦酒馆');
     setupWish();
     // 楼层深链（/bar?p=帖子id）：先记下再动地址栏——下面 ?compose 的清理会把参数抹掉
@@ -9233,7 +9334,7 @@ function route() {
     return;
   }
   if (path === '/mini') {
-    $('miniView').style.display = 'block';
+    showView('miniView');
     setTitle('小程序专栏');
     setupMiniColumn();
     if (!keepList) loadMiniColumn();
@@ -9242,7 +9343,7 @@ function route() {
     return;
   }
   if (path === '/guide') {
-    $('guideView').style.display = 'block';
+    showView('guideView');
     setTitle('外宣指南');
     loadGuide();
     updateNavActive();
@@ -9250,14 +9351,14 @@ function route() {
     return;
   }
   if (path === '/howto') {
-    $('howtoView').style.display = 'block';
+    showView('howtoView');
     setTitle('投稿指南');
     updateNavActive();
     restoreScroll();
     return;
   }
   if (path === '/promote') {
-    $('promoteView').style.display = 'block';
+    showView('promoteView');
     setTitle('推荐');
     loadRedeemPanel();
     updateNavActive();
@@ -9265,7 +9366,7 @@ function route() {
     return;
   }
   if (path === '/discover') {
-    $('discoverView').style.display = 'block';
+    showView('discoverView');
     setTitle('发现');
     // 双版式（2026-11-18）：PC(≥641px) 走左分类侧栏 + 内容网格，移动端走专栏版式；
     // 断点跨越由 matchMedia 监听补渲染，两边各有缓存不重复拉数
@@ -9278,21 +9379,21 @@ function route() {
     return;
   }
   if (path === '/tasks') {
-    $('tasksView').style.display = 'block';
+    showView('tasksView');
     setTitle('任务中心');
     renderTasksPage();
     updateNavActive();
     return;
   }
   if (path === '/me') {
-    $('meView').style.display = 'block';
+    showView('meView');
     setTitle('我的');
     renderMePage();
     updateNavActive();
     return;
   }
   if (path === '/settings') {
-    $('settingsView').style.display = 'block';
+    showView('settingsView');
     setTitle('账号设置');
     renderSettingsPage();
     updateNavActive();
@@ -9304,7 +9405,7 @@ function route() {
   if (path === '/favs' || path === '/likes' || path === '/following') {
     const isFav = path === '/favs';
     const isFollow = path === '/following';
-    $(isFav ? 'favView' : (isFollow ? 'followView' : 'likeView')).style.display = 'block';
+    showView(isFav ? 'favView' : (isFollow ? 'followView' : 'likeView'));
     setTitle(isFav ? '我的收藏' : (isFollow ? '我关注的创作者' : '我的点赞'));
     if (!state.user) {
       openAuth('login');
@@ -9315,7 +9416,7 @@ function route() {
     return;
   }
   stripForeignSeoBlocks();   // 从 /u/ 等整页 SSR 页切回首页：清掉挂在列表下方的上一页副本
-  $('homeView').style.display = 'block';
+  showView('homeView');
   setTitle(state.q ? `搜索「${state.q}」` : '');
   // 「大家在找」只在首页露面（只拉一次，之后 heroHotLoaded 短路）
   loadHeroHot();
@@ -9789,7 +9890,13 @@ const HERO_SKINS = [
   { key: 'sakura', name: '樱花', group: '质感' },
   { key: 'window', name: '雨窗', group: '质感' },
   { key: 'vinyl', name: '唱片', group: '质感' },
-  { key: 'grid', name: '稿纸', group: '质感' }
+  { key: 'grid', name: '稿纸', group: '质感' },
+  { key: 'lake', name: '暮湖', group: '壁纸' },
+  { key: 'cloud', name: '云海', group: '壁纸' },
+  { key: 'forest', name: '林间', group: '壁纸' },
+  { key: 'peak', name: '雪山', group: '壁纸' },
+  { key: 'ink', name: '水墨', group: '壁纸' },
+  { key: 'moon', name: '月夜', group: '壁纸' }
 ];
 const HERO_SKIN_DEFAULT = 'meteor';
 let authorSkin = HERO_SKIN_DEFAULT;
@@ -9799,7 +9906,16 @@ function paintBandSkin(key) {
   const k = HERO_SKINS.some(s => s.key === key) ? key : HERO_SKIN_DEFAULT;
   authorSkin = k;
   const band = $('authorBand');
-  if (band) band.className = 'author-hero-band band-skin hs-' + k;
+  if (!band) return;
+  band.className = 'author-hero-band band-skin hs-' + k;
+  // 新皮肤淡入一下，别在眼前硬切；同一张皮肤重设时也只播这一次
+  if (!motionOff()) {
+    band.classList.remove('is-swapping');
+    void band.offsetWidth;
+    band.classList.add('is-swapping');
+    clearTimeout(band._skinSwapTimer);
+    band._skinSwapTimer = setTimeout(() => band.classList.remove('is-swapping'), 460);
+  }
 }
 
 let skinModalEl = null;
@@ -13125,15 +13241,18 @@ function setupUploadForm() {
   function inspectQr(file) {
     hideQrTip();                 // 内部会 ++，等于作废上一次还在跑的体检
     const seq = qrCheckSeq;
-    if (!file || !window.QrGuard) return;
-    window.QrGuard.inspect(file).then(res => {
-      if (seq !== qrCheckSeq) return;   // 结果回来时已经换图 / 删图 / 重置了
-      if (!res || res.level !== 'warn') return;
-      const tip = $('qrGuardTip');
-      if (!tip) return;
-      tip.textContent = '⚠ ' + res.reason;
-      tip.hidden = false;
-    }).catch(() => { /* 体检失败不影响投稿 */ });
+    if (!file) return;
+    ensureScript('/qr-guard.js', 'QrGuard').then(ok => {
+      if (!ok || !window.QrGuard || seq !== qrCheckSeq) return;
+      window.QrGuard.inspect(file).then(res => {
+        if (seq !== qrCheckSeq) return;   // 结果回来时已经换图 / 删图 / 重置了
+        if (!res || res.level !== 'warn') return;
+        const tip = $('qrGuardTip');
+        if (!tip) return;
+        tip.textContent = '⚠ ' + res.reason;
+        tip.hidden = false;
+      }).catch(() => { /* 体检失败不影响投稿 */ });
+    });
   }
 
   // 删除已上传的二维码，或清空本次选择
@@ -15421,8 +15540,7 @@ function setupDetailActions() {
   $('shareCardBtn').onclick = () => {
     const w = state.currentWork;
     if (!w) return;
-    if (window.ShareCard) window.ShareCard.open(w);
-    else showToast('分享卡片加载中，稍后再试');
+    openShareCard(w);
   };
 
   $('openReport').onclick = () => { showModal(reportModal); };
@@ -18070,7 +18188,9 @@ function platIco(p, cls) {
 }
 
 // 站长建议：按作品形态给一条投放优先级（外宣包弹窗顶部，告诉作者先去哪、后去哪）
-function promoAdviceOf(w) {
+// 注意别叫回 promoAdviceOf：下方投放建议块有个同名函数返回 HTML 字符串，函数声明提升会覆盖这里，
+// Outer 弹窗拿到的就不是数组、advice.map 直接抛错（2026-11-21 发现并改名）。
+function promoAdviceTips(w) {
   const types = typesOf(w);
   const has = t => types.indexOf(t) !== -1;
   const tips = [];
@@ -18110,7 +18230,7 @@ function renderPromoKit() {
         : `<span class="pk-warn"><span class="ico">${ic('warn')}</span> 按作品形态（${escapeHtml(typesOf(w).join(' / '))}）看，${escapeHtml(p.name)} 可能不是好的投放渠道，仅供参考</span>`)
     : '通用模板';
   const advEl = $('pkAdvice');
-  const advice = promoAdviceOf(w);
+  const advice = promoAdviceTips(w);
   if (advice.length) {
     advEl.style.display = '';
     advEl.innerHTML = `<span class="pk-advice-title"><span class="ico">${ic('sparkle')}</span> 站长建议先投这些</span><ul>${advice.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>`;
@@ -19634,8 +19754,7 @@ async function shareWorkDirect(id) {
   try {
     const w = await (await fetch('/api/works/' + encodeURIComponent(id) + '?nopv=1')).json();
     if (w.error) { showToast(w.error, undefined, 'err'); return; }
-    if (window.ShareCard) window.ShareCard.open(w);
-    else showToast('分享卡片加载中，稍后再试');
+    openShareCard(w);
   } catch {
     showToast('分享卡片生成失败，请重试', undefined, 'err');
   }
@@ -20724,8 +20843,7 @@ async function openStats(mode) {
         btn.disabled = true;
         const w = await (await fetch('/api/works/' + encodeURIComponent(id) + '?nopv=1')).json();
         if (w.error) { showToast(w.error, undefined, 'err'); return; }
-        if (window.ShareCard) window.ShareCard.open(w);
-        else showToast('分享卡片加载中，稍后再试');
+        openShareCard(w);
       } catch {
         showToast('分享卡片生成失败，请重试', undefined, 'err');
       } finally {
@@ -22045,6 +22163,7 @@ function openPassModal() {
   if (!state.user) { openAuth('login'); return; }
   const noPass = state.user.passSet === false;   // OAuth 建的号：没有密码可填，直接设一个新的
   const src = state.user.wechat ? '微信' : (state.user.google ? 'Google' : 'GitHub');
+  const isWxAux = /^wx/i.test(String(state.user.username || ''));
   // 登录名（别名）只给「自动建的临时号」和早就设过登录名的号：
   // 网页版正常注册的账号，账号名在注册时就定了，这里再让 TA「起一个登录名」等于重复设一次账号
   // （2026-11-14 站长确认，小程序同一口径）
@@ -22075,7 +22194,9 @@ function openPassModal() {
   $('passTip').textContent = !canAlias
     ? `登录时用「账号名 + 密码」进，账号名注册时就定了，不用另外起登录名。改完密码后其他设备会自动退出登录，当前这台设备不受影响。` + (setupPts ? ` 设置完成一次性送 ${setupPts} 盏灯火，当场到账。` : '')
     : (noPass
-      ? `你这个账号是${src}登录时自动创建的，设一个登录名和密码，换设备也能用「登录名 + 密码」进。` + (setupPts ? ` 设置完成一次性送 ${setupPts} 盏灯火，当场到账。` : '')
+      ? (isWxAux
+        ? `你这个是微信登录时自动建的辅助账号，设个登录名和密码，换设备也能用「登录名 + 密码」进；想并回自己注册的主号，去小程序「我的 → 绑定已有账号」。` + (setupPts ? ` 设置完成一次性送 ${setupPts} 盏灯火，当场到账。` : '')
+        : `你这个账号是${src}登录时自动创建的，设一个登录名和密码，换设备也能用「登录名 + 密码」进。` + (setupPts ? ` 设置完成一次性送 ${setupPts} 盏灯火，当场到账。` : ''))
       : '不想改密码就把密码两栏留空；改了密码后，其他设备会自动退出登录，当前这台设备不受影响。' + (setupPts ? ` 设置完成一次性送 ${setupPts} 盏灯火，当场到账。` : ''));
   setPassMsg('');
   $('closePass').onclick = () => hideModal($('passModal'));
@@ -22625,16 +22746,23 @@ function setupInstall() {
   }
 
   function openInstall() {
-    // 二维码指向当前站点地址（取 location.origin），扫码直达
+    // 二维码指向当前站点地址（取 location.origin），扫码直达。
+    // 弹窗立刻出来，二维码库在后台拉——不为了一张码让用户对着空白等网络。
     const box = $('installQrBox');
-    if (!box.dataset.done && typeof qrcode === 'function') {
-      try {
-        const qr = qrcode(0, 'M');
-        qr.addData(location.origin);
-        qr.make();
-        box.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0 });
-        box.dataset.done = '1';
-      } catch { box.innerHTML = '<div class="install-qr-err">二维码生成失败，直接在浏览器输入网址也可以</div>'; }
+    if (!box.dataset.done) {
+      ensureScript('/vendor/qrcode.js', 'qrcode').then(ok => {
+        if (!ok || typeof qrcode !== 'function') {
+          box.innerHTML = '<div class="install-qr-err">二维码没加载出来，直接复制下面的链接也可以</div>';
+          return;
+        }
+        try {
+          const qr = qrcode(0, 'M');
+          qr.addData(location.origin);
+          qr.make();
+          box.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0 });
+          box.dataset.done = '1';
+        } catch { box.innerHTML = '<div class="install-qr-err">二维码生成失败，直接在浏览器输入网址也可以</div>'; }
+      });
     }
     // 一键安装入口下线（2026-11-08）：不再亮「一键安装」，引导改为去小程序（见页脚与弹窗底部横幅）。
     // beforeinstallprompt 仍照常攒着、onclick 逻辑留着，哪天要恢复只改这一行。

@@ -2,7 +2,7 @@
 
 > 每一个认真做出的想法，都值得被看见。
 
-English version: [README.en.md](README.en.md) · 线上示例: <https://idea.v5pc.com> · License: MIT
+English version: [README.en.md](README.en.md) · 线上示例: <https://zm94.com> · License: MIT
 
 ![Node.js](https://img.shields.io/badge/node.js-18%2B-339933) ![Express](https://img.shields.io/badge/express-4-black) ![零构建](https://img.shields.io/badge/%E5%89%8D%E7%AB%AF-%E9%9B%B6%E6%9E%84%E5%BB%BA-f7df1e) ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -170,7 +170,7 @@ tar czf backup-$(date +%F).tar.gz data uploads
 
 ## 关于维护
 
-这是个个人项目，为 idea.v5pc.com 服务，不少业务参数（灯火数值、推荐位定价、风控配额）是按自己站的情况调的，Fork 后大概率要改。界面文案和大部分代码注释是中文，想改造的话从 `frontend/index.html`、`frontend/app.js`、`seo.js` 入手最快。
+这是个个人项目，为 zm94.com 服务，不少业务参数（灯火数值、推荐位定价、风控配额）是按自己站的情况调的，Fork 后大概率要改。界面文案和大部分代码注释是中文，想改造的话从 `frontend/index.html`、`frontend/app.js`、`seo.js` 入手最快。
 
 - 项目在持续维护：bug 会修，体验会调，issue 和 PR 都会看。
 - 提问题时写清复现步骤和预期结果，能省掉不少来回。

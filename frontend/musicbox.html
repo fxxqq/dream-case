@@ -11,10 +11,15 @@
   八音盒作曲页（/musicbox，2026-11-19）
   - 独立文件：照 /mascots 的路数，不接 app.js / SPA，服务端 app.get('/musicbox') 直接回本文件。
   - 站头 / 站脚照 /mascots 手写一份（同高 60px、同底色、同链接分组）；登录态由 /api/mascots/state 顺带给。
-  - 发声全在 /musicbox.js：曲库 16 首 + 种子生成器照旧，本页用新加的 MB.playSong（自己摆的音符）
+  - 发声全在 /musicbox.js：曲库 20 首 + 种子生成器照旧，本页用新加的 MB.playSong（自己摆的音符）
     和 MB.preview（点亮格子时当场响一下）。
-  - 作曲台 = 16 步 × 10 个音的格子（C 宫五声音阶两个八度：怎么摆都不难听）。
-    摆好 → 循环播放；「曲谱码」把整张格子 + 速度压成 34 个字符，复制给朋友粘回来就是同一首。
+  - 作曲台 = 16 / 32 / 64 步（2 / 4 / 8 小节，C 宫五声音阶两个八度：怎么摆都不难听），
+    带拍号表头；鼠标按住横拖可以一口气画一串。
+    摆好 → 循环播放；「曲谱码」把整张格子 + 速度 + 长度压成一串字符，复制给朋友粘回来就是同一首。
+  - 2026-11-21 站长调整：现成的曲子放上面，作曲台挪到页面最下边；曲库里长曲组上提，
+    原创组心象风景排第一。作曲台长度从固定 16 步改成可选 2/4/8 小节（曲谱码加了长度位，
+    老码没有长度位，按 16 步解，老曲子照样粘得回来）。
+  - 第一次来（本地没存过格子）自动摆一句《小星星》垫底，别让人对着空格子发呆。
   - 不落库不传文件：曲子只存 localStorage（dm_musicbox_songs / dm_musicbox_last），跟种子一个口径。
   - 页面不参与收录（玩具页），noindex。
 -->
@@ -90,7 +95,7 @@ body{
 /* ---------- 卡片 ---------- */
 .card{
   background:var(--card);border:1px solid var(--border);border-radius:18px;
-  padding:20px 22px;margin-top:16px;
+  padding:20px 22px;margin-top:16px;scroll-margin-top:74px;
   box-shadow:0 6px 22px rgba(31,35,48,.05);
 }
 .card-hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
@@ -106,6 +111,7 @@ body{
 }
 .btn:hover{border-color:#cdd0e0;color:var(--primary)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
+.btn svg{width:13px;height:13px;fill:currentColor;display:inline-block;vertical-align:-2px;margin-right:4px}
 .btn-primary{
   border-color:var(--primary);background:var(--primary);color:#fff;font-weight:600;
 }
@@ -114,10 +120,23 @@ body{
 .bpm-box{display:inline-flex;align-items:center;gap:8px;margin-left:auto}
 .bpm-box input[type=range]{width:130px;accent-color:var(--primary)}
 .bpm-box .music-val{font-size:12.5px;color:var(--muted);min-width:58px;text-align:right}
+/* 长度切换：2 / 4 / 8 小节 */
+.len-box{display:inline-flex;align-items:center;gap:6px}
+.len-label{font-size:12.5px;color:var(--muted)}
+.btn-len{padding:5px 11px;font-size:12.5px}
+.btn-len.on{background:var(--soft);border-color:#cdc8f2;color:var(--primary);font-weight:600}
 
 /* ---------- 作曲格子 ---------- */
 .grid-scroll{overflow-x:auto;padding-bottom:4px}
-.cgrid{display:grid;grid-template-columns:44px repeat(16,minmax(17px,1fr));gap:3px;min-width:370px;user-select:none;-webkit-user-select:none}
+.cgrid{display:grid;grid-template-columns:44px repeat(16,minmax(22px,1fr));gap:3px;min-width:450px;user-select:none;-webkit-user-select:none}
+/* 拍号表头：两格一拍（1–8），小节头（第 1、5 拍）加重，播放时跟着走 */
+.step-hd{
+  font-size:10.5px;color:var(--muted);display:flex;align-items:flex-end;justify-content:center;
+  height:16px;padding-bottom:2px;font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.step-hd.dot{color:#c5c8da}
+.step-hd.bar{color:var(--text);font-weight:600}
+.step-hd.now{color:var(--primary);font-weight:600}
 .rlabel{
   font-size:11px;color:var(--muted);display:flex;align-items:center;justify-content:flex-end;
   padding-right:7px;white-space:nowrap;
@@ -125,14 +144,24 @@ body{
 .rlabel b{font-weight:600;color:var(--text);opacity:.75;margin-right:3px}
 .cell{
   border:1px solid var(--border);border-radius:5px;background:#fff;
-  min-height:27px;padding:0;cursor:pointer;transition:background .12s,border-color .12s;
+  min-height:30px;padding:0;cursor:pointer;transition:background .12s,border-color .12s;
 }
+/* 低八度（低6 以下）顶上加一条线：两个八度一眼分开 */
+.cell.oct{border-top:2px solid #c5cae4}
+.rlabel.oct{border-top:2px solid #c5cae4}
 .cell.beat{background:#f4f4fb}
 .cell:hover{border-color:#b9bce0}
 .cell.on{background:var(--primary);border-color:var(--primary);box-shadow:0 2px 8px rgba(91,91,214,.35)}
 .cell.on.beat{background:#5050d8}
+/* playhead：播放时高亮「正在响的这一列」，让用户看见滚筒转到哪了。
+   没点的格子给浅紫底 + 内描边；已点亮的格子加一圈白边 + 加亮，不盖过音本身。 */
+.cell.now{background:#eaeafd;box-shadow:inset 0 0 0 2px rgba(91,91,214,.42)}
+.cell.now.beat{background:#e3e5fb}
+.cell.on.now{background:#6a6ae2;border-color:#6a6ae2;box-shadow:0 0 0 2px rgba(255,255,255,.65),0 2px 12px rgba(91,91,214,.55)}
 .comp-note{font-size:12.5px;color:var(--muted);margin-top:10px}
 .comp-note b{color:var(--text);font-weight:600}
+/* 玩法说明：作曲台卡片开头那句人话 */
+.howto{font-size:13px;color:var(--muted);line-height:1.85;margin:0 0 14px}
 
 /* ---------- 存曲 / 曲谱码 ---------- */
 .save-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;align-items:center}
@@ -159,7 +188,7 @@ body{
 .code-out{
   flex:1 1 230px;min-width:0;border:1px dashed #cdd0e0;border-radius:10px;background:#fbfbff;
   padding:7px 12px;font-size:13px;letter-spacing:1.5px;color:var(--primary);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;
+  word-break:break-all;line-height:1.7;cursor:pointer;
 }
 .code-out.empty{color:var(--muted);letter-spacing:0}
 .sep-t{
@@ -264,18 +293,36 @@ body{
 <div class="wrap">
   <header class="hd">
     <h1>八音盒 · 自己写一首</h1>
-    <p class="sub">在格子上点亮音符，八音盒替你转出来 · 全程现算，不下载不缓冲 · 写好的曲子用一串「曲谱码」就能送给朋友</p>
+    <p class="sub">先听听现成的，想写就翻到最底下自己写 · 全程现算，不下载不缓冲 · 写好的曲子用一串「曲谱码」就能送给朋友</p>
   </header>
 
-  <!-- 作曲台 -->
-  <section class="card" aria-label="作曲台">
+  <!-- 现成的曲子：卡片式播放区（参考 11-18 试听页），曲目单由 MusicBox.listAll() 画 -->
+  <section class="card" aria-label="现成的曲子">
+    <div class="card-hd">
+      <h2>现成的曲子</h2>
+      <span class="tip">原创 8 首 + 长曲 4 首 + 经典老歌 8 首 · 点卡片听，再点一下停</span>
+      <button type="button" class="btn" id="libRand" style="margin-left:auto" title="20 首里的短曲随机挑一首（长曲不进随机池）">随机来一首</button>
+      <a class="btn" href="#composer" title="翻到底自己写一首">往下自己写一首 ↓</a>
+    </div>
+    <div id="libList"></div>
+  </section>
+
+  <!-- 作曲台（2026-11-21 按站长要求挪到页面最下边：先听现成的，想写了再往下翻） -->
+  <section class="card" id="composer" aria-label="作曲台">
     <div class="card-hd">
       <h2>作曲台</h2>
-      <span class="tip">16 步一格 · C 宫五声音阶，怎么摆都不难听 · 点亮的音当场响一下</span>
+      <span class="tip">C 宫五声音阶 · 点亮的音当场响一下</span>
     </div>
+    <p class="howto">格子从左往右是时间，一格半拍（表头的数字是第几拍）；点哪格哪个音就响，同一竖列点亮几个音就是和弦，按住鼠标拖过一排能一口气画一串。左边 高1、低5 是简谱唱名——全在五声音阶里，随手摆不会难听。长度可以换，下面「2 小节 / 4 小节 / 8 小节」随你挑；格子多了横着拉就能看全。拿不准怎么下手，就先按一下「来段小星星」。</p>
     <div class="toolbar">
       <button type="button" class="btn btn-primary" id="playBtn">播放</button>
       <button type="button" class="btn btn-toggle on" id="loopBtn" aria-pressed="true" title="放完一遍接着再来，关掉就只放一遍">循环</button>
+      <span class="len-box">
+        <span class="len-label">长度</span>
+        <button type="button" class="btn btn-len" data-len="16" aria-pressed="false" title="16 格，2 小节">2 小节</button>
+        <button type="button" class="btn btn-len on" data-len="32" aria-pressed="true" title="32 格，4 小节">4 小节</button>
+        <button type="button" class="btn btn-len" data-len="64" aria-pressed="false" title="64 格，8 小节，横着拉看">8 小节</button>
+      </span>
       <span class="bpm-box">
         <label for="bpm">速度</label>
         <input type="range" id="bpm" min="60" max="140" step="4" value="96" />
@@ -301,22 +348,13 @@ body{
     <div class="sep-t">曲谱码 · 复制给朋友，粘回来就是同一首</div>
     <div class="code-row">
       <div class="code-out empty" id="codeOut" title="点一下复制">点亮音符后，这里会出现这串曲子的曲谱码</div>
-      <button type="button" class="btn" id="copyBtn" disabled>复制</button>
+      <button type="button" class="btn" id="copyBtn" disabled>复制曲谱码</button>
+      <button type="button" class="btn" id="shareBtn" disabled title="复制带曲谱码的链接，朋友点开就是你这首摆好的曲子">分享链接</button>
     </div>
     <div class="code-row" style="margin-top:8px">
-      <input type="text" class="txt" id="codeIn" maxlength="40" placeholder="有别人的曲谱码？粘进来" autocomplete="off" spellcheck="false" style="letter-spacing:1px" />
+      <input type="text" class="txt" id="codeIn" maxlength="200" placeholder="有别人的曲谱码？粘进来" autocomplete="off" spellcheck="false" style="letter-spacing:1px" />
       <button type="button" class="btn" id="importBtn">摆出来</button>
     </div>
-  </section>
-
-  <!-- 现成的曲子：卡片式播放区（参考 11-18 试听页），曲目单由 MusicBox.listAll() 画 -->
-  <section class="card" aria-label="现成的曲子">
-    <div class="card-hd">
-      <h2>现成的曲子</h2>
-      <span class="tip">原创 8 首 + 经典老歌 8 首 + 参考长曲 1 首 · 点卡片听，再点一下停</span>
-      <button type="button" class="btn" id="libRand" style="margin-left:auto" title="17 首里的短曲随机挑一首（长曲不进随机池）">随机来一首</button>
-    </div>
-    <div id="libList"></div>
   </section>
 
   <p class="page-note">
@@ -379,7 +417,8 @@ body{
     { m: 62, jp: '低2', n: 'D4' },
     { m: 60, jp: '低1', n: 'C4' }
   ];
-  var STEPS = 16;                 // 每步 0.5 拍 → 一圈 8 拍（两小节 4/4）
+  var STEPS = 32;                 // 当前格子数（长度切换会改它）；每步 0.5 拍 → 32 格 = 16 拍 = 4 小节
+  var LEN_IDS = [16, 32, 64];     // 2 / 4 / 8 小节；顺序就是曲谱码里的「长度位」
   var LS_SONGS = 'dm_musicbox_songs';
   var LS_LAST  = 'dm_musicbox_last';
 
@@ -394,13 +433,15 @@ body{
   var emptyEl  = document.getElementById('myEmpty');
   var codeOut  = document.getElementById('codeOut');
   var copyBtn  = document.getElementById('copyBtn');
+  var shareBtn = document.getElementById('shareBtn');
   var codeIn   = document.getElementById('codeIn');
   var importBtn= document.getElementById('importBtn');
   var libEl    = document.getElementById('libList');
 
-  var grid = [], cells = [];      // grid[行][步] = 0/1；cells 同构放 DOM
+  var grid = [], cells = [], hdrCells = [];   // grid[行][步] = 0/1；cells 同构放 DOM；hdrCells 拍号表头
   var loopOn = true, loopT = null, mode = '';   // mode: 'custom' | 'lib'，循环只跟着 custom 走
   var toastT = null;
+  var nowCol = -1;                // playhead 当前高亮的列（-1 = 没有）
 
   function toast(text){
     toastEl.textContent = text;
@@ -409,12 +450,15 @@ body{
     toastT = setTimeout(function(){ toastEl.classList.remove('show'); }, 1800);
   }
 
-  /* ---------------- 曲谱码：M + 速度 1 位 + 每步 2 位（10 行压成 10 bit） ----------------
-     16 步 × 2 位 + 2 = 34 个字符，短信里都塞得下。速度按 60 + n×4 存（60–140）。 */
+  /* ---------------- 曲谱码：M + 长度位 + 速度 1 位 + 每步 2 位（10 行压成 10 bit） ----------------
+     每步占两个 base32 字符（10 行 → 10 bit），所以 2 / 4 / 8 小节分别是 35 / 67 / 131 个字符。
+     速度按 60 + n×4 存（60–140）。
+     老码（11-19 到 11-21 之前发出的）没有长度位：'M' + 速度 + 32 个字符 = 34 个字符，
+     按 2 小节（16 步）解——以前写的曲子照样粘得回来。 */
   var B32 = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   function encodeCode(){
     var k = Math.max(0, Math.min(20, Math.round((Number(bpmEl.value) - 60) / 4)));
-    var out = 'M' + B32[k];
+    var out = 'M' + B32[LEN_IDS.indexOf(STEPS)] + B32[k];
     for (var s = 0; s < STEPS; s++){
       var mask = 0;
       for (var r = 0; r < ROWS.length; r++) if (grid[r][s]) mask |= (1 << r);
@@ -422,29 +466,60 @@ body{
     }
     return out;
   }
-  function decodeCode(code){
-    code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (code.charAt(0) !== 'M' || code.length !== STEPS * 2 + 2) return null;
-    var k = B32.indexOf(code.charAt(1));
-    if (k < 0) return null;
+  function decodeSteps(code, off, len){
     var steps = [];
-    for (var s = 0; s < STEPS; s++){
-      var i = B32.indexOf(code.charAt(2 + s * 2)), j = B32.indexOf(code.charAt(3 + s * 2));
+    for (var s = 0; s < len; s++){
+      var i = B32.indexOf(code.charAt(off + s * 2)), j = B32.indexOf(code.charAt(off + s * 2 + 1));
       if (i < 0 || j < 0) return null;
       var mask = (i << 5) | j, col = [];
       for (var r = 0; r < ROWS.length; r++) if (mask & (1 << r)) col.push(r);
       steps.push(col);
     }
-    return { bpm: 60 + k * 4, steps: steps };
+    return steps;
+  }
+  function decodeCode(code){
+    code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code.charAt(0) !== 'M') return null;
+    if (code.length === 34){
+      // 老码：没有长度位，第 2 位是速度，固定 16 步
+      var k0 = B32.indexOf(code.charAt(1));
+      if (k0 < 0) return null;
+      var s0 = decodeSteps(code, 2, 16);
+      if (!s0) return null;
+      return { bpm: 60 + k0 * 4, steps: s0, len: 16 };
+    }
+    var li = B32.indexOf(code.charAt(1));
+    if (li < 0 || li >= LEN_IDS.length) return null;
+    var len = LEN_IDS[li];
+    if (code.length !== 3 + len * 2) return null;
+    var k = B32.indexOf(code.charAt(2));
+    if (k < 0) return null;
+    var steps = decodeSteps(code, 3, len);
+    if (!steps) return null;
+    return { bpm: 60 + k * 4, steps: steps, len: len };
   }
 
   /* ---------------- 格子 ---------------- */
   function buildGrid(){
-    gridEl.innerHTML = ''; cells = [];
+    gridEl.innerHTML = ''; cells = []; hdrCells = [];
+    // 格子数跟着长度走：64 格时撑出横向滚动，格子不缩到点不准
+    gridEl.style.gridTemplateColumns = '44px repeat(' + STEPS + ', minmax(22px,1fr))';
+    gridEl.style.minWidth = (48 + STEPS * 25) + 'px';
     grid = ROWS.map(function(){ var a = []; for (var s = 0; s < STEPS; s++) a.push(0); return a; });
+    // 拍号表头：两格一拍（1–8），小节头（第 1、5 拍）加重，播放时跟着 playhead 走
+    var corner = document.createElement('span');
+    corner.className = 'step-hd'; corner.textContent = '拍';
+    gridEl.appendChild(corner);
+    for (var h = 0; h < STEPS; h++){
+      var hd = document.createElement('span');
+      hd.className = 'step-hd' + (h % 2 ? ' dot' : '') + ((h === 0 || h === 8) ? ' bar' : '');
+      hd.textContent = h % 2 ? '·' : (h / 2 + 1);
+      gridEl.appendChild(hd);
+      hdrCells.push(hd);
+    }
     ROWS.forEach(function(row, r){
       var lb = document.createElement('span');
-      lb.className = 'rlabel';
+      lb.className = 'rlabel' + (r === 5 ? ' oct' : '');
       lb.innerHTML = '<b>' + row.jp + '</b>' + row.n;
       lb.title = row.jp + '（' + row.n + '）';
       gridEl.appendChild(lb);
@@ -452,9 +527,9 @@ body{
       for (var s = 0; s < STEPS; s++){
         var c = document.createElement('button');
         c.type = 'button';
-        c.className = 'cell' + (s % 4 === 0 ? ' beat' : '');
-        c.setAttribute('aria-label', row.jp + ' 第' + (s + 1) + '步');
-        c.addEventListener('click', function(){ toggle(r, s, c); });
+        c.className = 'cell' + (s % 4 === 0 ? ' beat' : '') + (r === 5 ? ' oct' : '');
+        c.dataset.r = r; c.dataset.s = s;
+        c.setAttribute('aria-label', row.jp + ' 第' + (s + 1) + '格');
         gridEl.appendChild(c);
         cells[r].push(c);
       }
@@ -465,23 +540,100 @@ body{
       for (var s = 0; s < STEPS; s++)
         cells[r][s].classList.toggle('on', !!grid[r][s]);
   }
-  function toggle(r, s, el){
-    grid[r][s] = grid[r][s] ? 0 : 1;
-    el.classList.toggle('on', !!grid[r][s]);
-    if (grid[r][s]) MB.preview(ROWS[r].m);   // 点亮当场响一下：摆没摆上，耳朵说了算
-    saveLast();
-    refreshCode();
+  /* playhead：高亮「正在响的这一列」，连同表头那格一起亮。播放 custom 曲子时由 tickProgress 每帧调 */
+  function clearNowCol(){
+    if (nowCol < 0) return;
+    for (var r = 0; r < ROWS.length; r++) cells[r][nowCol].classList.remove('now');
+    if (hdrCells[nowCol]) hdrCells[nowCol].classList.remove('now');
+    nowCol = -1;
   }
+  function setNowCol(col){
+    if (col === nowCol) return;
+    clearNowCol();
+    if (col < 0 || col >= STEPS) return;
+    nowCol = col;
+    for (var r = 0; r < ROWS.length; r++) cells[r][col].classList.add('now');
+    if (hdrCells[col]) hdrCells[col].classList.add('now');
+  }
+  /* 点格子：点一下翻一次；鼠标按住拖过一排 = 按第一下的方向一口气画一串。
+     触屏照样点（拖动会被浏览器拿去滚格子，互不冲突）。
+     2026-11-21 顺手修了个老 bug：旧版在 for(var s…) 里闭包捕获 s，
+     点哪格亮的都是那一行的最后一格——换 dataset + 事件委托才对。 */
+  var paintVal = null, lastPtrT = 0, lastPrev = 0;
+  function applyCell(r, s, val){
+    if (r < 0 || r >= ROWS.length || s < 0 || s >= STEPS || grid[r][s] === val) return;
+    grid[r][s] = val;
+    cells[r][s].classList.toggle('on', !!val);
+    if (val && Date.now() - lastPrev > 70){ MB.preview(ROWS[r].m); lastPrev = Date.now(); }
+  }
+  function cellFromPoint(e){
+    var el = document.elementFromPoint(e.clientX, e.clientY);
+    var c = el && el.closest ? el.closest('.cell') : null;
+    return (c && gridEl.contains(c)) ? c : null;
+  }
+  gridEl.addEventListener('pointerdown', function(e){
+    var c = e.target.closest('.cell'); if (!c) return;
+    e.preventDefault();
+    var r = +c.dataset.r, s = +c.dataset.s;
+    var nv = grid[r][s] ? 0 : 1;
+    applyCell(r, s, nv);
+    paintVal = nv; lastPtrT = Date.now();
+  });
+  gridEl.addEventListener('pointermove', function(e){
+    if (paintVal === null) return;
+    var c = cellFromPoint(e);
+    if (c) applyCell(+c.dataset.r, +c.dataset.s, paintVal);
+  });
+  function endPaint(){
+    if (paintVal === null) return;
+    paintVal = null;
+    saveLast(); refreshCode();
+  }
+  window.addEventListener('pointerup', endPaint);
+  window.addEventListener('pointercancel', endPaint);
+  /* 键盘走 click（button 上按 Enter/空格触发）；刚被 pointerdown 处理过的拦掉，别翻两下 */
+  gridEl.addEventListener('click', function(e){
+    var c = e.target.closest('.cell'); if (!c) return;
+    if (Date.now() - lastPtrT < 500) return;
+    var r = +c.dataset.r, s = +c.dataset.s;
+    applyCell(r, s, grid[r][s] ? 0 : 1);
+    saveLast(); refreshCode();
+  });
   function clearGrid(){ 
     for (var r = 0; r < ROWS.length; r++) for (var s = 0; s < STEPS; s++) grid[r][s] = 0;
     paintGrid(); saveLast(); refreshCode();
   }
-  function loadSteps(steps, bpm){
-    clearGrid();
-    steps.forEach(function(col, s){ col.forEach(function(r){ if (grid[r]) grid[r][s] = 1; }); });
+  function loadSteps(steps, bpm, len){
+    // 长度不一样就重建格子（老码是 16 步，粘回来自动回到 2 小节）
+    if (len && LEN_IDS.indexOf(len) >= 0 && len !== STEPS){ STEPS = len; buildGrid(); }
+    for (var r = 0; r < ROWS.length; r++) for (var s = 0; s < STEPS; s++) grid[r][s] = 0;
+    steps.forEach(function(col, s){ if (s < STEPS) col.forEach(function(r){ if (grid[r]) grid[r][s] = 1; }); });
     if (bpm){ bpmEl.value = bpm; bpmV.textContent = bpm + ' BPM'; }
-    paintGrid(); saveLast(); refreshCode();
+    paintGrid(); saveLast(); refreshCode(); updateLenBtns();
   }
+
+  /* 长度切换：2 / 4 / 8 小节。旧的音留住不动，只是多出来的格子空着。 */
+  function setLen(n){
+    if (n === STEPS || LEN_IDS.indexOf(n) < 0) return;
+    var old = grid, oldSteps = STEPS;
+    STEPS = n;
+    buildGrid();
+    for (var r = 0; r < ROWS.length; r++)
+      for (var s = 0; s < Math.min(oldSteps, n); s++) grid[r][s] = old[r][s];
+    paintGrid(); saveLast(); refreshCode(); updateLenBtns();
+    toast(n === 16 ? '改成 2 小节了' : n === 32 ? '改成 4 小节了' : '改成 8 小节了，格子多，横着拉看');
+  }
+  function updateLenBtns(){
+    var bs = document.querySelectorAll('.btn-len');
+    for (var i = 0; i < bs.length; i++){
+      var on = Number(bs[i].getAttribute('data-len')) === STEPS;
+      bs[i].classList.toggle('on', on);
+      bs[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+  }
+  document.querySelectorAll('.btn-len').forEach(function(b){
+    b.addEventListener('click', function(){ stopAll(); setLen(Number(b.getAttribute('data-len'))); });
+  });
 
   /* ---------------- 播放 ---------------- */
   function collectEvents(){
@@ -515,6 +667,7 @@ body{
   function stopAll(){
     clearTimeout(loopT); loopT = null;
     mode = '';
+    clearNowCol();
     MB.stop();
   }
   playBtn.addEventListener('click', function(){
@@ -528,7 +681,7 @@ body{
     if (!loopOn) clearTimeout(loopT);
     else if (mode === 'custom' && MB.isPlaying()){
       // 循环开到一半：从「这一遍还剩多少」接着排，不从头等
-      var left = 8 * 60 / (Number(bpmEl.value) || 96);
+      var left = (STEPS * 0.5) * 60 / (Number(bpmEl.value) || 96);
       scheduleLoop(left);
     }
     toast(loopOn ? '循环开着：放完接着来' : '循环关了：放完这一遍就停');
@@ -553,21 +706,28 @@ body{
     }
     return st;
   }
-  /* 进度条：引擎报「放到哪了」，一帧一挪。放的若是作曲台的曲子（id=custom）没有卡片，条自然不动 */
+  /* 进度条 + playhead：引擎报「放到哪了」，一帧一挪。
+     作曲台的曲子（id=custom）没有卡片，进度条不动，但格子要高亮当前步——
+     每步 0.5 拍，当前步 = 当前拍 / 0.5。曲库曲子走卡片进度条，格子不亮。 */
   function tickProgress(){
     var st = MB.state();
-    if (!st.playing){ rafId = null; return; }
+    if (!st.playing){ rafId = null; clearNowCol(); return; }
     var pr = MB.progress();
-    if (pr && pr.total > 0 && libEl){
+    if (st.id === 'custom' && pr && pr.total > 0){
+      var spb = 60 / (Number(bpmEl.value) || 96);
+      var step = Math.floor(pr.t / (spb * 0.5));
+      setNowCol(Math.max(0, Math.min(STEPS - 1, step)));
+    } else if (pr && pr.total > 0 && libEl){
       var card = libEl.querySelector('.tk[data-id="' + st.id + '"]');
       if (card) card.querySelector('.tk-bar i').style.width = Math.min(100, pr.t / pr.total * 100) + '%';
     }
     rafId = requestAnimationFrame(tickProgress);
   }
   MB.onChange = function(){
-    playBtn.textContent = MB.isPlaying() ? '停止' : '播放';
+    playBtn.innerHTML = MB.isPlaying() ? ICON_PAUSE + '停止' : ICON_PLAY + '播放';
     var st = setCardState();
     if (st.playing && rafId === null) rafId = requestAnimationFrame(tickProgress);
+    else if (!st.playing) clearNowCol();
   };
 
   /* ---------------- 现成的曲子：MusicBox.listAll() 画，改曲库不用动这页 ---------------- */
@@ -589,6 +749,9 @@ body{
     jasmine:   '江苏民歌',
     tigers:    '法国童谣《两只老虎》的中文版',
     jingle:    '《铃儿响叮当》，公有领域',
+    ferry:     'e 小调连夜推进，44 小节约两分半，句尾大多落在 E 和 B 上',
+    terrace:   'C 大调一路明亮，长曲里最轻快的一首',
+    mistline:  'Dm7 起手循环推进，48 小节，全曲库最长的一首',
     windscape2:'非曲库收录件：只对齐热门曲参数（92 BPM、40 小节），旋律是全新写的'
   };
   function renderLib(){
@@ -658,6 +821,11 @@ body{
       return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
     });
   }
+  /* 存的曲子在列表里点「放」或「摆出来」，格子在上 方，得把人带回作曲台才看得见 */
+  function scrollToComposer(){
+    var el = document.querySelector('section.card[aria-label="作曲台"]');
+    if (el) el.scrollIntoView({ behavior:'smooth', block:'start' });
+  }
   listEl.addEventListener('click', function(e){
     var b = e.target.closest('button[data-do]');
     if (!b) return;
@@ -673,13 +841,15 @@ body{
     if (!d){ toast('这条曲谱码坏了，删掉吧'); return; }
     if (b.getAttribute('data-do') === 'load'){
       nameEl.value = it.name || '';
-      loadSteps(d.steps, d.bpm);
+      loadSteps(d.steps, d.bpm, d.len);
       toast('摆出来了，接着改吧');
+      scrollToComposer();
     } else {
       stopAll();
       nameEl.value = it.name || '';
-      loadSteps(d.steps, d.bpm);
+      loadSteps(d.steps, d.bpm, d.len);
       playCustom();
+      scrollToComposer();
     }
   });
   saveBtn.addEventListener('click', function(){
@@ -701,37 +871,63 @@ body{
       codeOut.textContent = '点亮音符后，这里会出现这串曲子的曲谱码';
       codeOut.classList.add('empty');
       copyBtn.disabled = true;
+      shareBtn.disabled = true;
       return;
     }
     codeOut.textContent = encodeCode();
     codeOut.classList.remove('empty');
     copyBtn.disabled = false;
+    shareBtn.disabled = false;
   }
-  function copyText(t){
-    if (navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(t).then(function(){ toast('曲谱码复制好了，发给朋友吧'); },
-        function(){ toast('复制没成功，长按那串字手动拷一下'); });
-      return;
-    }
+  /* 复制：先试现代 clipboard API，写入失败（权限不足/headless/旧浏览器）再退回 execCommand。
+     两套都试过才认输，比只用一套稳。 */
+  function execCopy(t){
     try {
       var ta = document.createElement('textarea');
-      ta.value = t; document.body.appendChild(ta);
+      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta);
       ta.select(); document.execCommand('copy');
       document.body.removeChild(ta);
-      toast('曲谱码复制好了，发给朋友吧');
-    } catch(e){ toast('复制没成功，长按那串字手动拷一下'); }
+      return true;
+    } catch(e){ return false; }
+  }
+  function copyText(t, okMsg, failMsg){
+    okMsg   = okMsg   || '曲谱码复制好了，发给朋友吧';
+    failMsg = failMsg || '复制没成功，长按那串字手动拷一下';
+    var ok = function(){ toast(okMsg); };
+    var no = function(){ toast(failMsg); };
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(t).then(ok, function(){
+        if (execCopy(t)) ok(); else no();
+      });
+      return;
+    }
+    if (execCopy(t)) ok(); else no();
   }
   copyBtn.addEventListener('click', function(){ if (!copyBtn.disabled) copyText(encodeCode()); });
   codeOut.addEventListener('click', function(){ if (!copyBtn.disabled) copyText(encodeCode()); });
+  shareBtn.addEventListener('click', function(){
+    if (shareBtn.disabled) return;
+    var link = location.origin + '/musicbox?song=' + encodeCode();
+    copyText(link, '分享链接复制好了，发给朋友点开就是你这首', '链接没复制成功，长按手动拷一下');
+  });
   importBtn.addEventListener('click', function(){
     var d = decodeCode(codeIn.value);
     if (!d){ toast('这串不像曲谱码——让朋友从作曲台上复制一遍'); return; }
     stopAll();
-    loadSteps(d.steps, d.bpm);
+    loadSteps(d.steps, d.bpm, d.len);
     codeIn.value = '';
     toast('摆出来了 · ' + d.bpm + ' BPM，点「播放」听听');
   });
   codeIn.addEventListener('keydown', function(e){ if (e.key === 'Enter') importBtn.click(); });
+
+  /* 空格 = 播放/停止：只在 body 聚焦时生效（焦点在输入框/格子按钮时让位给原生行为） */
+  document.addEventListener('keydown', function(e){
+    if (e.key !== ' ' && e.code !== 'Space') return;
+    if (document.activeElement !== document.body) return;
+    e.preventDefault();
+    playBtn.click();
+  });
 
   /* ---------------- 示例 / 随机 ---------------- */
   document.getElementById('demoBtn').addEventListener('click', function(){
@@ -758,8 +954,20 @@ body{
     paintGrid(); saveLast(); refreshCode();
     toast('随机来了一段，不满意就再按一下');
   });
+  /* 清空二次确认：精心摆的曲子，手滑点一下就没了不划算。
+     格子空着就直接清；有内容先提示，2.5 秒内再按一次才真清。 */
+  var clearArmed = false, clearArmT = null;
   document.getElementById('clearBtn').addEventListener('click', function(){
-    stopAll(); clearGrid(); toast('清空了');
+    if (clearArmed){
+      clearArmed = false; clearTimeout(clearArmT);
+      stopAll(); clearGrid(); toast('清空了');
+      return;
+    }
+    if (!collectEvents().length){ stopAll(); clearGrid(); toast('清空了'); return; }
+    clearArmed = true;
+    toast('再按一次「清空」确认');
+    clearTimeout(clearArmT);
+    clearArmT = setTimeout(function(){ clearArmed = false; }, 2500);
   });
 
   /* ---------------- 上次的格子 / 分享链接 ---------------- */
@@ -771,12 +979,14 @@ body{
     renderLib();
     renderSongs();
     bpmV.textContent = bpmEl.value + ' BPM';
-    // 优先级：链接里的曲谱码 > 上次没存完的格子 > 空白
+    playBtn.innerHTML = ICON_PLAY + '播放';   // 初始带图标，之后 onChange 接管
+    // 优先级：链接里的曲谱码 > 上次没存完的格子 > 首访垫一句《小星星》
+    var loaded = false;
     var m = location.search.match(/[?&]song=([^&]+)/);
     if (m){
       var d = decodeCode(decodeURIComponent(m[1]));
       if (d){
-        loadSteps(d.steps, d.bpm);
+        loadSteps(d.steps, d.bpm, d.len);
         toast('朋友的曲子摆出来了，点「播放」听听');
         return;
       }
@@ -784,8 +994,15 @@ body{
     try {
       var last = localStorage.getItem(LS_LAST) || '';
       var ld = decodeCode(last);
-      if (ld) loadSteps(ld.steps, ld.bpm);
+      if (ld){ loadSteps(ld.steps, ld.bpm, ld.len); loaded = true; }
     } catch(e){}
+    if (!loaded){
+      // 第一次来：先摆一句《小星星》垫底，别让人对着空格子发呆
+      var TW = [[4,0],[4,2],[1,4],[1,6],[0,8],[0,10],[1,12]];
+      TW.forEach(function(p){ grid[p[0]][p[1]] = 1; });
+      paintGrid(); saveLast();
+      toast('先摆了一句《小星星》，点「播放」听听，再随手改几个音');
+    }
     refreshCode();
   })();
 
