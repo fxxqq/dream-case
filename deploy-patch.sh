@@ -54,6 +54,18 @@ c_err()  { printf '\033[31m%s\033[0m\n' "$*"; }
 c_dim()  { printf '\033[2m%s\033[0m\n' "$*"; }
 die()    { c_err "✗ $*"; exit 1; }
 
+# 本机算 md5：远端跑在 Linux 上（有 md5sum），本机 macOS 只有 md5。
+# 2026-11-21 踩的坑：本机没 md5sum 时 hash 算出空串，两边空==空被误判成「全部 SYNCED」，
+# 看着一片绿其实比对完全失效。所以这里做兼容，下面再校验 hash 必须是 32 位十六进制，双保险。
+md5_hex() {
+  if command -v md5sum >/dev/null 2>&1; then
+    md5sum | cut -d' ' -f1
+  else
+    md5 -q
+  fi
+}
+is_md5_hex() { [[ "$1" =~ ^[0-9a-fA-F]{32}$ ]]; }
+
 if [ -z "${SERVER_IP:-}" ] || [ -z "${SERVER_USER:-}" ] || [ -z "${REMOTE_DIR:-}" ]; then
   c_err "✗ 缺少线上连接信息（SERVER_IP / SERVER_USER / REMOTE_DIR 有一项没给）"
   echo "  把 .deploy.env.example 复制成 .deploy.env 填好即可；"
@@ -221,7 +233,7 @@ done" 2>/dev/null)
     return 1
   fi
 
-  local st sum f rsum lsum onraw on loc df nh add del first ri
+  local st sum f rsum rhex lsum onraw on loc df nh add del first ri
   # bash3 没有关联数组（declare -A 是 bash4）：用两条平行数组存「文件 → 状态:md5」，
   # 查找线性扫（文件最多 10 个）。本机 /bin/bash 3.2 也能跑 plan，publish.sh 不再误报无改动。
   local -a RM_F=() RM_V=()
@@ -248,8 +260,16 @@ done" 2>/dev/null)
     if [ "${rsum%%:*}" = "MISSING" ]; then
       printf 'NOPULL\t%s\t0\t0\t0\t线上没有这个文件\n' "$f"; continue
     fi
-    lsum=$(tr -d '\r' < "$f" | md5sum | cut -d' ' -f1)
-    if [ "$lsum" = "${rsum#*:}" ]; then
+    rhex="${rsum#*:}"
+    # hash 无效就别比了：空==空正是那次假绿的原因，宁可报 NOPULL 让人看见，也不能装作一致。
+    if ! is_md5_hex "$rhex"; then
+      printf 'NOPULL\t%s\t0\t0\t0\t线上 md5 无效（远端取 hash 失败）\n' "$f"; continue
+    fi
+    lsum=$(tr -d '\r' < "$f" | md5_hex)
+    if ! is_md5_hex "$lsum"; then
+      printf 'NOPULL\t%s\t0\t0\t0\t本机 md5 无效（md5sum / md5 都不可用）\n' "$f"; continue
+    fi
+    if [ "$lsum" = "$rhex" ]; then
       printf 'SYNCED\t%s\t0\t0\t0\t\n' "$f"; continue
     fi
     cand+=("$f")
