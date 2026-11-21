@@ -1,0 +1,40 @@
+# 本项目是纯 Node.js 后端（Express + 原生 JS 前端），没有 TypeScript / Deno 代码，
+# 所以这里做的是 Node 侧的校验：全量语法检查 + 搜索打分自测。
+# 两步都不依赖任何 npm 包，不装依赖、不编译原生模块，跑完约 20 秒。
+
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: 语法检查 + 搜索自测
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Setup repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Syntax check
+        run: |
+          fail=0
+          for f in $(git ls-files '*.js'); do
+            node --check "$f" || fail=1
+          done
+          exit $fail
+
+      - name: Search self-test
+        run: node search-selftest.js --check
