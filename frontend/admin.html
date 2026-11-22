@@ -72,6 +72,13 @@
     .stat-tile { display:flex; flex-direction:column; gap:1px; min-width:88px; padding:9px 13px; background:#fff; border:1px solid var(--border); border-radius:11px; }
     .stat-tile b { font-size:19px; font-weight:700; color:var(--text); font-variant-numeric:tabular-nums; line-height:1.15; }
     .stat-tile span { font-size:11.5px; color:var(--muted); }
+    /* 用户管理页的 8 个数字改成 4×2 网格：不再挤成一条窄带 */
+    .stats.stats-user { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:0 18px 12px; }
+    .stats.stats-user .stat-tile { min-width:0; padding:8px 11px; background:#fafaff; }
+    .stats.stats-user .stat-tile b { font-size:17px; }
+    .uf-stats-cap { grid-column:1/-1; font-size:12px; color:var(--muted); margin:2px 0 0; }
+    .uf-stats-cap span { margin-left:8px; opacity:.75; }
+    @media (max-width:900px){ .stats.stats-user { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 
     /* 外宣渠道来源：来自外宣包 ?fr= 标记的落地访问 */
     .promo-src { background:#fff; border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin:0 0 14px; }
@@ -502,22 +509,31 @@
     .user-table thead th.on { color:var(--primary); }
     .user-table thead th .su { display:inline-block; margin-left:4px; font-size:11px; color:#b6bad0; font-weight:400; }
     .user-table thead th.on .su { color:var(--primary); }
+    /* 分组表头：账号 / 灯火 / 作品 / 操作，跟着列一起吸顶 */
+    .user-table thead tr.ugroup-row th {
+      top:0; z-index:3; padding:4px 10px; background:#eeedfa; border-bottom:1px solid #dcdbed;
+      color:#5b52b8; font-size:11px; font-weight:700; text-align:center; letter-spacing:.06em;
+    }
+    .user-table thead tr.ucol-row th { top:24px; z-index:2; }
     /* .row 是后台通用 flex 行，这里覆盖回表格行，其他页面的行不受影响 */
     .user-table tr.row.row-user { display:table-row; align-items:initial; gap:0; padding:0; border-bottom:none; }
     .user-table tbody tr:nth-child(even) { background:#fcfcff; }
     .user-table tbody tr.row.row-user:hover { background:#f3f3fd; }
     .user-table td {
-      padding:11px 12px; border-bottom:1px solid var(--border);
-      vertical-align:top; font-size:12px; line-height:1.65; overflow-wrap:anywhere;
+      padding:8px 10px; border-bottom:1px solid var(--border);
+      vertical-align:top; font-size:12px; line-height:1.5; overflow-wrap:anywhere;
     }
     .user-table tr.row.row-user:last-child td { border-bottom:none; }
     .user-table td.ut-editor-cell { padding:0; border-bottom:none; }
     .user-table .row-main { flex:none; min-width:0; }
-    .user-table .row-title { margin-bottom:5px; font-weight:600; }
+    .user-table .row-title { margin-bottom:3px; font-weight:600; }
     .user-table .row-meta { margin-top:2px; }
-    .user-table .works-meta a { display:inline-block; max-width:100%; margin-right:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; }
-    .user-table .row-actions { display:flex; gap:5px; flex-wrap:wrap; }
-    .user-table .row-actions .btn { white-space:nowrap; padding:3px 8px; font-size:11.5px; }
+    /* 作品只露第一件 +「等 N 件」，完整清单放 title，别让多行作品名把行高撑开 */
+    .user-table .works-meta { display:flex; align-items:center; gap:5px; min-width:0; }
+    .user-table .works-meta a { flex:0 1 auto; min-width:0; max-width:110px; margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; }
+    .user-table .works-more { flex:0 0 auto; color:var(--muted); font-size:11px; }
+    .user-table .row-actions { display:flex; gap:4px; flex-wrap:wrap; }
+    .user-table .row-actions .btn { white-space:nowrap; padding:2px 7px; font-size:11px; }
     .user-table td.num { font-variant-numeric:tabular-nums; }
     .user-table td.num b { font-weight:600; }
     .user-table td.num .zero { color:#c3c6d2; }
@@ -549,16 +565,18 @@
     .rw-tags .te-chip:active { transform:scale(.97); }
     .te-input { width:170px; padding:6px 10px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; }
     .taglib-bar {
-      display:flex; flex-wrap:wrap; align-items:center; gap:8px;
-      margin:0 18px 16px; padding:10px 14px; background:#f7f7fc; border-radius:10px;
+      display:flex; flex-wrap:wrap; align-items:center; gap:6px;
+      margin:0 18px 14px; padding:8px 12px; background:#f7f7fc; border-radius:10px;
     }
-    .taglib-bar .tl-title { font-size:12px; color:var(--muted); }
+    .taglib-bar .tl-title { font-size:12px; color:var(--muted); margin-right:2px; }
     .tl-chip {
-      display:inline-flex; align-items:center; gap:5px;
-      background:#fff7e6; color:#b8860b; font-size:12.5px; font-weight:600;
-      padding:4px 10px; border-radius:999px;
+      display:inline-flex; align-items:center; gap:4px;
+      background:#fff7e6; color:#b8860b; font-size:12px; font-weight:600;
+      padding:3px 9px; border-radius:999px;
     }
-    .tl-chip i { font-style:normal; cursor:pointer; opacity:.65; font-size:12px; }
+    /* 改名/删除平时收起来，鼠标停上去才露出来，标签库一眼能扫完 */
+    .tl-chip i { font-style:normal; cursor:pointer; opacity:0; width:0; overflow:hidden; font-size:12px; transition:opacity .15s; }
+    .tl-chip:hover i, .tl-chip:focus-within i { opacity:.7; width:auto; }
     .tl-chip i:hover { opacity:1; }
     .taglib-bar input { width:150px; padding:6px 10px; border:1px solid var(--border); border-radius:8px; font-size:12.5px; }
     .empty { padding:40px; text-align:center; color:var(--muted); font-size:14px; }
@@ -599,7 +617,8 @@
     .colpick-list label { display:flex; align-items:center; gap:8px; padding:6px 4px; border-radius:6px; font-size:12.5px; color:#4b4f5b; cursor:pointer; }
     .colpick-list label:hover { background:#f5f5fc; }
     .colpick-list input { width:14px; height:14px; margin:0; accent-color:var(--primary); cursor:pointer; }
-    .colpick-foot { display:flex; justify-content:flex-end; padding:9px 12px; border-top:1px solid var(--border); background:#fafaff; border-radius:0 0 10px 10px; flex:0 0 auto; }
+    .ucol-grp { margin-left:auto; padding-left:8px; font-size:11px; color:#9a9db0; white-space:nowrap; }
+    .colpick-foot { display:flex; justify-content:flex-end; gap:6px; padding:9px 12px; border-top:1px solid var(--border); background:#fafaff; border-radius:0 0 10px 10px; flex:0 0 auto; }
 
     /* 可折叠说明：默认只露一个圆圈感叹号，点开展开全文（用户管理页那段长说明用） */
     .hint-fold { padding:0 18px; }
@@ -3889,7 +3908,7 @@
                 <span class="ps-name fk-q" title="${esc(x.q)}">${esc(x.q)}</span>
                 ${tag}
                 <span class="ps-bar"><i style="width:${Math.max(4, Math.round((x.n || 0) / maxN * 100))}%"></i></span>
-                <span class="ps-num">${x.n} 次 · 7 天 ${x.n7 || 0} · ${(x.last || '').slice(5, 10).replace('-', '/') || '—'}</span>
+                <span class="ps-num">累计 ${x.n} 次 · 最近 ${(x.last || '').slice(5, 10).replace('-', '/') || '—'}</span>
               </div>`;
           }).join('')
         : '<div class="sk-empty">还没有人在找找里问过。接上之后这里会按提问次数排出来。</div>';
@@ -3906,7 +3925,7 @@
         : '';
       return `
         <div class="promo-src fk-sec">
-          <h4>找找在问什么<span>今日 ${fk.todayN || 0} 次 · 近 7 天 ${fk.weekN || 0} 次 · 共 ${fk.words || 0} 句 · 整句原话，只记话不记人；不进前台热搜榜</span></h4>
+          <h4>找找在问什么<span>今日 ${fk.todayN || 0} 次 · 累计 ${fk.total || 0} 次 · 共 ${fk.words || 0} 句 · 整句原话，只记话不记人；不进前台热搜榜</span></h4>
           ${rows}
           ${gapHtml}
         </div>`;
@@ -4071,28 +4090,17 @@
     function rsKpiTilesHtml(d) {
       // 2026-11-22 站长定：注册按非企业账号算，wx 开头的微信辅助号也是小程序来的真实用户，
       // 同样计入；企业认证账号（cert.subject）是批量入驻的产品主体，不算注册。主/辅只作构成展示。
+      // 同日站长要求精简顶部 KPI：累计账号 / 主账号 / 微信辅助号 / 小程序注册在「来源」卡里有，
+      // 今日新增在页头，今日访客 / 今日回头访客 / 回头率在「每日访客与回头率」表格里，
+      // 注册/访客比用表格的「注册」「访客」两列现算，绑定微信在注册走势下方说明里——都不再重复摆一遍。
       const tiles = [
-        ['累计账号', d.total, '主账号 + 微信辅助号；不含企业认证账号'],
-        ['主账号', d.mainAll, '用户自己设账号名的账号'],
-        ['微信辅助号', d.auxAll, 'wx 开头，小程序来的真实用户，账号名由微信生成；同样计入注册'],
-        ['今日新增', d.usersToday, '今日新增非企业账号，含微信辅助号'],
         ['近 7 天新增', d.users7, '近 7 天新增非企业账号，含微信辅助号'],
         ['近 30 天新增', d.users30, '近 30 天新增非企业账号，含微信辅助号'],
-        ['小程序注册', d.miniAll, '端来源口径，含该端微信辅助号'],
-        ['今日访客', d.visToday, ''], ['今日回头访客', d.visRetToday, ''],
         ['今日活跃', d.activeToday, ''],
         ['今日活跃 · 网页', d.actTodayWeb, ''], ['今日活跃 · 小程序', d.actTodayMini, ''],
-        ['绑定微信', d.bindWx, '含微信辅助号自己带的绑定'], ['绑定 GitHub', d.bindGh, '']
+        ['绑定 GitHub', d.bindGh, '']
       ].filter(([, v]) => v != null && Number(v) > 0)
        .map(([k, v, t]) => `<span class="stat-tile"${t ? ` title="${esc(t)}"` : ''}><b>${v}</b><span>${k}</span></span>`);
-      // 注册/访客比：分子用窗口内「非企业账号注册」，和表格「注册」列严格同一个数；
-      // 分母是有账以来的访客。账前注册没有分母、访客含已登录老用户，只作参考。
-      const rsDaily = Array.isArray(d.daily) ? d.daily.slice(-60) : [];
-      const rsVis = rsDaily.reduce((a, x) => a + (x.vis != null ? x.vis : 0), 0);
-      const rsReg = rsDaily.reduce((a, x) => a + (x.n != null ? x.n : 0), 0);
-      if (rsVis > 0 && rsReg > 0) {
-        tiles.splice(3, 0, `<span class="stat-tile" title="窗口内新增非企业账号 ${rsReg}（含微信辅助号）÷ 有访客账的访客 ${rsVis}；账前注册没有分母，仅作参考，不是转化率"><b>${Math.round(rsReg / rsVis * 1000) / 10}%</b><span>注册/访客（参考）</span></span>`);
-      }
       // 回头率单独放最前：0% 也是有效读数，不能被 >0 过滤掉；访客口径是主打，放更前面
       if (d.activeToday > 0 && d.retToday != null) {
         tiles.unshift(`<span class="stat-tile"><b>${d.retToday}%</b><span>今日回头率 · 注册</span></span>`);
@@ -10978,18 +10986,50 @@
     }
 
     // ---- 用户表列定义（表头 / 表体 / 「展示列」下拉共用一份） ----
-    // 17 列横着滚得人眼花：这里把每列的标题、宽度、排序键、单元格收成一份定义，
-    // 「展示列」下拉按 key 记隐藏项（存 localStorage），顺序＝定义顺序＝表头顺序，永远对得上。
-    // 用户 / 灯火 / 操作 三列锁死不藏：行内脚本要读 .pt-val 算余额，藏了送灯火就出错。
+    // 列多了横着滚得人眼花：每列的标题、宽度、排序键、单元格收在一份定义里，
+    // 展示顺序另由下面的 USER_COL_GROUPS 决定（账号 → 灯火 → 作品 → 操作）。
+    // 「展示列」按 key 记隐藏项（存 localStorage）；用户 / 灯火 / 操作 三列锁死不藏，
+    // 行内脚本要读 .pt-val 算余额，藏了送灯火就出错。
     const USER_COL_SAVE_KEY = 'adminUserHiddenCols';
-    let userHiddenCols = [];
+    // 2026-11-22 站长说默认太乱：首次进页面只留常用的 8 列，剩下的收进「展示列」。
+    // 之前手动藏过列（数组非空）照旧尊重；只有「全显 / 没存过」的旧状态换成新默认。
+    const USER_COLS_DEFAULT_HIDDEN = ['checkin', 'wxbind', 'ghBind', 'pwa', 'ad',
+      'tipIn', 'tipOut', 'adminNet', 'promoSpent', 'spendTotal', 'todayVisits', 'client', 'ip'];
+    const USER_COL_INIT_KEY = 'adminUserHiddenColsV2Init';
+    let userHiddenCols = USER_COLS_DEFAULT_HIDDEN.slice();
     try {
-      const v = JSON.parse(localStorage.getItem(USER_COL_SAVE_KEY) || '[]');
-      if (Array.isArray(v)) userHiddenCols = v.filter(k => typeof k === 'string');
-    } catch (e) { userHiddenCols = []; }
+      const raw = localStorage.getItem(USER_COL_SAVE_KEY);
+      const v = raw != null ? JSON.parse(raw) : null;
+      if (localStorage.getItem(USER_COL_INIT_KEY) === '1') {
+        if (Array.isArray(v)) userHiddenCols = v.filter(k => typeof k === 'string');
+      } else if (Array.isArray(v) && v.length) {
+        userHiddenCols = v.filter(k => typeof k === 'string');
+      }
+      localStorage.setItem(USER_COL_INIT_KEY, '1');
+    } catch (e) { userHiddenCols = USER_COLS_DEFAULT_HIDDEN.slice(); }
     function saveUserHiddenCols(arr) {
       userHiddenCols = arr.slice();
       try { localStorage.setItem(USER_COL_SAVE_KEY, JSON.stringify(userHiddenCols)); } catch (e) { /* 隐私模式存不了就算了 */ }
+    }
+    // 2026-11-22 站长定：列按「账号 → 灯火 → 作品 → 操作」分组，组内也按常看的顺序摆。
+    // 这个数组同时决定分组表头、组内顺序；没列进来的（以后加新列）落到「其他」组，不会被吞掉。
+    const USER_COL_GROUPS = [
+      { name: '账号', keys: ['name', 'account', 'badges', 'reg', 'active', 'todayVisits', 'client', 'ip'] },
+      { name: '灯火', keys: ['points', 'adminNet', 'promoSpent', 'spendTotal', 'tipIn', 'tipOut', 'checkin', 'ad', 'wxbind', 'ghBind', 'pwa'] },
+      { name: '作品', keys: ['works'] },
+      { name: '操作', keys: ['ops'] }
+    ];
+    function userColGroup(key) {
+      const g = USER_COL_GROUPS.find(x => x.keys.indexOf(key) >= 0);
+      return g ? g.name : '其他';
+    }
+    function orderedUserCols() {
+      const pos = new Map();
+      USER_COL_GROUPS.forEach((g, gi) => g.keys.forEach((k, ki) => pos.set(k, [gi, ki])));
+      return userColDefs().slice().sort((a, b) => {
+        const pa = pos.get(a.key) || [99, 99], pb = pos.get(b.key) || [99, 99];
+        return pa[0] - pb[0] || pa[1] - pb[1];
+      });
     }
 
     function userColDefs() {
@@ -11001,9 +11041,16 @@
           ? '<span class="tag acct-aux" title="wx 开头，微信扫码/小程序自动建的辅助账号；可在小程序合并进自己的主账号">辅助</span>'
           : '<span class="tag acct-main" title="自己注册的主账号">主号</span>';
       };
-      const workLinks = (u) => (u.workNames && u.workNames.length)
-        ? `<div class="row-meta works-meta">${u.workNames.map(w => `<a href="/w/${esc(w.id)}" target="_blank" rel="noopener noreferrer" title="${esc(w.title)}${w.hidden ? '（目前不可见）' : ''}"${w.hidden ? ' style="text-decoration:line-through;opacity:.6"' : ''}>${esc(w.title)}</a>`).join('、')}</div>`
-        : '';
+      const workLinks = (u) => {
+        const list = u.workNames || [];
+        if (!list.length) return '';
+        const full = list.map(w => `《${w.title}${w.hidden ? '（不可见）' : ''}》`).join('、');
+        const first = list[0];
+        return `<div class="row-meta works-meta">`
+          + `<a href="/w/${esc(first.id)}" target="_blank" rel="noopener noreferrer" title="${esc(full)}（点开第一件，完整清单见悬停提示）"${first.hidden ? ' style="text-decoration:line-through;opacity:.6"' : ''}>${esc(first.title)}</a>`
+          + (list.length > 1 ? `<span class="works-more" title="${esc(full)}">等 ${list.length} 件</span>` : '')
+          + `</div>`;
+      };
       // 被送 / 送出的小字：作品名只列前 3 件，鼠标停上去看每件几笔几盏
       const workLine = (list, prefix) => {
         if (!list || !list.length) return '';
@@ -11017,7 +11064,7 @@
         u.adTotal ? `累计 领 ${plNum(u.adSelfTotal || 0)} · 代送 ${plNum(u.adTipTotal || 0)}` : ''
       ].filter(Boolean).join('<br />');
       return [
-        { key: 'name', label: '用户', w: 200, sort: 'nameDesc', alt: 'nameAsc', fixed: true,
+        { key: 'name', label: '用户', w: 170, sort: 'nameDesc', alt: 'nameAsc', fixed: true,
           title: '昵称 + 身上贴的标签；账号名在右边「账号」列',
           cell: u => `<td>
             <div class="row-title">@${esc(u.name)}
@@ -11029,10 +11076,10 @@
               ${(u.tags || []).map(t => `<span class="tag utag" data-tag="${esc(t)}">${esc(t)}</span>`).join('')}
             </div>
           </td>` },
-        { key: 'account', label: '账号', w: 200,
+        { key: 'account', label: '账号', w: 175,
           title: '登录用的账号名；主号＝自己注册，辅助＝wx 开头、微信扫码/小程序自动建的号',
           cell: u => `<td><div class="row-title"><span class="tag acct-name">${esc(u.username)}</span> ${acctTag(u)}</div></td>` },
-        { key: 'badges', label: '勋章', w: 190,
+        { key: 'badges', label: '勋章', w: 150,
           title: '已点亮的造梦勋章（L1/L2 自动结算、L3 站长授予）；GitHub 优质原创作者勋章在「标签」里颁发',
           cell: u => {
             const list = u.badges || [];
@@ -11048,7 +11095,7 @@
             if (!body) return '<td><span class="zero">—</span></td>';
             return `<td><div class="row-meta">${body}</div></td>`;
           } },
-        { key: 'points', label: '灯火', w: 80, sort: 'pointsDesc', alt: 'pointsAsc', fixed: true, title: '当前还剩的灯火',
+        { key: 'points', label: '灯火', w: 85, sort: 'pointsDesc', alt: 'pointsAsc', fixed: true, title: '当前还剩的灯火',
           cell: u => `<td class="num"><b class="pt-val">${plNum(u.points)}</b></td>` },
         { key: 'checkin', label: '签到', w: 80, sort: 'checkinDesc', alt: 'checkinAsc', title: '累计签到拿到的灯火',
           cell: u => numCell(u.checkin, u.checkinDays ? u.checkinDays + ' 天' : '') },
@@ -11070,12 +11117,12 @@
           cell: u => numCell(u.promoSpent, u.promoOrders ? u.promoOrders + ' 单' + (u.promoActive ? ' · 在投 ' + u.promoActive : '') : '') },
         { key: 'spendTotal', label: '总花费', w: 90, sort: 'spendTotalDesc', alt: 'spendTotalAsc', title: '送出打赏 + 投放',
           cell: u => numCell(u.spendTotal) },
-        { key: 'works', label: '作品', w: 180, sort: 'worksDesc', alt: 'worksAsc', title: '投稿数；作品名点一下跳前台详情',
+        { key: 'works', label: '作品', w: 150, sort: 'worksDesc', alt: 'worksAsc', title: '投稿数；作品名点一下跳前台详情，完整清单悬停可见',
           cell: u => `<td><div class="row-meta"><b>${u.works}</b> 件</div>${workLinks(u)}</td>` },
-        { key: 'reg', label: '注册', w: 100, sort: 'regNew', alt: 'regOld', title: '注册时间',
+        { key: 'reg', label: '注册', w: 95, sort: 'regNew', alt: 'regOld', title: '注册时间',
           cell: u => `<td><div class="row-meta">${u.createdAt ? esc(fmtDate(u.createdAt)) : '—'}</div></td>` },
         // 2026-11-22 站长要求：原来挤在一格里的三样东西拆成三列（时间 / 今日访问 / 客户端）
-        { key: 'active', label: '最近活跃', w: 140, sort: 'active', alt: 'activeOld', title: '最后一次活跃的时间',
+        { key: 'active', label: '最近活跃', w: 125, sort: 'active', alt: 'activeOld', title: '最后一次活跃的时间',
           cell: u => `<td><div class="row-meta">${u.lastActiveAt ? esc(fmtDateTime(u.lastActiveAt)) : '—'}</div></td>` },
         { key: 'todayVisits', label: '今日访问', w: 90, sort: 'todayVisitsDesc', alt: 'todayVisitsAsc', title: '今天来看过多少次',
           cell: u => `<td class="num">${u.todayVisits ? `<b>${plNum(u.todayVisits)}</b>` : '<span class="zero">0</span>'}</td>` },
@@ -11083,7 +11130,7 @@
           cell: u => `<td>${u.lastClient ? `<span class="tag cli" title="最后一次活跃的端 · ${esc(fmtDateTime(u.lastClient.at || u.lastActiveAt))}">${esc(u.lastClient.text)}</span>` : '<span class="zero">—</span>'}</td>` },
         { key: 'ip', label: '归属地', w: 160, title: '归属地（只显示城市，IP 明文悬停才看得到、点一下复制）',
           cell: u => `<td>${ipMetaHtml(u)}</td>` },
-        { key: 'ops', label: '操作', w: 200, fixed: true, title: '激励 / 标签 / 送扣灯火 / 重置密码',
+        { key: 'ops', label: '操作', w: 175, fixed: true, title: '激励 / 标签 / 送扣灯火 / 重置密码',
           cell: u => `<td>
             <div class="row-actions">
               <button class="btn btn-primary btn-sm rw-open">激励</button>
@@ -11095,9 +11142,9 @@
           </td>` }
       ];
     }
-    // 当前要显示的列（锁死的三列永远在）
+    // 当前要显示的列（锁死的三列永远在），顺序按分组来，不再跟定义顺序走
     function visibleUserCols() {
-      return userColDefs().filter(c => c.fixed || userHiddenCols.indexOf(c.key) < 0);
+      return orderedUserCols().filter(c => c.fixed || userHiddenCols.indexOf(c.key) < 0);
     }
 
     function userRowHtml(u) {
@@ -11194,17 +11241,21 @@
     }
     // 表格上方那排：左边一句统计，右边「展示列」下拉
     function userTableBarHtml(total, totalAll) {
-      const cols = userColDefs().filter(c => !c.fixed);
+      const cols = orderedUserCols().filter(c => !c.fixed);
       return `
         <div class="uf-tablebar">
           <span class="hint">共 ${total} 位用户${userOnlyWorks && totalAll > total ? `（全部 ${totalAll} 位）` : ''} · ${USER_SORT_LABEL[userSort] || '活跃从新到旧'} · 点表头可切换排序</span>
           <div class="colpick">
-            <button class="btn btn-ghost btn-sm" id="userColBtn" type="button" title="列太多横向滚得费劲，用不上的在这里勾掉">展示列 ▾</button>
+            <button class="btn btn-ghost btn-sm" id="userColBtn" type="button" title="按账号 / 灯火 / 作品分组，用不上的在这里勾掉">展示列 ▾</button>
             <div class="colpick-panel" id="userColPanel" hidden>
               <div class="colpick-list">
-                ${cols.map(c => `<label><input type="checkbox" data-ucol="${c.key}"${userHiddenCols.indexOf(c.key) < 0 ? ' checked' : ''} /> ${c.label}</label>`).join('')}
+                ${cols.map(c => `<label><input type="checkbox" data-ucol="${c.key}"${userHiddenCols.indexOf(c.key) < 0 ? ' checked' : ''} /> ${c.label}<span class="ucol-grp">${esc(userColGroup(c.key))}</span></label>`).join('')}
               </div>
-              <div class="colpick-foot"><button class="btn btn-primary btn-sm" id="userColOk" type="button">确认</button></div>
+              <div class="colpick-foot">
+                <button class="btn btn-ghost btn-sm" id="userColAll" type="button" title="把全部列都打开">显示全部</button>
+                <button class="btn btn-ghost btn-sm" id="userColDefault" type="button" title="回到账号 / 灯火 / 作品 / 操作的常用组合">恢复默认</button>
+                <button class="btn btn-primary btn-sm" id="userColOk" type="button">确认</button>
+              </div>
             </div>
           </div>
         </div>`;
@@ -11214,10 +11265,20 @@
       const cols = visibleUserCols();
       // 表格宽度＝可见列宽之和：藏掉几列，表格就真的窄下来，不用再横着拖
       const w = cols.reduce((a, c) => a + c.w, 0);
+      // 分组表头按可见列现算：关掉某组所有列，这组的标题也跟着消失
+      const groups = USER_COL_GROUPS.map(g => ({ name: g.name, n: cols.filter(c => g.keys.indexOf(c.key) >= 0).length }))
+        .filter(g => g.n > 0);
+      const grouped = new Set();
+      USER_COL_GROUPS.forEach(g => g.keys.forEach(k => grouped.add(k)));
+      const rest = cols.filter(c => !grouped.has(c.key)).length;
+      if (rest) groups.push({ name: '其他', n: rest });
       return `<div class="user-table-wrap">
             <table class="user-table" style="min-width:${w}px">
               <colgroup>${cols.map(c => `<col style="width:${c.w}px" />`).join('')}</colgroup>
-              <thead><tr>${cols.map(c => `<th${c.sort ? ` data-usort="${c.sort}" data-ua="${c.alt}"` : ''}${c.title ? ` title="${esc(c.title)}"` : ''}>${c.label}${c.sort ? ' <span class="su"></span>' : ''}</th>`).join('')}</tr></thead>
+              <thead>
+                <tr class="ugroup-row">${groups.map(g => `<th colspan="${g.n}">${esc(g.name)}</th>`).join('')}</tr>
+                <tr class="ucol-row">${cols.map(c => `<th${c.sort ? ` data-usort="${c.sort}" data-ua="${c.alt}"` : ''}${c.title ? ` title="${esc(c.title)}"` : ''}>${c.label}${c.sort ? ' <span class="su"></span>' : ''}</th>`).join('')}</tr>
+              </thead>
               <tbody>${list.map(userRowHtml).join('')}</tbody>
             </table>
           </div>`;
@@ -11269,6 +11330,9 @@
     function bindUserColPick() {
       const btn = $('userColBtn'), box = $('userColPanel');
       if (!btn || !box) return;
+      const syncChecks = () => box.querySelectorAll('input[data-ucol]').forEach(x => {
+        x.checked = userHiddenCols.indexOf(x.dataset.ucol) < 0;
+      });
       btn.onclick = e => { e.stopPropagation(); box.hidden = !box.hidden; };
       box.querySelectorAll('input[data-ucol]').forEach(cb => {
         cb.onchange = () => {
@@ -11278,6 +11342,10 @@
           renderUserTableOnly();
         };
       });
+      const all = $('userColAll');
+      if (all) all.onclick = () => { saveUserHiddenCols([]); syncChecks(); renderUserTableOnly(); };
+      const def = $('userColDefault');
+      if (def) def.onclick = () => { saveUserHiddenCols(USER_COLS_DEFAULT_HIDDEN); syncChecks(); renderUserTableOnly(); };
       const ok = $('userColOk');
       if (ok) ok.onclick = () => { box.hidden = true; };
     }
@@ -11317,7 +11385,8 @@
         adminTaglib = Array.isArray(lib) ? lib : [];
         const lt = data.ledgerTotals || {};
         const tile = (v, label) => `<div class="stat-tile"><b>${v}</b><span>${label}</span></div>`;
-        const tilesHtml = `<div class="stats" style="margin:0 18px 12px">`
+        const tilesHtml = `<div class="stats stats-user">`
+          + `<div class="uf-stats-cap">灯火台账总览 <span>全站累计，不随当前筛选变化</span></div>`
           + tile(plNum(lt.people), '在账用户')
           + tile(plNum(lt.points) + ' 盏', '灯火总量')
           + tile(plNum(lt.checkin) + ' 盏', '签到发放')

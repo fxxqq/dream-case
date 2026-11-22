@@ -4949,21 +4949,20 @@ function searchStatsForAdmin(limit = 30) {
 // 混进搜索词排行会把 600 个短词的位置挤掉，前台「大家最近在搜」也会被整句冲垮；
 // 而且「屏蔽」按钮对整句没意义（它不进热榜）。单独一份，后台「搜索词」tab 单开一块。
 // 只记话不记人：不存 IP、不存账号，跟搜索词统计同一口径。
-const FIND_LOG_RETENTION_DAYS = 180;
+// 2026-11-22 站长定：提问按全历史累计，不按 7 天窗口；日期桶也不再按 180 天丢。
 const FIND_LOG_MAX = 500;                 // 最多留 500 个不同提问，超出按「问得少 + 很久没出现」淘汰
 const FIND_DEDUPE_HOUR = 5;               // 同一 IP 同一句话每小时最多记 5 次（重试算同一需求）
 
 let findLog = (() => {
   const raw = readJSON('find-log.json', {});
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-  const from = dateKey(new Date(Date.now() - FIND_LOG_RETENTION_DAYS * 86400000));
   const out = {};
   for (const [k, rec] of Object.entries(raw)) {
     if (!rec || typeof rec !== 'object') continue;
     const n = Number(rec.n) || 0;
     if (!n) continue;
     const days = {};
-    for (const [d, v] of Object.entries(rec.days || {})) if (d >= from) days[d] = Number(v) || 0;
+    for (const [d, v] of Object.entries(rec.days || {})) days[d] = Number(v) || 0;
     out[k] = {
       w: String(rec.w || k).slice(0, 100), n,
       zero: Number(rec.zero) || 0,
@@ -5010,37 +5009,29 @@ function logFind(req, q, hits, solid) {
   if (!hits) rec.zero = (rec.zero || 0) + 1;
   else if (!solid) rec.blunt = (rec.blunt || 0) + 1;
   rec.last = new Date().toISOString();
-  const ks = Object.keys(rec.days).sort();
-  while (ks.length > FIND_LOG_RETENTION_DAYS) delete rec.days[ks.shift()];
   trimFindLog();
   scheduleFindLogSave();
 }
 
-// 后台「找找在问什么」：Top 提问 + 问了没找到的（缺口清单）+ 今日 / 近 7 天总量
+// 后台「找找在问什么」：Top 提问 + 问了没找到的（缺口清单）+ 今日 / 累计总量
+// 2026-11-22 站长定：统计窗口用全历史，不再只看近 7 天。
 function findStatsForAdmin(limit = 30) {
   const today = dateKey();
-  const weekAgo = dateKey(new Date(Date.now() - 6 * 86400000));
-  let todayN = 0, weekN = 0, zeroAll = 0;
+  let todayN = 0, zeroAll = 0;
   const rows = Object.entries(findLog).map(([k, r]) => {
-    let n7 = 0, z7 = 0;
-    Object.entries(r.days || {}).forEach(([d, n]) => {
-      if (d < weekAgo) return;
-      n7 += n;
-      if (d === today) todayN += n;
-      weekN += n;
-    });
+    Object.entries(r.days || {}).forEach(([d, n]) => { if (d === today) todayN += n; });
     // 0 结果按总次数给（days 里分不出「这天问的是不是有结果」），只用来排序看趋势
     zeroAll += r.zero || 0;
     return {
       q: r.w || k, n: r.n, zero: r.zero || 0, blunt: r.blunt || 0,
-      last: r.last || '', n7, z7
+      last: r.last || ''
     };
   });
   const byN = (a, b) => (b.n || 0) - (a.n || 0) || String(b.last).localeCompare(String(a.last));
   const gaps = rows.filter(r => r.zero > 0).sort((a, b) => b.zero - a.zero || byN(a, b));
   return {
     total: rows.reduce((s, r) => s + r.n, 0),
-    todayN, weekN, words: rows.length, zeroAll,
+    todayN, words: rows.length, zeroAll,
     top: rows.slice().sort(byN).slice(0, limit),
     gaps: gaps.slice(0, limit)
   };
