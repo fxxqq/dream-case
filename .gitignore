@@ -63,3 +63,7 @@ _iconpreview/
 # 本地助手工作区（会话记忆与临时截图），不入库
 .workbuddy/
 .workbuddy-ai/
+
+# 移动端打包工程（Capacitor 本地环境：node_modules + android/ios 构建产物，几 MB 到几十 MB，不入库）
+# 说明文档已单独存到 docs/mobile-打包说明.txt
+mobile/

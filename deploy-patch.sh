@@ -497,9 +497,9 @@ cmd_ship() {
     # 2026-11-16 踩）和 msys 下 grep 中文匹配问题。probe 已把状态码和 body 分开。
     probe "$p"; body="$PROBE_BODY"
     if [[ -n "$body" && "$body" == *"$t"* ]]; then
-      c_ok "✓ $p 含「$t」"
+      c_ok "✓ $p 含「${t}」"
     else
-      c_err "✗ $p 里没找到「$t」（响应 ${#body} 字节），回滚"
+      c_err "✗ $p 里没找到「${t}」（响应 ${#body} 字节），回滚"
       do_rollback "$stamp" "${do_files[@]}"; return 1
     fi
   done

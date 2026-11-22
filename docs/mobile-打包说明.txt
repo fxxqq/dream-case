@@ -1,0 +1,46 @@
+造梦橱窗移动端打包说明
+================================
+
+方案：Capacitor WebView 容器 + 线上站点 https://zm94.com
+应用名：造梦橱窗
+包名：com.zm94.dreamcase
+工程目录：/Users/frank/Desktop/dream-case/mobile
+
+【安卓 APK】
+已生成：/Users/frank/Desktop/造梦橱窗.apk
+- 这是 debug 签名版本，可直接安装到安卓手机（设置里允许“安装未知来源应用”）。
+- 也可用命令安装：adb install /Users/frank/Desktop/造梦橱窗.apk
+- 若要上架应用商店，需生成正式签名密钥并改用 assembleRelease 构建。
+
+重新构建命令（本机已装好所需工具）：
+  cd /Users/frank/Desktop/dream-case/mobile/android
+  ANDROID_HOME=/Users/frank/.local/android-sdk ANDROID_SDK_ROOT=/Users/frank/.local/android-sdk \
+    /Users/frank/.local/toolchain/gradle-8.14.3/bin/gradle assembleDebug --no-daemon
+
+【iOS 工程】
+工程位置：/Users/frank/Desktop/dream-case/mobile/ios/App/App.xcodeproj
+
+注意：当前 Mac 是 macOS 12.7.6，无法安装 Capacitor 7 要求的最低 Xcode 16
+（Xcode 16 需要 macOS 14.5+）。因此 iOS 包需要在更新系统的 Mac 或云构建机上完成。
+
+在有 macOS 14.5+ 和 Xcode 16+ 的 Mac 上：
+1. 把整个 mobile 目录拷贝过去（请保留 node_modules，或重新 npm install）。
+2. 在 mobile 目录执行：
+     npm install
+     npx cap sync ios
+3. 安装 CocoaPods 并生成 workspace：
+     brew install cocoapods
+     cd ios/App && pod install
+4. 用 Xcode 打开 ios/App/App.xcworkspace（不是 .xcodeproj）。
+5. 在 Signing & Capabilities 里选择你的 Apple ID / Team，连接 iPhone。
+6. Product → Run 即可把 App 装到手机上（免费 Apple ID 可真机调试 7 天）。
+7. 要分发给他人：Product → Archive → Distribute App。
+   TestFlight / App Store 需要付费 Apple Developer 账号（每年 99 美元）。
+
+【修改加载地址】
+编辑 /Users/frank/Desktop/dream-case/mobile/capacitor.config.json 中的 server.url，
+改完执行：npx cap sync android && npx cap sync ios，然后重新构建。
+
+【说明】
+App 本身只是 WebView 容器，内容与数据仍由 https://zm94.com 提供，
+所以手机需要联网，且该站点必须保持可访问。
