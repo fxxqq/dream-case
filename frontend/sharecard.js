@@ -384,7 +384,7 @@
 
   function cardQrUrl(work) {
     // 二维码一律走站内短链 /go/<code>?ref=<分享者>：扫码先经过我们服务器，
-    // 才能记「扫码人数」（同设备同作品一天 1 个人）并给分享者计灯火（+3）。
+    // 才能记「扫码人数」（同设备同作品一天 1 个人）并给分享者计灯火（+5）。
     // 指向详情页时用的是单独一张 detail 码，302 到 /w/<id>，不把扫码的人送出站。
     const ref = typeof myRefName === 'function' ? myRefName() : '';
     const tail = ref ? '?ref=' + encodeURIComponent(ref) : '';
@@ -491,10 +491,10 @@
     const pts = myPoints();
     if (pts === null) {
       el.className = 'share-lamp-tip is-guest show';
-      el.innerHTML = '<button type="button" class="lamp-login">登录</button>后这张卡片才会带上你的身份：好友扫码打开 <b>+3</b> 盏灯火，注册 <b>+100</b>';
+      el.innerHTML = '<button type="button" class="lamp-login">登录</button>后这张卡片才会带上你的身份：好友扫码打开 <b>+5</b> 盏灯火，注册 <b>+100</b>';
     } else {
       el.className = 'share-lamp-tip show';
-      el.innerHTML = `好友扫码打开 <b>+3</b> 盏灯火（同一人每天计 1 次），注册 <b>+100</b> · 你当前 <b>${pts}</b> 盏`;
+      el.innerHTML = `好友扫码打开 <b>+5</b> 盏灯火（同一人每天计 1 次），注册 <b>+100</b> · 你当前 <b>${pts}</b> 盏`;
     }
   }
 

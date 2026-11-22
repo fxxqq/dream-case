@@ -27,6 +27,7 @@
       else if (p === '/open') k = 'open';
       else if (p.indexOf('/brand/') === 0) k = 'brand';   // 品牌橱窗页（企业合作内容，整页服务端渲染）
       else if (p.indexOf('/u/') === 0) k = 'author';
+      else if (p.indexOf('/list/') === 0) k = 'list';
       // /w/ 保持 home：详情页是「首页列表 + 弹窗」，首屏本来就要首页视图托底
     document.documentElement.setAttribute('data-page', k);
     // hero 进场动画同一标签页只播一次：刷新（含站内跳转回来）不再重播 0.55s 淡入，减少「闪」感。
@@ -331,6 +332,8 @@
                紧挨「全部作品 共 N 件」；内页桌面端头部不显示搜索（回首页搜），
                手机端仍是头部覆盖层。搬动逻辑见 app.js 的 syncSearchBoxPlacement()。 -->
           <div class="list-search-slot" id="listSearchSlot"></div>
+          <!-- 搜索框只认字面：说不清作品叫什么，就点这句让找找 AI 按描述翻 -->
+          <button type="button" class="list-find-hint" id="listFindHint" title="说不清叫什么？用一句话描述，找找ai去站里翻">你也可以让<b>找找ai</b>帮你找</button>
         </span>
         <div class="head-controls">
           <!-- 每行 4 / 5 / 6 个：用户自己选，记在本机。
@@ -592,6 +595,10 @@
                 <textarea id="wishDetail" maxlength="200" rows="2" hidden
                           placeholder="比如：希望能离线记录、导出成 PDF 给医生看，别做成必须联网的"></textarea>
               </div>
+              <!-- 悬赏开关由站长配；没设奖励之前整行不出现，别让人看见一个挂不上的选项 -->
+              <label class="wish-bounty" id="wishBountyWrap" hidden>
+                <input type="checkbox" id="wishBounty" /> 做出来后给认领的人 <b id="wishBountyAmt">0</b> 盏灯火（站长补贴）
+              </label>
             </div>
           </div>
           <div class="cmp-chat" hidden>
@@ -621,6 +628,14 @@
               </div>
             </div>
           </div>
+          <!-- 图文帖：同一条发布器共用一套附件，闲聊/安利/找工具都能带图。
+               图片先走 /api/uploads/intro 拿站内地址，发布时跟文字一起提交。 -->
+          <div class="cmp-media" id="cmpMedia" hidden>
+            <button type="button" class="cmp-media-add" id="cmpMediaAdd"><i class="ico" data-ico="image"></i> 加图片</button>
+            <span class="cmp-media-tip">文字 + 图片一起发，最多 4 张；也可以直接粘贴截图</span>
+            <div class="cmp-media-list" id="cmpMediaList"></div>
+          </div>
+          <input type="file" id="cmpMediaInput" accept="image/jpeg,image/png,image/gif,image/webp" multiple hidden />
         </div>
 
         <!-- 大家最近在搜 2026-11-14 搬去首页 hero（.hero-hot）：搜索词摆在想法的发布框和
@@ -1021,6 +1036,7 @@
               <button type="button" class="cat-chip" data-dtype="macOS">Mac</button>
             </div>
             <div class="cat-sort">
+              <button type="button" class="cat-compare-btn" id="discCompareBtn" title="勾选最多 3 件作品并排看">对比 <span id="discCompareNum">0</span></button>
               <!-- 记住自己的选择（2026-11-18）：记的是这一页的三项「逛的口味」——平台胶囊、左侧分类、排序。
                    跟首页那条「记住筛选条件」是两套独立状态，互不覆盖；默认不勾，发现页上来先给全站。 -->
               <div class="cat-remember">
@@ -1048,6 +1064,7 @@
              和 PC 那条共用 dm_disc_remember 开关——在一端勾了，另一端也是勾的，口径一致。 -->
         <div class="disc-m-remember">
           <label class="cat-remember-main"><input type="checkbox" id="discMRemember"><span>记住我的选择</span></label>
+          <button type="button" class="cat-compare-btn" id="discMCompareBtn">对比 <span id="discMCompareNum">0</span></button>
         </div>
         <div id="discPanel"></div>
       </div>
@@ -1126,6 +1143,20 @@
         <p>还没有点赞的作品——遇到喜欢的进详情点「点赞」，好作品值得被看见</p>
       </div>
     </section>
+
+    <!-- 公开作品合集（/list/:id）：别人攒的一份「这些该一起看」。卡片走全站共用的 cardHtml/bindCards，
+         点进详情再关掉要回到这里，所以不能给 SSR 裸链接另搞一套跳转。 -->
+    <section id="listView" style="display:none">
+      <div class="page-head">
+        <h2 class="page-title" id="listTitle">作品合集</h2>
+        <p id="listMeta"></p>
+      </div>
+      <section class="gallery" id="listGallery"></section>
+      <div class="empty" id="listEmpty" style="display:none">
+        <div class="empty-icon"><i class="ico" data-ico="folder"></i></div>
+        <p>这份合集还没有可展示的作品</p>
+      </div>
+    </section>
   </main>
 
   <div class="container">
@@ -1189,6 +1220,9 @@
           </div>
           <div class="fgroup">
             <span class="fg-label">订阅</span>
+            <!-- 造梦星选公众号：点开看二维码。用 data 属性走 document 委托，
+                 「关于本站」弹窗克隆的这份页脚也能点开（clone 不复制 onclick） -->
+            <button type="button" class="footer-link" data-gzh-open>造梦星选公众号 ›</button>
             <a href="/feed.xml" class="footer-link">RSS</a>
             <a href="/sitemap.xml" class="footer-link">站点地图</a>
           </div>
@@ -1512,6 +1546,14 @@
         </div>
         <p class="form-hint" id="paidHint">免费作品不显示任何收费标记，访客随时能在详情页给作者送灯火；想设门槛就选「需要灯火解锁」或「需要付费（形式可选）」。</p>
 
+        <!-- 更新说明：只在编辑作品时出现。写下的话会公开在时间线上，也会推给关注者；
+             留空就只记一次编辑，不打扰任何人（new FormData(form) 会自动收走这个字段）。 -->
+        <div class="update-note-box" id="updateNoteBox" style="display:none">
+          <label for="updateNote">这次改了什么 <span class="un-optional">（选填，写给关注你的人）</span></label>
+          <input type="text" id="updateNote" name="updateNote" maxlength="120" placeholder="比如：换新图标、修好了深色模式、加了导出功能" />
+          <p class="form-hint">留空也能保存，但不会通知关注者；写下的一句话会显示在作品页的更新记录里。</p>
+        </div>
+
         <!-- 投稿承诺：规范挂在门口（/rules），提交时留一次明确的勾选记录 -->
         <div class="agree-box">
           <div class="agree-line">
@@ -1720,6 +1762,48 @@
       </div>
       <p class="spp-tip">分享图会带上你的邀请标记，好友通过它访问 +1 盏灯火、注册 +100 盏灯火</p>
       <div id="sharePickBody" class="share-pick-body"></div>
+    </div>
+  </div>
+
+  <!-- 我的合集：新建 / 改名 / 公开私密 / 删除。列表动态渲染，事件在容器上委托 -->
+  <div class="modal-mask" id="collectModal" style="display:none">
+    <div class="modal modal-collect">
+      <div class="modal-head">
+        <h2>我的合集</h2>
+        <button class="close-btn" id="closeCollect" title="关闭">✕</button>
+      </div>
+      <p class="spp-tip">把相关的作品攒成一份清单，公开后别人能从链接里一口气看完。</p>
+      <div class="cm-form">
+        <input type="text" id="cmTitle" maxlength="60" placeholder="合集名字，比如「离线也能用的小工具」" />
+        <input type="text" id="cmDesc" maxlength="300" placeholder="一句话介绍（选填）" />
+        <label class="cm-public"><input type="checkbox" id="cmPublic" checked /> 公开给所有人看</label>
+        <button type="button" class="btn-primary" id="cmCreate">新建合集</button>
+      </div>
+      <div id="cmList" class="cm-list"></div>
+    </div>
+  </div>
+
+  <!-- 加入合集：从作品详情「加入合集」进来，列出本人合集，点一下切换加入/移出 -->
+  <div class="modal-mask" id="collectPickModal" style="display:none">
+    <div class="modal modal-collect">
+      <div class="modal-head">
+        <h2>加入合集</h2>
+        <button class="close-btn" id="closeCollectPick" title="关闭">✕</button>
+      </div>
+      <p class="spp-tip">选一个你自己的合集；私密的只有你能看。</p>
+      <div id="cpList" class="cm-list"></div>
+    </div>
+  </div>
+
+  <!-- 作品对比：发现页勾 2～3 件，并排看价格 / 平台 / 开源 / 最近更新这些容易来回翻的事实 -->
+  <div class="modal-mask" id="compareModal" style="display:none">
+    <div class="modal modal-compare">
+      <div class="modal-head">
+        <h2>并排看看</h2>
+        <button type="button" class="cmp-clear" id="compareClear">清空选择</button>
+        <button class="close-btn" id="closeCompare" title="关闭">✕</button>
+      </div>
+      <div id="compareBody" class="cmp-body"></div>
     </div>
   </div>
 
@@ -2110,6 +2194,7 @@
         <button class="btn-like" id="detailLike" title="给这件作品点个赞"><i class="ico b-ico" data-ico="heart"></i><span class="sr-label" id="detailLikeLabel">点赞</span><span id="detailLikes">0</span></button>
         <button class="btn-like btn-watch" id="detailWatch" style="display:none"></button>
         <button class="btn-like btn-fav" id="detailFav" title="收藏后可在顶部「我的收藏」里找到"><i class="ico" data-ico="fav"></i><span class="sr-label">收藏</span><span class="fav-num" id="detailFavNum">0</span></button>
+        <button class="btn-like btn-collect" id="detailCollect" title="把这件作品加进你自己的合集"><i class="ico" data-ico="folder"></i><span class="sr-label">加入合集</span></button>
         <!-- 评论在截图/介绍下面，不往下滚看不到；给一个带数的锚点，点了直接跳过去 -->
         <button class="btn-like btn-cmt" id="detailCmt" title="跳到评论区：说点什么，或向作者提问"><i class="ico" data-ico="chat"></i><span class="sr-label">评论</span><span id="detailCmtNum">0</span></button>
         <!-- 送灯火是唯一带「暖意」的动作，保留可见文字，竖排时缩成图标+小字 -->
@@ -2237,6 +2322,9 @@
 
         <!-- 简介挪到按钮区下面：作者写得再长也不会把操作按钮顶出首屏 -->
         <div class="detail-prompt" id="detailPrompt"></div>
+
+        <!-- 更新记录：只有作者写了说明才会出现，时间线样式沿用编年史那一套 -->
+        <div class="detail-updates" id="detailUpdates" style="display:none"></div>
 
         <div class="ad-slot ad-slot-detail" data-ad-slot="detail"></div>
 
@@ -3644,9 +3732,34 @@
           <li>长按（或截图保存）这张码，也能发给朋友让他们直接进</li>
         </ol>
       </div>
-      <p class="wxmini-note"><b>自己注册的才是主账号</b>：微信 wx 开头那串是自动建的辅助号。小程序里点「我的 → 绑定已有账号」，填一遍网站账号密码，收藏、点赞、灯火和投稿就都并回主账号，以后微信进小程序免密登录。</p>
+      <div class="wxmini-gzh">
+        <img class="wxmini-gzh-qr" src="/promo-icons/gzh-xingxuan-qr.jpg" alt="造梦星选公众号二维码" />
+        <div class="wxmini-gzh-side">
+          <b>造梦星选公众号</b>
+          <span>每周从新收的作品里挑几个真能用的发一篇。</span>
+          <button type="button" data-gzh-open>看大图 ›</button>
+        </div>
+      </div>
       <button type="button" class="mini-link" id="miniToInstall">想在手机桌面装网页版橱窗（PWA）？看安装指引 ›</button>
       <button type="button" class="btn-primary btn-block" id="miniKnow">知道了</button>
+    </div>
+  </div>
+
+  <!-- 造梦星选公众号：页脚「订阅」入口打开。二维码是公众号申请下来的原图，别转成小程序码 -->
+  <div class="modal-mask" id="gzhModal" style="display:none">
+    <div class="modal modal-gzh">
+      <div class="modal-head">
+        <h2>造梦星选 · 公众号</h2>
+        <button class="close-btn" id="closeGzh" title="关闭">✕</button>
+      </div>
+      <p class="wxgzh-lead">每周从新收的作品里挑几个真能用的发一篇，站点更新和活动也在这儿说。</p>
+      <div class="wxgzh-body">
+        <img class="wxgzh-qr" src="/promo-icons/gzh-xingxuan-qr.jpg" alt="造梦星选公众号二维码" />
+        <div class="wxgzh-side">
+          <p><b>微信扫一扫</b>，或者长按图片识别。关注以后在微信里搜「造梦星选」也能找到。</p>
+        </div>
+      </div>
+      <button type="button" class="btn-primary btn-block" id="gzhKnow">知道了</button>
     </div>
   </div>
 

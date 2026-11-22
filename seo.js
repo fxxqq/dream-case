@@ -432,6 +432,13 @@ function workArticle(base, w, trail, related = [], opts = {}) {
     ${miniNoEntry}
     ${lampHtml}
     <div class="seo-intro md-body">${w.introHtml || (w.intro ? esc(w.intro).replace(/\n/g, '<br>') : '<p>作者暂未填写作品介绍。</p>')}</div>
+    ${Array.isArray(w.updateLog) && w.updateLog.length ? `<div class="seo-updates">
+      <h2>更新记录</h2>
+      <ol class="chron-list">${w.updateLog.slice(0, 8).map(x => `<li class="chron-item">
+        <span class="chron-dot"></span><div class="chron-main">
+        <div class="chron-date">${esc(String(x.at || '').slice(0, 10))}</div>
+        <div class="chron-text">${esc(x.text || '')}</div></div></li>`).join('')}</ol>
+    </div>` : ''}
     ${kwHtml}
     <div class="seo-actions">
       ${w.link ? `<a class="${miniOnly ? 'btn-ghost' : 'btn-primary'}" href="/out/${esc(w.id)}?k=link" target="_blank" rel="nofollow noopener" ${actAttr}>${svgIco(linkIco)} ${linkLabel}</a>` : ''}
@@ -630,6 +637,7 @@ function listPage(base, { title, description, h1, activeName, kind = 'c', subtit
         <span>本站开源在 <a href="https://github.com/fxxqq/dream-case" target="_blank" rel="noopener noreferrer">GitHub</a>，欢迎 Star / PR · 服务器部署在 <a href="https://www.aliyun.com/minisite/goods?userCode=tw6ffyfu" target="_blank" rel="nofollow sponsored noopener noreferrer">阿里云 <span aria-hidden="true">↗</span></a></span>
       </div>
       <a href="/sitemap.xml" class="footer-link">站点地图</a>
+      <a href="/feed/${kind}/${encodeURIComponent(activeName)}.xml" class="footer-link">订阅这页的 RSS</a>
       <a href="/?feedback=1" class="footer-link">意见反馈</a>
     </div>
     <div class="container footer-base">
@@ -701,7 +709,11 @@ Sitemap: ${base}/sitemap.xml
 `;
 }
 
-function rssXml(base, works) {
+function rssXml(base, works, opts = {}) {
+  const channelTitle = opts.title || `${SITE_NAME} - ${SITE_TAGLINE}`;
+  const channelLink = opts.link || (base + '/');
+  const channelDesc = opts.description || SITE_DESC;
+  const builtAt = opts.buildAt || new Date().toUTCString();
   const items = works.map(w => `    <item>
       <title>${esc(w.title)}</title>
       <link>${esc(absolute(base, '/w/' + w.id))}</link>
@@ -715,11 +727,11 @@ function rssXml(base, works) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
-    <title>${esc(SITE_NAME)} - ${esc(SITE_TAGLINE)}</title>
-    <link>${esc(base + '/')}</link>
-    <description>${esc(SITE_DESC)}</description>
+    <title>${esc(channelTitle)}</title>
+    <link>${esc(channelLink)}</link>
+    <description>${esc(channelDesc)}</description>
     <language>zh-CN</language>
-    <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
+    <lastBuildDate>${esc(builtAt)}</lastBuildDate>
 ${items}
   </channel>
 </rss>`;

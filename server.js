@@ -16,6 +16,8 @@ const Icons = require('./frontend/icons'); // 站点 SVG 图标统一管理（SS
 const md = require('./frontend/md');       // 作品简介的 Markdown 渲染（与前端共用同一份白名单实现）
 const miniShowcase = require('./mini-showcase'); // 小程序体验页（/mini/:id）：推广位/广告位的落地页
 const siteMeta = require('./site-meta');
+// 星梦期刊 → 公众号文章：纯渲染模块，后台「一键生成」和本地导出共用同一份版式
+const { renderWechatArticle } = require('./wechat-article');
 // 短信验证码（阿里云号码认证 · 短信认证）：发码、校验、频控、手机号加密，见 sms-auth.js
 const { createSmsService } = require('./sms-auth');
 // 人机验证（滑块拼图）：发码前问一句「是不是人」，见 captcha.js
@@ -416,6 +418,13 @@ if (!Array.isArray(drafts)) drafts = [];
 function saveDrafts() { writeJSON('drafts.json', drafts); }
 const DRAFT_MAX_PER_USER = 3;    // 每人最多 3 份草稿
 const DRAFT_TTL_DAYS = 30;       // 30 天没动过的草稿连同图片一起清掉
+// 用户自建合集（2026-11-22）：[{ id, userId, author, title, desc, isPublic, workIds, createdAt, updatedAt }]
+// 低频写，跟草稿一样直接原子落盘。作品只存 id，展示时按当前作品库现算，下架了自然消失。
+let collections = readJSON('collections.json', []);
+if (!Array.isArray(collections)) collections = [];
+function saveCollections() { writeJSON('collections.json', collections); }
+const COLLECT_MAX_PER_USER = 20;
+const COLLECT_MAX_WORKS = 60;
 let reports = readJSON('reports.json', []);
 let tools = readJSON('tools.json', []);
 let taglib = readJSON('taglib.json', null);   // 作者标签库：后台可新增 / 改名，贴给任意用户
@@ -1584,6 +1593,73 @@ function notifyFollowersNewWork(w, reason) {
     });
   }
   pruneFollowNotices();
+  if (sent || merged) saveFollows();
+  return sent + merged;
+}
+
+// 作品改了东西、作者写了更新说明时才打扰关注者。和「发新作品」分开：
+// 同一作者一天内的多次更新合进一条通知（复用 followStore.notices 的 24h 窗口，
+// 但 key 前缀 upd| 与「粉丝关注了作者」「作者发新作」隔开，避免互相顶掉）。
+function notifyFollowersWorkUpdate(w, note) {
+  if (!w || !w.userId || !isVisible(w)) return 0;
+  const authorId = String(w.userId);
+  const fans = followIn.get(authorId);
+  if (!fans || !fans.size) return 0;
+  const author = users.find(u => u.id === authorId);
+  if (!author) return 0;
+  const shown = displayNameOf(author.username);
+  const title = String(w.title || '新作品').slice(0, 40);
+  const text = String(note || '').slice(0, 120);
+  const now = Date.now();
+  const fresh = [];
+  let merged = 0;
+  let seen = 0;
+  for (const uid of fans) {
+    if (seen++ >= FOLLOW_NOTICE_MAX_FANS) break;
+    if (!users.some(u => u.id === uid)) continue;
+    const key = 'work-update:' + w.id + ':' + dateKey() + ':' + uid;
+    const own = notices.find(x => x.userId === uid && x.key === key);
+    if (own) {
+      own.text = `${shown} 的《${title}》又更新了：${text}`.slice(0, 300);
+      own.read = false;
+      merged++;
+      continue;
+    }
+    const mergeKey = 'upd|' + authorId + '|' + uid;
+    const rec = followStore.notices[mergeKey];
+    if (rec && now - (Number(rec.at) || 0) < FOLLOW_NOTICE_GAP) {
+      const old = notices.find(x => x.id === rec.noticeId && x.userId === uid);
+      if (old) {
+        rec.n = (Number(rec.n) || 1) + 1;
+        rec.at = now;
+        old.title = `${shown} 更新了 ${rec.n} 件作品`.slice(0, 60);
+        old.text = `最新《${title}》：${text}`.slice(0, 300);
+        old.workId = w.id;
+        old.read = false;
+        merged++;
+        continue;
+      }
+    }
+    fresh.push([uid, {
+      kind: 'follow-new',
+      key,
+      title: `${shown} 更新了作品`,
+      text: `《${title}》：${text}`,
+      workId: w.id
+    }]);
+    followStore.notices[mergeKey] = { noticeId: '', at: now, n: 1 };
+  }
+  let sent = 0;
+  if (fresh.length) {
+    sent = addNoticeBatch(fresh);
+    fresh.forEach(([uid, data]) => {
+      const n = notices.find(x => x.userId === uid && x.key === data.key);
+      const rec = followStore.notices['upd|' + authorId + '|' + uid];
+      if (n && rec) rec.noticeId = n.id;
+    });
+  }
+  pruneFollowNotices();
+  if (merged) saveNotices();
   if (sent || merged) saveFollows();
   return sent + merged;
 }
@@ -4981,29 +5057,45 @@ let hotSearchCache = { at: 0, items: null };
 // + newPick 条「近 newMin7 天被搜 ≥newMin7 次」的真实词（贴「新」，人数照实）。
 // 这里只读配置，不生成数字——数字在 hotSearches 里每次组榜时现抽，换一换就是换一批词。
 // 配置缺字段 / 写错类型一律走默认值，文件坏了当没开种子（返回 null），不要让首页跟着挂。
+// 11-22 站长要能在后台搜索词页管热词：words 里每项支持 { w, pin }，pin 的词必进种子区；
+// 老配置是纯字符串数组也兼容，统一在这里洗成 { w, pin }，别把大小写变体留两份。
+function hotSeedWords(raw) {
+  const arr = Array.isArray(raw && raw.words) ? raw.words : [];
+  const seen = new Set();
+  const out = [];
+  for (const x of arr) {
+    const w = normSearchQ(String((x && typeof x === 'object' && x.w) || x || ''));
+    if (!w || w.length > SEARCH_KW_MAXLEN) continue;
+    const key = w.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ w, pin: !!(x && typeof x === 'object' && x.pin === true) });
+  }
+  return out.slice(0, 120);
+}
+function hotSeedInt(raw, key, d, lo, hi) {
+  const n = Math.round(Number(raw && raw[key]));
+  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d;
+}
 function readSearchSeed() {
   try {
     const raw = readJSON('search-seed.json', null);
     if (!raw || raw.enabled === false || !Array.isArray(raw.words)) return null;
-    const words = raw.words
-      .map(x => String((x && x.w) || '').trim())
-      .filter(Boolean)
-      .slice(0, 120);
-    if (!words.length) return null;
-    const int = (v, d, lo, hi) => {
-      const n = Math.round(Number(v));
-      return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d;
-    };
+    const list = hotSeedWords(raw);
+    if (!list.length) return null;
+    const words = list.map(x => x.w);
+    const pins = list.filter(x => x.pin).map(x => x.w);
     // 种子人数区间：只是展示用的热度，默认压到 1..3（真实词人数超过 3 就照实展示，不掺假）
-    const peopleMin = int(raw.peopleMin, 1, 1, 999);
-    const peopleMax = int(raw.peopleMax, 3, 1, 999);
+    const peopleMin = hotSeedInt(raw, 'peopleMin', 1, 1, 999);
+    const peopleMax = hotSeedInt(raw, 'peopleMax', 3, 1, 999);
     return {
       words,
-      pick: int(raw.pick, 9, 0, 12),
+      pins,
+      pick: hotSeedInt(raw, 'pick', 9, 0, 12),
       peopleMin: Math.min(peopleMin, peopleMax),
       peopleMax: Math.max(peopleMin, peopleMax),
-      newPick: int(raw.newPick, 3, 0, 12),
-      newMin7: int(raw.newMin7, 2, 1, 999),
+      newPick: hotSeedInt(raw, 'newPick', 3, 0, 12),
+      newMin7: hotSeedInt(raw, 'newMin7', 2, 1, 999),
     };
   } catch (e) { return null; }
 }
@@ -5131,17 +5223,22 @@ function hotSearches(limit = 12) {
       const used = new Set();
       const take = x => { board.push(x); used.add(String(x.w).toLowerCase()); };
 
-      // ① 种子补位：从 search-seed.json 的 words 里随机抽 pick 条，每条配一个 peopleMin..peopleMax
-      //    的随机人数；词要是已经在榜上、是分类词、被后台拉黑，一律跳过
-      const seedPool = shuffleArray(cfg.words.filter(w => {
-        const lk = w.toLowerCase();
-        return w.length >= 2 && !used.has(lk) && !catSet.has(lk) && !blocked.has(lk);
-      }));
+      // ① 种子补位：后台标了「置顶」的词先占座（11-22 站长要能管热词，不想只靠随机抽），
+      //    剩下的名额再从 search-seed.json 的 words 里随机抽；每条配一个 peopleMin..peopleMax
+      //    的随机人数。词要是已经在榜上、是分类词、被后台拉黑，一律跳过。
       const seedQuota = Math.max(0, Math.min(cfg.pick, TOTAL - cfg.newPick));
-      seedPool.slice(0, seedQuota).map(w => {
+      const okSeed = w => w.length >= 2 && !used.has(w.toLowerCase())
+        && !catSet.has(w.toLowerCase()) && !blocked.has(w.toLowerCase());
+      const makeSeed = w => {
         const n = cfg.peopleMin + Math.floor(Math.random() * (cfg.peopleMax - cfg.peopleMin + 1));
         return { w, n, n7: n, n30: n, zero: 0, seed: true };
-      }).sort((a, b) => b.n - a.n || a.w.localeCompare(b.w)).forEach(take);
+      };
+      // 置顶词按配置顺序来，不随机；超过种子名额就只取前几个，别挤掉「新」那 3 条
+      const pinPool = cfg.pins.filter(okSeed).slice(0, seedQuota);
+      pinPool.forEach(w => take(makeSeed(w)));
+      const seedPool = shuffleArray(cfg.words.filter(okSeed));
+      seedPool.slice(0, Math.max(0, seedQuota - pinPool.length)).map(makeSeed)
+        .sort((a, b) => b.n - a.n || a.w.localeCompare(b.w)).forEach(take);
 
       // ② 新冒头：近 7 天搜索次数 ≥ newMin7 的真实词，随机抽 newPick 条贴「新」；
       //    人数照实（老记录认不出人就是 1 人——新词人少反而合理）。
@@ -5333,9 +5430,9 @@ const SHARE_IP_PROMO_DAY = 10;      // 同一 IP 每天最多计入 10 次外宣
 // ---------- 扫码灯火（分享卡片上的码走 /go/<code>?ref=<分享者>） ----------
 // 扫码是「真的把手机拿出来去用」，意图比点链接强，所以单价比访问（+1）高：
 //   · 记「扫码人数」：同 IP + 同作品 + 当天只算 1 个人（换设备/换网络才会再算新的人）
-//   · 每个新的扫码人 +3 盏，归分享者（码里带 ref）；自己扫自己的码不计（复用 self 检查）
+//   · 每个新的扫码人 +5 盏，归分享者（码里带 ref）；自己扫自己的码不计（复用 self 检查）
 //   · 同一 IP 每天最多计 10 次扫码分（换作品也刷不动）；扫码还会记 7 天首触，之后注册照常归因
-const SHARE_SCAN_POINTS = 3;        // 一个新的扫码人
+const SHARE_SCAN_POINTS = 5;        // 一个新的扫码人
 const SHARE_IP_SCAN_DAY = 10;       // 同一 IP 每天最多计 10 次扫码计分
 
 let shareData = readJSON('share.json', null);
@@ -5870,6 +5967,36 @@ function saveIdeas() {
 }
 function ideaById(id) { return ideas.find(i => i.id === id) || null; }
 
+// 酒馆悬赏（2026-11-22）：站长先设好补贴额度再打开开关。
+// 现在大家手里都没什么灯火，所以这里走「平台补贴」而不是从发起人账上扣——
+// 和签到 / 开源奖励一样直接增发，钱从哪来是站长的运营决定，不在前台解释。
+// 默认关闭：没设置奖励之前，前台连悬赏这两个字都不出现。
+const BOUNTY_CONF_FILE = 'bounty-config.json';
+function bountyConf() {
+  const d = readJSON(BOUNTY_CONF_FILE, {}) || {};
+  const amount = Math.round(Number(d.amount) || 0);
+  const perDay = Math.round(Number(d.perUserPerDay) || 0);
+  return {
+    enabled: d.enabled === true,
+    amount: amount > 0 && amount <= 2000 ? amount : 0,
+    perUserPerDay: perDay >= 0 && perDay <= 20 ? perDay : 1
+  };
+}
+function saveBountyConf(v) { writeJSON(BOUNTY_CONF_FILE, v); }
+function bountyTodayCount(uid) {
+  const today = dateKey();
+  return ideas.filter(i => i.bounty && i.bounty.payerId === uid && dateKey(new Date(i.bounty.at)) === today).length;
+}
+function bountyAttach(idea, user) {
+  const cfg = bountyConf();
+  if (!cfg.enabled || !cfg.amount) return '悬赏还没开放，等站长设好奖励';
+  if ((idea.status || 'open') !== 'open' || idea.workId) return '这件已经有人认领或实现了，不能再挂悬赏';
+  if (idea.bounty) return '这条想法已经有悬赏了';
+  if (cfg.perUserPerDay > 0 && bountyTodayCount(user.id) >= cfg.perUserPerDay) return `每天最多挂 ${cfg.perUserPerDay} 个悬赏，明天再来`;
+  idea.bounty = { amount: cfg.amount, payerId: user.id, at: new Date().toISOString(), paidAt: 0, paidTo: '' };
+  return '';
+}
+
 // 想法下的结构化讨论：不是自由评论区，只有三种有信息量的发言
 //   scene    补一句使用场景   solution  推荐现成方案 / 类似工具   progress  认领者更新进展
 // 单独存一份文件，不混进 comments.json —— 作品评论的计数、榜单评分都按 workId 走，混进去会串数。
@@ -5976,6 +6103,7 @@ function publicIdea(i, req, user) {
     // 但卡片角标、话题筛选跟散座同一套口径，别让时间线上两种皮肤
     topic: '找工具',
     detail: i.detail || '',
+    images: normalizeBarImages(i.images),
     category: i.category || '',
     author: displayNameOf(i.author),
     mine: !!(user && i.userId && i.userId === user.id),
@@ -5985,6 +6113,12 @@ function publicIdea(i, req, user) {
     status: i.status || 'open',
     claimer: i.claimer ? { name: i.claimer.name, mine: !!(user && i.claimer.userId === user.id) } : null,
     work: w ? { id: w.id, title: w.title } : null,
+    // 悬赏只对外说额度和是否已结算，发起人的账号 id 不出去（用 mine 表达「这是我挂的」）
+    bounty: i.bounty ? {
+      amount: Number(i.bounty.amount) || 0,
+      paid: !!i.bounty.paidAt,
+      mine: !!(user && i.bounty.payerId === user.id)
+    } : null,
     createdAt: i.createdAt,
     // 状态变更时间：提想法的人靠它判断「有没有新进展」（订阅消息个人主体开不了，走站内提醒）
     updatedAt: i.updatedAt || i.createdAt,
@@ -6386,7 +6520,7 @@ const ADMIN_PERMS = [
   { key: 'content', label: '内容运营', desc: '评论、造梦酒馆、造梦勋章：隐藏 / 删除 / 授勋', tabs: ['comments','ideas','badges'] },
   { key: 'review',  label: '审核处理', desc: '投诉、众判、认领申请、匿名投稿排查、意见反馈、微信客服、账号申诉', tabs: ['reports','jury','claims','anonip','feedback','wxkf','appeals'] },
   { key: 'data',    label: '数据查看', desc: '搜索词、行为流水、注册统计、推荐效果、流量构成、产品推荐', tabs: ['searchkw','behavior','regstats','redeem','traffic','promos'] },
-  { key: 'config',  label: '站点配置', desc: '分类 / 形态 / 推荐位 / 广告 / 品牌 / 群发 / 作者回复 / 兑换码 / 友链 / 实名核验', tabs: ['categories','types','tools','ads','brands','broadcast','replies','gift','friends','smsauth'] },
+  { key: 'config',  label: '站点配置', desc: '分类 / 形态 / 推荐位 / 广告 / 品牌 / 群发 / 作者回复 / 兑换码 / 悬赏奖励 / 友链 / 实名核验', tabs: ['categories','types','tools','ads','brands','broadcast','replies','gift','bounty','friends','smsauth'] },
   // 四个独立小模块（2026-11-17 从 data / config 拆出）：给名单管理员只开「看」，
   // 写操作（巡检 / 白名单 / 定时 / 开源收录审核 / 逛逛开关与加权）在统一闸门里只认站长，见 ADMIN_OWNER_WRITE_SEGS。
   { key: 'discover',   label: '随便逛逛', desc: '首页随机推荐的曝光看板（只读）：模块开关 / 加权强度 / 手动加权只有站长', tabs: ['discover'] },
@@ -6396,7 +6530,7 @@ const ADMIN_PERMS = [
   { key: 'admins',  label: '管理员管理', desc: '增删管理员、审批申请、分配权限 —— 只属于站长，不对外分配', tabs: ['admins'], ownerOnly: true },
   // 推广清单（2026-11-17）：站长自己记的合作产品（访问地址 / 账号 / 产品名字 / 备注），
   // 不上前台、不进小程序；整栏站长专属，名单管理员连看都看不到。
-  { key: 'promote', label: '推广', desc: '推广产品清单：访问地址 / 账号 / 产品名字 / 备注 —— 只有站长能看和改', tabs: ['promote', 'invite'], ownerOnly: true },
+  { key: 'promote', label: '推广', desc: '推广产品清单、星梦期刊一键生成公众号文章 —— 只有站长能看和改', tabs: ['promote', 'invite', 'wechat'], ownerOnly: true },
   { key: 'deploy',  label: '部署实例', desc: '看还有哪些域名在跑同一套站', tabs: ['deploy'] },
 ];
 const ALL_PERM_KEYS = ADMIN_PERMS.map(p => p.key);
@@ -6412,11 +6546,11 @@ const ADMIN_API_PERM = {
   users: 'users', points: 'users', 'points-ledger': 'users', taglib: 'users', owners: 'users',
   comments: 'content', ideas: 'content', 'idea-discussions': 'content', 'bar-posts': 'content', badges: 'content',
   reports: 'review', jury: 'review', claims: 'review', 'anon-submits': 'review', feedback: 'review', kf: 'review', appeals: 'review',
-  'search-block': 'data', behavior: 'data', 'reg-stats': 'data', 'redeem-overview': 'data',
+  'search-block': 'data', 'hot-seeds': 'data', behavior: 'data', 'reg-stats': 'data', 'redeem-overview': 'data',
   outlinks: 'outlinks', 'link-health': 'linkhealth', 'baidu-push': 'data', 'promo-priority': 'data',
   'promo-buyer': 'data',
   categories: 'config', types: 'config', tools: 'config', ads: 'config', 'ad-gate': 'config', 'ad-display': 'config',
-  redemptions: 'config', gift: 'config', friends: 'config', 'friend-requests': 'config',
+  redemptions: 'config', gift: 'config', 'bounty-config': 'config', friends: 'config', 'friend-requests': 'config',
   discover: 'discover', broadcast: 'config', 'guest-notice': 'config', brands: 'config',
   scenes: 'config',
   replies: 'config', open: 'opensub', starsync: 'opensub', 'notify-old-comments': 'config',
@@ -6424,6 +6558,7 @@ const ADMIN_API_PERM = {
   admins: 'admins',
   promotions: 'promote',   // 推广清单：只有站长能看和改（模块 ownerOnly，接口再挂 requireOwner 双保险）
   'invite-products': 'promote', // 邀请/返佣链接产品登记册：同推广清单，站长专属可编辑（编辑走作品编辑器 + 登记册同步）
+  'wechat-articles': 'promote', // 星梦期刊 → 公众号文章：站长专属推广内容生成
   deploy: 'deploy', 'site-list': 'deploy',
   // /stats 是每个 tab 都要用的待办数，任何管理员都放行；session/login/apply 走免鉴权白名单
   stats: 'any'
@@ -6431,7 +6566,7 @@ const ADMIN_API_PERM = {
 // 这几个模块对名单管理员只开「看」：写操作（非 GET）一律只认站长（2026-11-17）。
 // 口径同「随便逛逛」只读化：前端藏按钮只是体验，闸门在这里；GET 看板按权限模块正常放行。
 // sms-config（实名核验开关，2026-11-19）：一开就全站强制核验 + 开始烧短信费，只有站长能拨。
-const ADMIN_OWNER_WRITE_SEGS = new Set(['discover', 'link-health', 'open', 'starsync', 'anon-submits', 'sms-config']);
+const ADMIN_OWNER_WRITE_SEGS = new Set(['discover', 'link-health', 'open', 'starsync', 'anon-submits', 'sms-config', 'bounty-config']);
 // 取 /api/admin 之后的一级路径段：'/api/admin/works/abc/approve' → 'works'
 function adminApiSeg(p) {
   const rest = String(p || '').split('?')[0].replace(/^\/api\/admin(?=\/|$)/, '');
@@ -6634,6 +6769,9 @@ function auditDescribe(req) {
   m = p.match(/^\/api\/admin\/gift\/([^/]+)$/);
   if (m) return '删除灯火活动（连同码） ' + m[1];
   if (p === '/api/admin/gift') return '建灯火活动（' + (s(b.mode) || 'batch') + ' × ' + (s(b.count) || '?') + '）';
+  if (p === '/api/admin/bounty-config') return '改酒馆悬赏设置（' + (b.enabled ? '开' : '关') + '，' + s(b.amount) + ' 盏）';
+  m = p.match(/^\/api\/admin\/ideas\/([^/]+)\/pay-bounty$/);
+  if (m) return '验收发放酒馆悬赏 ' + m[1];
   // 用户 / 灯火 / 标签
   if (p === '/api/admin/points') {
     const d = parseInt(b.delta, 10);
@@ -6683,6 +6821,10 @@ function auditDescribe(req) {
   if (m) return '删除推荐链接 ' + m[1];
   // 内容运营开关
   if (p === '/api/admin/search-block') return (b.action === 'unblock' ? '解除热搜屏蔽词「' : '拉黑热搜词「') + s(b.q) + '」';
+  if (p === '/api/admin/hot-seeds') {
+    const act = { add: '加热词', remove: '删热词', pin: '置顶热词', unpin: '取消热词置顶' }[b.action];
+    return act ? act + '「' + s(b.q) + '」' : (b.enabled === false ? '关闭前台热词种子' : '开启前台热词种子');
+  }
   if (p === '/api/admin/behavior/clear') return '清空用户行为流水（' + s(b.p) + '）';
   if (p === '/api/admin/discover') {
     if (at === 'cfg') return '改「随便逛逛」设置（on=' + (b.on === undefined ? '?' : b.on) + ', k=' + (b.k === undefined ? '?' : b.k) + '）';
@@ -7798,6 +7940,8 @@ function publicWork(w, user) {
     progress: typeof w.progress === 'number' ? w.progress : null,
     eta: w.eta || '',
     progressLog: Array.isArray(w.progressLog) ? w.progressLog.slice(-3).reverse() : [],
+    // 更新日志：作者编辑时写下的一句话说明，详情页按时间倒序列出（只下发最近 12 条）
+    updateLog: Array.isArray(w.updateLog) ? w.updateLog.slice(0, 12) : [],
     watchCount: Array.isArray(w.watchers) ? w.watchers.length : 0,
     watched: !!(user && Array.isArray(w.watchers) && w.watchers.some(x => x.userId === user.id)),
     linkLocked: stageOf(w) === 'reviewing',
@@ -7805,6 +7949,44 @@ function publicWork(w, user) {
     updatedAt: w.updatedAt || w.createdAt
   };
 }
+
+// ---------- 用户自建合集（2026-11-22） ----------
+// 收藏是私人的「我存了什么」，合集是公开的「我觉得这些该一起看」。
+// 只存作品 id，作品下架/删掉后展示时自然少一件，不用到处维护引用。
+function collectionById(id) { return collections.find(c => c.id === String(id || '')); }
+function collectionCanSee(c, user) {
+  return !!c && (c.isPublic === true || !!(user && c.userId === user.id));
+}
+function collectionOut(c, user, withWorks = false) {
+  const out = {
+    id: c.id,
+    title: String(c.title || '').slice(0, 60),
+    desc: String(c.desc || '').slice(0, 300),
+    author: displayNameOf(c.author || ''),
+    authorRef: c.userId || String(c.author || ''),
+    isPublic: c.isPublic === true,
+    mine: !!(user && c.userId === user.id),
+    createdAt: c.createdAt, updatedAt: c.updatedAt || c.createdAt
+  };
+  if (withWorks) {
+    // 按加入顺序展示；看不到（下架/审核中/被自己屏蔽）的作品不露面
+    const ids = Array.isArray(c.workIds) ? c.workIds : [];
+    out.works = ids.map(id => works.find(w => w.id === id))
+      .filter(w => w && isVisible(w))
+      .map(w => publicWork(w, user));
+  } else {
+    out.count = Array.isArray(c.workIds) ? c.workIds.filter(id => {
+      const w = works.find(x => x.id === id);
+      return w && isVisible(w);
+    }).length : 0;
+  }
+  return out;
+}
+function collectionTitle(v) {
+  const s = String(v || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+  return s;
+}
+function collectionDesc(v) { return String(v || '').trim().replace(/\s+/g, ' ').slice(0, 300); }
 
 // 相关作品：关键词重合优先（词比重 > 分类比重——「简历」重合远比同挂一个「效率工具」像相关的），
 // 只有分类重合的排后面，数量不够再补同作者的最新件。
@@ -10402,6 +10584,14 @@ app.post('/api/me/delete', (req, res) => {
     saveCodesSoon();
     saveWorks();
     saveComments();
+    // 别人的合集里指向这些作品的一并摘掉，免得公开页留一排空卡
+    let collectChanged = false;
+    collections.forEach(c => {
+      if (!Array.isArray(c.workIds)) return;
+      const left = c.workIds.filter(id => !ids.has(id));
+      if (left.length !== c.workIds.length) { c.workIds = left; collectChanged = true; }
+    });
+    if (collectChanged) saveCollections();
   } else {
     // 保留作品：解除账号归属（别人 / 同名新账号都接管不了），署名原样保留
     mine.forEach(w => {
@@ -10433,6 +10623,12 @@ app.post('/api/me/delete', (req, res) => {
   if (cmtAnon) saveComments();
   let ideaAnon = false;
   ideas.forEach(i => {
+    // 悬赏发起人或认领人注销：没结算的直接撤掉，免得挂一条永远发不出去的赏
+    if (i.bounty && !i.bounty.paidAt &&
+        (i.bounty.payerId === user.id || (i.claimer && i.claimer.userId === user.id))) {
+      delete i.bounty;
+      ideaAnon = true;
+    }
     if (i.userId !== user.id) return;
     delete i.userId;
     i.author = DELETED_AUTHOR;
@@ -10504,6 +10700,11 @@ app.post('/api/me/delete', (req, res) => {
 
   // 关注关系：别人关注他的、他关注别人的边都要断（不然粉丝数会一直挂着个不存在的人）
   followPurgeUser(user.id);
+
+  // 自建合集：本人建的整个删掉；作品被注销清掉的，从别人合集里摘掉，别留死链卡
+  const collectBefore = collections.length;
+  collections = collections.filter(c => c.userId !== user.id);
+  if (collections.length !== collectBefore) saveCollections();
 
   // 站内消息：随账号一起清除
   const noticeBefore = notices.length;
@@ -11594,6 +11795,7 @@ const POINTS_KIND_TEXT = {
   'barpost-recall': '酒馆发帖奖励已收回',
   barreply: '酒馆回应奖励',
   'barreply-recall': '酒馆回应奖励已收回',
+  bounty: '酒馆悬赏奖励',
   gift: '站长激励',
   admin: '站长调整',
   tip_in: '收到打赏',
@@ -12299,7 +12501,9 @@ app.get('/api/ideas', (req, res) => {
   res.json({
     total: list.length,
     items: sorted.slice(0, limit).map(i => publicIdea(i, req, user)),
-    stats, doneList
+    stats, doneList,
+    // 悬赏开关由站长配；关闭时前端连入口都不画，别让用户看到一个永远挂不上的按钮
+    bountyConfig: bountyConf()
   });
 });
 
@@ -12353,7 +12557,8 @@ app.get('/api/bar/feed', (req, res) => {
       : { kind: 'chat', at: r.at, id: r.id, post: publicBarPost(r.raw, req, user) }),
     next: (last && page.length === limit) ? feedCursorOf(last.at, last.id) : '',
     total: { ideas: tag ? 0 : visIdeas.length, chats: visPosts.length },
-    left
+    left,
+    bountyConfig: bountyConf()
   };
   // 统计与「愿望成真」只在第一页带：翻页时前端已经拿到了，重复算一遍是白烧 CPU
   if (!cur) Object.assign(out, ideaBoardMeta(visIdeas));
@@ -12533,6 +12738,8 @@ function publicBarPost(p, req, user) {
     authorAvatar: avatarUrlOf(au),
     ...barWatchOut(p, req, user),
     text: p.text || '',
+    // 图文帖：图片跟正文一起存，读的时候按当前文件裁剪，老帖自然是空数组
+    images: normalizeBarImages(p.images),
     // 主题（发帖时选的四档之一或自建）：卡片角标直接读它，不再让前端去猜
     topic: p.topic || '',
     // 话题由正文现解析（见 barTagsOf），主题也并进来一起下发
@@ -12741,6 +12948,24 @@ function barReviewHitsOf(text) {
   if (pairA.length && BAR_REVIEW_PAIR_B.some(w => s.includes(w.toLowerCase()))) hits.push(...pairA);
   return [...new Set(hits)];
 }
+// 酒馆图文帖的图片：只收本站 /uploads/ 下真实存在的图片，最多 4 张。
+// 图片本身在 /api/uploads/intro 上传时已过类型 / 大小 / 内容安全闸，这里只防
+// 「伪造 URL / 外链 / 路径穿越」和一次塞几十张——正文的审核口径保持不变。
+const BAR_POST_IMG_MAX = 4;
+function normalizeBarImages(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const item of raw) {
+    const u = String(item || '').trim();
+    if (!/^\/uploads\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(u)) continue;
+    const name = u.slice('/uploads/'.length);
+    if (name.includes('..')) continue;
+    try { if (!fs.statSync(path.join(UPLOAD_DIR, name)).isFile()) continue; } catch { continue; }
+    if (!out.includes(u)) out.push(u);
+    if (out.length >= BAR_POST_IMG_MAX) break;
+  }
+  return out;
+}
 // 发帖奖励：返回实发金额（记在 p.barBonus 上供回收）。首帖任务奖励不看字数，
 // 只要真发出去就算（任务页写的是「发第一条帖子」，不是「发第一条 15 字的帖子」）。
 function grantBarPostBonus(user, p) {
@@ -12810,6 +13035,9 @@ app.post('/api/bar/posts', async (req, res) => {
   if (text.length > BAR_POST_TEXT_MAX) {
     return res.status(400).json({ error: `最多 ${BAR_POST_TEXT_MAX} 字，说重点` });
   }
+  const rawImages = Array.isArray((req.body || {}).images) ? req.body.images : [];
+  const images = normalizeBarImages(rawImages);
+  if (rawImages.length && !images.length) return res.status(400).json({ error: '图片没传成功，重新加一次' });
   if (hitSensitive(text)) return res.status(400).json({ error: '内容包含敏感词，改一下再发' });
   // 主题（四档固定 / 自建 ≤4 字）：洗一遍再存。自建主题也要过敏感词，别让它变成第二个自由文本框
   const topic = normalizeBarTopic((req.body || {}).topic);
@@ -12843,6 +13071,7 @@ app.post('/api/bar/posts', async (req, res) => {
     userId: user.id,
     author: user.username,
     text,
+    images,
     topic,
     workId,
     likes: [],
@@ -13135,6 +13364,9 @@ app.post('/api/ideas', async (req, res) => {
   if (detail.length > IDEA_DETAIL_MAX) detail = detail.slice(0, IDEA_DETAIL_MAX);
   if (title.length < 4) return res.status(400).json({ error: '想法至少 4 个字，说清楚一点' });
   if (title.length > IDEA_TITLE_MAX) return res.status(400).json({ error: `想法最多 ${IDEA_TITLE_MAX} 个字` });
+  const rawImages = Array.isArray((req.body || {}).images) ? req.body.images : [];
+  const images = normalizeBarImages(rawImages);
+  if (rawImages.length && !images.length) return res.status(400).json({ error: '图片没传成功，重新加一次' });
   if (hitSensitive(title + detail)) return res.status(400).json({ error: '内容包含敏感词，改一下再发' });
   const fullText = title + (detail ? '\n' + detail : '');
   // 第一道：微信官方内容安全接口（UGC 提审硬要求）；异常时降级到第二道 AI 审
@@ -13168,6 +13400,7 @@ app.post('/api/ideas', async (req, res) => {
     id: 'i' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
     title,
     detail,
+    images,
     category,
     userId: user.id,
     author: user.username,
@@ -13178,9 +13411,42 @@ app.post('/api/ideas', async (req, res) => {
     workId: '',
     createdAt: new Date().toISOString()
   };
+  if (req.body && req.body.bounty === true) {
+    const bErr = bountyAttach(idea, user);
+    if (bErr) return res.status(400).json({ error: bErr });
+  }
   ideas.unshift(idea);
   saveIdeas();
   res.status(201).json(publicIdea(idea, req, user));
+});
+
+// 给已经发出去的想法补挂悬赏（仅限还没人认领的）
+app.post('/api/ideas/:id/bounty', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const idea = ideaById(req.params.id);
+  if (!idea) return res.status(404).json({ error: '想法不存在' });
+  if (idea.userId !== user.id) return res.status(403).json({ error: '只能给自己的想法挂悬赏' });
+  if (!rateLimit('bounty:' + user.id, 20, 60000)) return res.status(429).json({ error: '操作太频繁' });
+  const err = bountyAttach(idea, user);
+  if (err) return res.status(400).json({ error: err });
+  idea.updatedAt = new Date().toISOString();
+  saveIdeas();
+  res.json(publicIdea(idea, req, user));
+});
+// 认领之前反悔：钱还没发，撤掉就当没挂过
+app.delete('/api/ideas/:id/bounty', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const idea = ideaById(req.params.id);
+  if (!idea) return res.status(404).json({ error: '想法不存在' });
+  if (idea.userId !== user.id) return res.status(403).json({ error: '只能撤自己的悬赏' });
+  if (!idea.bounty || idea.bounty.paidAt) return res.status(400).json({ error: '悬赏已经结算，撤不了了' });
+  if ((idea.status || 'open') !== 'open') return res.status(400).json({ error: '已经有人认领，撤不了了' });
+  delete idea.bounty;
+  idea.updatedAt = new Date().toISOString();
+  saveIdeas();
+  res.json(publicIdea(idea, req, user));
 });
 
 // 我也想要：登录按账号 / 未登录按 IP，终身只计一次
@@ -16639,7 +16905,10 @@ app.get('/api/works', (req, res) => {
   } else if (sort === 'hot') {
     list.sort((a, b) => score(b) - score(a));
   } else {
-    list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    // 「最新」按最后一次公开更新排：作者改了东西也算出新动态，老作品不用重新投稿才能露面。
+    // 退回 createdAt 兼容存量数据；置顶仍然压在最前面。
+    list.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)
+      || new Date(b.createdAt) - new Date(a.createdAt));
     // 置顶优先（最新列表里；搜索结果已经按相关度排好，不再重排）
     list.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   }
@@ -18088,8 +18357,9 @@ app.get('/api/rank', (req, res) => {
       // 总榜综合排序套新作加成（见 newBoostFactor）：只改排序，行上 hotScore 仍返回真实综合分。
       // 勋章「众梦之首」跟着这份排序走——榜上看到谁是第一，勋章就发给谁，口径一致不玩两套。
       if (period === 'all' && by === 'hot') {
-        return score(b) * newBoostFactor(b) - score(a) * newBoostFactor(a)
-          || new Date(b.createdAt) - new Date(a.createdAt);
+        const sb = score(b) * newBoostFactor(b) * updateBoostFactor(b);
+        const sa = score(a) * newBoostFactor(a) * updateBoostFactor(a);
+        return sb - sa || new Date(b.createdAt) - new Date(a.createdAt);
       }
       return RANK_BY[by](a, b) || new Date(b.createdAt) - new Date(a.createdAt);
     });
@@ -18136,6 +18406,7 @@ app.get('/api/rank', (req, res) => {
         ...(isWeekHot ? { likes: wkLikes(w), favs: wkFavs(w) } : {}),
         // 新作加成标记：只有总榜综合排序里系数 >1 的作品才带，前端据此挂「新作加成中」角标
         ...(period === 'all' && by === 'hot' && newBoostFactor(w) > 1 ? { newBoost: newBoostFactor(w) } : {}),
+        ...(period === 'all' && by === 'hot' && updateBoostFactor(w) > 1 ? { recentUpdate: true } : {}),
         isNew: dateKey(new Date(w.createdAt)) === today
       };
     });
@@ -18710,6 +18981,80 @@ app.get('/api/journal', (req, res) => {
   res.status(404).json({ error: '没有这一期' });
 });
 
+// ---------- 星梦期刊 → 公众号文章（后台一键生成） ----------
+// 只给已定稿（攒满 7 天、phase=closed）的期出稿；进行中和攒分中的期名次还会动，不写进对外文章。
+// 版式在 wechat-article.js 里，接口这里只负责取存档期 + 补作品简介，别在路由里另拼一份 HTML。
+function wechatClosedIssues(type) {
+  const firstStart = journalFirstStart(type);
+  const scoreMs = JOURNAL_SCORE_DAYS * 86400000;
+  const out = [];
+  for (let off = 1; off <= 260; off++) {
+    const span = journalSpanOf(type, off);
+    if (!span) break;
+    if (span.start.getTime() < firstStart.getTime()) break;
+    if (span.end.getTime() + scoreMs > Date.now()) continue;   // 还在攒分，不算定稿
+    const issue = journalCut(type, span);
+    if (!issue || (issue.phase !== 'closed' && issue.status !== 'closed')) continue;
+    if (!issue.count) continue;   // 整期 0 分的空壳不摆进生成列表
+    out.push({
+      no: issue.no, from: issue.from, to: issue.to, publishAt: issue.publishAt,
+      works: issue.works, count: issue.count, stats: issue.stats,
+      champion: issue.champion, finalAt: issue.finalAt
+    });
+  }
+  return out.sort((a, b) => b.no - a.no);
+}
+
+function wechatIssueByNo(type, no) {
+  const firstStart = journalFirstStart(type);
+  const scoreMs = JOURNAL_SCORE_DAYS * 86400000;
+  for (let off = 0; off <= 260; off++) {
+    const span = journalSpanOf(type, off);
+    if (!span) break;
+    if (span.start.getTime() < firstStart.getTime()) break;
+    if (journalNo(type, span.start) !== no) continue;
+    const issue = span.end.getTime() + scoreMs > Date.now() ? journalBuild(type, off) : journalCut(type, span);
+    if (issue && (issue.phase === 'closed' || issue.status === 'closed')) return issue;
+    return null;
+  }
+  return null;
+}
+
+function wechatMake(type, no, featured) {
+  const issue = wechatIssueByNo(type, no);
+  if (!issue) return null;
+  const out = renderWechatArticle({ issue, works, featured, origin: SITE_ORIGIN_DEFAULT });
+  return {
+    type, no: issue.no, from: issue.from, to: issue.to, works: issue.works, count: issue.count,
+    phase: issue.phase || 'closed', stats: issue.stats,
+    ...out
+  };
+}
+
+// 定稿期列表：后台下拉框用，不返回完整榜单，省得每次点开都把 20 条作品全拉一遍
+app.get('/api/admin/wechat-articles/issues', requireAdmin, (req, res) => {
+  const type = req.query.type === 'month' ? 'month' : 'week';
+  res.set('Cache-Control', 'no-store');
+  res.json({ type, issues: wechatClosedIssues(type) });
+});
+
+app.post('/api/admin/wechat-articles/generate', requireAdmin, (req, res) => {
+  const type = req.body && req.body.type === 'month' ? 'month' : 'week';
+  const no = parseInt(req.body && req.body.no) || 0;
+  const featured = req.body && req.body.featured;
+  const out = wechatMake(type, no, featured);
+  if (!out) return res.status(404).json({ error: '这一期还没定稿，暂时不能生成文章' });
+  res.json(out);
+});
+
+// 一次把某类期刊的所有定稿期都生成出来，按新期在前
+app.post('/api/admin/wechat-articles/batch', requireAdmin, (req, res) => {
+  const type = req.body && req.body.type === 'month' ? 'month' : 'week';
+  const featured = req.body && req.body.featured;
+  const articles = wechatClosedIssues(type).map(x => wechatMake(type, x.no, featured)).filter(Boolean);
+  res.json({ type, articles });
+});
+
 // 访客的口径三端统一（登录按账号 / 小程序按设备 / 网页·H5·App 按本机标识），
 // 所以网页端和 App 里的访问现在跟小程序一样，都能被公平地算进来。
 function viewScore(w) {
@@ -18748,6 +19093,18 @@ function newBoostFactor(w) {
   if (age <= 7) return 1.3;
   if (age <= 14) return 1.15;
   return 1;
+}
+
+// 更新加成（2026-11-22）：老作品认真改了一版，也该在总榜里喘口气。
+// 只认作者写下的更新说明（updateLog），不认后台批量改字段的 updatedAt——
+// 否则站长批量清数据就能把一堆老作品顶上来。7 天内 ×1.12，之后恢复 1；
+// 和 newBoostFactor 一样只改排序比较，榜行上的综合分仍是真实 score(w)。
+function updateBoostFactor(w) {
+  const last = Array.isArray(w.updateLog) && w.updateLog.length ? w.updateLog[0] : null;
+  const t = last ? new Date(last.at).getTime() : 0;
+  if (!t || isNaN(t)) return 1;
+  const age = (Date.now() - t) / 86400000;
+  return age >= 0 && age <= 7 ? 1.12 : 1;
 }
 
 // 作者主页（创作者档案页）
@@ -20942,6 +21299,15 @@ app.put('/api/works/:id', (req, res) => {
     if (imgCheck.pass === false) {
       return res.status(400).json({ error: '图片未通过平台内容安全检测，请更换图片后重试' });
     }
+    // 更新说明会公开给访客、也会推给关注者，先过一遍内容闸再动作品字段。
+    // 和进度说明同一口径：没配智谱 key 时 pass=null（转人工），不拦正常编辑。
+    const updateNote = String(req.body.updateNote || '').trim().slice(0, 120);
+    if (updateNote) {
+      const aiNote = await aiReviewGate('作品更新说明：' + updateNote);
+      if (aiNote.pass === false) {
+        return res.status(400).json({ error: '更新说明疑似违规' + (aiNote.reason ? '：' + aiNote.reason : '') + '，请修改后再保存' });
+      }
+    }
 
     const { title, prompt, category, link, type } = req.body;
     // 形态必填校验：先按「改动后的预期状态」校验，通过后才动字段与文件
@@ -21088,7 +21454,19 @@ app.put('/api/works/:id', (req, res) => {
         }
       }
     }
+    // 记录这次编辑：任何保存都刷新 updatedAt（首页「最新」据此排序），
+    // 但只有作者写下说明才进公开的时间线、才通知关注者——避免改个错别字也刷屏。
+    w.updatedAt = new Date().toISOString();
+    if (updateNote) {
+      if (!Array.isArray(w.updateLog)) w.updateLog = [];
+      w.updateLog.unshift({ at: w.updatedAt, text: updateNote });
+      if (w.updateLog.length > 30) w.updateLog.length = 30;
+    }
     saveWorks();
+    if (updateNote && w.userId && isVisible(w)) {
+      try { notifyFollowersWorkUpdate(w, updateNote); }
+      catch (e) { console.log('[follow] 更新通知失败：' + e.message); }
+    }
     baiduPushWork(w, 'edit');   // 内容改了值得让百度重抓一次（24 小时内不重复推）
     refineScenesAsync(w);   // 标题/分类/简介改了，场景跟着重归一遍（人工纠偏过的不动）
     res.json({ ...publicWork(w, user), osBonus: osBonusNow, osDowngraded: osWas === true && w.openSource === false });
@@ -21254,6 +21632,105 @@ app.post('/api/favs/merge', (req, res) => {
   }
   if (added) { saveUsers(); saveWorks(); }
   res.json({ favs: user.favs, added });
+});
+
+// ---------- 用户合集接口 ----------
+// 列表只给本人看（含私密）；公开单页任何人可读，私密单页对别人按 404 处理。
+app.get('/api/collections', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const items = collections.filter(c => c.userId === user.id)
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
+    .map(c => collectionOut(c, user));
+  res.json({ items });
+});
+// 作者主页/他人视角的公开合集（放在 :id 前面，别被单件路由吃掉）
+app.get('/api/collections/user/:ref', (req, res) => {
+  const ref = String(req.params.ref || '').slice(0, 100);
+  const u = userByRef(ref);
+  const uid = u ? u.id : (users.find(x => x.username === ref) || {}).id;
+  const viewer = currentUser(req);
+  const items = collections.filter(c => c.userId && c.userId === uid && c.isPublic === true)
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))
+    .map(c => collectionOut(c, viewer));
+  res.json({ items });
+});
+app.get('/api/collections/:id', (req, res) => {
+  const c = collectionById(req.params.id);
+  const viewer = currentUser(req);
+  if (!collectionCanSee(c, viewer)) return res.status(404).json({ error: '合集不存在' });
+  res.set('Cache-Control', 'no-store');
+  res.json(collectionOut(c, viewer, true));
+});
+app.post('/api/collections', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('collect:' + user.id, 20, 60000)) return res.status(429).json({ error: '操作太频繁，歇一会儿再建' });
+  const owned = collections.filter(c => c.userId === user.id);
+  if (owned.length >= COLLECT_MAX_PER_USER) return res.status(400).json({ error: `最多建 ${COLLECT_MAX_PER_USER} 个合集，先删掉不用的` });
+  const title = collectionTitle(req.body && req.body.title);
+  if (!title) return res.status(400).json({ error: '给合集起个名字' });
+  const now = new Date().toISOString();
+  const c = {
+    id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    userId: user.id, author: user.username, title,
+    desc: collectionDesc(req.body && req.body.desc),
+    isPublic: req.body && req.body.isPublic === true,
+    workIds: [], createdAt: now, updatedAt: now
+  };
+  collections.unshift(c);
+  saveCollections();
+  res.status(201).json(collectionOut(c, user));
+});
+app.put('/api/collections/:id', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const c = collectionById(req.params.id);
+  if (!c) return res.status(404).json({ error: '合集不存在' });
+  if (c.userId !== user.id) return res.status(403).json({ error: '只能改自己的合集' });
+  if (req.body && req.body.title !== undefined) {
+    const title = collectionTitle(req.body.title);
+    if (!title) return res.status(400).json({ error: '合集名字不能为空' });
+    c.title = title;
+  }
+  if (req.body && req.body.desc !== undefined) c.desc = collectionDesc(req.body.desc);
+  if (req.body && typeof req.body.isPublic === 'boolean') c.isPublic = req.body.isPublic;
+  c.updatedAt = new Date().toISOString();
+  saveCollections();
+  res.json(collectionOut(c, user));
+});
+app.delete('/api/collections/:id', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const i = collections.findIndex(c => c.id === req.params.id);
+  if (i === -1) return res.status(404).json({ error: '合集不存在' });
+  if (collections[i].userId !== user.id) return res.status(403).json({ error: '只能删自己的合集' });
+  collections.splice(i, 1);
+  saveCollections();
+  res.json({ ok: true });
+});
+// 加入 / 移出：只认在线可见的作品，作者自己也不能把未审核的或已下架的塞进来
+app.post('/api/collections/:id/works', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  const c = collectionById(req.params.id);
+  if (!c) return res.status(404).json({ error: '合集不存在' });
+  if (c.userId !== user.id) return res.status(403).json({ error: '只能改自己的合集' });
+  if (!rateLimit('collectwork:' + user.id, 120, 60000)) return res.status(429).json({ error: '操作太频繁' });
+  const w = works.find(x => x.id === String((req.body && req.body.workId) || ''));
+  if (!w || !isVisible(w)) return res.status(404).json({ error: '作品不存在或还没上线' });
+  if (!Array.isArray(c.workIds)) c.workIds = [];
+  const i = c.workIds.indexOf(w.id);
+  const on = !!(req.body && req.body.on);
+  if (on && i === -1) {
+    if (c.workIds.length >= COLLECT_MAX_WORKS) return res.status(400).json({ error: `一个合集最多放 ${COLLECT_MAX_WORKS} 件` });
+    c.workIds.push(w.id);
+  } else if (!on && i !== -1) {
+    c.workIds.splice(i, 1);
+  }
+  c.updatedAt = new Date().toISOString();
+  saveCollections();
+  res.json(collectionOut(c, user));
 });
 
 // ================= 打赏（灯火转移，零和） =================
@@ -22543,6 +23020,74 @@ app.post('/api/admin/search-block', requireAdmin, (req, res) => {
   res.json({ ok: true, action, words });
 });
 
+// ---- 热词种子管理（后台「搜索词」页） ----
+// 热词 = search-seed.json 里的冷启动种子，跟 search-log.json 的真实搜索统计物理隔离：
+// 加热词不写进搜索次数/人数，后台排行数字不会被运营词污染；但会立刻影响前台「大家最近在搜」。
+// 每项 { w, pin }，pin 的词在 9 条种子名额里优先占座，其余随机抽；老配置纯字符串数组也认。
+function readHotSeedFile() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'search-seed.json'), 'utf-8'));
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  } catch { return {}; }
+}
+function hotSeedConfig() {
+  const raw = readHotSeedFile();
+  const words = hotSeedWords(raw);
+  const peopleMin = hotSeedInt(raw, 'peopleMin', 1, 1, 999);
+  const peopleMax = hotSeedInt(raw, 'peopleMax', 3, 1, 999);
+  return {
+    enabled: raw.enabled !== false && words.length > 0,
+    words,
+    pick: hotSeedInt(raw, 'pick', 9, 0, 12),
+    peopleMin: Math.min(peopleMin, peopleMax),
+    peopleMax: Math.max(peopleMin, peopleMax),
+    newPick: hotSeedInt(raw, 'newPick', 3, 0, 12),
+    newMin7: hotSeedInt(raw, 'newMin7', 2, 1, 999),
+  };
+}
+
+app.get('/api/admin/hot-seeds', requireAdmin, (req, res) => {
+  res.json(hotSeedConfig());
+});
+
+app.post('/api/admin/hot-seeds', requireAdmin, (req, res) => {
+  const body = req.body || {};
+  const action = ['add', 'remove', 'pin', 'unpin', 'enable'].includes(body.action) ? body.action : 'add';
+  const raw = readHotSeedFile();
+  const words = hotSeedWords(raw);
+  let changed = false;
+  if (action === 'enable') {
+    const want = body.enabled === true || body.enabled === '1' || body.enabled === 'true';
+    changed = (raw.enabled !== false) !== want;
+    raw.enabled = want;
+  } else {
+    const q = normSearchQ(body.q);
+    if (!q) return res.status(400).json({ error: '词不能为空' });
+    if (q.length > SEARCH_KW_MAXLEN) return res.status(400).json({ error: '词太长了' });
+    const key = q.toLowerCase();
+    const i = words.findIndex(x => x.w.toLowerCase() === key);
+    if (action === 'add') {
+      if (i < 0) { words.push({ w: q, pin: false }); changed = true; }
+      raw.enabled = true;   // 手动加词就是想让它上前台，不用再去开开关
+    } else if (i >= 0) {
+      if (action === 'remove') { words.splice(i, 1); changed = true; }
+      else if (words[i].pin !== (action === 'pin')) {
+        words[i].pin = action === 'pin';
+        changed = true;
+        if (action === 'pin') raw.enabled = true;
+      }
+    }
+    raw.words = words.slice(0, 120);
+  }
+  try {
+    writeJSON('search-seed.json', raw);
+  } catch (e) {
+    return res.status(500).json({ error: '保存失败，请重试' });
+  }
+  hotSearchCache = { at: 0, items: null };   // 作废缓存，前台下一次拉就是新榜单
+  res.json({ ok: true, changed, ...hotSeedConfig() });
+});
+
 // 行为流水看板：单独一个接口，不塞进 /api/admin/stats——
 // stats 是后台每次刷新/定时都会拉的，流水要扫月度文件，没必要绑在一起跑。
 app.get('/api/admin/behavior', requireAdmin, (req, res) => {
@@ -22604,6 +23149,40 @@ function linkReports(limit) {
     } catch { /* 坏文件只给个名字 */ }
     return { name, at, total, count };
   });
+}
+
+// 巡检报告里有死链/风险页时告诉作品作者本人（站长后台本来就看得见，不用重复通知）。
+// 一周同一个作者最多一条：自动巡检每天跑，链接没修好天天提醒只会让人关掉铃铛。
+// 只看 work 来源，慢/跳转这类抖动不打扰；按作品聚合，一个 URL 挂在多件作品上也不会刷屏。
+function notifyLinkHealthAuthors(reportName) {
+  let rep;
+  try { rep = linkReadReport(reportName); } catch { return 0; }
+  const bad = (rep.results || []).filter(r => r.level === 'dead' || r.level === 'risky');
+  if (!bad.length) return 0;
+  const byOwner = new Map();
+  bad.forEach(r => (Array.isArray(r.from) ? r.from : []).forEach(f => {
+    if (!f || f.kind !== 'work' || !f.id) return;
+    const w = works.find(x => x.id === f.id);
+    if (!w || !w.userId || !users.some(u => u.id === w.userId)) return;
+    let mine = byOwner.get(w.userId);
+    if (!mine) { mine = new Map(); byOwner.set(w.userId, mine); }
+    if (!mine.has(w.id)) mine.set(w.id, { id: w.id, title: f.title || w.title });
+  }));
+  const week = Math.floor(Date.now() / (7 * 86400000));
+  let sent = 0;
+  byOwner.forEach((items, uid) => {
+    const arr = Array.from(items.values());
+    const names = arr.slice(0, 3).map(x => `《${String(x.title).slice(0, 20)}》`).join('、')
+      + (arr.length > 3 ? ` 等 ${arr.length} 件` : '');
+    if (addNotice(uid, {
+      kind: 'system',
+      key: `link-health:${week}:${uid}`,
+      title: '作品链接体检：有链接打不开了',
+      text: `${names} 的外链在最近一次巡检里被标成死链或风险页。方便的话去作品页看一眼，换域名 / 下线了就编辑一下链接；机房抖动造成的误报不用管。`,
+      workId: arr[0] && arr[0].id
+    })) sent++;
+  });
+  return sent;
 }
 
 function linkReadReport(name) {
@@ -22731,6 +23310,10 @@ function startLinkJob() {
     } catch { /* 没落到盘上就算了，页面会提示 */ }
     job.phase = code === 0 && job.report ? '完成' : '失败';
     if (code !== 0 && !job.error) job.error = '脚本退出码 ' + code + '（看日志最后几行）';
+    if (job.phase === '完成') {
+      try { notifyLinkHealthAuthors(job.report); }
+      catch (e) { console.log('[link-health] 作者通知失败：' + e.message); }
+    }
   });
 
   return job;
@@ -27454,6 +28037,63 @@ app.get('/api/guest-notices', (req, res) => {
   res.json({ items });
 });
 
+// ---------- 酒馆悬赏配置（站长专属） ----------
+app.get('/api/admin/bounty-config', requireAdmin, (req, res) => res.json(bountyConf()));
+app.post('/api/admin/bounty-config', requireOwner, (req, res) => {
+  const b = req.body || {};
+  const amount = Math.round(Number(b.amount) || 0);
+  const perDay = Math.round(Number(b.perUserPerDay) || 0);
+  if (b.enabled === true && (amount < 1 || amount > 2000)) {
+    return res.status(400).json({ error: '开着悬赏时奖励额度要填 1～2000 盏' });
+  }
+  if (perDay < 0 || perDay > 20) return res.status(400).json({ error: '每人每天上限填 0～20（0 表示不限制）' });
+  const conf = {
+    enabled: b.enabled === true,
+    amount: amount >= 1 && amount <= 2000 ? amount : 0,
+    perUserPerDay: perDay
+  };
+  saveBountyConf(conf);
+  res.json(conf);
+});
+
+// 验收发奖：只有站长能点。认领人把作品挂上来后，站长确认是真做出来了再点这一下。
+// 幂等靠 bounty.paidAt：重复点不会重复发；小号自认领直接在服务端挡掉。
+app.post('/api/admin/ideas/:id/pay-bounty', requireOwner, (req, res) => {
+  const idea = ideaById(req.params.id);
+  if (!idea) return res.status(404).json({ error: '想法不存在' });
+  const b = idea.bounty;
+  if (!b) return res.status(400).json({ error: '这条想法没有悬赏' });
+  if (b.paidAt) return res.status(400).json({ error: '这笔悬赏已经发过了' });
+  if ((idea.status || 'open') !== 'done' || !idea.workId) return res.status(400).json({ error: '还没标记完成并挂上作品，先验收作品再发奖' });
+  if (!idea.claimer || !idea.claimer.userId) return res.status(400).json({ error: '没有认领人，发不了' });
+  if (b.payerId && idea.claimer.userId === b.payerId) return res.status(400).json({ error: '发起人和认领人是同一个账号，不能发奖' });
+  const winner = users.find(u => u.id === idea.claimer.userId);
+  if (!winner) return res.status(400).json({ error: '认领人账号已注销，这笔悬赏作废' });
+  const amount = Math.max(0, Math.min(2000, Math.round(Number(b.amount) || 0)));
+  if (!amount) return res.status(400).json({ error: '悬赏额度无效' });
+  // 先落一笔账，再写 paidAt 并立即刷盘：重启时不会出现「标记发了但钱没到」
+  const total = addPoints(winner.id, amount, 'bounty', idea.workId || '');
+  b.paidAt = Date.now();
+  b.paidTo = winner.id;
+  addNotice(winner.id, {
+    kind: 'points',
+    title: `酒馆悬赏到账 +${amount} 盏灯火`,
+    text: `你认领的「${String(idea.title).slice(0, 40)}」已由站长验收通过，悬赏已到账。`,
+    points: total, delta: amount, workId: idea.workId || null, link: '/bar'
+  });
+  if (b.payerId && users.some(u => u.id === b.payerId)) {
+    addNotice(b.payerId, {
+      kind: 'idea',
+      title: '你挂的悬赏已发出',
+      text: `「${String(idea.title).slice(0, 40)}」已验收完成，${amount} 盏灯火已经送给认领人。`,
+      link: '/bar'
+    });
+  }
+  saveIdeas();
+  saveShareNow();
+  res.json({ ok: true, amount, total });
+});
+
 // ---------- 活动兑换码：码 → 送灯火 ----------
 // 场景：做活动时后台生成一批码（或一个公开口令），用户在前台输入即可领灯火。
 // 结构 gift-codes.json：
@@ -28651,6 +29291,46 @@ app.get('/mini/:id', (req, res) => {
     inWeChat,
     detailHref: '/w/' + w.id
   }));
+});
+
+// 公开作品合集 /list/:id：真人与爬虫同一份 SSR，SPA 接管后换成独立视图。
+// 私密合集对别人按 404 处理，不在 head 里暴露标题；空合集 noindex/follow，别给搜索留薄页。
+app.get('/list/:id', (req, res) => {
+  const base = seo.baseUrl(req);
+  const c = collectionById(req.params.id);
+  const viewer = currentUser(req);
+  const deny = () => sendHtml(res, shell(seo.head({
+    title: `合集不存在 - ${seo.SITE_NAME}`,
+    description: '这份合集可能已被删除，或者没有公开。',
+    canonical: base + '/', noindex: true
+  }), notFoundBlock(base)), 404);
+  if (!collectionCanSee(c, viewer)) return deny();
+  const out = collectionOut(c, viewer, true);
+  const items = out.works || [];
+  const pageUrl = base + '/list/' + encodeURIComponent(c.id);
+  const headHtml = seo.head({
+    title: `${out.title} - 作品合集 - ${seo.SITE_NAME}`,
+    description: truncateText(`${out.author} 整理的「${out.title}」：${out.desc || `收录 ${items.length} 件作品`}`, 150),
+    keywords: [out.title, out.author, '作品合集'].join(','),
+    canonical: pageUrl,
+    type: 'website',
+    noindex: items.length < 2 ? 'follow' : false,
+    jsonLd: [{
+      '@context': 'https://schema.org', '@type': 'CollectionPage',
+      url: pageUrl, name: out.title, description: out.desc || '',
+      mainEntity: { '@type': 'ItemList', numberOfItems: items.length,
+        itemListElement: items.slice(0, 30).map((w, i) => ({
+          '@type': 'ListItem', position: i + 1, url: base + '/w/' + encodeURIComponent(w.id), name: w.title
+        })) }
+    }, seo.breadcrumbLd(base, [{ name: '首页', href: '/' }, { name: '作品合集' }, { name: out.title }])]
+  });
+  const block = `<div id="seoContent" class="seo-wrap">
+    ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name: '作品合集' }, { name: out.title }])}
+    <h1>${seo.esc(out.title)}</h1>
+    <p class="seo-author">由 ${seo.esc(out.author)} 整理 · ${items.length} 件作品${out.desc ? ' · ' + seo.esc(out.desc) : ''}</p>
+    <section class="gallery">${items.map(w => seo.cardHtml(w)).join('')}</section>
+  </div>`;
+  sendHtml(res, shell(headHtml, '', block));
 });
 
 // 作者主页。地址优先用作者自设的个性地址 /u/<slug>，没设还是 /u/<账号id>（纯 ASCII，对外分享不出现汉字）；
@@ -30705,6 +31385,17 @@ function listPageRoute(kind) {
       });
       return sendHtml(res, shell(headHtml, notFoundBlock(base)), 404);
     }
+    // ?rss=1：直接在分类页地址后加参数拿 feed，不用记 /feed/c/... 这种路径
+    if (String(req.query.rss || '') === '1') {
+      const pageLink = base + '/' + kind + '/' + encodeURIComponent(name);
+      const label = kind === 'c' ? `${name}类作品` : `${name}形态作品`;
+      return res.type('application/rss+xml').set('Cache-Control', 'public, max-age=1800').send(
+        seo.rssXml(base, withAuthorNames(pool.slice(0, 30)), {
+          title: `${label} · ${seo.SITE_NAME}`,
+          link: pageLink,
+          description: `${label}，最近收录的 ${Math.min(30, pool.length)} 件作品。完整列表：${pageLink}`
+        }));
+    }
 
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const pageSize = 24;
@@ -30754,6 +31445,7 @@ function listPageRoute(kind) {
       keywords: [name, `${name}作品`, `${name}工具`].join(','),
       canonical,
       image: items[0] ? seo.absolute(base, items[0].image) : '',
+      extra: `<link rel="alternate" type="application/rss+xml" title="${seo.esc(label)} RSS" href="/feed/${kind}/${encodeURIComponent(name)}.xml" />`,
       jsonLd: [
         seo.breadcrumbLd(base, [{ name: '首页', href: '/' }, { name: h1 }]),
         {
@@ -30865,7 +31557,17 @@ app.get('/sitemap.xml', (req, res) => {
     { loc: '/app', lastmod: '2026-11-22', priority: '0.6', changefreq: 'monthly' },
     ...col.topics.map(t => ({
       loc: '/column/' + t.slug, lastmod: t.updatedAt || col.updatedAt, priority: '0.7', changefreq: 'monthly'
-    }))
+    })),
+    // 公开合集：至少 2 件可见作品才收（和页面 noindex/follow 的口径一致）
+    ...collections.filter(c => c.isPublic === true).map(c => ({
+      loc: '/list/' + encodeURIComponent(c.id),
+      lastmod: c.updatedAt || c.createdAt || '',
+      priority: '0.6', changefreq: 'weekly',
+      count: Array.isArray(c.workIds) ? c.workIds.filter(id => {
+        const w = works.find(x => x.id === id);
+        return w && isVisible(w);
+      }).length : 0
+    })).filter(x => x.count >= 2).map(({ count, ...x }) => x)
   ];
   res.type('application/xml').set('Cache-Control', 'public, max-age=3600').send(
     seo.sitemapXml(base, {
@@ -30890,6 +31592,27 @@ app.get('/feed.xml', (req, res) => {
   res.type('application/rss+xml').set('Cache-Control', 'public, max-age=1800')
     .send(seo.rssXml(seo.baseUrl(req), withAuthorNames(byNewest(visibleWorks()).slice(0, 30))));
 });
+
+// 分类 / 形态订阅：和 /c/:name、/t/:name 同一份池子与排序，只取最新 30 件。
+// 仍按项目习惯现算 + HTTP 缓存；几百件作品的 filter/sort 可以忽略，不值得为它再做一层失效。
+function categoryFeed(kind, req, res) {
+  const base = seo.baseUrl(req);
+  const name = String(req.params.name || '');
+  const valid = kind === 'c' ? categories.includes(name) : ALL_TYPES_LEGACY.includes(name);
+  if (!valid) return res.status(404).type('text/plain; charset=utf-8').send('没有这个分类');
+  const pool = byNewest(visibleWorks().filter(w =>
+    kind === 'c' ? catsOf(w).includes(name) : typesOf(w).includes(name))).slice(0, 30);
+  const pageLink = base + '/' + kind + '/' + encodeURIComponent(name);
+  const label = kind === 'c' ? `${name}类作品` : `${name}形态作品`;
+  res.type('application/rss+xml').set('Cache-Control', 'public, max-age=1800').send(seo.rssXml(base,
+    withAuthorNames(pool), {
+      title: `${label} · ${seo.SITE_NAME}`,
+      link: pageLink,
+      description: `${label}，最近收录的 ${pool.length} 件作品。完整列表：${pageLink}`
+    }));
+}
+app.get('/feed/c/:name.xml', (req, res) => categoryFeed('c', req, res));
+app.get('/feed/t/:name.xml', (req, res) => categoryFeed('t', req, res));
 
 // llms.txt：给 AI 抓取器一份明确的站点说明与公开入口清单（可选约定，不影响搜索引擎收录）
 app.get('/llms.txt', (req, res) => {

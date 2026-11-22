@@ -3731,6 +3731,14 @@ function isLikedNow(w) {
 // 动作数量是会变的（自己的作品没有屏蔽/送灯火，预告中、审核中的作品没有赞/收藏），
 // 所以用的是「固定弦长」而不是「固定弧长」：几颗就铺几档，5 颗正好铺满四分之一弧，
 // 3 颗就收成一小把 —— 颗距始终一样，不会出现「少两颗就散成三颗孤零零的球」。
+// 发现页的作品对比：勾选态只放在这里，地址栏用 ?compare= 同步（replaceState，不重跑 route）。
+// 最多 3 件——再多人眼就读不过来了；切离发现页自动清空，不让选择跟着用户跑。
+const compareIds = new Set();
+try {
+  const initialCmp = new URLSearchParams(location.search).get('compare');
+  if (initialCmp) initialCmp.split(',').slice(0, 3).forEach(id => { if (id) compareIds.add(id); });
+} catch { /* 老浏览器 / 隐私模式忽略 */ }
+
 function cardActionsHtml(w) {
   const coming = isComing(w);
   const liked = isLikedNow(w);
@@ -3785,6 +3793,7 @@ function cardHtml(w, opts = {}) {
              alt="${escapeHtml(w.title)}"${opts.eager ? ' fetchpriority="high"' : ' loading="lazy"'} />
         <span class="type-badge" title="${escapeHtml(types.join(' / '))}">${typeTextHtml(w)}</span>
         ${statusBadge}
+        ${opts.compare ? `<label class="cmp-pick" title="加入对比（最多 3 件）"><input type="checkbox" data-cmp-pick="${w.id}"${compareIds.has(w.id) ? ' checked' : ''} /><span>对比</span></label>` : ''}
         ${cardActionsHtml(w)}
       </div>
       <div class="card-body">
@@ -3900,6 +3909,8 @@ function bindCardNode(el) {
   if (el.classList.contains('tool-card') || el.classList.contains('tool-row')) return;
   el.addEventListener('click', e => {
     if (e.target.dataset.fav || e.target.dataset.shareWork || e.target.closest('[data-likework]')) return;
+    // 对比勾选框是独立控件：点它不能顺手打开作品详情
+    if (e.target.closest('.cmp-pick')) { e.stopPropagation(); return; }
     // 扇面里的每颗按钮（含触发器）都归 .card-actions 管，不能再让卡片顺手把详情打开
     if (e.target.closest('.card-actions')) return;
     // 卡片里有一层真实链接（卡片底部 <a class="card-link">）：
@@ -3908,6 +3919,26 @@ function bindCardNode(el) {
     e.preventDefault();
     openWork(el.dataset.id);
   });
+  // 对比勾选：change 在 checkbox 上触发，卡片本身的 click 监听已被上面的 .cmp-pick 守卫挡掉
+  const cmp = el.querySelector('[data-cmp-pick]');
+  if (cmp) {
+    cmp.addEventListener('click', e => e.stopPropagation());
+    cmp.addEventListener('change', () => {
+      const id = cmp.dataset.cmpPick;
+      if (cmp.checked) {
+        if (compareIds.size >= 3) {
+          cmp.checked = false;
+          showToast('一次最多对比 3 件，先取消一件', undefined, 'err');
+          return;
+        }
+        compareIds.add(id);
+      } else {
+        compareIds.delete(id);
+      }
+      paintCompareCount();
+      syncCompareUrl();
+    });
+  }
   // 扇面开关：桌面靠 CSS 的 .card-actions:hover 展开（指针进到 ✦ 附近就开），
   // 点击只是「确认要操作」——把 .is-open 置真，鼠标彻底离开再由 pointerleave 收，
   // 所以绝不会「粘住」；触屏没有 hover，全靠 click 开合。
@@ -7187,7 +7218,7 @@ function navigate(path) {
 // 「我的收藏 / 我的点赞」已收编成独立页面 /favs、/likes（2026-11-12），
 // 原先从其他页跳首页再滚到列表区的 scrollWorksHeadSoon 不再有使用场景，函数已删。
 
-const SPA_VIEW_IDS = ['homeView', 'rankView', 'wishView', 'miniView', 'guideView', 'howtoView', 'authorView', 'promoteView', 'discoverView', 'creatorsView', 'meView', 'settingsView', 'tasksView', 'favView', 'likeView', 'followView'];
+const SPA_VIEW_IDS = ['homeView', 'rankView', 'wishView', 'miniView', 'guideView', 'howtoView', 'authorView', 'listView', 'promoteView', 'discoverView', 'creatorsView', 'meView', 'settingsView', 'tasksView', 'favView', 'likeView', 'followView'];
 function motionOff() {
   return document.documentElement.classList.contains('dm-quiet')
     || !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -7231,7 +7262,7 @@ function updateNavActive() {
   // 移动端底部 Tab 高亮：橱窗=首页/作品详情/作者页，其余按路径精确匹配
   const p = location.pathname;
   const tabKey = p === '/discover' ? 'discover'
-    : p === '/me' || p === '/following' ? 'me'
+    : p === '/me' || p === '/following' || p.startsWith('/list/') ? 'me'
     : onRank ? 'rank'
     : (p === '/' || p.startsWith('/w/') || p.startsWith('/u/')) ? 'home'
     : (onWish || onGuide || onMini || onColumn || onCreators) ? ''   // 酒馆/指南/小程序专栏/精选专栏/造梦者书架不占 Tab，全部不亮
@@ -7619,6 +7650,7 @@ function discCardHtml(w, col) {
              sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 260px"
              alt="${escapeHtml(w.title)}" loading="lazy" />
         ${col.key === '小程序' && scan ? '<span class="disc-scan-badge">可扫码</span>' : ''}
+        <label class="cmp-pick" title="加入对比（最多 3 件）"><input type="checkbox" data-cmp-pick="${w.id}"${compareIds.has(w.id) ? ' checked' : ''} /><span>对比</span></label>
       </div>
       <div class="card-body">
         <div class="card-title">${escapeHtml(ctName)}</div>
@@ -8199,7 +8231,7 @@ function discPcRenderList() {
   const gallery = $('discPcGallery'), empty = $('discPcEmpty');
   if (!gallery) return;
   const arr = discPcFiltered();
-  gallery.innerHTML = arr.map(w => cardHtml(w)).join('');
+  gallery.innerHTML = arr.map(w => cardHtml(w, { compare: true })).join('');
   // 空态两种口径：没筛选条件时是分类真空，有搜索词时多半只是说法对不上——
   // 这个框只是当前池内的字面快筛（见 discPcFiltered），全站口径交给「找找」兜底
   empty.innerHTML = '这个分类暂时没有作品';
@@ -8629,6 +8661,7 @@ function renderMePage() {
       <a class="me-tile" href="/u/${encodeURIComponent(state.user.slug || state.user.id || state.user.username)}" data-nav><span class="me-tile-ico">${ic('home', 20)}</span>我的主页</a>
       <button type="button" class="me-tile" id="meStats"><span class="me-tile-ico">${ic('bars', 20)}</span>作品数据</button>
       <button type="button" class="me-tile" id="meFav"><span class="me-tile-ico">${ic('fav', 20)}</span>我的收藏</button>
+      <button type="button" class="me-tile" id="meCollections"><span class="me-tile-ico">${ic('folder', 20)}</span>我的合集</button>
     </div>
     <div class="me-ck-card">
       <div class="me-ck-left">
@@ -8681,6 +8714,8 @@ function renderMePage() {
   const goFavs = () => toggleFavorites();
   $('meFav').onclick = goFavs;
   $('meStatFavs').onclick = goFavs;
+  const meCollectionsBtn = $('meCollections');
+  if (meCollectionsBtn) meCollectionsBtn.onclick = openCollectionManage;
   // 关注数那颗数字：直接进「我关注的创作者」页（未登录时那一页自己会弹登录）
   const meFollowingBtn = $('meFollowing');
   if (meFollowingBtn) meFollowingBtn.onclick = () => navigate('/following');
@@ -9333,6 +9368,14 @@ function route() {
   // 旧顺序是先摘标记再收拾视图，中途任何一步抛错，页面就会永远停在
   // 「首页内容 + 底部挂着 /rank 的 SEO 作品榜单区块」的半路状态（用户真的撞见过）
   closeAllViews();
+  // 对比只属于发现页：切走后选择作废，别让别处点「对比」弹出上一页挑的作品
+  if (path !== '/discover' && compareIds.size) {
+    compareIds.clear();
+    syncCompareUrl();
+    paintCompareCount();
+    const cmpMask = $('compareModal');
+    if (cmpMask && cmpMask.style.display !== 'none') hideModal(cmpMask);
+  }
   const isWorkPage = path.startsWith('/w/');
   if (!isWorkPage) detailScrollMemo.clear();   // 详情链路退出（关弹窗回列表）：滚动位置备忘作废，下次新开从头
   // 服务端渲染整页的静态页：/chronicle（编年史）、/rules（作品规范）、/install（安装到桌面）、/invite（邀请收录）、/column（精选专栏）——SPA 只负责藏首页、给标题
@@ -9531,6 +9574,14 @@ function route() {
     showView('meView');
     setTitle('我的');
     renderMePage();
+    updateNavActive();
+    return;
+  }
+  // 公开合集 /list/<id>：服务端同址有 SSR（给爬虫和首屏），这里接管成 SPA 视图
+  if (path.startsWith('/list/')) {
+    showView('listView');
+    setTitle('作品合集');
+    loadCollectionPage(path.slice(6));
     updateNavActive();
     return;
   }
@@ -10975,7 +11026,7 @@ async function loadRank(period, by, limit, type, cat) {
         <div class="rank-no rank-no-${w.rank <= 3 ? w.rank : 'n'}">${w.rank}</div>
         <img src="${imgUrl(w.thumb, 400)}" alt="" loading="lazy" />
         <div class="rank-main">
-          <div class="rank-title">${w.isNewEntry && rankState.period === 'peak' ? '<span class="rank-fresh" title="首次进入高光榜前 20，7 天内显示">新上榜</span>' : ''}${w.peakLive && rankState.period === 'peak' && !w.isNewEntry ? '<span class="rank-live" title="高光窗口最近还在刷新，分数持续更新中">冲榜中</span>' : ''}${escapeHtml(rkName)}${ageTxt ? `<span class="rank-age">${ageTxt}</span>` : ''}${w.isNew ? '<span class="rank-fresh" title="今天刚上架的作品">今日上新</span>' : ''}${w.newBoost ? '<span class="rank-fresh" title="上架 14 天内的新作加成：首 7 天 ×1.3、8–14 天 ×1.15，只影响总榜排序，不改变这里显示的分数">新作加成中</span>' : ''}</div>
+          <div class="rank-title">${w.isNewEntry && rankState.period === 'peak' ? '<span class="rank-fresh" title="首次进入高光榜前 20，7 天内显示">新上榜</span>' : ''}${w.peakLive && rankState.period === 'peak' && !w.isNewEntry ? '<span class="rank-live" title="高光窗口最近还在刷新，分数持续更新中">冲榜中</span>' : ''}${escapeHtml(rkName)}${ageTxt ? `<span class="rank-age">${ageTxt}</span>` : ''}${w.isNew ? '<span class="rank-fresh is-tail" title="今天刚上架的作品">今日上新</span>' : ''}${w.newBoost ? '<span class="rank-fresh is-tail" title="上架 14 天内的新作加成：首 7 天 ×1.3、8–14 天 ×1.15，只影响总榜排序，不改变这里显示的分数">新作加成中</span>' : ''}${w.recentUpdate ? '<span class="rank-fresh is-tail recent-update" title="作者最近 7 天更新过：总榜综合排序有轻微加权，这里显示的仍是真实分数">刚更新</span>' : ''}</div>
           ${rkIntro ? `<div class="rank-intro">${escapeHtml(rkIntro)}</div>` : ''}
           <div class="rank-meta">${rankTypeMeta(w)} · ${escapeHtml(aname(w))} · ${escapeHtml(rankCatsText(w))}${rankState.period === 'peak' && w.peakFrom ? ` · <span title="这件作品最亮的 7 天">高光 ${peakRangeTxt(w.peakFrom, w.peakTo)} · ${w.peakDays} 天</span>` : ''}</div>
         </div>
@@ -11674,6 +11725,19 @@ async function openWork(id, push = true, opts = {}) {
     const dp = $('detailPrompt');
     dp.classList.add('md-body');
     dp.innerHTML = w.introHtml || (w.intro ? escapeHtml(w.intro).replace(/\n/g, '<br>') : '');
+    // 更新记录：作者写下的那句话才叫更新，普通编辑不在这里留痕
+    const du = $('detailUpdates');
+    if (du) {
+      const logs = Array.isArray(w.updateLog) ? w.updateLog : [];
+      du.style.display = logs.length ? 'block' : 'none';
+      du.innerHTML = logs.length
+        ? `<div class="du-head">更新记录 <span>${logs.length} 次</span></div>
+           <ol class="chron-list du-list">${logs.slice(0, 6).map(x => `
+             <li class="chron-item"><span class="chron-dot"></span>
+               <div class="chron-main"><div class="chron-date">${formatDate(x.at)}</div>
+                 <div class="chron-text">${escapeHtml(x.text || '')}</div></div></li>`).join('')}</ol>`
+        : '';
+    }
     paintDetailLikes(w.likes);
     // 收藏数挂到「收藏」按钮上（数据行不再重复展示）：带 data-fav-count，
     // 点收藏后 paintFavCount 能就地改数字；data-fav-seg 让它跟着 0/非 0 自动显隐
@@ -11836,7 +11900,7 @@ async function openWork(id, push = true, opts = {}) {
 
     // 外宣包：把作品信息拼成各平台的投稿文案，只给作者本人看。
     // 文案是第一人称（"我做了 X"）、链接里的 ref 归作品作者，别人拿去发等于冒充作者投稿，
-    // 带回来的注册还会记在复制者头上。想帮作者传播走「分享卡片」（ref=分享者，扫码给分享者 +3 盏）。
+    // 带回来的注册还会记在复制者头上。想帮作者传播走「分享卡片」（ref=分享者，扫码给分享者 +5 盏）。
     const pkBtn = $('promoKitBtn');
     if (pkBtn) {
       pkBtn.style.display = w.owned ? '' : 'none';
@@ -13449,6 +13513,9 @@ function setupUploadForm() {
     // 新投稿（mode='new'）永远显示：agreeAt 是合规凭据，站长投稿也要留。
     const agreeBox = document.querySelector('.agree-box');
     if (agreeBox) agreeBox.style.display = (mode === 'edit' && state.user && state.user.isSiteOwner) ? 'none' : '';
+    // 更新说明只有编辑态才有：新建投稿时不给这一栏，免得作者以为投稿也要写 changelog
+    const unBox = $('updateNoteBox');
+    if (unBox) unBox.style.display = mode === 'edit' ? 'block' : 'none';
   }
 
   function resetUploadForm() {
@@ -13930,6 +13997,8 @@ function setupUploadForm() {
     // 展开一眼看懂 + 光标直接落进去，别让作者在长表单里自己找
     const gapFocus = opts.focus === 'positioning' || opts.focus === 'intro' ? opts.focus : '';
     setAgreeMode('edit');   // 编辑默认勾上：首次投稿已留过 agreeAt 凭据，这里只做轻量重申
+    // 更新说明每次都从空开始：不回填上一次的话，免得作者只改个标题也把旧说明再推一遍
+    if (form.updateNote) form.updateNote.value = '';
     hideModal(detailModal);
     $('modalTitle').textContent = adminEdit ? '站长编辑作品' : '编辑作品';
     $('formHint').textContent = (adminEdit
@@ -14806,6 +14875,9 @@ function setupUploadForm() {
 
       // 客户端压缩 + 生成缩略图，避免上传原图过大
       const fd = new FormData(form);
+      // 新建投稿不带更新说明（编辑态才有这一栏，留空就不推给关注者）
+      if (!editId) fd.delete('updateNote');
+      else if (typeof fd.get('updateNote') === 'string') fd.set('updateNote', fd.get('updateNote').trim().slice(0, 120));
       // 标题两框合一：名字 + 一句话介绍拼成一个 title 再上传（上面必填校验已保证名字非空）。
       // wname / wtag 照原样一起传：服务端把拆分单独存下来，卡片直接分两行，
       // 不用再回头猜「日影 mac活动追踪器-31天免试用」这类英文开头的介绍该从哪儿断。
@@ -15354,6 +15426,12 @@ function setupDetailActions() {
     renderDetailFav(w.id);
     paintFavButtons(w.id);
     showToast(added ? '已加入收藏' : '已取消收藏', undefined, 'ok');
+  };
+  // 合集是「公开的一份清单」，和私人收藏分开：从详情竖排条进，选完再回来，详情弹窗不关
+  const dcBtn = $('detailCollect');
+  if (dcBtn) dcBtn.onclick = () => {
+    if (!state.user) { showToast('登录后才能把作品加进合集', undefined, 'err'); openAuth('login'); return; }
+    if (state.currentWork) openCollectionPick(state.currentWork.id);
   };
 
   // ---------- 打赏（灯火转移） ----------
@@ -16434,11 +16512,13 @@ function feedRowHtml(w) {
           <div class="br-line">
             <button type="button" class="br-title" data-open="${id}">${escapeHtml(i.title)}</button>
           </div>
+          ${barImagesHtml(i.images, 'bar-imgs')}
           <div class="br-meta">
             <span class="br-kind ${(BAR_TOPIC_META[i.topic] || {}).cls || 'br-kind-seek'}" title="想要的东西，等创作者来接">${escapeHtml(i.topic || '找工具')}</span>
             ${brAuthorHtml(i.authorRef, i.author)}
             <span class="br-when">${escapeHtml(wishWhen(i.createdAt))}</span>
             ${wishStatusHtml(i)}
+            ${i.bounty ? `<span class="br-bounty${i.bounty.paid ? ' is-paid' : ''}" title="${i.bounty.paid ? '悬赏已经发给认领人' : '做出来并验收后，认领人拿这笔灯火'}">${ic('lamp', 12)} ${i.bounty.paid ? '悬赏已发' : `悬赏 ${i.bounty.amount} 盏`}</span>` : ''}
             ${i.work ? `<a class="br-work" href="/w/${encodeURIComponent(i.work.id)}" title="看这条想法关联的作品">${ic('check-circle', 12)}<span class="br-work-t">${escapeHtml(i.work.title)}</span></a>` : ''}
             <span class="br-acts">
               <span class="br-stat" title="想要的人">${ic('thumb', 12)} ${i.wants || 0}</span>
@@ -16462,6 +16542,7 @@ function feedRowHtml(w) {
           <div class="br-line">
             <span class="br-title">${barTextHtml(p.text)}</span>
           </div>
+          ${barImagesHtml(p.images, 'bar-imgs')}
           <div class="br-meta">
             <span class="br-kind ${kind.cls}" title="${escapeHtml(kind.title)}">${escapeHtml(kind.label)}</span>
             ${brAuthorHtml(p.authorRef, p.author)}
@@ -16675,6 +16756,16 @@ function setBarTag(tag) {
 
 let feedSeq = 0;   // 请求序号：话题切换/发布后重拉时，晚到的旧响应不许覆盖新结果
 
+// 悬赏开关只在站长设了奖励之后出现；配置随 feed 一起下发，不另开请求
+function paintBountyComposer(cfg) {
+  const wrap = $('wishBountyWrap');
+  if (!wrap) return;
+  const on = !!(cfg && cfg.enabled && Number(cfg.amount) > 0);
+  wrap.hidden = !on;
+  if (on) { const b = $('wishBountyAmt'); if (b) b.textContent = cfg.amount; }
+  else { const cb = $('wishBounty'); if (cb) cb.checked = false; }
+}
+
 async function loadFeed(reset) {
   const list = $('wishList');
   if (!list) return;
@@ -16712,6 +16803,7 @@ async function loadFeed(reset) {
       feedState.leftIdeas = 0; feedState.leftChats = 0;
     }
     feedState.tagTotal = tagMode ? feedState.chatTotal : 0;
+    if (d.bountyConfig) paintBountyComposer(d.bountyConfig);
     // 统计与「愿望成真」只在第一页返回；翻页时别拿空值把它们清掉
     if (d.stats) renderWishStats(d.stats);
     if (d.doneList) renderWishDone(d.doneList);
@@ -16786,11 +16878,57 @@ function insertChatTag() {
 // 散座的推广位已搬去右栏「本周热门」上方（2026-11-12），DOM 里就在 bar-rail 里安家，
 // renderAdSlot 直接渲染、不再往话题流里搬——散座楼层保持纯聊天，一处推荐不重复计曝光。
 
+// 酒馆图文帖：附件缩略图、上传占位、发布后的正文图片，都走这一组。
+function barMediaRender() {
+  const box = $('cmpMediaList');
+  if (!box) return;
+  box.innerHTML = barAttachments.map((a, i) => a.loading
+    ? `<span class="cmp-media-loading">传图中</span>`
+    : `<span class="cmp-media-item"><img src="${escapeHtml(imgUrl(a.url, 400))}" alt="待发图片 ${i + 1}" /><button type="button" class="cmp-media-del" data-media-del="${i}" title="移除这张">✕</button></span>`
+  ).join('');
+  if (cmpSyncOpenFn) cmpSyncOpenFn();
+}
+function barMediaClear() { barAttachments = []; barMediaRender(); }
+async function barMediaUpload(files) {
+  const list = Array.from(files || []);
+  if (!list.length) return;
+  if (!state.user) { showToast('登录后才能在酒馆发图', undefined, 'err'); openAuth('login'); return; }
+  for (const f of list) {
+    if (barAttachments.length >= BAR_MEDIA_MAX) { showToast(`一条最多带 ${BAR_MEDIA_MAX} 张图`, undefined, 'err'); break; }
+    if (!/^image\/(jpeg|png|gif|webp)$/i.test(f.type)) { showToast('只支持 jpg / png / gif / webp 图片', undefined, 'err'); continue; }
+    if (f.size > 8 * 1024 * 1024) { showToast('单张图片不能超过 8MB', undefined, 'err'); continue; }
+    barAttachments.push({ url: '', loading: true });
+    barMediaRender();
+    try {
+      const fd = new FormData();
+      fd.append('file', f);
+      const r = await fetch('/api/uploads/intro', { method: 'POST', body: fd, credentials: 'same-origin' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.url) throw new Error(d.error || '图片没传上去');
+      const i = barAttachments.findIndex(x => x.loading && !x.url);
+      if (i >= 0) barAttachments[i] = { url: d.url };
+      else barAttachments.push({ url: d.url });
+    } catch (e) {
+      const i = barAttachments.findIndex(x => x.loading && !x.url);
+      if (i >= 0) barAttachments.splice(i, 1);
+      showToast(e.message || '图片没传上去，再试一次', undefined, 'err');
+    }
+    barMediaRender();
+  }
+}
+// 时间线 / 详情里的图片：缩略图走 /t/400，点开看原图
+function barImagesHtml(images, cls) {
+  const list = Array.isArray(images) ? images.slice(0, BAR_MEDIA_MAX).filter(Boolean) : [];
+  if (!list.length) return '';
+  return `<div class="${cls}">` + list.map(u => `<button type="button" data-bar-img="${escapeHtml(u)}" title="点开看大图"><img src="${escapeHtml(imgUrl(u, 400))}" alt="随帖图片" loading="lazy" decoding="async" /></button>`).join('') + '</div>';
+}
+
 async function submitChat() {
   const ta = $('chatInput');
   if (!ta) return;
   const text = ta.value.trim();
   if (text.length < 2) return showToast('至少写两个字', undefined, 'err');
+  if (barAttachments.some(x => x.loading)) return showToast('图片还在传，等一下再发', undefined, 'err');
   if (!state.user) { openAuth('login'); return; }
   // 实名核验：发帖前完成一次。绑定成功后重入 submitChat()，正文和话题都还在输入框里
   {
@@ -16804,7 +16942,7 @@ async function submitChat() {
     const workRef = workRefEl ? workRefEl.value.trim() : '';
     const r = await fetch('/api/bar/posts', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, workRef, topic: barTopic })
+      body: JSON.stringify({ text, workRef, topic: barTopic, images: barAttachments.filter(x => x.url).map(x => x.url) })
     });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || '没发出去，再试一次');
@@ -16812,6 +16950,7 @@ async function submitChat() {
     // 别让 toast 念「发好了」再让人满页找不到自己的帖子
     if (d.pendingReview) {
       ta.value = '';
+      barMediaClear();
       chatRefReset(true);
       updateChatCount();
       updateChatTagHint();
@@ -16833,6 +16972,7 @@ async function submitChat() {
         : (posted.length
           ? `发好了，主题「${d.topic || barTopic}」，归到话题 ${posted.map(t => '#' + t).join(' ')}`
           : `发好了，主题「${d.topic || barTopic}」`)) + bonusTip, undefined, 'ok');
+    barMediaClear();
     loadFeed(true);
     loadBarTags();   // 话题栏的句数跟着改，新话题也立刻出现在上面
   } catch (e) { showToast(e.message, undefined, 'err'); }
@@ -17072,6 +17212,10 @@ const BAR_TOPIC_MAX = 4;   // 自建主题上限，跟服务端 normalizeBarTopi
 let barTopic = BAR_TOPIC_DEFAULT;
 // 发布器展开/收起回调由 setupBarComposer 注册（11-17 收缩版），切主题时也要跟着判一次
 let cmpSyncOpenFn = null;
+// 图文帖附件：图片先经 /api/uploads/intro 换成站内地址，发布成功才随正文一起落库。
+// 主题切来切去附件不丢——发布器本来就是同一个，只在真正发出去后清空。
+let barAttachments = [];
+const BAR_MEDIA_MAX = 4;
 
 // 自建主题只收字和数字：空格、#、标点一律剔掉（用户打了「找 工具」也算同一个）
 function barTopicClean(v) {
@@ -17204,12 +17348,19 @@ function setupBarComposer() {
   function cmpSyncOpen() {
     if (!cmpWrap) return;
     const chat = $('chatInput'), ref = $('chatWorkRef'), chip = $('chatRefChip');
-    const on = !chat.offsetParent ? false   // 主题切到「找工具」时闲聊表单整个隐藏，别硬撑着展开
-      : (document.activeElement === chat
-        || (ref && (document.activeElement === ref || (!ref.hidden && ref.value)))
-        || !!chat.value.trim()
-        || !!(chip && !chip.hidden));
+    const wish = $('wishInput'), detail = $('wishDetail');
+    const hasMedia = barAttachments.length > 0;
+    // 「找工具」时闲聊表单是隐藏的，但想法输入 / 附件仍要把发布器撑开
+    const chatActive = !!chat.offsetParent && (document.activeElement === chat
+      || (ref && (document.activeElement === ref || (!ref.hidden && ref.value)))
+      || !!chat.value.trim()
+      || !!(chip && !chip.hidden));
+    const wishActive = !!wish && !!wish.offsetParent && (document.activeElement === wish || document.activeElement === detail
+      || !!wish.value.trim() || !!(detail && detail.value.trim()));
+    const on = chatActive || wishActive || hasMedia;
     cmpWrap.classList.toggle('cmp-open', on);
+    const media = $('cmpMedia');
+    if (media) media.hidden = !hasMedia && !on;
   }
   $('chatInput').addEventListener('focus', cmpSyncOpen);
   $('chatInput').addEventListener('blur', () => setTimeout(cmpSyncOpen, 200));
@@ -17222,6 +17373,36 @@ function setupBarComposer() {
   }
   cmpSyncOpen();
   cmpSyncOpenFn = cmpSyncOpen;
+  // 图文帖：选图 / 粘贴截图都走同一条上传链，✕ 摘掉某张；切主题时附件不丢
+  const mediaBtn = $('cmpMediaAdd'), mediaInput = $('cmpMediaInput'), mediaList = $('cmpMediaList');
+  if (mediaBtn && mediaInput) {
+    mediaBtn.onclick = () => {
+      if (!state.user) { showToast('登录后才能在酒馆发图', undefined, 'err'); openAuth('login'); return; }
+      mediaInput.click();
+    };
+    mediaInput.onchange = () => { barMediaUpload(mediaInput.files); mediaInput.value = ''; };
+  }
+  if (mediaList) {
+    mediaList.onclick = e => {
+      const b = e.target.closest('[data-media-del]');
+      if (!b) return;
+      e.stopPropagation();
+      const i = parseInt(b.dataset.mediaDel, 10);
+      if (i >= 0 && i < barAttachments.length) barAttachments.splice(i, 1);
+      barMediaRender();
+    };
+  }
+  // 只在酒馆几个输入框里粘图才接管，别抢投稿表单的粘贴传图
+  document.addEventListener('paste', e => {
+    const a = document.activeElement;
+    if (!a || !['chatInput', 'wishInput', 'wishDetail'].includes(a.id)) return;
+    const items = Array.from((e.clipboardData && e.clipboardData.items) || []);
+    const files = items.filter(x => x.kind === 'file').map(x => x.getAsFile()).filter(Boolean);
+    if (!files.length) return;
+    e.preventDefault();
+    barMediaUpload(files);
+  });
+  barMediaRender();
   // 「＋ 话题」：不要求用户先学会语法，插一对 # 光标放中间；选中文字就直接裹上
   if ($('chatTagBtn')) $('chatTagBtn').onclick = insertChatTag;
   // 关联作品：平时收起（foot 上一个「🔗 关联作品」小按钮），点了才展开输入。
@@ -17367,6 +17548,7 @@ function renderChatPost() {
           <button type="button" class="cc-act" data-edit-cancel="${id}">取消</button>
         </div>
       </div>` : `<p class="cp-text">${barTextHtml(p.text)}</p>`}
+      ${barImagesHtml(p.images, 'cp-imgs')}
       ${p.work ? `<a class="cp-work" href="/w/${encodeURIComponent(p.work.id)}?full=1" target="_blank" rel="noopener" title="新开页面看这部作品的完整大图（2026-11-14 站长要求：点产品别在原地跳，新开全图页）">${ic('check-circle', 13)} ${escapeHtml(p.work.title)}</a>` : ''}
       <div class="cp-acts">
         <button type="button" class="cc-act${p.liked ? ' is-on' : ''}" data-like="${id}"
@@ -17565,13 +17747,18 @@ async function submitWish(opts = {}) {
   const title = input.value.trim();
   const detail = $('wishDetail') ? $('wishDetail').value.trim() : '';
   if (title.length < 4) return showToast('至少写 4 个字，说清楚要什么', undefined, 'err');
+  if (barAttachments.some(x => x.loading)) return showToast('图片还在传，等一下再发', undefined, 'err');
   if (!state.user) { openAuth('login'); return; }
   const btn = $('wishSubmit');
   btn.disabled = true;
   try {
     const r = await fetch('/api/ideas', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, detail, ackSimilar: !!opts.ackSimilar })
+      body: JSON.stringify({
+        title, detail, ackSimilar: !!opts.ackSimilar,
+        images: barAttachments.filter(x => x.url).map(x => x.url),
+        bounty: !!( $('wishBounty') && $('wishBounty').checked && !$('wishBountyWrap').hidden )
+      })
     });
     const d = await r.json();
     // 服务端拦下相似想法：先给「去顶一下」的岔路，用户明确选「仍然发布」才带 ack 重发
@@ -17585,6 +17772,8 @@ async function submitWish(opts = {}) {
     if (!r.ok) throw new Error(d.error || '发布失败');
     input.value = '';
     if ($('wishDetail')) $('wishDetail').value = '';
+    if ($('wishBounty')) $('wishBounty').checked = false;
+    barMediaClear();
     showToast('已发布，等创作者点「我来实现」', undefined, 'ok');
     loadFeed(true);
     loadBarBoard(true);   // 近7日口径跟着变（新想法 +1），别让它停在旧数字
@@ -17779,15 +17968,17 @@ function ideaDetailHtml(i) {
     if (i.claimer && i.claimer.mine) {
       acts.push(`<button type="button" class="wish-claim is-mine" data-ddone="${id}">我来标记已实现</button>`);
     } else if (!i.claimer && !i.mine) {
-      acts.push(`<button type="button" class="wish-claim" data-dclaim="${id}">我来实现</button>`);
+      acts.push(`<button type="button" class="wish-claim" data-dclaim="${id}">${i.bounty && !i.bounty.paid ? `我来实现 · 验收后 +${i.bounty.amount} 盏` : '我来实现'}</button>`);
     }
   }
   return `<div class="id-hero">
     <div class="id-top">${i.category ? `<span class="wish-cat">${escapeHtml(i.category)}</span>` : ''}${wishStatusHtml(i)}</div>
+    ${i.bounty ? `<div class="id-bounty">${i.bounty.paid ? `悬赏 ${i.bounty.amount} 盏 · 已发给认领人` : `悬赏 ${i.bounty.amount} 盏灯火，做出来由站长验收后发放`}</div>` : ''}
     <h3 class="id-title">${escapeHtml(i.title)}</h3>
     ${i.detail
       ? `<p class="id-detail">${escapeHtml(i.detail)}</p>`
       : '<p class="id-detail is-empty">提出者还没补充使用场景，你可以在下面补一句</p>'}
+    ${barImagesHtml(i.images, 'id-imgs')}
     <div class="id-meta">@${escapeHtml(i.author)} · ${escapeHtml(wishWhen(i.createdAt))} · ${i.discussionCount || 0} 条讨论</div>
     <div class="id-acts">${acts.join('')}</div>
   </div>
@@ -19185,7 +19376,7 @@ function renderRedeem() {
         <summary>怎么获得灯火？</summary>
         <div class="rfq-a">
           <p>最省事的是<b>每天签到</b>：网页右上角「签到」、小程序「我的」页的签到卡，点一下就行，${ckDays} 天一共 <b>${ckSum} 盏</b>。断一天就从第 1 天重新开始，已经拿到的不倒扣。</p>
-          <p>最快的一招是<b>把作品分享给朋友</b>：好友通过你的分享链接访问 <b>+1 盏</b>、<b>扫码打开 +3 盏</b>（每人每天只计一次）、注册 <b>+100 盏</b>。</p>
+          <p>最快的一招是<b>把作品分享给朋友</b>：好友通过你的分享链接访问 <b>+1 盏</b>、<b>扫码打开 +5 盏</b>（每人每天只计一次）、注册 <b>+100 盏</b>。</p>
           <div class="rh-share-row"><span>一条分享链接就够：</span><button type="button" class="rh-share-btn" id="shareMyWork"><span class="ico">${ic('share')}</span> 去分享作品</button></div>
           <p>投稿过审也有奖励（首件最多 +200 盏、之后每件 +50 盏），老账号绑定微信一次性 +300 盏。</p>
         </div>
@@ -20598,7 +20789,7 @@ async function openStats(mode) {
   const todayLine = todayBits.length
     ? `今日已计入 ${todayBits.join(' · ')} · <b>${st.points || 0}</b> 盏灯火${(st.regs || 0) > 0 ? `（今天已带 ${st.regs} 个注册）` : ''}`
     : '';
-  const shareTip = `分享奖励：好友通过你的链接访问 +1 盏灯火，<b>扫码打开 +3 盏</b>（同一人同一作品每天只计一次，同一设备每天最多计 10 次），好友注册 +100 盏灯火，<b>访问奖励不设每日上限</b>——带来多少人就记多少盏。
+  const shareTip = `分享奖励：好友通过你的链接访问 +1 盏灯火，<b>扫码打开 +5 盏</b>（同一人同一作品每天只计一次，同一设备每天最多计 10 次），好友注册 +100 盏灯火，<b>访问奖励不设每日上限</b>——带来多少人就记多少盏。
       只做「同一个人不重复计」：同一 IP 对同一分享者每天最多计 3 次、同一 IP 全站每天最多 30 次、同一 IP 最多计入 2 个邀请注册；登录用户同一作品终身只计一次。换浏览器、清缓存刷不动，但真实的新读者一个都不会漏。
       ${todayLine ? `<br /><span class="share-today">${todayLine}</span>` : ''}<br />
       外宣包（V2EX / HN 等）发出去带来的访问不单独计灯火，但会按「来了多少人」累计：满 100 人一次性 +50 盏；
@@ -21576,10 +21767,10 @@ const FIND_FALLBACK_CHIPS = ['效率工具', '小程序', '开源'];
 // 首屏示例（2026-11-20）：跟小程序 pages/find 的 SAMPLES 保持同一组三句。
 // 都是具体场景——「找工具」这种抽象话跟上面的搜索框没区别，看不出这是「说人话找作品」。
 const FIND_SAMPLES = ['想把录音转成文字', '整理电脑里的重复文件', '手机上记账'];
-// 2026-11-22 站长要求：上面三句下面再加三句，拿今天录入的企业产品当场景。
-// 走的是同一个 /api/find，不另开入口；三句分别落 AI 办公、AI 短剧、学术写作，
-// 都是今天那批作品里真有的关键词，点了就能翻出东西，不是摆着好看的例句。
-const FIND_PRODUCT_SAMPLES = ['AI办公提效', 'AI短剧制作', '论文降AI率'];
+// 2026-11-22 站长要求：上面三句下面再加一组企业产品场景；当晚又补了「办公效率」「ai生成短剧」。
+// 走的是同一个 /api/find，不另开入口；分别落 AI 办公、AI 短剧、学术写作，
+// 都是站里真有的关键词，点了就能翻出东西，不是摆着好看的例句。
+const FIND_PRODUCT_SAMPLES = ['AI办公提效', '办公效率', 'AI短剧制作', 'ai生成短剧', '论文降AI率'];
 const findBotState = { open: false, busy: false };
 
 function fbLog() { return $('fbLog'); }
@@ -21600,7 +21791,7 @@ function fbMsg(cls, text) {
   return div;
 }
 
-// 空手进来先给六句能直接点的话（前三句小程序同款，后三句是企业产品场景）。点一下就等于替他问一次，不是装饰性
+// 空手进来先给几组能直接点的话（前三句小程序同款，后面是企业产品场景）。点一下就等于替他问一次，不是装饰性
 // placeholder——不写清这个，新访客会把弹窗当成另一个关键词搜索框。
 function fbIntro() {
   const box = fbLog();
@@ -21719,10 +21910,7 @@ function fbWishAct(q) {
 async function fbAsk(text) {
   const q = String(text || '').trim().slice(0, 100);
   if (!q || findBotState.busy) return;
-  // 示例只用一次：真问起来还挂着三句，对话流里像是答非所问（预填直接问也一样）
-  const box = fbLog();
-  const intro = box && box.querySelector('.fb-intro');
-  if (intro) intro.remove();
+  // 2026-11-22 站长改口：示例卡片常驻，真问起来也别把上面的例子删掉；新消息追加在它后面。
   const inp = $('fbInput');
   const btn = $('fbSend');
   if (inp) inp.value = '';
@@ -21802,7 +21990,18 @@ document.addEventListener('click', e => {
     return;
   }
   if (e.target.closest('#heroFindBtn')) openFindBot('');
+  // 列表标题行搜索框后面那句「让找找ai帮你找」：同一个委托，别再单独绑 onclick
+  if (e.target.closest('#listFindHint')) openFindBot('');
 });
+
+// 酒馆图文帖的缩略图：捕获阶段截住，点图只放大，不要连带打开帖子详情
+document.addEventListener('click', e => {
+  const z = e.target.closest('[data-bar-img]');
+  if (!z) return;
+  e.preventDefault();
+  e.stopPropagation();
+  openImgZoom(z.getAttribute('data-bar-img') || '');
+}, true);
 
 function setupHeader() {
   // 首页 hero 的三个动作词：提交作品开投稿弹窗（跟右上角「＋ 提交作品」同一个入口）；
@@ -23004,6 +23203,18 @@ function setupInstall() {
     bindMaskClose(mini, closeMini);
     $('miniToInstall').onclick = () => { closeMini(); openInstall(); };
   }
+
+  // 造梦星选公众号：页脚「订阅」里的入口。用 document 委托而不是直接 onclick——
+  // 「关于本站」弹窗会克隆整块页脚，cloneNode 不复制 onclick，委托才能让克隆的那份也点得开。
+  const gzh = $('gzhModal');
+  if (gzh) {
+    const openGzh = () => { hideModal(modal); if (mini) hideModal(mini); showModal(gzh); };
+    const closeGzh = () => hideModal(gzh);
+    document.addEventListener('click', e => { if (e.target.closest('[data-gzh-open]')) openGzh(); });
+    $('closeGzh').onclick = closeGzh;
+    $('gzhKnow').onclick = closeGzh;
+    bindMaskClose(gzh, closeGzh);
+  }
 }
 
 // ---------- PWA 安装奖励 ----------
@@ -23137,6 +23348,8 @@ async function init() {
   setupFeedback();
   fbRefreshDot();  // 反馈悬浮球：有站长回复没看就亮个小红点（异步，不挡首屏）
   setupInstall();
+  setupCollections();  // 我的合集：新建弹窗 + 动态行委托（详情里的「加入合集」在 setupDetailActions 里绑）
+  setupCompare();      // 发现页并排对比
   afterLoadAuth();  // GitHub 授权回来的提示 + 补上登录前点的「投稿」
   openAuthFromQuery();  // /?login=1 从独立页（勋章页等）跳回来：直接弹登录框
   setupPromoKit();  // 外宣包弹窗（按钮在详情页，弹窗只需要绑一次）
@@ -23854,6 +24067,272 @@ function refreshTaskState() {
     renderAuthBox();
     if (location.pathname === '/tasks') renderTasksPage();
   }).catch(() => {});
+}
+
+// ---------- 用户自建合集 ----------
+// 一份合集 = 一串作品 id + 公开的标题/简介。增删都低频，前端只缓存本人那一份列表，
+// 加入/移出成功就把缓存顺手改掉，不用每次从服务端重拉。
+let collMine = null;
+let collPickWork = '';
+let collEditId = '';
+
+async function myCollections(force = false) {
+  if (!force && collMine) return collMine;
+  const r = await fetch('/api/collections', { cache: 'no-store' });
+  if (!r.ok) throw new Error('status ' + r.status);
+  const d = await r.json();
+  collMine = Array.isArray(d.items) ? d.items : [];
+  return collMine;
+}
+
+function collRowHtml(c, pick) {
+  const count = Number(c.count || 0);
+  if (pick) {
+    return `<div class="cm-row">
+      <div class="cm-row-main"><b>${escapeHtml(c.title)}</b><span>${c.isPublic ? '公开' : '私密'} · ${count} 件</span></div>
+      <button type="button" class="cm-act" data-cp-toggle="${escapeHtml(c.id)}" data-on="${c.works && c.works.some(w => w.id === collPickWork) ? '1' : ''}">${c.works && c.works.some(w => w.id === collPickWork) ? '已加入 ✓' : '加入'}</button>
+    </div>`;
+  }
+  return `<div class="cm-row">
+    <div class="cm-row-main">
+      <b>${escapeHtml(c.title)}</b>
+      <span>${c.isPublic ? '公开' : '私密'} · ${count} 件${c.desc ? ' · ' + escapeHtml(c.desc.slice(0, 40)) : ''}</span>
+    </div>
+    <div class="cm-row-acts">
+      <a class="cm-act" href="/list/${encodeURIComponent(c.id)}" data-nav>查看</a>
+      <button type="button" class="cm-act" data-cm-edit="${escapeHtml(c.id)}">改名</button>
+      <button type="button" class="cm-act cm-act-danger" data-cm-del="${escapeHtml(c.id)}">删除</button>
+    </div>
+  </div>`;
+}
+
+function paintCollManage() {
+  const box = $('cmList');
+  if (!box || !collMine) return;
+  box.innerHTML = collMine.length
+    ? collMine.map(c => collRowHtml(c, false)).join('')
+    : '<p class="cm-empty">还没有合集。上面起个名字，就能把相关的作品攒在一起了。</p>';
+  const btn = $('cmCreate');
+  if (btn) btn.textContent = collEditId ? '保存修改' : '新建合集';
+}
+
+async function openCollectionManage() {
+  if (!state.user) { showToast('登录后才能建合集', undefined, 'err'); openAuth('login'); return; }
+  const mask = $('collectModal');
+  if (!mask) return;
+  collEditId = '';
+  const t = $('cmTitle'), d = $('cmDesc'), p = $('cmPublic');
+  if (t) t.value = '';
+  if (d) d.value = '';
+  if (p) p.checked = true;
+  showModal(mask);
+  paintCollManage();
+  try { collMine = await myCollections(true); paintCollManage(); }
+  catch { showToast('合集列表加载失败，刷新再试', undefined, 'err'); }
+}
+$('closeCollect') && ($('closeCollect').onclick = () => hideModal($('collectModal')));
+bindMaskClose && bindMaskClose($('collectModal'), () => hideModal($('collectModal')));
+
+async function openCollectionPick(workId) {
+  const mask = $('collectPickModal');
+  if (!mask) return;
+  collPickWork = String(workId || '');
+  showModal(mask);
+  const box = $('cpList');
+  if (box) box.innerHTML = '<p class="cm-empty">正在读你的合集…</p>';
+  try {
+    collMine = await myCollections(true);
+    // 加入态要看每件合集的完整作品列表；并发防抖没必要，最多 20 份
+    const full = await Promise.all(collMine.map(async c => {
+      try {
+        const r = await fetch('/api/collections/' + encodeURIComponent(c.id), { cache: 'no-store' });
+        return r.ok ? await r.json() : c;
+      } catch { return c; }
+    }));
+    collMine = full;
+    if (box) box.innerHTML = full.length
+      ? full.map(c => collRowHtml(c, true)).join('')
+      : '<p class="cm-empty">你还没有合集，先去「我的 → 我的合集」建一个。</p>';
+  } catch {
+    if (box) box.innerHTML = '<p class="cm-empty">加载失败，刷新再试</p>';
+  }
+}
+$('closeCollectPick') && ($('closeCollectPick').onclick = () => hideModal($('collectPickModal')));
+bindMaskClose && bindMaskClose($('collectPickModal'), () => hideModal($('collectPickModal')));
+
+function setupCollections() {
+  const create = $('cmCreate');
+  if (create) create.onclick = async () => {
+    const title = ($('cmTitle').value || '').trim();
+    if (!title) { showToast('给合集起个名字', undefined, 'err'); return; }
+    const body = JSON.stringify({
+      title, desc: ($('cmDesc').value || '').trim(), isPublic: !!$('cmPublic').checked
+    });
+    create.disabled = true;
+    try {
+      const r = await fetch(collEditId ? '/api/collections/' + encodeURIComponent(collEditId) : '/api/collections', {
+        method: collEditId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || '保存失败');
+      showToast(collEditId ? '合集已更新' : '合集已建好', undefined, 'ok');
+      collEditId = '';
+      $('cmTitle').value = ''; $('cmDesc').value = ''; $('cmPublic').checked = true;
+      collMine = await myCollections(true);
+      paintCollManage();
+    } catch (e) { showToast(e.message || '保存失败', undefined, 'err'); }
+    create.disabled = false;
+  };
+  // 动态行统一委托：改完列表 DOM 也不用重绑
+  const list = $('cmList');
+  if (list) list.addEventListener('click', async e => {
+    const edit = e.target.closest('[data-cm-edit]');
+    if (edit) {
+      const c = (collMine || []).find(x => x.id === edit.dataset.cmEdit);
+      if (!c) return;
+      collEditId = c.id;
+      $('cmTitle').value = c.title || '';
+      $('cmDesc').value = c.desc || '';
+      $('cmPublic').checked = !!c.isPublic;
+      $('cmTitle').focus();
+      paintCollManage();
+      return;
+    }
+    const del = e.target.closest('[data-cm-del]');
+    if (del) {
+      const c = (collMine || []).find(x => x.id === del.dataset.cmDel);
+      if (!c || !confirm(`删除合集「${c.title}」？合集里的作品不会删。`)) return;
+      try {
+        const r = await fetch('/api/collections/' + encodeURIComponent(c.id), { method: 'DELETE' });
+        if (!r.ok) throw new Error('删除失败');
+        collMine = await myCollections(true);
+        paintCollManage();
+        showToast('合集已删除', undefined, 'ok');
+      } catch (er) { showToast(er.message, undefined, 'err'); }
+    }
+  });
+  const pick = $('cpList');
+  if (pick) pick.addEventListener('click', async e => {
+    const btn = e.target.closest('[data-cp-toggle]');
+    if (!btn || btn.disabled) return;
+    const id = btn.dataset.cpToggle;
+    const on = btn.dataset.on !== '1';
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/collections/' + encodeURIComponent(id) + '/works', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workId: collPickWork, on })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || '操作失败');
+      btn.dataset.on = on ? '1' : '';
+      btn.textContent = on ? '已加入 ✓' : '加入';
+      const i = (collMine || []).findIndex(x => x.id === id);
+      if (i !== -1) collMine[i] = d;
+      showToast(on ? '已加入合集' : '已从合集移出', undefined, 'ok');
+    } catch (er) { showToast(er.message || '操作失败', undefined, 'err'); }
+    btn.disabled = false;
+  });
+}
+
+async function loadCollectionPage(id) {
+  const title = $('listTitle'), meta = $('listMeta'), gallery = $('listGallery'), empty = $('listEmpty');
+  if (!gallery) return;
+  gallery.innerHTML = '<div class="loading-tip">正在整理这份合集…</div>';
+  if (empty) empty.style.display = 'none';
+  try {
+    const r = await fetch('/api/collections/' + encodeURIComponent(id), { cache: 'no-store' });
+    if (!r.ok) throw new Error('这份合集不存在，或者没有公开');
+    const c = await r.json();
+    if (title) title.textContent = c.title || '作品合集';
+    if (meta) meta.textContent = `${c.author || '匿名'} 整理 · ${(c.works || []).length} 件作品${c.desc ? ' · ' + c.desc : ''}`;
+    setTitle(c.title || '作品合集');
+    gallery.innerHTML = (c.works || []).map(w => cardHtml(w)).join('');
+    bindCards(gallery);
+    if (!c.works || !c.works.length) {
+      gallery.innerHTML = '';
+      if (empty) empty.style.display = 'block';
+    }
+  } catch (e) {
+    gallery.innerHTML = '';
+    if (title) title.textContent = '合集不存在';
+    if (meta) meta.textContent = e.message || '';
+    if (empty) { empty.style.display = 'block'; empty.querySelector('p').textContent = e.message || '这份合集没有公开'; }
+  }
+}
+
+// ---------- 发现页作品对比 ----------
+function paintCompareCount() {
+  const a = $('discCompareNum'), b = $('discMCompareNum');
+  if (a) a.textContent = compareIds.size;
+  if (b) b.textContent = compareIds.size;
+  const btns = [$('discCompareBtn'), $('discMCompareBtn')].filter(Boolean);
+  btns.forEach(x => x.classList.toggle('has-pick', compareIds.size > 0));
+}
+function syncCompareUrl() {
+  try {
+    const u = new URL(location.href);
+    if (compareIds.size) u.searchParams.set('compare', Array.from(compareIds).join(','));
+    else u.searchParams.delete('compare');
+    // 只改地址栏，不调 route()：否则发现页会整表重绘，刚勾的复选框全丢
+    history.replaceState(history.state, '', u.pathname + (u.search ? u.search : '') + u.hash);
+  } catch { /* 不支持 URL 的老浏览器就算了 */ }
+}
+function compareValueHtml(w, key) {
+  const v = (() => {
+    switch (key) {
+      case 'type': return typesOf(w).join(' / ') || '—';
+      case 'cat': return w.category || '—';
+      case 'paid': return w.paid ? (PAID_MODELS[w.paidModel] || w.paidModel || '付费') : '免费';
+      case 'lamp': return w.lampPrice > 0 ? `${w.lampPrice} 盏` : '无';
+      case 'os': return w.openSource === true ? (w.repo ? '是 · 有仓库' : '是')
+        : (w.openSource === false ? '否' : '未标注');
+      case 'updated': return formatDate(w.updatedAt || w.createdAt);
+      case 'views': return String(w.views || 0);
+      case 'likes': return String(w.likes || 0);
+      case 'favs': return String(w.favs || 0);
+      case 'stage': return stageOf(w);
+      default: return '—';
+    }
+  })();
+  return escapeHtml(String(v));
+}
+async function openCompare() {
+  const mask = $('compareModal'), body = $('compareBody');
+  if (!mask || !body) return;
+  if (compareIds.size < 2) { showToast('先勾至少 2 件作品', undefined, 'err'); return; }
+  showModal(mask);
+  body.innerHTML = '<div class="cm-empty">正在读这几件作品的资料…</div>';
+  try {
+    const list = (await Promise.all(Array.from(compareIds).map(id =>
+      fetch('/api/works/' + encodeURIComponent(id), { cache: 'no-store' })
+        .then(r => r.ok ? r.json() : null).catch(() => null)))).filter(Boolean);
+    if (list.length < 2) throw new Error('有作品已经下架了，重新选一下');
+    const rows = [
+      ['形态', 'type'], ['分类', 'cat'], ['收费', 'paid'], ['灯火解锁', 'lamp'],
+      ['开源', 'os'], ['最近更新', 'updated'], ['浏览', 'views'], ['点赞', 'likes'],
+      ['收藏', 'favs'], ['阶段', 'stage']
+    ];
+    body.innerHTML = `<div class="cmp-scroll"><table class="cmp-table">
+      <thead><tr><th>对比项</th>${list.map(w => `<th><a href="/w/${encodeURIComponent(w.id)}" data-nav>${escapeHtml(w.title)}</a><span>@${escapeHtml(anamePlain(w))}</span></th>`).join('')}</tr></thead>
+      <tbody>${rows.map(([label, key]) => `<tr><th>${label}</th>${list.map(w => `<td>${compareValueHtml(w, key)}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table></div>`;
+  } catch (e) { body.innerHTML = `<p class="cm-empty">${escapeHtml(e.message || '读取失败')}</p>`; }
+}
+function setupCompare() {
+  paintCompareCount();
+  [$('discCompareBtn'), $('discMCompareBtn')].filter(Boolean).forEach(b => { b.onclick = openCompare; });
+  const close = $('closeCompare');
+  if (close) close.onclick = () => hideModal($('compareModal'));
+  if (typeof bindMaskClose === 'function') bindMaskClose($('compareModal'), () => hideModal($('compareModal')));
+  const clear = $('compareClear');
+  if (clear) clear.onclick = () => {
+    compareIds.clear();
+    document.querySelectorAll('[data-cmp-pick]').forEach(x => { x.checked = false; });
+    paintCompareCount(); syncCompareUrl(); hideModal($('compareModal'));
+  };
 }
 
 init();

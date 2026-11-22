@@ -26,6 +26,14 @@
     #idMenu .idm-empty { padding:10px; font-size:12px; color:#8a8fa8; }
     .header-inner { display:flex; align-items:center; gap:16px; height:60px; width:100%; margin:0; padding:0 14px; }
     .logo { font-weight:700; color:var(--primary); font-size:17px; }
+    /* 品牌右边的按钮：把整条左侧菜单收起/展开。跟分组开合是两回事，状态单独记。 */
+    .side-toggle { display:none; align-items:center; justify-content:center; width:28px; height:28px; flex:none;
+      border:1px solid var(--border); border-radius:8px; background:#fff; color:#6f7488; cursor:pointer; }
+    .side-toggle:hover { background:#f3f4fb; color:var(--primary); border-color:#d9d9f4; }
+    .side-toggle svg { width:14px; height:14px; }
+    .side-toggle .ico-expand { display:none; }
+    body.side-collapsed .side-toggle .ico-collapse { display:none; }
+    body.side-collapsed .side-toggle .ico-expand { display:block; }
     .spacer { flex:1; }
     /* 顶部 PV/UV 横幅：进入后台一眼看到站点流量 */
     .pv-banner { display:flex; align-items:center; gap:11px; font-size:13px; color:var(--muted); }
@@ -166,6 +174,22 @@
     .sk-add input:focus { border-color:#b9c4e8; }
     .sk-add button { font-size:12px; padding:4px 12px; border-radius:8px; border:1px solid var(--border); background:#fff; color:#444; cursor:pointer; }
     .sk-add button:hover { border-color:#b9c4e8; }
+    /* 热词管理：管的是前台「大家最近在搜」的冷启动种子，跟真实搜索统计分开。
+       置顶词用实心紫标出来，点「置顶/已顶」切换，右侧 × 删除。 */
+    .hs-sec { margin-top:18px; padding-top:13px; border-top:1px dashed var(--border); }
+    .hs-title { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 8px; font-size:12px; color:var(--muted); }
+    .hs-title b { color:var(--primary); font-size:12.5px; }
+    .hs-switch { margin-left:auto; font-size:11px; padding:3px 10px; border-radius:99px; border:1px solid var(--border); background:#fff; color:#555; cursor:pointer; }
+    .hs-switch.off { color:var(--muted); }
+    .hs-bar { display:flex; align-items:center; flex-wrap:wrap; gap:6px 8px; margin:10px 0 0; padding:10px 12px; background:#f7f7ff; border:1px solid var(--border); border-radius:12px; font-size:12px; color:var(--muted); }
+    .hs-chip { display:inline-flex; align-items:center; gap:6px; padding:3px 9px; border-radius:99px; background:#eeeefc; color:var(--primary); font-size:12px; }
+    .hs-chip.is-pin { background:var(--primary); color:#fff; }
+    .hs-chip em { font-style:normal; font-size:10.5px; opacity:.75; cursor:pointer; border-right:1px solid currentColor; padding-right:6px; }
+    .hs-chip em:hover { opacity:1; }
+    .hs-chip b { cursor:pointer; font-weight:700; }
+    .hs-chip b:hover { color:var(--danger); }
+    .hs-chip.is-pin b:hover { color:#fff; }
+    .hs-nowords { color:var(--muted); }
 
     /* 找找在问什么：整句提问单开一块，跟上面搜索词分开——它不进热榜、也没有屏蔽按钮。
        提问是口语整句，名字列给宽一点、超长省略，悬停看全文。 */
@@ -234,6 +258,8 @@
     .rd-table tr.rd-total-row td { border-top:1px solid #e2e5f2; border-bottom:1px solid #e2e5f2; background:#fafafe; color:#33384a; font-weight:600; }
     .rd-table tr.rd-total-row td:first-child { background:#f3f4fb; color:#4a5090; }
     .rd-table tr.rd-total-row td b { color:#2b2f38; }
+    /* 总计行回头率格里的「日均」小字：和主数字（合计口径）并存，不抢主数字 */
+    .rd-table tr.rd-total-row td .rd-total-sub { display:block; font-size:10.5px; color:var(--muted); font-weight:400; line-height:1.4; }
     /* 灯火明细：一行一个人，表头可点排序；小字放「几笔 / 几天」，别把主数字挤小 */
     .pl-table th[data-pl-sort] { cursor:pointer; user-select:none; }
     .pl-table th[data-pl-sort]:hover { color:var(--primary); }
@@ -282,6 +308,7 @@
 
     /* 左侧菜单 + 右侧内容 布局 */
     .admin-layout { display:flex; align-items:flex-start; gap:18px; }
+    body.side-collapsed .admin-layout > .side { display:none; }
     .side {
       flex:0 0 168px; width:168px; display:flex; flex-direction:column; gap:2px;
       background:#fff; border:1px solid var(--border); border-radius:14px;
@@ -1190,12 +1217,55 @@
       .tr-grid { grid-template-columns:1fr; gap:12px; }
       .tr-col .ps-name { max-width:150px; }
     }
+
+    /* 星梦期刊 → 公众号文章：后台一键生成。预览、复制富文本、下载源码共用一份服务端排版 */
+    .wx-gen { padding:18px; }
+    .wx-gen-head { margin-bottom:14px; }
+    .wx-gen-head h3 { margin:0 0 5px; font-size:16px; font-weight:700; color:#2f2b46; }
+    .wx-gen-head p { margin:0; font-size:12.5px; line-height:1.7; color:var(--muted); }
+    .wx-gen-bar { display:flex; flex-wrap:wrap; align-items:center; gap:9px; padding:12px 14px; background:#fafaff; border:1px solid var(--border); border-radius:12px; }
+    .wx-gen-bar label { font-size:12.5px; color:#5f6478; }
+    .wx-gen-bar select, .wx-gen-bar input { height:32px; padding:0 9px; border:1px solid var(--border); border-radius:8px; background:#fff; color:#333; font-size:12.5px; font-family:inherit; outline:none; }
+    .wx-gen-bar select { min-width:148px; }
+    .wx-gen-bar input { width:58px; }
+    .wx-gen-bar select:focus, .wx-gen-bar input:focus { border-color:#b9aff4; }
+    .wx-gen-status { min-height:18px; margin:9px 2px 0; font-size:12px; color:var(--muted); }
+    .wx-gen-tip { margin:4px 2px 0; font-size:12px; line-height:1.7; color:var(--muted); }
+    .wx-card { margin-top:16px; border:1px solid var(--border); border-radius:12px; overflow:hidden; background:#fff; }
+    .wx-card-head { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:11px 14px; background:#f8f7ff; border-bottom:1px solid var(--border); }
+    .wx-card-head b { font-size:13px; color:#3b355c; }
+    .wx-card-head span { font-size:11.5px; color:var(--muted); }
+    .wx-card-head .spacer { flex:1; }
+    .wx-card-meta { padding:12px 14px 0; }
+    .wx-card-meta p { margin:0 0 7px; font-size:12px; line-height:1.7; color:var(--muted); }
+    .wx-titles { display:flex; flex-wrap:wrap; gap:6px; }
+    .wx-title-item { max-width:100%; padding:4px 9px; border:1px solid #ded9f8; border-radius:99px; background:#fff; color:#5b52c7; font-size:12px; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .wx-title-item:hover { background:#f1efff; }
+    .wx-paths { padding:12px 14px 2px; }
+    .wx-path-list { display:grid; gap:6px; margin-top:8px; }
+    .wx-path-item { display:flex; align-items:center; gap:9px; width:100%; padding:7px 10px; border:1px solid #ece9fa; border-radius:8px; background:#fcfbff; text-align:left; cursor:pointer; font-family:inherit; }
+    .wx-path-item:hover { background:#f4f1ff; border-color:#cfc6f7; }
+    .wx-path-item .pn { flex:0 0 22px; font-size:11px; color:#9a91c9; }
+    .wx-path-item .pt { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:#4b4763; }
+    .wx-path-item code { flex:0 1 auto; max-width:60%; padding:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; background:none; font-size:11px; color:#6c5ce7; }
+    .wx-path-item .pc { flex:0 0 auto; padding:2px 7px; border-radius:6px; background:#ece9ff; color:#5b52c7; font-size:11px; }
+    .wx-frame { display:block; width:100%; height:720px; border:0; background:#f3f4f8; }
+    @media (max-width: 720px) {
+      .wx-gen { padding:12px; }
+      .wx-gen-bar { align-items:stretch; }
+      .wx-gen-bar select { flex:1 1 100%; }
+      .wx-frame { height:620px; }
+    }
   </style>
 </head>
 <body>
   <header>
     <div class="header-inner">
       <span class="logo">✦ 造梦橱窗 · 后台</span>
+      <button class="side-toggle" id="sideToggleBtn" type="button" title="收起左侧菜单" aria-label="收起左侧菜单" aria-expanded="true">
+        <svg class="ico-collapse" viewBox="0 0 18 16" aria-hidden="true"><path d="M8.5 3 4.5 8l4 5M14 3l-4 5 4 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg class="ico-expand" viewBox="0 0 18 16" aria-hidden="true"><path d="m9.5 3 4 5-4 5M4 3l4 5-4 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <span class="pv-banner" id="pvBanner" style="display:none">
         <span class="pv-item" title="网页今日访问次数（不含小程序和爬虫）"><em>网页</em><b id="pvToday">0</b> PV</span>
         <span class="pv-item" title="网页今日独立访客数（不含小程序和爬虫）"><em>网页</em><b id="uvToday">0</b> UV</span>
@@ -1273,6 +1343,7 @@
               <button class="tab" data-tab="replies">作者回复</button>
               <button class="tab" data-tab="smsauth">实名核验</button>
               <button class="tab" data-tab="gift">兑换码</button>
+              <button class="tab" data-tab="bounty">悬赏奖励</button>
             </div>
           </div>
           <div class="side-block" data-sgroup="流量">
@@ -1319,6 +1390,7 @@
               <button class="tab" data-tab="promote">推广</button>
               <button class="tab" data-tab="invite">邀请链接产品</button>
               <button class="tab" data-tab="brands">品牌橱窗</button>
+              <button class="tab" data-tab="wechat">公众号文章</button>
             </div>
           </div>
           <div class="side-block" data-sgroup="系统">
@@ -2206,6 +2278,25 @@
       });
     };
 
+    // 整条左侧菜单收起/展开：和分组开合（adminSideGroups）互不影响，单独记一个键。
+    const SC_KEY = 'adminSideCollapsed';
+    let sideCollapsed = false;
+    try { sideCollapsed = localStorage.getItem(SC_KEY) === '1'; } catch { /* ignore */ }
+    function setSideCollapsed(collapsed, save) {
+      document.body.classList.toggle('side-collapsed', collapsed);
+      const btn = $('sideToggleBtn');
+      const label = collapsed ? '展开左侧菜单' : '收起左侧菜单';
+      btn.title = label;
+      btn.setAttribute('aria-label', label);
+      btn.setAttribute('aria-expanded', String(!collapsed));
+      if (save) { try { localStorage.setItem(SC_KEY, collapsed ? '1' : '0'); } catch { /* ignore */ } }
+    }
+    setSideCollapsed(sideCollapsed, false);
+    $('sideToggleBtn').onclick = () => {
+      sideCollapsed = !sideCollapsed;
+      setSideCollapsed(sideCollapsed, true);
+    };
+
     $('logoutBtn').onclick = () => {
       // 清掉服务端的票据 cookie，再刷新回登录框
       fetch('/api/admin/session', { method: 'DELETE' }).catch(() => {}).finally(() => location.reload());
@@ -2217,6 +2308,7 @@
       $('adminBox').style.display = 'block';
       $('logoutBtn').style.display = 'inline-block';
       $('refreshBtn').classList.add('show');
+      $('sideToggleBtn').style.display = 'inline-flex';
       $('pvBanner').style.display = '';
       if (entered) { loadStats(); renderTab(currentTab); return; }
       entered = true;
@@ -2842,6 +2934,7 @@
       if (tab === 'broadcast') return loadBroadcast();
       if (tab === 'replies') return loadReplies();
       if (tab === 'gift') return loadGift();
+      if (tab === 'bounty') return loadBountyConfig();
       if (tab === 'friends') return loadFriends();
       if (tab === 'searchkw') return loadSearchKw();
       if (tab === 'behavior') return loadBehavior();
@@ -2856,6 +2949,184 @@
       if (tab === 'deploy') return loadDeploy();
       if (tab === 'smsauth') return loadSmsAuth();
       if (tab === 'admins') return loadAdminsTab();
+      if (tab === 'wechat') return loadWechatArticles();
+    }
+
+    // ---- 星梦期刊 → 公众号文章：一键生成（2026-11-22）----
+    // 服务端出同一份排版，这里只管选期、预览、复制。复制走 iframe 里的富文本选中，
+    // 不是把 HTML 源码粘进编辑器 —— 后者在公众号后台只会显示一堆标签。
+    let wxIssues = {};
+    let wxArticles = [];
+    function wxFrameDoc(body) {
+      return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"></head>'
+        + '<body style="margin:0;padding:24px 16px;background:#f3f4f8;">' + body + '</body></html>';
+    }
+    function wxCopyText(text, okMsg) {
+      const done = () => toast(okMsg || '已复制');
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(done).catch(() => wxCopyFallback(text, okMsg));
+      } else wxCopyFallback(text, okMsg);
+    }
+    function wxCopyFallback(text, okMsg) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch { ok = false; }
+      document.body.removeChild(ta);
+      toast(ok ? (okMsg || '已复制') : '复制失败，请手动选中后复制');
+    }
+    function wxFrameBody(i) {
+      const f = panel.querySelector('iframe[data-wx-frame="' + i + '"]');
+      if (!f) return null;
+      try { return (f.contentDocument || f.contentWindow.document).body; } catch { return null; }
+    }
+    function wxCopyRich(i) {
+      const body = wxFrameBody(i);
+      if (!body) return wxCopyText(wxArticles[i].html, '预览还没加载完，已复制 HTML 源码');
+      const f = panel.querySelector('iframe[data-wx-frame="' + i + '"]');
+      try { f.contentWindow.focus(); } catch { /* ignore */ }
+      const doc = body.ownerDocument;
+      const sel = doc.getSelection();
+      const range = doc.createRange();
+      range.selectNodeContents(body);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      let ok = false;
+      try { ok = doc.execCommand('copy'); } catch { ok = false; }
+      sel.removeAllRanges();
+      if (ok) toast('正文已复制，去公众号后台正文粘贴');
+      else wxCopyText(wxArticles[i].html, '富文本复制没成功，已复制 HTML 源码');
+    }
+    function wxDownload(i) {
+      const a = wxArticles[i];
+      const doc = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>星梦期刊第 '
+        + a.no + ' 期 · 公众号文章</title></head><body style="margin:0;padding:24px 16px;background:#f3f4f8;">'
+        + a.html + '</body></html>';
+      const url = URL.createObjectURL(new Blob([doc], { type: 'text/html;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = '星梦期刊-第' + a.no + '期-公众号文章.html';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      toast('HTML 已下载，浏览器打开后全选复制也能粘进公众号');
+    }
+    function wxRenderArticles(list) {
+      wxArticles = list;
+      const box = $('wxResults');
+      if (!box) return;
+      box.innerHTML = list.map((a, i) => '<section class="wx-card">'
+        + '<div class="wx-card-head"><b>星梦期刊 · ' + (a.type === 'month' ? '月榜' : '周榜') + '第 ' + a.no + ' 期</b>'
+        + '<span>' + esc(a.from) + ' — ' + esc(a.to) + ' · ' + a.count + ' 件上榜</span><span class="spacer"></span>'
+        + '<button type="button" class="btn btn-primary btn-sm" data-wx-act="copy" data-i="' + i + '">复制正文</button>'
+        + '<button type="button" class="btn btn-ghost btn-sm" data-wx-act="paths" data-i="' + i + '" title="按正文顺序复制全部小程序路径">复制全部路径</button>'
+        + '<button type="button" class="btn btn-ghost btn-sm" data-wx-act="source" data-i="' + i + '">复制源码</button>'
+        + '<button type="button" class="btn btn-ghost btn-sm" data-wx-act="download" data-i="' + i + '">下载 HTML</button></div>'
+        + '<div class="wx-card-meta"><p><b>标题备选</b>：点一下复制，填到公众号后台标题栏</p><div class="wx-titles">'
+        + a.titles.map((t, j) => '<button type="button" class="wx-title-item" data-wx-act="title" data-i="' + i + ':' + j + '" title="' + esc(t) + '">' + (j + 1) + '. ' + esc(t) + '</button>').join('')
+        + '</div></div>'
+        + '<div class="wx-card-meta"><p><b>摘要</b>：' + esc(a.digest)
+        + ' <button type="button" class="btn btn-ghost btn-sm" data-wx-act="digest" data-i="' + i + '">复制</button></p></div>'
+        + (a.cards && a.cards.length ? '<div class="wx-card-meta wx-paths"><p><b>小程序卡片路径</b>：点一条复制一条，到公众号后台「小程序 → 造梦橱窗 → 填路径」粘贴，替换正文里同序号的虚线框</p><div class="wx-path-list">'
+          + a.cards.map((c, j) => '<button type="button" class="wx-path-item" data-wx-act="path" data-i="' + i + ':' + j + '" title="点一下只复制这一条路径"><span class="pn">' + String(j + 1).padStart(2, '0') + '</span><span class="pt">' + esc(c.title || '') + '</span><code>' + esc(c.path || '') + '</code><span class="pc">复制</span></button>').join('')
+          + '</div></div>' : '')
+        + '<iframe class="wx-frame" data-wx-frame="' + i + '" title="第 ' + a.no + ' 期文章预览"></iframe>'
+        + '</section>').join('');
+      list.forEach((a, i) => {
+        const f = box.querySelector('iframe[data-wx-frame="' + i + '"]');
+        if (f) f.srcdoc = wxFrameDoc(a.html);
+      });
+      box.onclick = e => {
+        const b = e.target.closest('[data-wx-act]');
+        if (!b) return;
+        const act = b.dataset.wxAct;
+        const raw = b.dataset.i || '0';
+        const i = parseInt(raw.split(':')[0], 10) || 0;
+        const a = wxArticles[i];
+        if (!a) return;
+        if (act === 'copy') wxCopyRich(i);
+        else if (act === 'source') wxCopyText(a.html, 'HTML 源码已复制');
+        else if (act === 'download') wxDownload(i);
+        else if (act === 'digest') wxCopyText(a.digest, '摘要已复制');
+        else if (act === 'paths') {
+          const cards = a.cards || [];
+          if (!cards.length) { toast('这篇文章没有卡片路径'); return; }
+          const text = '星梦期刊第 ' + a.no + ' 期 · 小程序卡片路径（按正文顺序）\n\n'
+            + cards.map((c, j) => String(j + 1).padStart(2, '0') + '. ' + (c.title || '') + '\n' + (c.path || '')).join('\n\n');
+          wxCopyText(text, '已复制 ' + cards.length + ' 条路径，按序号替换正文虚线框');
+        }
+        else if (act === 'path') {
+          const j = parseInt(raw.split(':')[1], 10) || 0;
+          const card = (a.cards || [])[j];
+          if (card && card.path) wxCopyText(card.path, '路径已复制，去公众号后台「小程序」粘贴');
+        }
+        else if (act === 'title') {
+          const j = parseInt(raw.split(':')[1], 10) || 0;
+          wxCopyText(a.titles[j] || a.titles[0], '标题已复制');
+        }
+      };
+    }
+    async function wxLoadIssues(type) {
+      const sel = $('wxIssue');
+      if (!sel) return;
+      sel.innerHTML = '<option value="">读取定稿期中…</option>';
+      try {
+        const d = await api('/api/admin/wechat-articles/issues?type=' + encodeURIComponent(type));
+        wxIssues[type] = d.issues || [];
+        sel.innerHTML = wxIssues[type].length
+          ? wxIssues[type].map(x => '<option value="' + x.no + '">第 ' + x.no + ' 期 · ' + esc(x.from) + ' — ' + esc(x.to) + '（' + x.count + ' 件上榜）</option>').join('')
+          : '<option value="">这一类还没有定稿期</option>';
+      } catch (e) {
+        sel.innerHTML = '<option value="">读取失败</option>';
+        $('wxStatus').textContent = e.message;
+      }
+    }
+    async function wxGenerate(all) {
+      const type = $('wxType').value;
+      const no = all ? 0 : (parseInt($('wxIssue').value, 10) || 0);
+      if (!all && !no) { toast('先选一期定稿期刊'); return; }
+      const featured = Math.max(1, Math.min(6, parseInt($('wxFeatured').value, 10) || 4));
+      $('wxStatus').textContent = '正在生成…';
+      try {
+        const d = await api('/api/admin/wechat-articles/' + (all ? 'batch' : 'generate'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, no, featured })
+        });
+        const list = all ? (d.articles || []) : [d];
+        if (!list.length) {
+          $('wxResults').innerHTML = '<div class="empty">还没有可生成的定稿期</div>';
+          $('wxStatus').textContent = '没有定稿期';
+          return;
+        }
+        wxRenderArticles(list);
+        $('wxStatus').textContent = '已生成 ' + list.length + ' 篇。点「复制正文」粘贴；下面每条路径点一下就复制，去公众号后台插小程序卡片替换虚线框。';
+      } catch (e) {
+        $('wxStatus').textContent = '生成失败：' + e.message;
+      }
+    }
+    function loadWechatArticles() {
+      wxArticles = [];
+      panel.innerHTML = '<div class="wx-gen">'
+        + '<div class="wx-gen-head"><h3>星梦期刊 → 公众号文章</h3>'
+        + '<p>选一期定稿的周榜 / 月榜，直接出一篇排好版的公众号稿。只出已定稿的期，名次不会再变。</p></div>'
+        + '<div class="wx-gen-bar">'
+        + '<label for="wxType">期刊</label><select id="wxType"><option value="week">星梦期刊 · 周榜</option><option value="month">星梦期刊 · 月榜</option></select>'
+        + '<label for="wxIssue">期号</label><select id="wxIssue"><option value="">读取定稿期中…</option></select>'
+        + '<label for="wxFeatured">展开</label><input id="wxFeatured" type="number" min="1" max="6" value="4" /><span style="font-size:12px;color:var(--muted)">件作品</span>'
+        + '<button type="button" class="btn btn-primary" id="wxGenBtn">一键生成</button>'
+        + '<button type="button" class="btn btn-ghost" id="wxBatchBtn">生成全部定稿期</button>'
+        + '</div>'
+        + '<p class="wx-gen-tip">复制正文后到公众号后台粘贴；正文里的虚线框是小程序卡片位，下面每条路径点一下就复制，按序号插卡片替换。封面图用的是站内地址，粘贴后后台没自动传就手动换图。</p>'
+        + '<div class="wx-gen-status" id="wxStatus"></div><div id="wxResults"></div></div>';
+      $('wxType').onchange = e => wxLoadIssues(e.target.value);
+      $('wxGenBtn').onclick = () => wxGenerate(false);
+      $('wxBatchBtn').onclick = () => wxGenerate(true);
+      wxLoadIssues('week');
     }
 
     // ---- 外链巡检（2026-11-14）----
@@ -3502,17 +3773,22 @@
       }
     }
 
-    // ---- 搜索词 tab：站内真实搜索意图（来源 /api/works?q=），只记词不记人 ----
+    // ---- 搜索词 tab：站内真实搜索意图（来源 /api/works?q=） ----
     // 屏蔽名单：拉黑的词不进前台「大家最近在搜」热搜榜（统计口径不变，只是前台不再展示）。
+    // 热词：管的是同一张前台榜的冷启动种子（search-seed.json），跟真实搜索统计分开，
+    // 加热词不会往 search-log 里写次数/人数，后台排行数字不会被运营词污染。
     let searchBlockWords = [];   // 当前屏蔽名单，渲染和按钮状态共用
+    let hotSeedState = { enabled: false, words: [], pick: 9 };  // 当前热词种子，含 pin 标记
     async function loadSearchKw() {
       try {
         // loadStats 刚拉过就直接复用；否则自己拉一份（切 tab / 点刷新都走这里）
-        const [s, bl] = await Promise.all([
+        const [s, bl, hs] = await Promise.all([
           lastStats ? Promise.resolve(lastStats) : api('/api/admin/stats'),
-          api('/api/admin/search-block')
+          api('/api/admin/search-block'),
+          api('/api/admin/hot-seeds').catch(() => ({ enabled: false, words: [] }))
         ]);
         searchBlockWords = Array.isArray(bl.words) ? bl.words : [];
+        hotSeedState = hs && Array.isArray(hs.words) ? hs : { enabled: false, words: [], pick: 9 };
         renderSearchKw(s);
       } catch (e) {
         if (e.status === 401 || e.status === 403) backToLogin('口令已失效，请重新输入');
@@ -3540,6 +3816,31 @@
         }
         renderSearchKw(lastStats);
         toast(action === 'block' ? '已屏蔽「' + q + '」：前台热搜不再展示，词已沉到列表底部' : '已恢复「' + q + '」');
+      } catch (e) {
+        toast('操作失败：' + e.message);
+      }
+    }
+
+    // 热词增删改 / 置顶 / 开关：POST 回来拿最新整份配置，再重画这一页。
+    // 热词不进真实搜索统计，所以不用动 lastStats，也不用重拉 /api/admin/stats。
+    async function saveHotSeed(action, q, enabled) {
+      const body = { action };
+      if (q !== undefined) body.q = q;
+      if (enabled !== undefined) body.enabled = enabled;
+      try {
+        const r = await api('/api/admin/hot-seeds', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        hotSeedState = r;
+        renderSearchKw(lastStats);
+        const changed = r.changed !== false;
+        const label = { add: '已加热词', remove: '已删除热词', pin: '已置顶热词', unpin: '已取消热词置顶' }[action];
+        const msg = action === 'enable'
+          ? (enabled ? '已开启前台热词' : '已关闭前台热词，榜单回到真实搜索')
+          : (changed ? label + '「' + q + '」' : '「' + q + '」已经是热词了');
+        toast(msg);
       } catch (e) {
         toast('操作失败：' + e.message);
       }
@@ -3627,6 +3928,33 @@
       const chipsHtml = blockedItems.length
         ? blockedItems.map(it => `<span class="sk-chip">${esc(it.w)}${it.has ? `<i>${it.n} 次</i>` : ''}<b data-sk-unblk="${esc(it.w)}" title="点一下恢复，回到上面的排行">×</b></span>`).join('')
         : '<span class="sk-noblock">还没有屏蔽的词</span>';
+      // 热词种子：pin 的置顶词在 9 条种子名额里优先占座；不写进真实搜索统计
+      const hsWords = Array.isArray(hotSeedState.words) ? hotSeedState.words : [];
+      const hsChipsHtml = hsWords.length
+        ? hsWords.map(x => {
+            const w = typeof x === 'string' ? x : (x && x.w) || '';
+            const pin = !!(x && typeof x === 'object' && x.pin);
+            const sw = esc(w);
+            return `<span class="hs-chip${pin ? ' is-pin' : ''}">${pin
+              ? `<em data-hs-unpin="${sw}" title="点一下取消置顶">已顶</em>`
+              : `<em data-hs-pin="${sw}" title="点一下置顶：每次都出现在前台热词里">置顶</em>`}${sw}<b data-hs-remove="${sw}" title="删除这个热词">×</b></span>`;
+          }).join('')
+        : '<span class="hs-nowords">还没有热词。加几个，前台「大家最近在搜」就能直接展示。</span>';
+      const hotSecHtml = `
+        <div class="hs-sec">
+          <div class="hs-title">
+            <span class="sk-blabel">热词管理 <b>${hsWords.length}</b> 个</span>
+            <span>· 不写进真实搜索统计；置顶词优先展示，其余随机抽 ${hotSeedState.pick != null ? hotSeedState.pick : 9} 条</span>
+            <button class="hs-switch${hotSeedState.enabled ? '' : ' off'}" data-hs-toggle>${hotSeedState.enabled ? '关闭热词' : '开启热词'}</button>
+          </div>
+          <div class="hs-bar">
+            ${hsChipsHtml}
+            <span class="sk-add">
+              <input id="hsAddInput" placeholder="加热词，回车或点添加" maxlength="30">
+              <button data-hs-add>添加</button>
+            </span>
+          </div>
+        </div>`;
       const rows = topRows.length
         ? (() => {
             const head = `
@@ -3658,6 +3986,7 @@
         <div class="promo-src">
           <h4>站内搜索词<span>今日 ${sk.todayN || 0} 次 · 近 30 天 ${sk.monthN || 0} 次 · 累计 ${sk.total || 0} 次 · 共 ${sk.words || 0} 个词 · 这里按次数排；前台榜单按人数排（账号/设备号去重，IP 仅哈希兜底）</span></h4>
           ${rows}
+          ${hotSecHtml}
           <div class="sk-blocksec">
             <div class="sk-bsec-title">
               <span class="sk-blabel">已屏蔽 <b>${blockedItems.length}</b> 个词</span>
@@ -3675,11 +4004,16 @@
         ${findBlockHtml((s && s.find) || {})}`;
     }
 
-    // 搜索词 tab 的按钮交互：屏蔽/恢复、屏蔽名单里的 ×、手动添加（点按钮或回车）
+    // 搜索词 tab 的按钮交互：屏蔽/恢复、热词管理、两个输入框的回车
     panel.addEventListener('click', e => {
       const chipX = e.target.closest('b[data-sk-unblk]');
       const btn = e.target.closest('button.sk-btn');
       const addBtn = e.target.closest('[data-sk-add]');
+      const hsToggle = e.target.closest('[data-hs-toggle]');
+      const hsAdd = e.target.closest('[data-hs-add]');
+      const hsPin = e.target.closest('[data-hs-pin]');
+      const hsUnpin = e.target.closest('[data-hs-unpin]');
+      const hsRemove = e.target.closest('[data-hs-remove]');
       if (chipX) return void toggleSearchBlock(chipX.dataset.skUnblk, 'unblock');
       if (btn) return void toggleSearchBlock(btn.dataset.skBlk, btn.dataset.skUnblk ? 'unblock' : 'block');
       if (addBtn) {
@@ -3688,14 +4022,33 @@
         if (!q) return toast('先输入要屏蔽的词');
         toggleSearchBlock(q, 'block');
       }
+      if (hsToggle) return void saveHotSeed('enable', undefined, !hotSeedState.enabled);
+      if (hsAdd) {
+        const input = document.getElementById('hsAddInput');
+        const q = input ? input.value.trim() : '';
+        if (!q) return toast('先输入要加的热词');
+        if (input) input.value = '';
+        return void saveHotSeed('add', q);
+      }
+      if (hsPin) return void saveHotSeed('pin', hsPin.dataset.hsPin);
+      if (hsUnpin) return void saveHotSeed('unpin', hsUnpin.dataset.hsUnpin);
+      if (hsRemove) return void saveHotSeed('remove', hsRemove.dataset.hsRemove);
     });
     panel.addEventListener('keydown', e => {
       if (e.key !== 'Enter') return;
-      const input = e.target.closest('#skAddInput');
-      if (!input) return;
-      const q = input.value.trim();
-      if (!q) return toast('先输入要屏蔽的词');
-      toggleSearchBlock(q, 'block');
+      const skInput = e.target.closest('#skAddInput');
+      if (skInput) {
+        const q = skInput.value.trim();
+        if (!q) return toast('先输入要屏蔽的词');
+        return void toggleSearchBlock(q, 'block');
+      }
+      const hsInput = e.target.closest('#hsAddInput');
+      if (hsInput) {
+        const q = hsInput.value.trim();
+        if (!q) return toast('先输入要加的热词');
+        hsInput.value = '';
+        return void saveHotSeed('add', q);
+      }
     });
 
     // ---- 行为流水 tab：谁 · 什么时候 · 做了什么 ----
@@ -4282,14 +4635,19 @@
       })();
       // 顶部总计行：汇总表格当前展示的窗口。回头率 / 注册率不能逐日相加，
       // 统一用「合计回头 ÷ 合计访客」「合计注册 ÷ 合计访客」重算；分端口径与逐日一致（网页访客=vis-visMini、新=访客-回头）。
+      // 2026-11-22 站长追加：回头率格同时给「日均」小字 = 窗口内逐日回头率的算术平均（各天等权）。
+      // 主数字（合计÷合计）答「整个窗口的回头占比」，小字日均答「典型一天多少」，两个口径并存、不互相替换。
+      // 日均只统计有有效分母的天（账前 / 访客 0 / 无端拆分账的天不计），取数口径与逐日格严格一致。
       // 注册合计 t.n / t.webReg / t.mini 按非企业账号算，注册率就拿这三个数做分子，
       // 与紧挨着的注册列显示值严格一致。其中主账号 / 微信辅助号的构成累计在 t.main / t.aux，只写进 title。
       const visTotalRow = (() => {
         const rows = daily.slice(-60).reverse();
         if (!rows.length) return '';
         const t = { vis:0, visNew:0, visOld:0, n:0, main:0, aux:0, webVis:0, webNew:0, visOldWeb:0, webReg:0, miniVis:0, miniNew:0, visOldMini:0, mini:0, hasSplit:false };
+        const retAvg = { all: [], web: [], mini: [] };   // 逐日回头率数值，供「日均」求算术平均
         rows.forEach(x => {
           if (x.vis != null) { t.vis += x.vis; t.visNew += (x.visNew || 0); t.visOld += (x.visOld || 0); }
+          if (x.visRet != null) retAvg.all.push(x.visRet);
           t.n += x.n || 0;   // 注册跟注册日走，不跟访客账闸（见上注释）
           t.main += x.main || 0;
           t.aux += x.aux || 0;
@@ -4300,30 +4658,36 @@
             const webVis = Math.max(0, x.vis - x.visMini);
             t.webVis += webVis; t.webNew += Math.max(0, webVis - (x.visOldWeb || 0)); t.visOldWeb += (x.visOldWeb || 0);
             t.miniVis += x.visMini; t.miniNew += Math.max(0, x.visMini - (x.visOldMini || 0)); t.visOldMini += (x.visOldMini || 0);
+            if (webVis) retAvg.web.push(Math.round((x.visOldWeb || 0) / webVis * 1000) / 10);
+            if (x.visMini) retAvg.mini.push(Math.round((x.visOldMini || 0) / x.visMini * 1000) / 10);
           }
         });
         const dash = '—';
+        // 日均回头率：逐日回头率数值的算术平均，与 pct 一样保留 1 位小数。
+        const avgPct = arr => arr.length ? (Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 10) / 10) + '%' : null;
+        const avgAll = avgPct(retAvg.all), avgWeb = avgPct(retAvg.web), avgMini = avgPct(retAvg.mini);
+        const avgSub = avg => avg ? `<span class="rd-total-sub">日均 ${avg}</span>` : '';
         return `
         <tr class="rd-total-row">
           <td${hv(0)}>总计<span style="color:var(--muted);font-weight:400"> · 近 ${rows.length} 天</span></td>
           <td${hv(1)}><b>${t.vis}</b></td>
           <td${hv(2)}>${t.visNew}</td>
           <td${hv(3)}>${t.visOld}</td>
-          <td${hv(4)}>${pct(t.visOld, t.vis)}</td>
+          <td${hv(4)} title="主数字＝合计回头 ${t.visOld} ÷ 合计访客 ${t.vis}（整体加权口径）${avgAll ? '；日均＝窗口内逐日回头率的算术平均 ' + avgAll + '（各天等权，账前 / 无访客的天不计）' : ''}">${pct(t.visOld, t.vis)}${avgSub(avgAll)}</td>
           <td${hv(5)} title="总计行不打数：逐日相加会把同一账号多天的回访重复计，没有意义；要看人数请按逐日格看">—</td>
           <td${hv(6)} title="窗口内新增非企业账号合计 ${t.n}（其中主账号 ${t.main}、微信辅助号 ${t.aux}，辅助号是小程序真实用户、同样计入）。右边注册率就拿 ${t.n} 做分子">${t.n}</td>
           <td${hv(7)} title="新增账号 ${t.n} ÷ 访客 ${t.vis}：分子就是左边显示的注册合计。账前注册没有对应访客分母，结果仅作参考">${pct(t.n, t.vis)}</td>
           <td${hv(8)} class="vg-split">${t.hasSplit ? t.webVis : dash}</td>
           <td${hv(9)}>${t.hasSplit ? t.webNew : dash}</td>
           <td${hv(10)}>${t.hasSplit ? t.visOldWeb : dash}</td>
-          <td${hv(11)}>${t.hasSplit ? pct(t.visOldWeb, t.webVis) : dash}</td>
+          <td${hv(11)} title="主数字＝合计回头 ${t.hasSplit ? t.visOldWeb : dash} ÷ 合计访客 ${t.hasSplit ? t.webVis : dash}${avgWeb ? '；日均 ' + avgWeb : ''}">${t.hasSplit ? pct(t.visOldWeb, t.webVis) : dash}${avgSub(avgWeb)}</td>
           <td${hv(12)} title="总计行不打数：逐日相加同一账号会重复计，没有意义">—</td>
           <td${hv(13)} title="窗口内网页端新增账号合计 ${t.webReg}；右边注册率就拿这个数做分子">${t.webReg}</td>
           <td${hv(14)} title="网页端新增账号 ${t.webReg} ÷ 网页访客 ${t.hasSplit ? t.webVis : dash}：分子就是左边显示的注册合计；网页访客账从 11-16 才有，账前注册没有分母，仅作参考">${t.hasSplit ? pct(t.webReg, t.webVis) : dash}</td>
           <td${hv(15)} class="vg-split">${t.hasSplit ? t.miniVis : dash}</td>
           <td${hv(16)}>${t.hasSplit ? t.miniNew : dash}</td>
           <td${hv(17)}>${t.hasSplit ? t.visOldMini : dash}</td>
-          <td${hv(18)}>${t.hasSplit ? pct(t.visOldMini, t.miniVis) : dash}</td>
+          <td${hv(18)} title="主数字＝合计回头 ${t.hasSplit ? t.visOldMini : dash} ÷ 合计访客 ${t.hasSplit ? t.miniVis : dash}${avgMini ? '；日均 ' + avgMini : ''}">${t.hasSplit ? pct(t.visOldMini, t.miniVis) : dash}${avgSub(avgMini)}</td>
           <td${hv(19)} title="总计行不打数：逐日相加同一账号会重复计，没有意义">—</td>
           <td${hv(20)} title="窗口内小程序端新增账号合计 ${t.mini}；右边注册率就拿这个数做分子">${t.mini}</td>
           <td${hv(21)} title="小程序端新增账号 ${t.mini} ÷ 小程序访客 ${t.hasSplit ? t.miniVis : dash}：分子就是左边显示的注册合计；小程序访客账从 11-16 才有，账前注册没有分母，仅作参考">${t.hasSplit ? pct(t.mini, t.miniVis) : dash}</td>
@@ -4367,7 +4731,7 @@
       panel.innerHTML = `
         <div class="stats" id="rsKpiRow">${rsKpiTilesHtml(d)}</div>
         <div class="promo-src">
-          <h4>每日访客与回头率<span title="注册列与注册率的分子都按非企业账号算（含 wx 开头的微信辅助号；企业认证账号不计）；构成见注册格悬停提示 · 注册用户回访 ＝ 当天回访的访客里已登录的注册账号 · 总计行不打数（逐日相加同一账号会重复）">分三栏对照：全部 / 网页端 / 小程序端，各含访客·新访客·回头·回头率·注册用户回访·注册·注册率 · 回头率 ＝ 回头人数 ÷ 访客总人数 · 注册率 ＝ 注册人数 ÷ 访客总人数（注册不含企业认证账号；访客含已登录老用户，仅作参考，不是转化率）· 访客 = 当天来过的去重访客（登录按账号 / 网页按 IP / 小程序按设备）· 回头客 = 之前也来过的人 · 逐日记录自 ${esc(d.visFrom || '2026-11-05')} 起（此前账本混着爬虫不采用，显示「—」）· 端拆分与小程序访客自 11-16 起有记录</span></h4>
+          <h4>每日访客与回头率<span title="注册列与注册率的分子都按非企业账号算（含 wx 开头的微信辅助号；企业认证账号不计）；构成见注册格悬停提示 · 注册用户回访 ＝ 当天回访的访客里已登录的注册账号 · 总计行回访人数不打数（逐日相加同一账号会重复）· 总计行回头率：主数字＝合计回头÷合计访客（整体加权），小字日均＝逐日回头率的算术平均（各天等权）">分三栏对照：全部 / 网页端 / 小程序端，各含访客·新访客·回头·回头率·注册用户回访·注册·注册率 · 回头率 ＝ 回头人数 ÷ 访客总人数 · 注册率 ＝ 注册人数 ÷ 访客总人数（注册不含企业认证账号；访客含已登录老用户，仅作参考，不是转化率）· 总计行回头率下挂「日均」小字＝逐日回头率的算术平均 · 访客 = 当天来过的去重访客（登录按账号 / 网页按 IP / 小程序按设备）· 回头客 = 之前也来过的人 · 逐日记录自 ${esc(d.visFrom || '2026-11-05')} 起（此前账本混着爬虫不采用，显示「—」）· 端拆分与小程序访客自 11-16 起有记录</span></h4>
           ${rsColChipsHtml('vis', visColNames)}
           <div class="rd-scroll"><table class="rd-table">
             <thead><tr>${visGroupHead}</tr><tr>${visColNames.map((c, i) => `<th${hv(i)}${(i === 8 || i === 15) ? ' class="vg-split"' : ''}${c === '注册率' ? ' title="非企业账号新增 ÷ 访客（含微信辅助号，不含企业认证账号）。访客分母混着已登录老用户，不是「可能注册的人」，仅作参考，不是转化率；逐日注册率不准已隐藏，只看上方总计行"' : (c === '注册' ? ' title="非企业账号新增，含 wx 开头的微信辅助号（小程序真实用户，账号名微信生成）；企业认证账号不计"' : (c === '注册用户回访' ? ' title="注册用户中当天回访的人数（登录按账号认，之前也来过）；网页 / 小程序端的拆分按当天的端账，11-16 起有记录"' : ''))}>${c}</th>`).join('')}</tr></thead>
@@ -8021,10 +8385,11 @@
                 <span style="color:var(--muted);font-size:12px;margin-left:6px">@${esc(i.author)} · ${fmtTime(i.createdAt)}</span>
               </div>
               <div class="idea-body">${esc(i.title)}</div>
-              <div class="row-meta">${Icons.icon('thumb', 13)} ${i.wants} 人想要${i.claimer ? ` · ${Icons.icon('gear', 13)} ${esc(i.claimer.name)} 在做` : ''}${i.work ? ` · ✓ 已实现：${esc(i.work.title)}` : ''} · 💬 ${cmts.length} 条评论</div>
+              <div class="row-meta">${Icons.icon('thumb', 13)} ${i.wants} 人想要${i.claimer ? ` · ${Icons.icon('gear', 13)} ${esc(i.claimer.name)} 在做` : ''}${i.bounty ? ` · 悬赏 ${i.bounty.amount} 盏${i.bounty.paid ? '（已发）' : '（待验收）'}` : ''}${i.work ? ` · ✓ 已实现：${esc(i.work.title)}` : ''} · 💬 ${cmts.length} 条评论</div>
               ${cmts.length ? `<div class="idea-cmts">${cmts.map(cmtRow).join('')}</div>` : ''}
             </div>
             <div class="row-actions">
+              ${i.bounty && !i.bounty.paid && i.status === 'done' ? `<button class="btn btn-ok btn-sm" data-idea-pay="${i.id}" title="确认作品没问题后，把悬赏发给认领人">验收发奖 ${i.bounty.amount} 盏</button>` : ''}
               <button class="btn btn-sm" data-idea-hide="${i.id}" data-next="${i.hidden ? '0' : '1'}">${i.hidden ? '恢复展示' : '隐藏'}</button>
               <button class="btn btn-danger btn-sm" data-idea-del="${i.id}">删除</button>
             </div>
@@ -8069,6 +8434,17 @@
           body: JSON.stringify({ hidden })
         }).then(cb);
 
+        panel.querySelectorAll('[data-idea-pay]').forEach(b => {
+          b.onclick = async () => {
+            if (!confirm('确认作品真做出来了？点一下就把悬赏发给认领人，发了收不回来。')) return;
+            b.disabled = true;
+            try {
+              const d = await api('/api/admin/ideas/' + encodeURIComponent(b.dataset.ideaPay) + '/pay-bounty', { method: 'POST' });
+              toast(`已发 ${d.amount} 盏灯火`);
+              loadIdeasAdmin();
+            } catch (e) { toast(e.message); b.disabled = false; }
+          };
+        });
         panel.querySelectorAll('[data-idea-hide]').forEach(b => {
           b.onclick = async () => {
             b.disabled = true;
@@ -12455,6 +12831,45 @@
           try {
             await submitBadge(ok ? 'grant' : 'ignore', ok ? el.dataset.apOk : el.dataset.apNo, el.dataset.apUser);
           } catch (err) { toast(err.message); }
+        };
+      } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    // 酒馆悬赏：这里只定奖励额度，具体谁领由「造梦酒馆」tab 里的验收发奖按钮决定。
+    async function loadBountyConfig() {
+      try {
+        const c = await api('/api/admin/bounty-config');
+        panel.innerHTML = `
+          <div class="hint" style="padding:16px 18px 0">
+            现在大家手里灯火不多，悬赏先走平台补贴：发起人不扣灯火，创作者做出来、你在「造梦酒馆」那一栏点验收，灯火才到账。<br />
+            默认关着。想开就填好每单奖励再勾上；关掉之后前台连悬赏选项都不显示，已经挂出去的照旧能验收发奖。
+          </div>
+          <div class="form-inline" style="padding:16px 18px;align-items:center">
+            <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="bcEnabled" ${c.enabled ? 'checked' : ''} /> 开启悬赏</label>
+            <input id="bcAmount" type="number" min="1" max="2000" value="${Number(c.amount) || 50}" style="max-width:150px" title="每单奖励多少盏灯火" />
+            <span style="color:var(--muted)">盏 / 单</span>
+            <input id="bcPerDay" type="number" min="0" max="20" value="${Number(c.perUserPerDay) || 1}" style="max-width:160px" title="同一个发起人一天最多挂几单，0 表示不限" />
+            <span style="color:var(--muted)">单 / 人 / 天（0 = 不限）</span>
+            <button class="btn btn-primary" id="bcSave">保存设置</button>
+          </div>
+          <div class="hint" id="bcMsg" style="padding:0 18px 16px"></div>`;
+        $('bcSave').onclick = async () => {
+          const btn = $('bcSave');
+          btn.disabled = true;
+          try {
+            const saved = await api('/api/admin/bounty-config', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                enabled: $('bcEnabled').checked,
+                amount: Number($('bcAmount').value),
+                perUserPerDay: Number($('bcPerDay').value)
+              })
+            });
+            $('bcMsg').textContent = saved.enabled
+              ? `已保存：前台现在可以挂悬赏，每单 ${saved.amount} 盏。`
+              : '已保存：悬赏关闭，前台不显示入口。';
+          } catch (e) { $('bcMsg').textContent = e.message; }
+          btn.disabled = false;
         };
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }
