@@ -216,8 +216,8 @@ function osBadgeHtml(w) {
 // 之前这里所有付费作品一律输出「付费」，导致同一件作品服务端页写「付费」、
 // 前端弹窗写「部分免费」——2026-11-16 站长反馈（/w/mfjnrdckvbva）后统一为按 paidModel 出具体形式。
 const PAID_MODELS = {
-  freemium: '部分免费', member: '会员专享', onetime: '单篇购买',
-  subscription: '订阅制', buyout: '一次买断', trial: '试用后付费'
+  freemium: '部分免费', freeuse: '免费能用（有付费功能）', member: '会员专享', onetime: '单篇购买',
+  subscription: '订阅制', buyout: '一次买断', trial: '试用后付费', lamp: '灯火解锁'
 };
 
 // 付费 / 灯火解锁标识：默认免费不输出，只有作者标注了才显示

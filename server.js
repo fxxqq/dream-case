@@ -390,6 +390,7 @@ function flushPendingWrites() {
   // 广告计费去重桶（data/ad-bill.json）：最后 500ms 里刚扣的几次也得落盘，
   // 否则重启后这几个访客当天又被允许扣一次 —— 就是 2026-11-14 查出来的重复扣费。
   try { flushAdBill(); } catch { /* 变量尚未初始化时静默跳过 */ }
+  try { flushAdViewCap(); } catch { /* 同上 */ }
 }
 function installFlushHooks() {
   process.on('exit', flushPendingWrites);
@@ -607,8 +608,9 @@ const saveAdGate = () => writeJSON('ad-gate.json', adGateCfg);
 //   rankTop  = 星梦榜页顶部通栏最多条数（PC 宽屏并排，900-1180 视口自动降到 3）
 //   rankSide = 星梦榜页右栏竖排卡列最多条数
 //   barSide  = 造梦酒馆页右栏竖排最多条数
-// 三个容器共用 rank 槽位（一次购买多处轮展），但各有各的条数上限；右栏窄，调太大标题会挤碎。
-const AD_DISPLAY_DEFAULTS = { rankTop: 4, rankSide: 3, barSide: 2 };
+//   crSide   = 造梦者书架页右栏竖排最多条数（2026-11-22 从跟 rankSide 共用改成独立可配）
+// 四个容器共用 rank 槽位（一次购买多处轮展），但各有各的条数上限；右栏窄，调太大标题会挤碎。
+const AD_DISPLAY_DEFAULTS = { rankTop: 4, rankSide: 3, barSide: 2, crSide: 3 };
 const AD_DISPLAY_MAX = 6;
 function readAdDisplay() {
   const raw = readJSON('ad-display.json', null) || {};
@@ -616,7 +618,8 @@ function readAdDisplay() {
   return {
     rankTop: num(raw.rankTop, AD_DISPLAY_DEFAULTS.rankTop),
     rankSide: num(raw.rankSide, AD_DISPLAY_DEFAULTS.rankSide),
-    barSide: num(raw.barSide, AD_DISPLAY_DEFAULTS.barSide)
+    barSide: num(raw.barSide, AD_DISPLAY_DEFAULTS.barSide),
+    crSide: num(raw.crSide, AD_DISPLAY_DEFAULTS.crSide)
   };
 }
 // 投放权重（后台「投放单」页切换，存 data/promo-priority.json，2026-11-13 站长定档）：
@@ -856,6 +859,73 @@ let workTypes = readJSON('types.json', DEFAULT_TYPES.map(t => ({ ...t })));
 function saveReports() { writeJSON('reports.json', reports); }
 function saveTools() { writeJSON('tools.json', tools); }
 function saveCategories() { writeJSON('categories.json', categories); }
+
+// 企业认证产品跟普通作品同池（2026-11-22 站长改规则）：tools.json 里 cert:true 且还在投放的条目，
+// 在作品库里落一份作品（id=certtool-<工具id>），榜单、随便逛逛、搜索、详情、点赞收藏评论、
+// 浏览统计全走作品那套；作者名显示核验主体，卡片挂企业认证小盾章。工具清单仍由后台维护，
+// 改了工具字段下次同步即生效，工具删掉 / 停用 / 取消认证时对应作品一并撤下。
+// 非认证的工具卡仍是推广位：不进榜单、不算作品数（见首页 mountToolCards 与 /rules 第十一节）。
+const CERT_WORK_PREFIX = 'certtool-';
+function syncCertToolWorks() {
+  const wanted = new Map();
+  let toolPatched = false;
+  tools.forEach(t => {
+    if (!t || t.active === false || !t.cert || !t.name || !t.url) return;
+    const id = CERT_WORK_PREFIX + String(t.id || '');
+    if (!t.createdAt) { t.createdAt = new Date().toISOString(); toolPatched = true; }
+    wanted.set(id, t);
+  });
+  let changed = false;
+  // 只动同步生成的作品（certToolId），作者手动上传的作品一根手指都不碰
+  for (let i = works.length - 1; i >= 0; i--) {
+    const w = works[i];
+    if (!w || w.certToolId === undefined) continue;
+    const t = wanted.get(w.id);
+    if (!t) { works.splice(i, 1); changed = true; continue; }
+    const subject = String(t.certSubject || t.name || '');
+    const patch = {
+      title: String(t.name).slice(0, 60),
+      titleName: String(t.name).slice(0, 60),
+      titleTag: String(t.desc || '').slice(0, 120),
+      prompt: String(t.detail || t.desc || ''),
+      link: String(t.url).slice(0, 500),
+      author: subject || '企业认证',
+      certSubject: subject,
+      certAt: String(t.certAt || ''),
+      partner: !!t.partner
+    };
+    Object.keys(patch).forEach(k => { if (w[k] !== patch[k]) { w[k] = patch[k]; changed = true; } });
+    wanted.delete(w.id);
+  }
+  wanted.forEach((t, id) => {
+    const subject = String(t.certSubject || t.name || '');
+    works.push({
+      id,
+      title: String(t.name).slice(0, 60),
+      titleName: String(t.name).slice(0, 60),
+      titleTag: String(t.desc || '').slice(0, 120),
+      prompt: String(t.detail || t.desc || ''),
+      link: String(t.url).slice(0, 500),
+      author: subject || '企业认证',
+      certSubject: subject,
+      certAt: String(t.certAt || ''),
+      partner: !!t.partner,
+      // 下面是「普通作品」那一套默认值：进审核池、已上线、Web 形态，互动计数从零开始攒
+      certProduct: true, certToolId: String(t.id || ''),
+      status: 'approved', stage: 'live', hidden: false,
+      types: ['Web'], type: 'Web',
+      category: '', categories: [],
+      anonymous: false,
+      createdAt: t.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      likes: 0, favs: 0, views: 0
+    });
+    changed = true;
+  });
+  if (toolPatched) saveTools();
+  if (changed) saveWorksNow();
+}
+syncCertToolWorks();
 
 // ---------- 一次性迁移（每个 key 只跑一次，避免后台删掉的默认项被反复加回来） ----------
 // 线上 data/ 不进部署包，所以「新增默认分类/形态」这类改动不会自动生效，
@@ -1983,7 +2053,7 @@ const AD_SLOTS = [
   { key: 'list-first', name: '首页第一格', where: '首页作品列表第一张卡（置顶作品之后）', size: '卡位 · 用作品封面' },
   { key: 'home-bottom', name: '首页列表底部', where: '作品列表末尾、加载更多上方', size: '建议 1400 × 240' },
   { key: 'detail', name: '作品详情页', where: '详情弹窗内、评论区上方', size: '建议 1200 × 240' },
-  { key: 'rank', name: '榜单页 + 造梦酒馆顶部', where: '星梦榜页右栏（PC）+ 酒馆页头下方（一次购买两处轮展）', size: '推荐位 · 用作品封面' },
+  { key: 'rank', name: '榜单页 + 造梦酒馆 + 造梦者书架', where: '星梦榜右栏（PC）+ 酒馆页头下方 + 书架右栏（PC，一次购买三处轮展）', size: '推荐位 · 用作品封面' },
   { key: 'footer', name: '全站页脚上方', where: '所有页面底部通栏', size: '建议 1400 × 200' },
   // 小程序端：位置渲染在 zaomeng-mini 的 components/ad-card，与网页端互不干扰
   { key: 'mini-home-top', name: '小程序·首页顶部横幅', where: '小程序首页筛选栏下方、作品流上方', size: '建议 1080 × 360', platform: 'mini' },
@@ -2150,6 +2220,11 @@ const REDEEM_SLOTS = [
   }
 ];
 const REDEEM_SLOT_KEYS = REDEEM_SLOTS.map(s => s.key);
+// 商业广告位（站长后台「广告位」页自己建的运营广告，接付费单用的）：
+// 首页顶部/底部横幅、页脚、小程序公告位。2026-11-22 站长定：产品推广位（灯火兑换的那些位子，
+// 用户自投和站长代投都是「产品」，同池同规则）与商业位彻底拆开——互不兜底、互不混投。
+// 后台只能把广告挂到商业位；产品位只收灯火兑换的单，下发时也按这个口径各走各的。
+const COMMERCIAL_SLOT_KEYS = AD_SLOT_KEYS.filter(k => !REDEEM_SLOT_KEYS.includes(k));
 function redeemCfg(slot) {
   return REDEEM_SLOTS.find(s => s.key === slot) || REDEEM_SLOTS[0];
 }
@@ -5362,7 +5437,7 @@ function shareRecOf(uid) {
   }
   return r;
 }
-// 分享达人榜用的积分：只算用户推广挣来的（分享访问 / 邀请注册 / 外宣里程碑）。
+// 分享达人榜用的积分：只算产品推荐挣来的（分享访问 / 邀请注册 / 外宣里程碑）。
 // 系统赠送（管理员调整、开源/上传奖励、签到、兑换码、他人转赠）一律不计——
 // 榜单比的是「带来多少真实的人」，不是谁的余额大（余额里大多是人情灯火）。
 function boardPointsOf(rec) {
@@ -6062,12 +6137,22 @@ app.use((req, res, next) => {
 
 // 旧域名收口（2026-11-20）：idea.v5pc.com 的请求 301 到主域，路径和 query 原样带过去。
 // 探活和证书校验放行，别把健康检查 / ACME 也跳走。
+// 小程序放行（2026-11-22）：小程序里请求域名写的是 idea.v5pc.com，wx.request 拿到跨域名
+// 301 不会跟随跳到 zm94.com（跟那边配没配合法域名、备没备案都无关），全部接口会一起挂。
+// 带小程序特征（x-client:mini / 微信 UA / servicewechat.com 来源）的请求直接往后走，
+// 普通页面访问照旧 301 收口，SEO 权重不受影响。小程序正式版还没更新时靠这条兜住老版本。
 app.use((req, res, next) => {
   const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
   const fwdHost = String(req.headers['x-forwarded-host'] || '').toLowerCase().split(',')[0].trim().replace(/:\d+$/, '');
   const effective = host || fwdHost;
   if (!LEGACY_SITE_HOSTS.includes(effective)) return next();
   if (req.path === '/api/health' || req.path.startsWith('/.well-known/')) return next();
+  const ua = String(req.headers['user-agent'] || '');
+  const ref = String(req.headers.referer || '');
+  const miniReq = String(req.headers['x-client'] || '').trim().toLowerCase() === 'mini'
+    || /miniProgram|MicroMessenger/i.test(ua)
+    || ref.indexOf('servicewechat.com') >= 0;
+  if (miniReq) return next();
   res.setHeader('Vary', 'Host');
   return res.redirect(301, SITE_ORIGIN_DEFAULT + (req.originalUrl || req.url || '/'));
 });
@@ -6300,7 +6385,7 @@ const ADMIN_PERMS = [
   { key: 'users',   label: '用户与灯火', desc: '用户列表、标签、重置密码、调灯火、灯火明细、主理人名单', tabs: ['users','points'] },
   { key: 'content', label: '内容运营', desc: '评论、造梦酒馆、造梦勋章：隐藏 / 删除 / 授勋', tabs: ['comments','ideas','badges'] },
   { key: 'review',  label: '审核处理', desc: '投诉、众判、认领申请、匿名投稿排查、意见反馈、微信客服、账号申诉', tabs: ['reports','jury','claims','anonip','feedback','wxkf','appeals'] },
-  { key: 'data',    label: '数据查看', desc: '搜索词、行为流水、注册统计、推荐效果、流量构成、用户推广', tabs: ['searchkw','behavior','regstats','redeem','traffic','promos'] },
+  { key: 'data',    label: '数据查看', desc: '搜索词、行为流水、注册统计、推荐效果、流量构成、产品推荐', tabs: ['searchkw','behavior','regstats','redeem','traffic','promos'] },
   { key: 'config',  label: '站点配置', desc: '分类 / 形态 / 推荐位 / 广告 / 品牌 / 群发 / 作者回复 / 兑换码 / 友链 / 实名核验', tabs: ['categories','types','tools','ads','brands','broadcast','replies','gift','friends','smsauth'] },
   // 四个独立小模块（2026-11-17 从 data / config 拆出）：给名单管理员只开「看」，
   // 写操作（巡检 / 白名单 / 定时 / 开源收录审核 / 逛逛开关与加权）在统一闸门里只认站长，见 ADMIN_OWNER_WRITE_SEGS。
@@ -7453,7 +7538,7 @@ function parsePaid(v) {
 // donation（送灯火 / 接受打赏）2026-11-07 下线：打赏是全站通用能力，任何作品详情页都有
 // 「送灯火」按钮，不需要作者在投稿时声明。旧数据里存了 donation 的作品按「免费（不标注）」
 // 输出（见 publicWork），字段本身不做迁移，作者下次编辑保存就自然清掉。
-const PAID_MODELS = ['freemium', 'member', 'onetime', 'subscription', 'buyout', 'trial', 'lamp'];
+const PAID_MODELS = ['freemium', 'freeuse', 'member', 'onetime', 'subscription', 'buyout', 'trial', 'lamp'];
 // 灯火解锁不是「付费墙」：作品本身不标价，paid 标记保持 false，走自己的字段
 const NON_PAID_MODELS = ['lamp'];
 function parsePaidModel(v) {
@@ -7677,7 +7762,13 @@ function publicWork(w, user) {
     lampUnlocked: lampUnlocked,
     lampUnlocks: lampUnlockCountOf(w.id),
     authorTags: userTagsOf(w.author),
-    authorCert: certOfUser(w.author),   // 企业认证信息（null = 未认证）：卡片小盾章与详情页胶囊的悬停主体
+    // 企业认证信息（null = 未认证）：卡片小盾章与详情页胶囊的悬停主体。
+    // 认证产品是「企业主体」而非本站用户，主体名不存在 users 表里，单独从作品字段取。
+    authorCert: w.certProduct
+      ? { subject: String(w.certSubject || w.author || ''), at: String(w.certAt || '') }
+      : certOfUser(w.author),
+    certProduct: !!w.certProduct,       // 企业认证产品：跟普通作品同池，但来源与返佣关系仍对访客标明
+    partner: !!w.partner,
     codesTotal: codesOf(w.id).length,
     codesLeft: codesOf(w.id).filter(c => c.status === 'available').length,
     faved: !!(user && Array.isArray(user.favs) && user.favs.includes(w.id)),
@@ -13465,7 +13556,9 @@ app.get('/api/filter-counts', (req, res) => {
 // 可选的图标库（后台「形态管理」用来渲染图标选择条）
 app.get('/api/type-icons', (req, res) => res.json(TYPE_ICON_LIB));
 // 推荐位（工具/资源）
-app.get('/api/tools', (req, res) => res.json(tools.filter(t => t.active !== false)));
+// 公开工具清单只给「未认证」的推广工具：认证产品已同步成普通作品，详情页推荐位和首页工具卡
+// 都不该再把它当外链工具挂一遍（管理员在后台仍能看到、管理全部条目）。
+app.get('/api/tools', (req, res) => res.json(tools.filter(t => t.active !== false && !t.cert)));
 
 // 外宣指南平台清单（前端「外宣指南」页与「外宣包」共用）
 app.get('/api/platforms', (req, res) => res.json({ platforms: PLATFORMS, extra: EXTRA }));
@@ -13550,6 +13643,10 @@ function activeAds() {
   const now = Date.now();
   return ads
     .filter(a => a && a.active !== false && a.url && AD_SLOT_KEYS.includes(a.slot))
+    // 产品位 / 商业位彻底拆开（2026-11-22 站长定）：产品推广位只出灯火兑换的单（用户自投 +
+    // 站长代投一视同仁），商业位（首页横幅/页脚等）只出后台自建的运营广告。老数据或误挂的
+    // 跨侧单子一律不下发，规则口径不再有交集。
+    .filter(a => REDEEM_SLOT_KEYS.includes(a.slot) ? a.source === 'redeem' : a.source !== 'redeem')
     // 积分兑换的广告还有两道闸：额度（展示/点击按各自口径）没用完、没到兜底有效期
     .filter(a => a.source !== 'redeem' || redeemAdAlive(a, now))
     .filter(adTargetVisible)
@@ -13699,6 +13796,138 @@ function flushAdBill() {
   adBillPersist();
 }
 
+// ---------- 推广展示频控：每天按访客 / IP 限制同一条推广的曝光次数（2026-11-22 站长定）----------
+// 与计费去重（ad-bill.json，决定扣不扣额度）是两码事：这里是「还展不展示给这个人」。
+// 规则（按自然日，跨零点归零）：
+//   · 用户自己投的推广（source=redeem、非 comp）：同一访客每天最多 3 次
+//     （登录按账号、未登录按本机 vid、都没有才按 IP 兜底；下发和曝光都带 vid，共享出口不互相挤占）。
+//   · 站长代投（comp）：同一 IP 每天最多 7 次（不认访客 ID，代投口径就是 IP）。
+// 到顶就不再给这个人下发这条广告（等于不再展示），次日自动恢复。
+// 落盘 ad-viewcap.json = { 'YYYY-MM-DD': { <adId>: { <key>: count } } }，跨重启不丢；只留近 2 天。
+const AD_VIEWCAP_FILE = 'ad-viewcap.json';
+const AD_VIEWCAP_PAID = 3;            // 用户自己投：每访客 / 每 IP 每天最多 3 次
+const AD_VIEWCAP_COMP = 7;            // 站长代投：每 IP 每天最多 7 次
+const AD_VIEWCAP_KEEP_DAYS = 2;
+let adViewCap = readJSON(AD_VIEWCAP_FILE, {});
+if (!adViewCap || typeof adViewCap !== 'object' || Array.isArray(adViewCap)) adViewCap = {};
+{
+  const today = dateKey();
+  Object.keys(adViewCap).forEach(d => {
+    if ((Date.parse(today) - Date.parse(d)) / 86400000 >= AD_VIEWCAP_KEEP_DAYS) delete adViewCap[d];
+  });
+}
+let adViewCapSaveTimer = null;
+function adViewCapPersist() {
+  try {
+    const today = dateKey();
+    const out = {};
+    Object.keys(adViewCap).forEach(d => {
+      if ((Date.parse(today) - Date.parse(d)) / 86400000 < AD_VIEWCAP_KEEP_DAYS) out[d] = adViewCap[d];
+    });
+    writeJSON(AD_VIEWCAP_FILE, out);
+  } catch (e) { console.error('[adViewCap]', e.message); }
+}
+function adViewCapSave() {
+  if (adViewCapSaveTimer) return;
+  adViewCapSaveTimer = setTimeout(() => { adViewCapSaveTimer = null; adViewCapPersist(); }, 1000);
+}
+function flushAdViewCap() {
+  if (!adViewCapSaveTimer) return;
+  clearTimeout(adViewCapSaveTimer);
+  adViewCapSaveTimer = null;
+  adViewCapPersist();
+}
+// 计数用的身份 key：代投只认 IP；自投按访客身份（登录账号 / 未登录本机 vid / 都没有才 IP 兜底）。
+// 自投不并记 IP 维度——公司/校园共享出口下几十人共用一 IP，并记会互相挤占 3 次额度。
+function adViewCapKeys(ad, req) {
+  if (adIsComp(ad)) return ['ip:' + clientIp(req)];    // 代投：只看 IP
+  return [adVisitorKey(req)];                          // 自投：登录账号 / vid / 兜底 IP，单独算
+}
+function adViewCapLimit(ad) { return adIsComp(ad) ? AD_VIEWCAP_COMP : AD_VIEWCAP_PAID; }
+// 曝光时记一次：给这条广告在访客/IP 各维度 +1。返回是否至少一个维度已到上限。
+function bumpAdViewCap(ad, req) {
+  const day = dateKey();
+  const byAd = adViewCap[day] || (adViewCap[day] = {});
+  const bucket = byAd[ad.id] || (byAd[ad.id] = {});
+  const limit = adViewCapLimit(ad);
+  let reached = false;
+  adViewCapKeys(ad, req).forEach(k => {
+    bucket[k] = (bucket[k] || 0) + 1;
+    if (bucket[k] >= limit) reached = true;
+  });
+  adViewCapSave();
+  return reached;
+}
+// 下发时判断：这个访客/IP 今天是否已经看满这条广告（任一维度到顶）。
+function adViewCapReached(ad, req) {
+  const bucket = (adViewCap[dateKey()] || {})[ad.id];
+  if (!bucket) return false;
+  const limit = adViewCapLimit(ad);
+  return adViewCapKeys(ad, req).some(k => (bucket[k] || 0) >= limit);
+}
+// 一条广告是否纳入频控：只管灯火推广（redeem），运营广告（admin）照旧每页展示。
+function adViewCapApplies(ad) { return !!ad && ad.source === 'redeem'; }
+
+// 下发前的最终挑池：先滤掉当前访客今天看满 7 次（代投按 IP）的单，再按优先级挑；
+// 某个位剩下的条数不够同屏上限时，把被优先级挤掉、但自己没到频控的单补进来。
+// 2026-11-22 修（站长「用完接着补，别留空」）：以前顺序是反的——owner 代投先在优先级里
+// 把买家单全挤掉，再被频控滤掉 4 条，造梦者右栏就只剩 2 条、没得补。现在先滤再挑，
+// 挑完不够就把落选的补回来；「优先」只决定谁先上场，不该让位置空着。
+// 同日追加兜底：这个位「所有单都到顶」时（重度访客一上午就能刷满），从已到顶的单里
+// 挑今天看得最少的接着上——频控是为了别烦人，不是为了留空位；空了只会让人以为没人投。
+function visibleAdsFor(req) {
+  const all = activeAds();
+  const eligible = all.filter(a => !adViewCapApplies(a) || !adViewCapReached(a, req));
+  const picked = applyPromoPriority(eligible);
+  const pickedIds = new Set(picked.map(a => a.id));
+  // 同屏上限：rank 位四个容器（榜顶 / 榜右 / 酒馆右 / 书架右）共用一份下发列表，
+  // 取后台配的最大那条，保证任一容器都够摆满；其余位按前端一次最多并排的条数。
+  // 别写死 4——站长把条数调小后，下发池也跟着收，免得前端随机时把该露脸的稀释掉。
+  const disp = readAdDisplay();
+  const need = {
+    rank: Math.max(1, disp.rankTop, disp.rankSide, disp.barSide, disp.crSide),
+    detail: 2,
+    'list-first': 1,
+    'home-top': 2,
+    'home-bottom': 2,
+    footer: 3
+  };
+  // 这位访客对某条广告今天已经看的次数（兜底排序用：看得最少的先补上来）
+  const seenCount = a => {
+    const bucket = (adViewCap[dateKey()] || {})[a.id];
+    if (!bucket) return 0;
+    return adViewCapKeys(a, req).reduce((n, k) => Math.max(n, bucket[k] || 0), 0);
+  };
+  const extras = [];
+  Object.keys(need).forEach(slot => {
+    let have = picked.reduce((n, a) => n + (a.slot === slot ? 1 : 0), 0);
+    if (have >= need[slot]) return;
+    // 只补到够展示：补太多会把高优先级的单稀释掉（它们本来靠 prio 抢到上场机会）。
+    for (const a of eligible) {
+      if (have >= need[slot]) break;
+      if (a.slot === slot && !pickedIds.has(a.id)) {
+        pickedIds.add(a.id);
+        extras.push(a);
+        have++;
+      }
+    }
+    // 全到顶的兜底：没到顶的补完了还缺，就从已到顶的单里按「今天看得最少」接着补，
+    // 补到同屏上限为止——位不能空着，哪怕这个访客今天已经把额度看完了。
+    if (have < need[slot]) {
+      const exhausted = all
+        .filter(a => a.slot === slot && adViewCapApplies(a) && !pickedIds.has(a.id))
+        .sort((x, y) => seenCount(x) - seenCount(y));
+      for (const a of exhausted) {
+        if (have >= need[slot]) break;
+        pickedIds.add(a.id);
+        extras.push(a);
+        have++;
+      }
+    }
+  });
+  return picked.concat(extras);
+}
+
 // 点击 / 关闭 的 PV/UV：与曝光同一本账（ad-stats.json，同一天同一条广告下加字段），
 // 结构：{ 'YYYY-MM-DD': { <adId>: { pv, uv, clk: { pv, uv }, close: { pv, uv } } } }
 // 老数据没有 clk / close 字段，读的时候按 0 兜底，不需要迁移。
@@ -13730,6 +13959,9 @@ function trackAdShow(adId, req) {
   const days = Object.keys(adStats).sort();
   while (days.length > AD_STATS_RETENTION_DAYS) delete adStats[days.shift()];
   scheduleAdStatsSave();
+  // 展示频控：给这条推广记一次当天曝光（用户投每访客 3 次、代投每 IP 7 次，到顶不再下发）。
+  // 只记数、不影响 PV/UV 统计与计费；判定在下发接口 adViewCapReached 里做。
+  if (adViewCapApplies(ad)) bumpAdViewCap(ad, req);
   // 积分兑换的广告：每次有效曝光扣 1 次展示额度，扣完就下线（订单转 used_up）
   // 纯点击包广告（views=0）展示不扣额度、只计数，点完点击额度后由点击接口统一下线
   if (ad && ad.source === 'redeem' && (ad.budget || 0) > 0) {
@@ -13789,10 +14021,12 @@ app.get('/api/ads', (req, res) => {
   // gate：各广告位「每人每天最多展示几次」，后台可改，前端按它做频控（0 = 不限制）
   // priority：投放权重（user 优先用户 / owner 优先站长 / tie 平级），池子已按它挑过一遍，
   // 前端照单渲染即可；带回原值只为排查「为什么这条没出来」。
+  // 展示频控：把当前访客/IP 今天已看满的推广剔除（用户投 3 次、代投 7 次），不再下发＝不再展示。
+  const visible = visibleAdsFor(req).map(publicAd);
   res.json({
     slots: AD_SLOTS, gate: adGateDaily(), priority: promoPriorityMode(),
     display: readAdDisplay(),
-    ads: applyPromoPriority(activeAds()).map(publicAd)
+    ads: visible
   });
 });
 
@@ -16337,6 +16571,15 @@ app.get('/api/works', (req, res) => {
     const since = Date.now() - rangeDays * 86400000;
     list = list.filter(w => new Date(w.createdAt).getTime() >= since);
   }
+  // 付费情况筛选：free / freemium / paid（与前端 PAYMENT_PARAM 一致）。
+  // 三档互斥，每件作品只落一档（数据里 freemium/freeuse 的 paid 也是 true，要从 paid 档剔除）：
+  // free = 未标付费（paid!==true；灯火解锁 lamp 的 paid 也是 false，算免费，作品本身不标价）；
+  // freemium = 免费能用但有付费功能（部分免费 freemium + 免费能用 freeuse）；
+  // paid = 真要付钱才用（paid===true 且不是上面两类，含形式不定 / 会员 / 单篇 / 订阅 / 买断 / 试用）。
+  const paymentKey = String(req.query.payment || '');
+  if (paymentKey === 'free') list = list.filter(w => w.paid !== true);
+  else if (paymentKey === 'freemium') list = list.filter(w => w.paidModel === 'freemium' || w.paidModel === 'freeuse');
+  else if (paymentKey === 'paid') list = list.filter(w => w.paid === true && w.paidModel !== 'freemium' && w.paidModel !== 'freeuse');
   // 场景筛选：scene=work / study / life / create / relax / family。
   // 不认识的值当作「不筛」而不是「筛出空」——老链接、写错参数的收藏夹不该给一张白页。
   const sceneKey = String(req.query.scene || '');
@@ -16938,12 +17181,14 @@ function featuredBootRows(user) {
     };
   });
 }
-// 广告直出载荷：与 /api/ads 同一个收口，前端 applyAdsData 直接吃
-function bootAdPayload() {
+// 广告直出载荷：与 /api/ads 同一个收口，前端 applyAdsData 直接吃。
+// req 用于展示频控：SSR 首屏就把当前访客/IP 今天看满的推广剔除，避免首屏闪一下再消失。
+function bootAdPayload(req) {
+  const visible = visibleAdsFor(req).map(publicAd);
   return {
     slots: AD_SLOTS, gate: adGateDaily(), priority: promoPriorityMode(),
     display: readAdDisplay(),
-    ads: applyPromoPriority(activeAds()).map(publicAd)
+    ads: visible
   };
 }
 // 内联 JSON：把 < 转义掉，避免正文里出现 </script> 提前收尾
@@ -22137,11 +22382,13 @@ app.post('/api/behavior/clear', (req, res) => {
 // ================= 管理端 =================
 
 app.get('/api/admin/stats', requireAdmin, (req, res) => {
-  // 注册用户：累计 / 今日新增 / 近 7 天新增（按本地日期算）
+  // 注册用户：累计 / 今日新增 / 近 7 天新增（按本地日期算）。
+  // 与 reg-stats 同一口径：企业认证账号（cert.subject）是批量入驻的产品主体，不算注册。
   const today = dateKey();
   const weekAgo = dateKey(new Date(Date.now() - 6 * 86400e3));
+  const regUsers = users.filter(u => !(u.cert && String(u.cert.subject || '').trim()));
   let usersToday = 0, users7 = 0, usersTodayMini = 0;
-  users.forEach(u => {
+  regUsers.forEach(u => {
     const d = u.createdAt ? dateKey(new Date(u.createdAt)) : '';
     if (d === today) {
       usersToday += 1;
@@ -22182,11 +22429,11 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
     }, 0),
     views: works.reduce((s, w) => s + (w.views || 0), 0),
     likes: works.reduce((s, w) => s + (w.likes || 0), 0),
-    users: users.length,
+    users: regUsers.length,
     usersToday,
     usersTodayMini,
     users7,
-    usersMini: users.filter(u => u.regFrom === 'mini').length,
+    usersMini: regUsers.filter(u => u.regFrom === 'mini').length,
     promo: promoStatsForAdmin(),
     search: searchStatsForAdmin(),
     find: findStatsForAdmin(),
@@ -22721,7 +22968,7 @@ app.post('/api/work/github-preview', async (req, res) => {
 // 单独接口，不塞进 /api/admin/stats：那边后台每次刷新都拉，这边口径多
 // （按天 / 星期 / 来源 / 绑定 / 标签），独立成页，切时间窗时各查各的。
 // 口径（后台页面上也写了一份，改这里记得同步文案）：
-//  · 「注册」一律按 createdAt 的本地日期归天；KPI 指标固定全量口径，不随窗口切换
+//  · 「注册」一律按 createdAt 的本地日期归天，企业认证账号（cert.subject）不计；KPI 指标固定全量口径，不随窗口切换
 //  · 走势图按所选窗口补齐空天（从窗口首日到今天一天不落），累计 = 窗口前存量 + 逐日新增
 //  · 「邀请注册」与端来源口径有重叠（小程序注册也可能带 invitedBy），页面上有说明
 //  · 每日活跃 / 回头率读 data/user-days.json 台账（touchActive 逐日记），只能从部署日起算，
@@ -22737,9 +22984,13 @@ function regStatsForAdmin(daysRaw) {
   const weekAgo = dateKey(new Date(Date.now() - 6 * 86400e3));
   const monthAgo = dateKey(new Date(Date.now() - 29 * 86400e3));
 
-  // 注册口径（2026-11-21 站长改回）：统计全部账号，wx 开头的微信辅助号也算注册。
-  // n = 全部账号；main / aux 仍分开记，但只给格子 title / 来源卡参考，不当注册口径。
+  // 注册口径（2026-11-22 站长补）：统计非企业账号，wx 开头的微信辅助号也算注册；
+  // 企业认证账号（cert.subject 有主体）是批量入驻的产品主体，不算真人注册，全部注册口径剔除。
+  // n = 非企业账号；main / aux 仍分开记，但只给格子 title / 来源卡参考，不当注册口径。
   // 注册列和注册率分子统一取 n，数和率严格同一个数。
+  // 活跃 / 访客统计仍按全量人算，企业账号照样算活跃与访客。
+  const isEnterpriseAcct = u => !!(u && u.cert && String(u.cert.subject || '').trim());
+  const regUsers = users.filter(u => !isEnterpriseAcct(u));
   let usersToday = 0, users7 = 0, users30 = 0;
   let mainToday = 0, main7 = 0, main30 = 0;
   let auxToday = 0, aux7 = 0, aux30 = 0;
@@ -22750,7 +23001,7 @@ function regStatsForAdmin(daysRaw) {
   const tagCount = new Map();
   const withAt = [];
 
-  users.forEach(u => {
+  regUsers.forEach(u => {
     const at = u.createdAt ? new Date(u.createdAt) : null;
     const d = at ? dateKey(at) : '';
     const aux = isWxAuxUser(u);
@@ -22769,7 +23020,7 @@ function regStatsForAdmin(daysRaw) {
       if (u.github) o.gh += 1;
       if (u.wechat) o.wx += 1;
       byDay.set(d, o);
-      weekday[(at.getDay() + 6) % 7] += 1;   // 星期分布按全部账号（含微信辅助号，都是真实用户）
+      weekday[(at.getDay() + 6) % 7] += 1;   // 星期分布按非企业账号（含微信辅助号，都是真实用户；企业认证账号不计）
     }
     if (aux) auxAll += 1; else mainAll += 1;
     if (u.regFrom === 'mini') miniAll += 1;
@@ -22783,7 +23034,7 @@ function regStatsForAdmin(daysRaw) {
 
   // 窗口起点：days=0 从第一个注册日起；空天也补齐，曲线才连续
   const startDay = days > 0 ? dateKey(new Date(fromMs)) : ([...byDay.keys()].sort()[0] || today);
-  const beforeStart = users.filter(u => {
+  const beforeStart = regUsers.filter(u => {
     const dd = u.createdAt ? dateKey(new Date(u.createdAt)) : '';
     return dd && dd < startDay;
   });
@@ -22839,17 +23090,21 @@ function regStatsForAdmin(daysRaw) {
     const miniBucket = (b.mini && typeof b.mini === 'object') ? b.mini : null;
     const allVids = new Set(Object.keys(b.pvBy || {}));
     if (miniBucket && miniBucket.pvBy) for (const vid of Object.keys(miniBucket.pvBy)) allVids.add(vid);
-    let v = 0, vOld = 0;
+    let v = 0, vOld = 0, uOld = 0, uOldMini = 0;
     for (const vid of allVids) {
       v += 1;
-      if (seenVids.has(vid)) vOld += 1;
+      if (seenVids.has(vid)) {
+        vOld += 1;
+        // 回头注册用户：回头访客里已登录的注册账号（u: 身份）。站长 2026-11-22 要求单独列一栏。
+        if (vid.startsWith('u:')) uOld += 1;
+      }
     }
     let mini = null, miniOld = null;
     if (b.devUv && typeof b.devUv === 'object') {
       const miniSet = (miniBucket && miniBucket.devUv && miniBucket.devUv.mini) || {};
       mini = Object.keys(miniSet).length;
       miniOld = 0;
-      for (const vid of Object.keys(miniSet)) if (seenVids.has(vid)) miniOld += 1;
+      for (const vid of Object.keys(miniSet)) if (seenVids.has(vid)) { miniOld += 1; if (vid.startsWith('u:')) uOldMini += 1; }
     }
     visitorDaily[k] = {
       vis: v, visNew: v - vOld, visOld: vOld,
@@ -22857,6 +23112,10 @@ function regStatsForAdmin(daysRaw) {
       visMini: mini,
       visOldMini: miniOld,
       visOldWeb: miniOld != null ? Math.max(0, vOld - miniOld) : null,
+      // 回头注册用户及端拆分：端拆分账（devUv）从 11-16 起才有，没账的天端列显示「—」
+      visRegOld: uOld,
+      visRegOldMini: miniOld != null ? uOldMini : null,
+      visRegOldWeb: miniOld != null ? Math.max(0, uOld - uOldMini) : null,
     };
     for (const vid of allVids) seenVids.add(vid);
   });
@@ -22870,7 +23129,7 @@ function regStatsForAdmin(daysRaw) {
     cumAux += o.aux;
     const a = actOf(k);
     // 账本起点之后没桶的天按「访客 0」补齐（真没记录的天用「—」区分：起点之前才有）
-    const vv = visitorDaily[k] || (k >= VISITOR_LEDGER_FROM ? { vis: 0, visNew: 0, visOld: 0, visRet: null, visMini: null, visOldMini: null, visOldWeb: null } : {});
+    const vv = visitorDaily[k] || (k >= VISITOR_LEDGER_FROM ? { vis: 0, visNew: 0, visOld: 0, visRet: null, visMini: null, visOldMini: null, visOldWeb: null, visRegOld: 0, visRegOldMini: null, visRegOldWeb: null } : {});
     daily.push(Object.assign({ d: k, n: o.n, main: o.main, aux: o.aux, mini: o.mini, miniMain: o.miniMain, miniAux: o.miniAux, invited: o.invited, gh: o.gh, wx: o.wx, cum, cumMain, cumAux }, a || {}, vv));
   }
 
@@ -22905,7 +23164,7 @@ function regStatsForAdmin(daysRaw) {
     from: daily.length ? daily[0].d : today,
     to: today,
     visFrom: VISITOR_LEDGER_FROM,
-    total: users.length,
+    total: regUsers.length,
     mainAll, auxAll,
     usersToday, users7, users30,
     mainToday, main7, main30,
@@ -23210,6 +23469,11 @@ app.get('/api/admin/works', requireAdmin, (req, res) => {
     // 「已下架」不是单一 status：管理员下架走 rejected，作者自主下架走 hidden，两条都收进来
     list = list.filter(isOffline);
   } else if (status && status !== '全部') list = list.filter(w => (w.status || 'approved') === status);
+  // 只看「注册有佣金」的作品（站长代投弹窗的筛选项，2026-11-22）：CPA 和 CPA+CPS 都算，
+  // 纯 CPS（成交才抽成）不算。放在 anonTotal 之前，让计数和筛选后的列表同一口径。
+  if (req.query.commission === '1' || req.query.commission === 'true') {
+    list = list.filter(w => w.commissionType === 'CPA' || w.commissionType === 'mixed');
+  }
   // 只看匿名（后台作品列表的「只看匿名」勾选项，2026-11-15）：
   // 两种匿名都算——匿名投稿（w.anon：提交时没账号，作品无归属）＋ 匿名发布（w.anonymous：有归属但前台只显示「匿名」）。
   // 先数再筛：anonTotal 是「这个 status 下一共有多少匿名作品」，前端拿它显示「只看匿名 23」；
@@ -23244,6 +23508,7 @@ app.get('/api/admin/works', requireAdmin, (req, res) => {
     // 关键词编辑回填用原始存档：publicWork 里的 keywords 是现算的展示版，两者含义不同
     keywordsRaw: Array.isArray(w.keywords) ? w.keywords : null,
     pubTimeCustom: !!w.pubTimeCustom,   // 发布时间是后台手动设置的（列表里挂「手动时间」小标）
+    commissionType: w.commissionType || '',   // 联盟佣金模式（CPA/CPS/mixed），列表挂角标，仅后台可见
     aiReview: w.aiReview || null,   // AI 初审意见（pass/reason/note），待审列表展示给管理员参考
     watchHits: Array.isArray(w.watchHits) ? w.watchHits : [],   // 命中重点复核词（代理IP/翻墙/换网络环境）：列表挂「重点复核」小标
     crypto: w.crypto === true,   // 涉币标记：卡片挂提示、不进榜单期刊、不能买推荐位（列表挂「涉币」小标）
@@ -24208,6 +24473,7 @@ const MD_TYPE_ALIAS = {
 };
 const MD_PAID_MODEL_ALIAS = {
   '部分免费': 'freemium', 'freemium': 'freemium',
+  '免费能用': 'freeuse', '免费能用（有付费功能）': 'freeuse', 'freeuse': 'freeuse',
   '会员专享': 'member', 'member': 'member',
   '单篇购买': 'onetime', 'onetime': 'onetime',
   '订阅制': 'subscription', 'subscription': 'subscription',
@@ -24541,6 +24807,13 @@ app.put('/api/admin/works/:id', requireAdmin, (req, res) => {
     // 不传这个键（老客户端、列表快捷操作）一律不动，避免把自动配词的老作品冻结成「作者刻意清空」。
     if (req.body.keywords !== undefined) w.keywords = sanitizeKeywords(req.body.keywords);
     if (prompt !== undefined) w.prompt = String(prompt).slice(0, 3000);
+    // 联盟佣金模式标记（后台代建/编辑用，仅后台可见）：CPA=注册/有效用户即结算，CPS=成交抽成，mixed=两者都有。
+    // 只在后台列表挂角标，不进 publicWork，前台完全不下发。
+    if (req.body.commissionType !== undefined) {
+      const ct = String(req.body.commissionType).trim();
+      if (['CPA', 'CPS', 'mixed'].includes(ct)) w.commissionType = ct;
+      else if (!ct) delete w.commissionType;
+    }
     if (req.body.categories !== undefined) {
       const cats = parseCats(req.body.categories);
       if (cats.length) { w.categories = cats; w.category = cats[0]; }
@@ -25427,7 +25700,14 @@ function creatorBoardData() {
     const key = w.userId ? 'u:' + w.userId : 'a:' + name;
     let row = agg.get(key);
     if (!row) {
-      row = { name, uid: w.userId || '', slug: slugOf(u), works: 0, uv: 0, likes: 0, favs: 0, cover: '', topUv: 0, topTitle: '' };
+      // cert：企业认证作者（站长人工核验营业执照后贴的 u.cert），书架卡片名字后面挂蓝V；
+      // 只吐展示字段，不把整个 u 对象送到公开接口。
+      row = {
+        name, uid: w.userId || '', slug: slugOf(u), works: 0, uv: 0, likes: 0, favs: 0,
+        cover: '', topUv: 0, topTitle: '',
+        cert: u && u.cert && u.cert.subject
+          ? { subject: String(u.cert.subject), at: u.cert.at || '' } : null
+      };
       agg.set(key, row);
     }
     row.works++;
@@ -25454,12 +25734,41 @@ function creatorBoardData() {
       favs: r.favs,
       cover: r.cover,
       followers: r.uid ? followerCount(r.uid) : 0,         // 卡片上的关注按钮要显示粉丝数
-      avatar: r.uid ? avatarUrlOf(usersById.get(r.uid)) : ''
+      avatar: r.uid ? avatarUrlOf(usersById.get(r.uid)) : '',
+      cert: r.cert
     }));
   creatorBoardCache = { at: Date.now(), data: rows };
   return rows;
 }
 app.get('/api/creators', (req, res) => res.json({ total: creatorBoardData().length, creators: creatorBoardData() }));
+
+// 造梦者书架「企业认证」tab（公开）：两类企业主体产品合并展示，都是作品库里的普通作品——
+//   1) 后台贴了 u.cert.subject 的认证作者发布的作品；
+//   2) tools.json 里勾了「企业认证」的产品（syncCertToolWorks 已同步成作品）。
+// 两边都从作品库现算：后台贴认证 / 加产品即时生效，详情页统一走站内 /w/<id>，
+// 也都能在榜单和随便逛逛里被逛到；这里只负责「集中看一眼」，不是另一个流量池。
+app.get('/api/cert-products', (req, res) => {
+  // 归属优先认 userId（展示名 nickname 可能跟账号名不一样），老数据没绑 id 时再按作者名找
+  const certById = new Map(users.filter(u => u && u.cert && u.cert.subject).map(u => [u.id, u.cert]));
+  const items = byNewest(publicWorks(req).filter(w =>
+    w.certProduct === true || certById.has(w.userId) || !!certOfUser(w.author))).map(w => {
+    const cert = w.certProduct
+      ? { subject: w.certSubject || w.author || '', at: w.certAt || '' }
+      : (certById.get(w.userId) || certOfUser(w.author) || {});
+    return {
+      id: String(w.id || ''),
+      kind: 'work',
+      name: String(w.titleName || w.title || ''),
+      desc: String(w.titleTag || w.cardDesc || ''),
+      cover: String(w.thumb || ''),
+      path: '/w/' + encodeURIComponent(w.id),
+      subject: String(cert.subject || ''),
+      at: String(cert.at || ''),
+      author: String(displayNameOf(w.author) || w.author || '')
+    };
+  }).filter(t => t.name && t.subject);
+  res.json({ total: items.length, items });
+});
 
 // 造梦者书架「GitHub Star」榜（公开）：只收录投稿到本站、标记开源、star>100 的作品。
 // 数据来自 content/github-star-picks.json 人工快照（GitHub 未认证接口限流 + 线上 51 件开源作品里
@@ -25979,19 +26288,22 @@ app.get('/api/admin/tools', requireAdmin, (req, res) => res.json(tools));
 app.post('/api/admin/tools', requireAdmin, (req, res) => {
   const { name, desc, url, feed, cert, partner } = req.body || {};
   if (!name || !url) return res.status(400).json({ error: '名称和链接必填' });
-  // feed=true：这条也当成「工具卡」插进首页作品流（角标「工具 · 企业认证」）；
-  // cert=企业认证主体，partner=带返佣/合作的推广链接（前台底脚会多写「合作」）。
+  // cert=true 的企业认证产品：同步进作品库当普通作品（榜单 / 随便逛逛 / 点赞收藏评论全可参与）；
+  // 未认证的 feed=true 条目仍只是首页那张推广工具卡（角标「工具」），不参与作品的一切。
+  // partner=带返佣/合作的推广链接，前台会标明「合作」。
   tools.push({
     id: Date.now().toString(36), name: String(name).slice(0, 40), desc: String(desc || '').slice(0, 120),
-    url: String(url).slice(0, 300), active: true,
+    url: String(url).slice(0, 300), active: true, createdAt: new Date().toISOString(),
     feed: !!feed, cert: !!cert, partner: !!partner
   });
   saveTools();
+  syncCertToolWorks();
   res.status(201).json(tools);
 });
 app.delete('/api/admin/tools/:id', requireAdmin, (req, res) => {
   tools = tools.filter(t => t.id !== req.params.id);
   saveTools();
+  syncCertToolWorks();   // 认证产品跟着下架，别在榜单和随便逛逛里留一条死链
   res.json({ ok: true });
 });
 
@@ -26018,11 +26330,15 @@ function adPayload(body, fallbackKind) {
   };
 }
 function adListJson() {
+  // 广告位页 = 站长的商业位管理（2026-11-22 拆分）：只出商业位的位子清单和广告，
+  // 产品推广位（灯火兑换的单）归「推广合作」页管，两边后台视图也不混。
   return {
-    slots: AD_SLOTS,
+    slots: AD_SLOTS.filter(s => COMMERCIAL_SLOT_KEYS.includes(s.key)),
     gate: adGateDaily(),
     gateDefaults: AD_GATE_DEFAULTS,
-    ads: ads.slice().sort((a, b) => AD_SLOT_KEYS.indexOf(a.slot) - AD_SLOT_KEYS.indexOf(b.slot)
+    ads: ads.slice()
+      .filter(a => COMMERCIAL_SLOT_KEYS.includes(a.slot))
+      .sort((a, b) => AD_SLOT_KEYS.indexOf(a.slot) - AD_SLOT_KEYS.indexOf(b.slot)
       || (a.sort || 0) - (b.sort || 0))
       .map(a => {
         const st = adStatsOf(a.id);
@@ -26057,7 +26373,7 @@ app.post('/api/admin/ads', requireAdmin, (req, res) => {
     // 服务端兜底压缩（大图缩到 1600 宽、摆正 EXIF、qrcode 不碰）。失败不影响上传。
     await compressUploads(req);
     const p = adPayload(req.body || {}, 'image');
-    if (!AD_SLOT_KEYS.includes(p.slot)) return res.status(400).json({ error: '请选择投放的广告位' });
+    if (!COMMERCIAL_SLOT_KEYS.includes(p.slot)) return res.status(400).json({ error: '这个位子是产品推广位，只收灯火兑换的单；商业广告请选首页横幅 / 页脚等位置' });
     if (!p.url) return res.status(400).json({ error: '跳转链接必填' });
     const img = req.files && req.files.image && req.files.image[0];
     if (p.kind === 'text' && !p.title) return res.status(400).json({ error: '纯文字广告必须填标题' });
@@ -26085,7 +26401,7 @@ app.post('/api/admin/ads', requireAdmin, (req, res) => {
 app.post('/api/admin/ads/import', requireAdmin, (req, res) => {
   const body = req.body || {};
   const slot = String(body.slot || '');
-  if (!AD_SLOT_KEYS.includes(slot)) return res.status(400).json({ error: '请选择要粘贴到的广告位' });
+  if (!COMMERCIAL_SLOT_KEYS.includes(slot)) return res.status(400).json({ error: '这个位子是产品推广位，只收灯火兑换的单；商业广告请选首页横幅 / 页脚等位置' });
   const raw = String(body.code || '').trim().replace(/^DMAD1:/, '');
   if (!raw) return res.status(400).json({ error: '请先粘贴广告代码' });
   let data;
@@ -26173,8 +26489,8 @@ app.post('/api/admin/ad-gate', requireAdmin, (req, res) => {
   res.json(adListJson());
 });
 
-// 推荐位同屏条数（rankTop / rankSide / barSide）：后台「广告位」页顶部那张卡改这里，
-// 一次请求带全三格统一校验，落 data/ad-display.json，下一次 /api/ads 就带新值。
+// 推荐位同屏条数（rankTop / rankSide / barSide / crSide）：后台「广告位」页顶部那张卡改这里，
+// 一次请求带全四格统一校验，落 data/ad-display.json，下一次 /api/ads 就带新值。
 app.get('/api/admin/ad-display', requireAdmin, (req, res) => {
   res.json({ display: readAdDisplay() });
 });
@@ -26228,7 +26544,7 @@ app.post('/api/admin/ads/:id/move', requireAdmin, (req, res) => {
   res.json(adListJson());
 });
 
-// 后台撤下推广单（「用户推广」页的撤下按钮、删除兑换广告都走这里）：
+// 后台撤下推广单（「产品推荐」页的撤下按钮、删除兑换广告都走这里）：
 // 退款口径和作者自己点「撤下」完全一致（剩余曝光 / 点击按下单时锁的单价退回），
 // 区别是多发一条站内信——用户不在操作现场，得知道是谁撤的、退了多少。
 function adminCancelPromo(r) {
@@ -26392,7 +26708,7 @@ app.post('/api/admin/redemptions/:id/prio', requireAdmin, (req, res) => {
   res.json({ ok: true, prio, prioLabel: COMP_PRIO_LABEL[prio] || '跟随全局' });
 });
 
-// 投放单升降权（2026-11-18）：后台「用户推广」列表里对任何在投 / 排队中的单（买家单、
+// 投放单升降权（2026-11-18）：后台「产品推荐」列表里对任何在投 / 排队中的单（买家单、
 // 代投单都行）单独调权重。升权 = 同位随机挑时约 3 倍概率、顺序位排前面；降权 = 约 1/3
 // 概率、排位靠后——作品还照常上场、照常计费，只是不太显眼，不用拉下脸让朋友撤单。
 // 与代投的 prio 正交（prio 管能不能上场，boost 管上场以后的权重），不动扣费与期限。
@@ -26512,7 +26828,7 @@ app.get('/api/admin/promo-buyer/:userId', requireAdmin, (req, res) => {
   });
 });
 
-// 「用户推广」页的撤下按钮：按订单 id 撤（排队中的单也建好了广告，但 adId 不好当入口用，
+// 「产品推荐」页的撤下按钮：按订单 id 撤（排队中的单也建好了广告，但 adId 不好当入口用，
 // 订单 id 才是这一单的稳定标识）。后台撤下和用户自己撤下走同一套退款 + 队列交接。
 app.post('/api/admin/redemptions/:id/cancel', requireAdmin, (req, res) => {
   const r = redemptions.find(x => x.id === req.params.id);
@@ -28040,7 +28356,7 @@ app.get('/', (req, res) => {
       if (rows.length) {
         boot = {
           featHtml: rows.map(ssrFeatCard).join(''),
-          json: bootJsonOf({ featured: rows, featuredTag: featuredTagCss(), ads: bootAdPayload() })
+          json: bootJsonOf({ featured: rows, featuredTag: featuredTagCss(), ads: bootAdPayload(req) })
         };
       }
     } catch (e) {
@@ -29723,7 +30039,7 @@ app.get('/install', (req, res) => {
   </div>
   <p class="ins-done">✓ 已经装好了——桌面上的图标直接点开就行，不用再装一次。</p>
   <p class="ins-tip">在微信里看到这条消息？先点右上角「···」→「在浏览器中打开」，再按上面的步骤装。装好后的桌面图标独立打开，不在微信里。</p>
-  <p class="seo-more"><a class="btn-ghost" href="/">← 返回首页</a>&nbsp;&nbsp;<a class="btn-ghost" href="/chronicle">看看站点的大事记 →</a></p>
+  <p class="seo-more"><a class="btn-ghost" href="/">← 返回首页</a>&nbsp;&nbsp;<a class="btn-ghost" href="/app">下载造梦橱窗 App →</a>&nbsp;&nbsp;<a class="btn-ghost" href="/chronicle">看看站点的大事记 →</a></p>
   <script>
   (function () {
     var btn = document.getElementById('insNative');
@@ -29748,6 +30064,122 @@ app.get('/install', (req, res) => {
     }).catch(function () {});
   })();
   </script>
+</div>`;
+  sendHtml(res, shell(headHtml, block));
+});
+
+// 造梦橱窗 App 介绍页（2026-11-22）：安卓 APK 下载 + iOS 安装说明。
+// 与 /install 同一路数：自包含 SSR 页，样式内联，真人和爬虫都能直接读到。
+app.get('/app', (req, res) => {
+  const base = seo.baseUrl(req);
+  const headHtml = seo.head({
+    title: `造梦橱窗 App - 把好作品装进口袋 - ${seo.SITE_NAME}`,
+    description: '造梦橱窗 App：安卓可下载 APK，iPhone 可用 Safari 添加到主屏幕。随时刷本周精选、榜单与最新作品，搜作品、看详情、点赞收藏送灯火，走到哪儿都能发现认真做出来的独立作品。',
+    keywords: '造梦橱窗App,造梦橱窗安卓版,造梦橱窗iOS,APK下载,添加到主屏幕,独立作品榜单',
+    canonical: base + '/app',
+    type: 'website',
+    jsonLd: [
+      seo.breadcrumbLd(base, [{ name: '首页', href: '/' }, { name: 'App 下载' }]),
+      {
+        '@context': 'https://schema.org',
+        '@type': 'SoftwareApplication',
+        name: '造梦橱窗',
+        applicationCategory: 'BrowserApplication',
+        operatingSystem: 'Android, iOS',
+        description: '把造梦橱窗的精选、榜单和作品搜索装进手机，随时发现认真做出来的独立作品。',
+        url: base + '/app',
+        downloadUrl: base + '/downloads/zaomeng-window.apk'
+      }
+    ]
+  });
+
+  const block = `<div id="seoContent" class="seo-wrap app-wrap">
+  <style>
+    .app-wrap { max-width: 980px; }
+    .app-wrap .page-head p { line-height: 1.8; }
+    .app-topline { display: inline-flex; align-items: center; gap: 8px; background: #f3f0ff; color: #6b4ce6; border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .app-hero { display: grid; grid-template-columns: minmax(0, 1.1fr) 300px; gap: 28px; align-items: center; background: #fff; border: 1px solid #e8e8f0; border-radius: 18px; padding: 26px 28px; margin: 16px 0 18px; }
+    .app-hero h2 { margin: 10px 0 10px; font-size: 25px; line-height: 1.35; }
+    .app-hero .app-lead { margin: 0 0 16px; font-size: 14.5px; line-height: 1.85; color: #5b5f72; }
+    .app-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .app-actions .btn-primary, .app-actions .btn-ghost { text-decoration: none; }
+    .app-note { margin: 12px 0 0 !important; font-size: 12.5px !important; color: #8a8fa3 !important; line-height: 1.7; }
+    .app-phone { justify-self: center; width: 244px; background: #23243a; border: 8px solid #23243a; border-radius: 30px; box-shadow: 0 14px 36px rgba(40,40,80,.18); overflow: hidden; }
+    .app-phone-bar { height: 22px; background: #23243a; position: relative; }
+    .app-phone-bar:after { content: ''; position: absolute; left: 50%; top: 7px; transform: translateX(-50%); width: 56px; height: 7px; border-radius: 999px; background: #11121d; }
+    .app-phone img { display: block; width: 100%; height: 396px; object-fit: cover; object-position: top; background: #fff; border-radius: 0 0 22px 22px; }
+    .app-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin: 0 0 18px; }
+    .app-card { background: #fff; border: 1px solid #e8e8f0; border-radius: 14px; padding: 16px 18px; }
+    .app-card-ico { width: 36px; height: 36px; border-radius: 10px; background: #f3f0ff; color: #6b4ce6; display: flex; align-items: center; justify-content: center; }
+    .app-card h3 { margin: 10px 0 6px; font-size: 16px; }
+    .app-card p { margin: 0; font-size: 13.5px; line-height: 1.75; color: #5b5f72; }
+    .app-steps { background: #fff; border: 1px solid #e8e8f0; border-radius: 16px; padding: 18px 22px; margin-bottom: 16px; }
+    .app-steps h2 { font-size: 19px; margin: 0 0 12px; }
+    .app-step-row { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .app-step-col h4 { margin: 0 0 8px; font-size: 15px; color: #2b2e3f; }
+    .app-step-col ol { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 1.9; color: #5b5f72; }
+    .app-tip { font-size: 13px; color: #6b5a2a; background: #fff8e6; border: 1px solid #f0e3b8; border-radius: 12px; padding: 10px 14px; line-height: 1.7; margin: 0 0 16px; }
+    @media (max-width: 760px) {
+      .app-hero { grid-template-columns: 1fr; padding: 20px; }
+      .app-phone { width: 216px; }
+      .app-phone img { height: 348px; }
+      .app-step-row { grid-template-columns: 1fr; }
+    }
+  </style>
+  ${seo.breadcrumbHtml(base, [{ name: '首页', href: '/' }, { name: 'App 下载' }])}
+  <div class="page-head">
+    <span class="app-topline">${seo.svgIco('mobile')} 安卓 APK 已开放下载 · iOS 可添加到主屏幕</span>
+    <h1>${seo.svgIco('sparkle')} 造梦橱窗 App</h1>
+    <p>把本周精选、榜单和最新作品装进口袋。等车、排队、睡前的几分钟，也能随手翻到别人认真做出来的东西。</p>
+  </div>
+
+  <div class="app-hero">
+    <div class="app-copy">
+      <h2>好作品不该只躺在收藏夹里</h2>
+      <p class="app-lead">App 和网站是同一套账号与数据：搜作品、看详情、点赞收藏、送灯火、投稿和收站内消息，打开就能接着用。作品每天更新，榜单每天重排，打开一次就有一点新东西。</p>
+      <div class="app-actions">
+        <a class="btn-primary" href="/downloads/zaomeng-window.apk" download="造梦橱窗.apk">${seo.svgIco('android')} 下载安卓 APK</a>
+        <a class="btn-ghost" href="/install">${seo.svgIco('ios')} iPhone 安装说明</a>
+      </div>
+      <p class="app-note">安卓包为测试版，安装时需在系统设置里允许「安装未知来源应用」。iPhone 暂未上架 App Store，可用 Safari「添加到主屏幕」，体验与 App 基本一致。</p>
+    </div>
+    <div class="app-phone" aria-hidden="true">
+      <div class="app-phone-bar"></div>
+      <img src="/app-home.png" alt="" />
+    </div>
+  </div>
+
+  <div class="app-grid">
+    <div class="app-card"><div class="app-card-ico">${seo.svgIco('compass')}</div><h3>随手就能逛</h3><p>本周精选、最新上架、最热榜单都在手边。按场景和分类筛，几秒钟找到对味的作品。</p></div>
+    <div class="app-card"><div class="app-card-ico">${seo.svgIco('search')}</div><h3>搜作品和作者</h3><p>记得名字就直接搜，记不清就用关键词和分类慢慢翻；每件作品都能看简介、标签和打开入口。</p></div>
+    <div class="app-card"><div class="app-card-ico">${seo.svgIco('lamp')}</div><h3>灯火与互动</h3><p>点赞、收藏、送灯火、签到攒灯火，和网页端完全同步。喜欢的作品，顺手让它被更多人看见。</p></div>
+    <div class="app-card"><div class="app-card-ico">${seo.svgIco('edit')}</div><h3>也能随时投稿</h3><p>灵感来了就填一条：名称、封面、一句话简介，注册用户提交后立即上线，不用回到电脑前。</p></div>
+  </div>
+
+  <div class="app-steps">
+    <h2>${seo.svgIco('bolt')} 怎么装</h2>
+    <div class="app-step-row">
+      <div class="app-step-col">
+        <h4>${seo.svgIco('android')} 安卓手机</h4>
+        <ol>
+          <li>点上面的「下载安卓 APK」，下载完成后点开文件。</li>
+          <li>系统提示时选「允许安装未知来源应用」。</li>
+          <li>装好打开，用网站上的同一账号登录即可。</li>
+        </ol>
+      </div>
+      <div class="app-step-col">
+        <h4>${seo.svgIco('ios')} iPhone / iPad</h4>
+        <ol>
+          <li>用 Safari 打开本站（微信里请先「在浏览器中打开」）。</li>
+          <li>点底部分享按钮，选「添加到主屏幕」。</li>
+          <li>桌面出现图标后点开，就是全屏 App 的样子。</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <p class="app-tip">App 只是网站的一个入口，作品和数据都来自线上站点，所以首次打开需要联网。内容、账号和灯火与网页版互通，不用重复注册。</p>
+  <p class="seo-more"><a class="btn-ghost" href="/">← 回首页逛逛</a>&nbsp;&nbsp;<a class="btn-ghost" href="/howto">怎么提交作品 →</a></p>
 </div>`;
   sendHtml(res, shell(headHtml, block));
 });
@@ -30179,19 +30611,19 @@ app.get('/rules', (req, res) => {
     </section>
 
     <section class="rules-sec">
-      <h2>十一、企业合作工具（带角标的工具卡）</h2>
-      <p class="rules-note">书架上有两样东西：作者自己做的作品，和作者做作品时会用到的工具。第二类是我们和厂商的合作，一律标出来，不混进作品里。</p>
+      <h2>十一、企业认证产品与工具推荐</h2>
+      <p class="rules-note">站里两类企业条目，2026-11-22 起口径分开：<b>核验过主体的企业认证产品，按普通作品同池参与</b>；没认证的外部工具推荐仍是推广位，单独标出来。</p>
       <ul class="rules-list">
-        <li><b>怎么认。</b>这类卡片的角标写的是「工具 · 企业认证」，卡片底色和作品卡不同，底脚是「去试试 ↗」而不是作者名字和点赞收藏数。看到这个角标，就知道它不是某位造梦者的作品。</li>
-        <li><b>带返佣的会多写一个「合作」。</b>如果这条链接是我们参与推广、能拿到返佣的，底脚会写「企业认证 · 合作」，让你在点之前就知道。不写这一项的，就是纯推荐，我们拿不到钱。</li>
-        <li><b>它不参与作品的一切。</b>工具卡不进榜单、不进星梦期刊、不进编年史，也不算进作品总数；点开是直接跳到对方的网站，不套作品详情页，也没有点赞、收藏、评论。</li>
-        <li><b>为什么放进来。</b>这些工具确实是站里很多作者在用的东西，放在大家翻作品的地方比塞在角落里更有用。但我们不会把它写成「某位作者的作品」，也不会帮它刷榜。</li>
-        <li><b>想推荐工具。</b>你在做作品时用过特别顺手的工具，可以在作品页底部「意见建议」里告诉我们，值得的我们会加进去。</li>
+        <li><b>企业认证产品跟普通作品一样。</b>站长核验营业执照后，产品以企业主体名进入作品库：作者名后面挂企业认证小盾章，有详情页，也能被点赞、收藏、评论。<b>榜单、星梦期刊、随便逛逛、搜索和分类页都按普通作品的同一套规则排</b>，算进作品总数；在造梦者书架的「企业认证」tab 里也能集中看到，但那只是方便查看，不是另一个流量池。</li>
+        <li><b>认证作者的已上线作品同样如此。</b>作者本人贴了企业认证的，他发布的作品既在作者榜和作品流里正常参与排行、随便看看，也会出现在书架的企业认证 tab——认证只是多一枚主体背书徽章，不把作品从普通池子里拿走。</li>
+        <li><b>带返佣的会标明「合作」。</b>如果这条产品链接是我们参与推广、能拿到返佣的，会写清「合作」，让你在点之前就知道；不写的就是没有返佣的普通推荐。</li>
+        <li><b>没认证的工具卡仍是推广位。</b>角标写「工具」、底脚是「去试试 ↗」的卡片，点开先弹说明再外跳官网。它们不进榜单、不进星梦期刊、不进编年史，也不算进作品总数，没有点赞收藏评论——这条口径没变。</li>
+        <li><b>想推荐工具或产品。</b>你在做作品时用过特别顺手的工具，可以在作品页底部「意见建议」里告诉我们；企业产品走 /enterprise 入驻并核验主体，值得的我们会加进去。</li>
       </ul>
-      <p class="rules-note">一句话：<b>作品是作品，合作是合作，卡片上看得见。</b></p>
+      <p class="rules-note">一句话：<b>认证产品同池排行，普通工具卡看得见区别。</b></p>
     </section>
 
-    <p class="rules-foot">规范会随平台规则调整，重要变更在站内通知。最近更新：2026-11-18。</p>
+    <p class="rules-foot">规范会随平台规则调整，重要变更在站内通知。最近更新：2026-11-22。</p>
     <p class="seo-more"><a class="btn-ghost" href="/">← 返回首页</a> <a class="btn-ghost" href="/howto">投稿指南 →</a></p>
   </div>
 </div>`;
@@ -30424,6 +30856,8 @@ app.get('/sitemap.xml', (req, res) => {
     { loc: '/open', lastmod: openSource.list().updatedAt, priority: '0.7', changefreq: 'weekly' },
     // 企业产品入驻：公开的入驻说明页（不是价目表，可以进索引，让公司自己搜得到）
     { loc: '/enterprise', lastmod: '', priority: '0.6', changefreq: 'monthly' },
+    // 造梦橱窗 App 介绍页：安卓 APK 与 iOS 安装说明
+    { loc: '/app', lastmod: '2026-11-22', priority: '0.6', changefreq: 'monthly' },
     ...col.topics.map(t => ({
       loc: '/column/' + t.slug, lastmod: t.updatedAt || col.updatedAt, priority: '0.7', changefreq: 'monthly'
     }))
