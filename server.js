@@ -26892,6 +26892,11 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
         const r = shareRecOf(u.id);
         return { tag: GH_BADGE_TAG, stars: GH_BADGE_STARS, granted: !!r.ghBadgeAt, pending: !!r.ghBadgeApplyAt };
       })(),
+      // 造梦勋章：已点亮的那些（badges.json 里记了就算；L1/L2 是用户自己打开勋章页时补录的）
+      badges: (() => {
+        const rec = (badgeData.users && badgeData.users[u.id]) || {};
+        return BADGE_DEFS.filter(d => rec[d.key]).map(d => ({ key: d.key, name: d.name, t: d.t, icon: d.icon }));
+      })(),
       acqFr: u.acqFr || '',
       acqFrName: u.acqFr ? frNameOf(u.acqFr) : '',
       regFrom: u.regFrom || '',

@@ -452,6 +452,12 @@
     .tag.acct-aux { background:#fff2e8; color:#c2611a; font-weight:600; cursor:help; }
     /* 最后活跃端：跟时间里贴着，颜色淡一点别抢标签的注意力 */
     .tag.cli { background:#eef7f3; color:#1a7f5a; cursor:help; }
+    /* 勋章：单独一栏用，紫色系跟普通标签（黄）区分开 */
+    .tag.badge-chip { background:#f2eefe; color:#6b46c1; font-weight:600; }
+    .tag.badge-chip.l3 { background:#fff4e0; color:#b0730a; }
+    .tag.badge-chip.pending { background:#fff0f1; color:var(--danger); }
+    /* 账号列：账号名单独一格，等宽字体好比对 */
+    .acct-name { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px; white-space:nowrap; }
     /* 用户标签：行内编辑器 + 标签库条 */
     /* 用户管理列表：表头固定列宽，作品名 / IP / 标签再长也只在自己那格里换行 */
     .user-table-wrap {
@@ -10635,10 +10641,10 @@
         u.adTotal ? `累计 领 ${plNum(u.adSelfTotal || 0)} · 代送 ${plNum(u.adTipTotal || 0)}` : ''
       ].filter(Boolean).join('<br />');
       return [
-        { key: 'name', label: '用户', w: 210, sort: 'nameDesc', alt: 'nameAsc', fixed: true,
-          title: '主号＝自己注册；辅助＝wx 开头、微信扫码/小程序自动建的号',
+        { key: 'name', label: '用户', w: 200, sort: 'nameDesc', alt: 'nameAsc', fixed: true,
+          title: '昵称 + 身上贴的标签；账号名在右边「账号」列',
           cell: u => `<td>
-            <div class="row-title">@${esc(u.name)} ${acctTag(u)} <span class="tag">${esc(u.username)}</span>
+            <div class="row-title">@${esc(u.name)}
               ${u.isOwner ? '<span class="tag bad" title="站长：屏蔽作品按 3 分计">站长</span>' : ''}
               ${u.blockedCount ? `<span class="tag" title="自己屏蔽过的作品数（只影响 TA 自己的列表）">屏蔽 ${u.blockedCount}</span>` : ''}
               ${u.acqFr ? `<span class="tag src" title="来源渠道（首触${u.acqAt ? ' ' + esc(fmtDate(u.acqAt)) : ''}）">来源 ${esc(u.acqFrName || u.acqFr)}</span>` : ''}
@@ -10647,6 +10653,25 @@
               ${(u.tags || []).map(t => `<span class="tag utag" data-tag="${esc(t)}">${esc(t)}</span>`).join('')}
             </div>
           </td>` },
+        { key: 'account', label: '账号', w: 200,
+          title: '登录用的账号名；主号＝自己注册，辅助＝wx 开头、微信扫码/小程序自动建的号',
+          cell: u => `<td><div class="row-title"><span class="tag acct-name">${esc(u.username)}</span> ${acctTag(u)}</div></td>` },
+        { key: 'badges', label: '勋章', w: 190,
+          title: '已点亮的造梦勋章（L1/L2 自动结算、L3 站长授予）；GitHub 优质原创作者勋章在「标签」里颁发',
+          cell: u => {
+            const list = u.badges || [];
+            const gh = u.ghBadge || {};
+            const chip = b => `<span class="tag badge-chip${b.t === 'L3' ? ' l3' : ''}" title="${esc(b.name)}（${esc(b.t)}）">${esc(b.name)}</span>`;
+            const allNames = list.map(b => b.name).concat(gh.granted ? [gh.tag] : []);
+            const shown = list.slice(0, 2).map(chip).join('')
+              + (list.length > 2 ? `<span class="zero" title="${esc(allNames.join('、'))}">+${list.length - 2}</span>` : '');
+            const ghChip = gh.granted
+              ? `<span class="tag badge-chip" title="GitHub ${gh.stars || 2000} star 勋章：${esc(gh.tag)}">${esc(gh.tag)}</span>`
+              : (gh.pending ? `<span class="tag badge-chip pending" title="GitHub ${gh.stars || 2000} star 勋章待站长确认：点「标签」里的颁发按钮给 TA">GitHub 勋章待确认</span>` : '');
+            const body = shown + ghChip;
+            if (!body) return '<td><span class="zero">—</span></td>';
+            return `<td><div class="row-meta">${body}</div></td>`;
+          } },
         { key: 'points', label: '灯火', w: 80, sort: 'pointsDesc', alt: 'pointsAsc', fixed: true, title: '当前还剩的灯火',
           cell: u => `<td class="num"><b class="pt-val">${plNum(u.points)}</b></td>` },
         { key: 'checkin', label: '签到', w: 80, sort: 'checkinDesc', alt: 'checkinAsc', title: '累计签到拿到的灯火',
@@ -10682,12 +10707,11 @@
           cell: u => `<td>${u.lastClient ? `<span class="tag cli" title="最后一次活跃的端 · ${esc(fmtDateTime(u.lastClient.at || u.lastActiveAt))}">${esc(u.lastClient.text)}</span>` : '<span class="zero">—</span>'}</td>` },
         { key: 'ip', label: '归属地', w: 160, title: '归属地（只显示城市，IP 明文悬停才看得到、点一下复制）',
           cell: u => `<td>${ipMetaHtml(u)}</td>` },
-        { key: 'ops', label: '操作', w: 220, fixed: true, title: '激励 / 标签 / 站长标记 / 送扣灯火 / 重置密码',
+        { key: 'ops', label: '操作', w: 200, fixed: true, title: '激励 / 标签 / 送扣灯火 / 重置密码',
           cell: u => `<td>
             <div class="row-actions">
               <button class="btn btn-primary btn-sm rw-open">激励</button>
               <button class="btn btn-ghost btn-sm tags-edit">标签</button>
-              <button class="btn btn-ghost btn-sm owner-toggle" data-owner="${u.isOwner ? '1' : '0'}" title="站长屏蔽作品时按 3 分计">${u.isOwner ? '取消站长' : '设为站长'}</button>
               <button class="btn btn-ghost btn-sm pt-give">送灯火</button>
               <button class="btn btn-danger btn-sm pt-take">扣灯火</button>
               <button class="btn btn-ghost btn-sm pw-reset" title="生成一个临时密码并立即生效">重置密码</button>
@@ -11062,24 +11086,8 @@
         copyText(e.target.dataset.copyip, '已复制 IP');
         return;
       }
-      // 站长开关：屏蔽权重 3（普通登录用户 1），用于首页「最新」的屏蔽降权
-      if (e.target.classList.contains('owner-toggle')) {
-        const row = userRowOf(e.target);
-        const uname = row.dataset.uname || '';
-        const isOwner = e.target.dataset.owner === '1';
-        if (!isOwner && !confirm(`把 @${uname} 设为站长？\n· TA 屏蔽任何作品时按 3 分计（普通用户 1 分）\n· 门槛是 2 分，也就是 TA 一个人就能让作品在首页「最新」往后退\n· 后台作品列表会单独标出「站长 N」这一票，随时可清除降权`)) return;
-        if (isOwner && !confirm(`取消 @${uname} 的站长权重？之后 TA 的屏蔽按普通用户 1 分计。`)) return;
-        try {
-          await api('/api/admin/owners', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: uname, on: !isOwner })
-          });
-          toast(isOwner ? '已取消站长权重' : '已设为站长（屏蔽按 3 分计）');
-          loadUsers();
-        } catch (err) { toast(err.message); }
-        return;
-      }
-
+      // 站长开关已下掉（2026-11-22 站长拍板：站内只有他一个站长，后台不再提供「设为站长 / 取消站长」）。
+      // 站长权重走服务端 data/site-owners.json，要改直接改那个文件。
       // ---- 标签库条：新增 / 改名 / 删除 ----
       if (e.target.id === 'tlAddBtn') {
         const input = document.getElementById('tlAddInput');
