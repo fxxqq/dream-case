@@ -7952,15 +7952,28 @@ function discPcSkeletonSide() {
   discPcSideLoading(true);   // CSS 据此暂时关掉侧栏滚动，别露出半截滚动条
 }
 
+// 服务端首屏直出（2026-11-22）：直接访问 /discover 时，server.js 把作品池和分类写进了 #dm-boot
+// （见 BOOT.discover），这里优先取它，省掉进来时的两次接口往返——原来那两段等待就是「正在点亮橱窗」
+// 一直转圈的原因。直出口径与 /api/works?disc=1、/api/categories 完全一致（含当前访客的用户态）。
+// 没有直出数据（SPA 内从别页点进发现页 / 直出失败 / 老缓存）就照旧走接口，行为不变。
+const DISC_BOOT = (BOOT && BOOT.discover) || null;
 async function discPcEnsureData() {
   // 分类和全量作品池互不依赖，并行拉——串行等于把等待时间白加一倍
   const pCats = discPcCats ? Promise.resolve() : (async () => {
+    if (DISC_BOOT && Array.isArray(DISC_BOOT.cats)) {
+      discPcCats = DISC_BOOT.cats.filter(c => c && c !== '全部');
+      return;
+    }
     try {
       const d = await (await fetch('/api/categories', { cache: 'no-store' })).json();
       discPcCats = (Array.isArray(d) ? d : []).filter(c => c && c !== '全部');
     } catch { discPcCats = []; }
   })();
   const pPool = discPcPool ? Promise.resolve() : (async () => {
+    if (DISC_BOOT && Array.isArray(DISC_BOOT.works)) {
+      discPcPool = DISC_BOOT.works;
+      return;
+    }
     // disc=1：站长在后台标了「发现页不展示」的件不进这个池子（分类计数、专区计数跟着一起少）
     const d = await (await fetch('/api/works?pageSize=all&disc=1', { cache: 'no-store' })).json();
     discPcPool = Array.isArray(d.items) ? d.items : [];

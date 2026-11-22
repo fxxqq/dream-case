@@ -9,7 +9,7 @@
  *  - /api、/admin、跨域请求：完全不拦截
  * 发版时把 VERSION 常量 +1，旧缓存会在 activate 阶段自动清理。
  */
-const VERSION = 'v95';   // v95: 找找入口改 document 委托 + 头部初始化互不连坐（修「下拉能开、点找找没反应」一类绑定失灵）
+const VERSION = 'v96';   // v96: 发现页首屏直出带用户态，no-store/private 的导航响应不再落 SW 缓存，防换号串号
 const SHELL_CACHE = `shell-${VERSION}`;
 const STATIC_CACHE = `static-${VERSION}`;
 const IMG_CACHE = `img-${VERSION}`;
@@ -59,7 +59,10 @@ async function networkFirst(request, cacheName, fallbackUrl) {
   const cache = await caches.open(cacheName);
   try {
     const fresh = await fetch(request);
-    if (fresh && fresh.ok) cache.put(request, fresh.clone());
+    // 带 no-store / private 的页面（如 /discover 首屏直出，HTML 里有当前访客的点赞/灯火/拉黑态）
+    // 不能落 SW 缓存：同设备换号后离线打开会拿到上一个人的用户态。只走网络，不缓存。
+    const cc = fresh && fresh.headers ? (fresh.headers.get('Cache-Control') || '') : '';
+    if (fresh && fresh.ok && !/\b(no-store|private)\b/i.test(cc)) cache.put(request, fresh.clone());
     return fresh;
   } catch (err) {
     const cached = await cache.match(request, { ignoreSearch: request.mode === 'navigate' });

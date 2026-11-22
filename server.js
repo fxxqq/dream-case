@@ -28627,10 +28627,12 @@ function shell(seoHead, bodyBlock, homeBlock = '', boot = null) {
 // 现在 SSR 区块注入 #homeView 内的 <!--SEO_HOME-->：真人能看到、爬虫能读到，
 // SPA 切视图时随 homeView 一起隐藏，因此不会重现早年「先画一大块再塌掉」的抖动。
 
-function sendHtml(res, html, status = 200) {
+function sendHtml(res, html, status = 200, cacheControl) {
   res.status(status)
     .set('Content-Type', 'text/html; charset=utf-8')
-    .set('Cache-Control', 'public, max-age=0, must-revalidate')
+    // 发现页首屏直出带当前访客的点赞/收藏/灯火/拉黑口径（见 /discover 的 boot），
+    // 这类 HTML 不能被代理/CDN 缓存后发给别人，故这一页单独用 private。
+    .set('Cache-Control', cacheControl || 'public, max-age=0, must-revalidate')
     .send(html);
 }
 
@@ -29502,6 +29504,30 @@ app.get('/u/:name', (req, res) => {
   sendHtml(res, shell(headHtml, '', block)); // 同构：真人与爬虫共用一份 SSR，区块落在 #homeView 内，切视图时自动隐藏
 });
 
+// 发现页首屏直出（2026-11-22）：把作品池 + 分类写进 #dm-boot，前端 app.js 读它直接渲染，
+// 省掉进来时的 /api/works?pageSize=all&disc=1 与 /api/categories 两次往返（原来这两趟回来前
+// 一直挂着「正在点亮橱窗」的点灯动画）。口径必须和那两个接口逐字一致：
+//   · 作品池 = publicWorks(req)（已按当前访客过滤拉黑）→ 摘 discHide → 默认排序 + 屏蔽降权
+//   · 每条走 publicWork(w, user)，带 liked/faved/lampLocked/owned 等当前访客态
+//   · 分类 = /api/categories 同源的 orderedCategories()
+// 因为带用户态，这份 HTML 只能 private（见 sendHtml 第四参），且 SW 不能缓存（见 sw.js）。
+function discoverBootJson(req) {
+  const user = currentUser(req);
+  let list = publicWorks(req);
+  list = list.filter(w => w.discHide !== true);
+  // 与 /api/works 无 sort 参数时的默认分支一致：最后更新时间降序 + 置顶优先
+  list.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)
+    || new Date(b.createdAt) - new Date(a.createdAt));
+  list.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+  list = applyBlockShift(list, blockShiftMap(list.map(w => w.id)));
+  return bootJsonOf({
+    discover: {
+      works: list.map(w => publicWork(w, user)),
+      cats: orderedCategories()
+    }
+  });
+}
+
 // 发现页（移动端 Tab）：精选 + 平台专栏，SPA 自己渲染，服务端只出壳（不参与收录）
 app.get('/discover', (req, res) => {
   const base = seo.baseUrl(req);
@@ -29510,7 +29536,16 @@ app.get('/discover', (req, res) => {
     description: '按平台浏览造梦橱窗收录的独立开发作品：微信小程序、Android、iOS、Web 网页应用、桌面客户端与机器人各一个专栏，配合本周精选持续更新，点开即用，也欢迎免费投稿你的作品。',
     canonical: base + '/discover'
   });
-  sendHtml(res, shell(headHtml, ''));
+  let boot = null;
+  try {
+    const json = discoverBootJson(req);
+    if (json) boot = { json };
+  } catch (e) {
+    console.warn('[discover-boot] 首屏直出失败，回落前端取数:', e.message);
+    boot = null;
+  }
+  // private：这份 HTML 带当前访客的点赞/收藏/灯火/拉黑态，不能被代理/CDN 缓存后发给别人
+  sendHtml(res, shell(headHtml, '', '', boot), 200, 'private, no-store');
 });
 
 // 我的（移动端 Tab）：个人中心聚合页，登录态相关，不收录
