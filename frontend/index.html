@@ -23,6 +23,7 @@
       else if (p === '/invite') k = 'invite';
       else if (p === '/ads') k = 'ads';
       else if (p === '/enterprise') k = 'enterprise';   // 企业产品入驻（不谈钱的入驻页，整页服务端渲染）
+      else if (p === '/app') k = 'app';   // App 下载页（整页服务端渲染， SPA 只藏首页）
       else if (p === '/open') k = 'open';
       else if (p.indexOf('/brand/') === 0) k = 'brand';   // 品牌橱窗页（企业合作内容，整页服务端渲染）
       else if (p.indexOf('/u/') === 0) k = 'author';
@@ -84,6 +85,9 @@
       </form>
 
       <nav class="main-nav">
+       <!-- 2026-11-22：五个入口收成一个胶囊分组（.nav-tabs），比散着的灰字更像「tab」；
+            高亮逻辑仍按 .nav-btn[href] 找，包裹层不影响路由/提示气泡。 -->
+       <div class="nav-tabs">
         <!-- 顺序按「逛作品 → 看热度 → 认作者 → 进社区 → 另一个端」：发现是主浏览入口放最前，
              小程序只是扫码入口，收尾。星梦榜 / 造梦酒馆对站内人是不用解释的黑话，对新访客不是：
              hover（键盘用户是 focus）一句话说清各自是什么。
@@ -98,6 +102,7 @@
         <a class="nav-btn" href="/bar" data-nav data-tip="说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现，也能闲聊、安利、分享"><i class="ico" data-ico="wish"></i> 酒馆</a>
         <button type="button" class="nav-btn hero-mini-open" data-tip="扫小程序码，微信里也能逛橱窗、签到、看酒馆" aria-label="小程序：扫小程序码，微信里也能逛橱窗、签到、看酒馆"><i class="ico" data-ico="mini"></i> 小程序</button>
         <!-- 精选专栏 /column 的入口放在页脚「逛逛 · 软件精选」，顶部导航不再加入口 -->
+       </div>
       </nav>
 
       <!-- 统一发布入口（2026-11-12）：右上角一个圆圈加号，点开五条出路——提交作品 / 提想法 / 随便聊 / 推荐自己的作品（11-12 加） / 企业产品入驻。
@@ -206,9 +211,10 @@
              说一句「想把录音转成文字」，由「找找」去站里翻。
              2026-11-14 文案改口：「问找找」念着像「问问找找」、也说不清这人是谁，
              换成「让找找帮你翻」——把「谁」和「干什么」都放在一句里，跟下面「大家在找」
-             那行也不再连成一片「找」字。 -->
+             那行也不再连成一片「找」字。
+             2026-11-22 再改口：「找找」点明是 AI——「找找ai帮你翻」，让人一眼知道背后是 AI 在翻。 -->
         <button type="button" class="hero-find" id="heroFindBtn" title="说不清叫什么？用一句话描述你想找的东西，找找去站里翻给你">
-          <span class="hf-star" aria-hidden="true">✦</span>说不清叫什么？<b>让找找帮你翻</b>
+          <span class="hf-star" aria-hidden="true">✦</span>说不清叫什么？<b>找找ai帮你翻</b>
         </button>
         <!-- 大家在找：2026-11-14 从酒馆热搜榜搬来——「搜」归搜索区，酒馆只留想法。
              只放站内搜得到的词（点了落空结果是坑人的），12 条全出：种子词贴「热」、
@@ -319,8 +325,12 @@
                 <circle cx="10" cy="14" r="1.05" fill="currentColor"/>
               </svg>
             </button>
-            <span class="feat-info-pop" role="tooltip"><b class="rt">随便逛逛 · 排序规则</b>· <b>机会均等</b>：在你还没看过的作品里完全随机抽，新老作品概率一样，每件都有被看到的机会（站方手动加权的作品会略有倾斜）。<br>· <b>这样才算「看过」</b>：往下滚动之后，卡片一半以上进入屏幕、停留半秒；刷新后没往下拉、或快速划过的都不算。<br>· <b>看过的不再推给你</b>：名单只记在你自己的浏览器里，不影响其他访客看到它。<br>· <b>看遍全站之后</b>：会用「重温」随机补齐，也可以点「随便翻翻」全站乱序翻页，或随时切回「最新 / 最热」。<br>· 一旦使用筛选或搜索，会自动切回「最新」排序。<br>· <b>想从头再看一遍</b>：点<button class="feat-info-link" id="resetSeenLink" type="button">清空已看</button>，所有作品会重新推荐给你（浏览 / 访客统计不受影响）。</span>
+            <span class="feat-info-pop" role="tooltip"><b class="rt">随便逛逛 · 排序规则</b>· <b>机会均等</b>：在你还没看过的作品里完全随机抽，新老作品概率一样，每件都有被看到的机会（站方手动加权的作品会略有倾斜）。<br>· <b>这样才算「看过」</b>：往下滚动之后，卡片一半以上进入屏幕、停留半秒；刷新后没往下拉、或快速划过的都不算。<br>· <b>看过的不再推给你</b>：名单只记在你自己的浏览器里，不影响其他访客看到它。<br>· <b>看遍全站之后</b>：会用「重温」随机补齐，也可以点「随便翻翻」全站乱序翻页，或随时切回「最新 / 最热」。<br>· 一旦使用筛选或搜索，会自动切回「最新」排序。<br>· <b>想从头再看一遍</b>：点<button class="feat-info-link" id="resetSeenLink" type="button">清空已看</button>，所有作品会重新推荐给你（浏览 / 访客统计不受影响）。            </span>
           </span>
+          <!-- 2026-11-22（二改拍板）：搜索框放下面、头部不再放——桌面端首页它落在这个槽里，
+               紧挨「全部作品 共 N 件」；内页桌面端头部不显示搜索（回首页搜），
+               手机端仍是头部覆盖层。搬动逻辑见 app.js 的 syncSearchBoxPlacement()。 -->
+          <div class="list-search-slot" id="listSearchSlot"></div>
         </span>
         <div class="head-controls">
           <!-- 每行 4 / 5 / 6 个：用户自己选，记在本机。
@@ -381,23 +391,45 @@
     <!-- 造梦者书架：站内 SPA view（2026-11-20 从独立页并入，切 tab 不再整页刷新）。
          样式类名统一 cr- 前缀，避开主站 .card/.cover/.grid 等。数据走公开 /api/creators。 -->
     <section id="creatorsView" style="display:none">
+      <!-- 2026-11-22 四改：大 hero 面板（eyebrow + 大标题 + 副标 + 四个数字胶囊）太占地方，
+           压成一行工具条：标题/副标在左，排序胶囊 + 搜索在右；概览数字降为下面一行灰字。
+           功能不变：四个 tab（总访客 / 单件最佳 / GitHub Star / 企业认证）+ 按名字/作品搜索。 -->
       <header class="cr-hd">
-        <h2>造梦者书架</h2>
-        <p class="cr-sub">每一件作品背后，都是一个在认真造梦的人</p>
-        <div class="cr-tally" id="crTally"></div>
-        <div class="cr-tools">
-          <div class="cr-pills" role="tablist" aria-label="排序方式">
-            <button type="button" class="cr-pill active" data-cr-mode="uv" role="tab" aria-selected="true">总访客</button>
-            <button type="button" class="cr-pill" data-cr-mode="top" role="tab" aria-selected="false">单件最佳</button>
-            <button type="button" class="cr-pill" data-cr-mode="star" role="tab" aria-selected="false" title="投稿到本站的开源作品里，GitHub star 超过 100 的">GitHub Star</button>
+        <div class="cr-bar">
+          <div class="cr-bar-title">
+            <h2><i class="ico" data-ico="shelf"></i>造梦者书架</h2>
+            <span class="cr-sub">每一件作品背后，都是一个在认真造梦的人</span>
           </div>
-          <div class="cr-search">
-            <input type="search" id="crSearch" placeholder="找一位创作者…" autocomplete="off" aria-label="按名字搜索创作者" />
+          <div class="cr-tools">
+            <div class="cr-pills" role="tablist" aria-label="书架分类">
+              <button type="button" class="cr-pill active" data-cr-mode="uv" role="tab" aria-selected="true"><i class="ico" data-ico="fire"></i>总访客</button>
+              <button type="button" class="cr-pill" data-cr-mode="top" role="tab" aria-selected="false"><i class="ico" data-ico="star"></i>单件最佳</button>
+              <button type="button" class="cr-pill" data-cr-mode="star" role="tab" aria-selected="false" title="投稿到本站的开源作品里，GitHub star 超过 100 的"><i class="ico" data-ico="github"></i>GitHub Star</button>
+              <button type="button" class="cr-pill cr-pill-cert" data-cr-mode="cert" role="tab" aria-selected="false" title="经过站方核验的企业产品，也跟普通作品一样参与榜单和随便看看，这里集中查看"><i class="ico" data-ico="shield"></i>企业认证</button>
+            </div>
+            <div class="cr-search"><i class="ico" data-ico="search"></i>
+              <input type="search" id="crSearch" placeholder="找一位创作者…" autocomplete="off" aria-label="按名字搜索创作者" />
+            </div>
           </div>
         </div>
+        <div class="cr-meta">
+          <div class="cr-highlights" id="crHighlights"></div>
+          <div class="cr-tally" id="crTally"></div>
+        </div>
       </header>
-      <div class="cr-grid" id="crGrid"></div>
-      <div class="cr-more" id="crMore" hidden><button type="button" id="crMoreBtn">加载更多创作者 →</button></div>
+
+      <!-- 左右两栏（≥1100px）：左卡片墙，右栏就是 rank 槽的自荐推广位（和星梦榜右栏 /
+           酒馆页头共用同一套投放，用户投一次三处轮展）。空位时广告模块自己会出虚位条。
+           data-ad-rail=creators → 条数走后台「推荐位同屏条数」的 crSide，竖排最多 N 条。 -->
+      <div class="cr-layout">
+        <div class="cr-main">
+          <div class="cr-grid" id="crGrid"></div>
+          <div class="cr-more" id="crMore" hidden><button type="button" id="crMoreBtn">加载更多创作者 →</button></div>
+        </div>
+        <aside class="cr-side">
+          <div class="ad-slot" data-ad-slot="rank" data-ad-maxcols="3" data-ad-stack="1" data-ad-rail="creators"></div>
+        </aside>
+      </div>
     </section>
 
     <!-- 榜单 -->
@@ -1147,6 +1179,7 @@
             <a href="/invite" class="footer-link">邀请收录</a>
             <a href="/howto" class="footer-link">投稿指南</a>
             <a href="/guide" class="footer-link">外宣指南</a>
+            <a href="/app" class="footer-link">App 下载</a>
           </div>
           <div class="fgroup">
             <span class="fg-label">合作</span>
@@ -1399,6 +1432,7 @@
         <div id="siteField">
           <label>官网（选填，作品的主页 / 官方网站）</label>
           <input type="text" name="site" maxlength="500" placeholder="https://example.com" autocomplete="off" />
+          <p class="form-hint" id="siteNote" style="display:none">这件作品之前存过官网地址。它和上面的「网站地址」不一样时，详情页会多一颗「官网」按钮；不想留就清空。</p>
         </div>
 
         <div id="linkField">
@@ -1469,6 +1503,7 @@
         <div class="os-picker" id="paidModelPicker" style="display:none; margin-top:8px">
           <label class="os-opt"><input type="radio" name="paidModel" value="" checked /><span>形式不定</span></label>
           <label class="os-opt"><input type="radio" name="paidModel" value="freemium" /><span>部分免费</span></label>
+          <label class="os-opt"><input type="radio" name="paidModel" value="freeuse" /><span>免费能用（有付费功能）</span></label>
           <label class="os-opt"><input type="radio" name="paidModel" value="member" /><span>会员专享</span></label>
           <label class="os-opt"><input type="radio" name="paidModel" value="onetime" /><span>单篇购买</span></label>
           <label class="os-opt"><input type="radio" name="paidModel" value="subscription" /><span>订阅制</span></label>
@@ -2049,13 +2084,13 @@
       <div class="td-top">
         <span class="td-logo" id="tdLogo">?</span>
         <div class="td-head">
-          <span class="td-flag" id="tdFlag">工具 · 企业认证</span>
+          <span class="td-flag" id="tdFlag">工具</span>
           <h2 class="td-name" id="tdName"></h2>
           <p class="td-desc" id="tdDesc"></p>
         </div>
       </div>
       <div class="td-body" id="tdBody"></div>
-      <p class="td-note">这是<b>企业合作产品</b>，不是站内作者做的作品——所以它没有作者、不进榜单和期刊、也不算进作品数。点「去官网看看」会在新标签页打开外部网站。</p>
+      <p class="td-note">这是<b>未认证的合作工具推荐</b>，不是站内作品——不进榜单和期刊，也不算进作品数。已核验主体的企业认证产品按普通作品收录，走作品详情。点「去官网看看」会在新标签页打开外部网站。</p>
       <div class="td-acts">
         <button type="button" class="btn" id="tdClose">先看看别的</button>
         <a class="btn btn-primary" id="tdGo" href="#" target="_blank" rel="noopener nofollow sponsored">去官网看看 ↗</a>
@@ -2353,13 +2388,13 @@
             <p><b>高光榜 = 每件作品上架以来最亮的连续 7 天</b>：把作品每一天的「获赞×5 + 收藏×8 + 评论×3 + 灯火人数×10 + 当天访客×2 ＋ 回访加分」按天累加，找出总分最高的那段日子（不足 7 天按实际天数算，发布当天就能参与）。这是荣誉榜不是竞技榜——老作品的最好一周永久留档，不会每周清零；每行会标注这段「高光区间」是哪几天。上榜有门槛：窗口内访客 ≥ 10；访客按人去重（一台设备或一个账号算一人），一个人反复刷新也还是 1 个，刷不出榜位。新进入前 20 的作品 7 天内标「新上榜」（按首次进榜时间算，不是上架时间）。注：点赞/灯火自 2026-11-07 起才有时间戳，之前的窗口这两项不计，分数略偏低，随时间自动变得更准。</p>
           </div>
         </details>
-        <details class="rr-qa">
+        <details class="rr-qa" id="rrJournalQa">
           <summary><i class="ico" data-ico="journal"></i> 星梦期刊是什么</summary>
           <div class="rr-a">
             <p>榜单每分钟都在变，期刊把「那一期」固定下来：<b>周榜期刊每周一出一期，月榜期刊每月 1 日出刊</b>。一期收录的是这一期内上架的新作品，<b>每件作品只计自己上架后头 7 天的互动增量</b>（权重与综合分相同）——周一上架有整整 7 天，周日上架的窗口会跨过截稿点往后面借几天，同样攒满 7 天，上架早晚谁都不吃亏。<b>先出刊、后定稿</b>：出刊时的名次是暂定的，等这期里最晚上架的作品也攒满 7 天（截稿后再过 7 天）才定稿；定稿后有人取消点赞、访客继续涨，都不会再改写名次——它是存照，不是实时榜。<b>每一期前三名有灯火</b>：周榜冠军 200、亚军 100、季军 50 盏，月榜冠军 1000、亚军 500、季军 200 盏，<b>定稿当天发放</b>（暂定榜期间名次还会变，所以先不发；没有账号的作品、站长自己的作品只留名次不发光）。榜单页右栏的期刊架可以往前翻每一期；月榜第一期是建站那个自然月，所以站点没满一个月时它还在筹备。</p>
           </div>
         </details>
-        <details class="rr-qa" open>
+        <details class="rr-qa" open id="rrDimensionsQa">
           <summary>各维度怎么算</summary>
           <div class="rr-a">
             <p><b><i class="ico" data-ico="heart"></i> 获赞</b>：作品收到的点赞数。</p>

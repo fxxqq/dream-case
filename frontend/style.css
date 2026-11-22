@@ -59,6 +59,7 @@ html[data-page="invite"] #homeView,
 html[data-page="ads"] #homeView,
 html[data-page="brand"] #homeView,
 html[data-page="enterprise"] #homeView,
+html[data-page="app"] #homeView,
 html[data-page="open"] #homeView { display: none !important; }
 
 /* 整页打开内页（/u/、/rank、/bar …）时，服务端把该页的 SSR 副本挂在 #homeView 末尾
@@ -2634,6 +2635,32 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 }
 .nav-btn.active { color: var(--primary); background: #eeeefc; font-weight: 600; }
 
+/* 2026-11-22 二改：站长嫌胶囊分组不好看，参考 GitHub / Linear 的「通栏 tab」——
+   导航项撑满头部高度，hover 只淡淡铺一层底，当前页用 2px 主紫条压在头部底边上。
+   仍用 .nav-btn 原类名，路由高亮和 data-tip 气泡都不用改（气泡锚在按钮下方正好露在头部外）。 */
+.main-nav .nav-tabs {
+  display: inline-flex; align-items: stretch; height: 60px; gap: 2px;
+  background: none; border: 0; padding: 0;
+}
+.main-nav .nav-tabs .nav-btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 0 14px; border-radius: 0;
+  color: #5c6275; font-size: 14.5px; font-weight: 500;
+  transition: color .16s ease, background .16s ease;
+}
+.main-nav .nav-tabs .nav-btn:hover {
+  color: var(--text); background: #f5f5fa;
+}
+.main-nav .nav-tabs .nav-btn.active {
+  color: var(--primary); font-weight: 600; background: none;
+  box-shadow: inset 0 -2px 0 var(--primary);
+}
+/* 小程序图标在 icons.js 里写死了品牌紫；tab 组里跟旁边灰图标不齐，这里跟着文字走 */
+.main-nav .nav-tabs .nav-btn .ico[data-ico="mini"] svg path { fill: currentColor; }
+@media (min-width: 821px) and (max-width: 1360px) {
+  .main-nav .nav-tabs .nav-btn { padding: 0 10px; font-size: 13.5px; }
+}
+
 /* ========== 导航黑话提示（2026-11-13） ==========
    星梦榜 / 造梦酒馆是站内叫法，新访客看不懂。原生 title 要悬停一秒才出、样式不可控，
    这里用 data-tip 自绘气泡，鼠标一进就出；键盘用户 Tab 到按钮时（:focus-visible）同样显示。
@@ -2757,13 +2784,14 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 }
 .fb-x:hover { background: #f1f2f8; color: var(--text); }
 .fb-log { flex: 1; overflow-y: auto; padding: 16px 18px 6px; display: flex; flex-direction: column; gap: 10px; }
-/* 首屏示例卡（2026-11-20）：小程序 pages/find 同款三句可点的话，
+/* 首屏示例卡（2026-11-20 建，11-22 加第二行企业产品场景）：可点的话，
    让新访客一眼看出「说一句人话」和上面搜索框的字面匹配不是一回事 */
 .fb-intro {
   align-self: stretch; padding: 14px; border: 1px solid var(--border);
   border-radius: 14px; background: #fff; box-shadow: 0 4px 18px rgba(31, 35, 48, .05);
 }
 .fb-intro-t { margin-bottom: 10px; font-size: 12.5px; color: #858aa0; }
+.fb-intro-chips + .fb-intro-chips { margin-top: 9px; }
 .fb-intro-note { margin-top: 12px; font-size: 12px; line-height: 1.6; color: #a0a5b8; }
 .fb-msg { font-size: 13.5px; line-height: 1.62; max-width: 88%; border-radius: 12px; padding: 9px 13px; }
 .fb-msg.me { align-self: flex-end; background: var(--primary); color: #fff; border-bottom-right-radius: 4px; white-space: pre-wrap; }
@@ -3075,6 +3103,22 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .list-head-left { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .list-head #listTitle { font-size: 15px; font-weight: 600; }
 .list-count { font-size: 13px; color: var(--muted); }
+/* 2026-11-22 二改拍板：搜索框放下面、头部不放。桌面首页落在「全部作品 共 N 件」右边，
+   节点还是头部那一个（内页桌面由下面的 ≥641px 规则藏掉，手机端回头部给覆盖层用）。 */
+.list-search-slot { display: flex; align-items: center; flex: none; min-width: 0; }
+/* 定宽 + 不许压缩：聚焦/有词时加长到 320px，让「搜索作品、作者、关键词…」完整露出；
+   之前用 flex-basis 280 还留了 flex-shrink，窄屏一挤提示词就被截断（站长 11-22 截图指出）。
+   真放不下时靠 .list-head 的 wrap 把右侧控件折到下一行，不让搜索框自己受气。 */
+.list-head { flex-wrap: wrap; row-gap: 8px; }
+.list-head .search-box { flex: 0 0 auto; width: 220px; min-width: 150px; align-self: center; transition: width .18s ease; }
+.list-head .search-box:focus-within,
+.list-head .search-box.is-focus,
+.list-head .search-box:has(input:not(:placeholder-shown)) { width: 320px; }
+/* ≥641px 的头部一律不放搜索框：它只在首页列表标题行出现（手机 ≤640 仍走头部覆盖层，
+   那一档有自己的 display 规则，不受这里影响）。只限 header 直子代——搬进列表槽后不命中。 */
+@media (min-width: 641px) {
+  .header-inner > .search-box { display: none; }
+}
 
 /* ---------- 列表刷新中的加载态（2026-11-10）----------
    点「随便逛逛 / 最新 / 最热」、切筛选、换视图都会进入这个状态：
@@ -5007,6 +5051,9 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   .header-inner > .logo, .main-nav, .pub-wrap, .auth-box { flex: none; }
   .search-box { flex: 1 1 auto; min-width: 90px; order: 0; }
   .main-nav { order: 0; width: auto; gap: 0; overflow: visible; }
+  /* 通栏 tab 在这一档同样成立，只是收间距和字号 */
+  .main-nav .nav-tabs { height: 60px; gap: 0; }
+  .main-nav .nav-tabs .nav-btn { padding: 0 8px; font-size: 13px; }
   .main-nav .nav-btn { padding: 6px 6px; font-size: 13px; }
   /* 发布加号比桌面小一档：这里每个像素都紧，34px 的圆会把搜索框挤没 */
   .pub-btn { width: 30px; height: 30px; }
@@ -7177,47 +7224,47 @@ label.redeem-day.rd-custom { cursor: text; }
    白底 + 同一条 #eeecf8 边框 / 12px 圆角 / hover，徽标 + 标题一行、描述一行做 meta。
    CTA 从胶囊按钮退成紫色小字链（同「看完整榜单 →」的手感）；站内 / 外链的区分
    还在 CTA 文案（看看这个作品 / 打开链接）与 hover 完整文案浮层里，曝光计费不变。
-   只作用于酒馆右栏：榜单页顶部通栏的横幅口径不动；
+   作用于酒馆右栏和造梦者书架右栏：榜单页顶部通栏的横幅口径不动；
    「虚位以待」示例条跟着换卡壳，但保留虚线边 + 琥珀字——一眼看得出它不是真推荐。 */
-.bar-rail .ad-slot[data-ad-slot="rank"] .ad-card {
+.bar-rail .ad-slot[data-ad-slot="rank"], .cr-side .ad-slot[data-ad-slot="rank"] .ad-card {
   background: #fff; border: 1px solid #eeecf8; border-radius: 12px; box-shadow: none;
 }
-.bar-rail .ad-slot[data-ad-slot="rank"] .ad-card:hover {
+.bar-rail .ad-slot[data-ad-slot="rank"], .cr-side .ad-slot[data-ad-slot="rank"] .ad-card:hover {
   transform: none; border-color: #ded9ff; box-shadow: 0 6px 16px rgba(91, 91, 214, .08);
 }
-.bar-rail .ad-slot[data-ad-slot="rank"] .ad-card .ad-body {
+.bar-rail .ad-slot[data-ad-slot="rank"], .cr-side .ad-slot[data-ad-slot="rank"] .ad-card .ad-body {
   padding: 9px 34px 9px 10px; row-gap: 2px;
 }
-.bar-rail .ad-slot[data-ad-slot="rank"] .ad-card .ad-title {
+.bar-rail .ad-slot[data-ad-slot="rank"], .cr-side .ad-slot[data-ad-slot="rank"] .ad-card .ad-title {
   font-size: 13px; font-weight: 600; color: #2b2d3f;
 }
-.bar-rail .ad-slot[data-ad-slot="rank"] .ad-card .ad-desc {
+.bar-rail .ad-slot[data-ad-slot="rank"], .cr-side .ad-slot[data-ad-slot="rank"] .ad-card .ad-desc {
   font-size: 11px; color: var(--muted); opacity: 1;
 }
-.bar-rail .ad-slot[data-ad-slot="rank"] .ad-card .ad-badge {
+.bar-rail .ad-slot[data-ad-slot="rank"], .cr-side .ad-slot[data-ad-slot="rank"] .ad-card .ad-badge {
   font-size: 10px; line-height: 1.6; padding: 0 5px; border-radius: 4px;
   background: #f2f2fb; color: #6a6f8a; border: 0;
 }
-.bar-rail .ad-slot[data-ad-slot="rank"] .ad-card .ad-badge.is-redeem {
+.bar-rail .ad-slot[data-ad-slot="rank"], .cr-side .ad-slot[data-ad-slot="rank"] .ad-card .ad-badge.is-redeem {
   background: #fff5e8; color: #a2600a; border: 0;
 }
-.bar-rail .ad-slot[data-ad-slot="rank"] .ad-card .ad-cta {
+.bar-rail .ad-slot[data-ad-slot="rank"], .cr-side .ad-slot[data-ad-slot="rank"] .ad-card .ad-cta {
   background: transparent; color: var(--primary); font-weight: 600;
   font-size: 11.5px; padding: 0;
 }
-.bar-rail .ad-slot[data-ad-slot="rank"] .ad-card.ad-vacant {
+.bar-rail .ad-slot[data-ad-slot="rank"], .cr-side .ad-slot[data-ad-slot="rank"] .ad-card.ad-vacant {
   background: #fff; border: 1px dashed #e0dbf0; border-radius: 12px; box-shadow: none;
 }
-.bar-rail .ad-slot[data-ad-slot="rank"] .ad-card.ad-vacant .ad-title {
+.bar-rail .ad-slot[data-ad-slot="rank"], .cr-side .ad-slot[data-ad-slot="rank"] .ad-card.ad-vacant .ad-title {
   color: #2b2d3f; font-weight: 600;
 }
-.bar-rail .ad-slot[data-ad-slot="rank"] .ad-card.ad-vacant .ad-desc {
+.bar-rail .ad-slot[data-ad-slot="rank"], .cr-side .ad-slot[data-ad-slot="rank"] .ad-card.ad-vacant .ad-desc {
   color: var(--muted); opacity: 1;
 }
-.bar-rail .ad-slot[data-ad-slot="rank"] .ad-card.ad-vacant .ad-cta {
+.bar-rail .ad-slot[data-ad-slot="rank"], .cr-side .ad-slot[data-ad-slot="rank"] .ad-card.ad-vacant .ad-cta {
   background: transparent; color: #a1741a; font-weight: 600; padding: 0;
 }
-.bar-rail .ad-slot[data-ad-slot="rank"] .ad-stack { gap: 6px; }
+.bar-rail .ad-slot[data-ad-slot="rank"], .cr-side .ad-slot[data-ad-slot="rank"] .ad-stack { gap: 6px; }
 
 /* 窄屏（≤900px）没有右栏：单列纵排，热门/书架排到主列前面（进门先看，同历史顺序） */
 .bar-grid { display: flex; flex-direction: column; }
@@ -7231,7 +7278,7 @@ label.redeem-day.rd-custom { cursor: text; }
     gap: 28px;
     align-items: start;
   }
-  .bar-rail { order: 0; position: sticky; top: 72px; }
+  .bar-rail { order: 0; position: sticky; top: 72px; z-index: 20; }  /* z 同 .rank-side：浮层要盖过头部 */
 
   /* 右栏窄：热门竖排一行一个（缩略图收小一号，一行更矮）；书架在基础样式里已是单列 */
   .bar-rail .bh-list { flex-direction: column; gap: 6px; }
@@ -8055,50 +8102,99 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 }
 
 
-/* 数据看板里的签到卡 */
+/* 数据看板里的签到卡：标题行和本周格子分成两层，格子带日期，说明拆成图例+一句话，
+   不再把「本轮第 X 天 · 每天 5/5/10…」挤成右侧一条小灰字。 */
 .checkin-card {
-  border: 1px solid #e4e1ff; border-radius: 14px;
-  background: linear-gradient(135deg, #f6f4ff, #fbfaff);
-  padding: 12px 14px 10px; margin-bottom: 14px;
+  border: 1px solid #e7e3ff; border-radius: 16px;
+  background: linear-gradient(135deg, #f7f5ff 0%, #fbfaff 60%, #fff 100%);
+  padding: 14px 16px 12px; margin-bottom: 14px;
+  box-shadow: 0 2px 10px rgba(91, 91, 214, .05);
 }
-.checkin-card.is-done { background: linear-gradient(135deg, #f5fafe, #fbfdff); border-color: #e2eef8; }
+.checkin-card.is-done {
+  background: linear-gradient(135deg, #f4faf8 0%, #f8fbfd 60%, #fff 100%);
+  border-color: #dceee9;
+}
 .ck-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; flex-wrap: wrap; }
-.ck-title { font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.ck-title { font-size: 15px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 9px; }
+.ck-title > .ico {
+  width: 28px; height: 28px; font-size: 16px; border-radius: 9px;
+  background: linear-gradient(135deg, #7c6cf0, #5b5bd6);
+  box-shadow: 0 3px 8px rgba(91, 91, 214, .24);
+}
+.ck-title > .ico svg { filter: brightness(0) invert(1); }
 .ck-streak {
-  font-size: 11.5px; font-weight: 500; color: #a2600a;
-  background: #fff3d9; border-radius: 999px; padding: 1px 8px;
+  font-size: 11px; font-weight: 600; color: #a25f06;
+  background: linear-gradient(135deg, #fff5dd, #ffedd0);
+  border: 1px solid #f7dfb0; border-radius: 999px; padding: 3px 9px;
 }
 /* 数据看板签到卡里的「签到」按钮（曾用 .ck-btn 与评论/提问 tab 撞名，覆盖了 tab 样式导致选中高亮看起来反了） */
 .checkin-go {
   flex: none; font-size: 12.5px; font-weight: 600; color: #fff; cursor: pointer;
-  background: var(--primary); border: none; border-radius: 999px; padding: 6px 14px;
-  transition: background .15s, opacity .15s;
+  background: linear-gradient(135deg, #6d6ce4, #5b5bd6); border: 1px solid transparent;
+  border-radius: 999px; padding: 7px 16px;
+  box-shadow: 0 3px 10px rgba(91, 91, 214, .22);
+  transition: background .15s, box-shadow .15s, transform .15s;
 }
-.checkin-go:hover:not(:disabled) { background: var(--primary-dark); }
-.checkin-go:disabled { background: #dfe1ec; color: var(--muted); cursor: default; }
-/* 本周签到小表（2026-11-19）：原来的「奖励档位条 + 本周日历条」两排格子合成这一张表。
-   表头日一二三四五六，每格一个状态符号；每天几盏的档位放表头右侧小字。 */
-.ck-week { margin: 8px 0 9px; padding: 7px 9px 9px; background: #faf9ff; border: 1px solid #ebe8fa; border-radius: 9px; }
-.ck-week-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
-.ck-week-head em { font-style: normal; color: #6b5bd6; font-weight: 600; margin-left: 4px; }
-.ck-week-cycle { font-size: 10px; color: #9a95ad; }
-.ck-week-tbl { width: 100%; border-collapse: separate; border-spacing: 5px 0; table-layout: fixed; }
-.ck-week-tbl th { font-size: 10.5px; font-weight: 500; color: #9a95ad; padding: 0 0 4px; text-align: center; }
+.checkin-go:hover:not(:disabled) { background: var(--primary-dark); box-shadow: 0 4px 14px rgba(91, 91, 214, .3); }
+.checkin-go:active:not(:disabled) { transform: translateY(1px); }
+.checkin-go:disabled {
+  background: #e9f7f1; border-color: #cdeadd; color: #14946a; cursor: default; box-shadow: none;
+}
+/* 本周签到小表：每格状态符号 + 日期，未到的日子虚线浅色、已签走渐变，
+   比原来一排空盒子更好读；右侧轮次信息做成浅紫胶囊。 */
+.ck-week {
+  margin: 12px 0 10px; padding: 11px 12px 12px;
+  background: #fff; border: 1px solid #ece9fa; border-radius: 12px;
+}
+.ck-week-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.ck-week-label { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.ck-week-head em {
+  font-style: normal; font-size: 11.5px; font-weight: 700; color: var(--primary);
+  background: #efedff; border-radius: 999px; padding: 2px 8px; margin-left: 5px;
+}
+.ck-week-cycle {
+  font-size: 11px; line-height: 1.5; color: #7d769c;
+  background: #f7f6fd; border: 1px solid #efedf9; border-radius: 999px; padding: 3px 9px;
+}
+.ck-week-cycle b { color: var(--primary); font-weight: 700; }
+.ck-week-sep { display: inline-block; width: 1px; height: 9px; background: #d9d5ec; margin: 0 6px; vertical-align: -1px; }
+.ck-week-tbl { width: 100%; border-collapse: separate; border-spacing: 4px 0; table-layout: fixed; }
+.ck-week-tbl th { font-size: 11px; font-weight: 500; color: #9590ab; padding: 0 0 6px; text-align: center; }
 .ck-week-tbl th.is-today { color: var(--primary); font-weight: 700; }
 .ckw-cell {
-  height: 32px; border-radius: 7px; text-align: center; vertical-align: middle;
-  background: #fff; border: 1px solid #e7e5f7; padding: 0;
+  height: 46px; border-radius: 10px; text-align: center; vertical-align: middle; padding: 3px 0;
+  background: #fbfbfe; border: 1px solid #ecebf5;
+  transition: background .15s, border-color .15s;
 }
-.ckw-cell b { font-size: 14px; font-weight: 600; color: #b9b5c9; line-height: 1; }
-.ckw-cell.is-signed { background: var(--primary); border-color: var(--primary); }
+.ckw-in { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 100%; }
+.ckw-cell b { font-size: 15px; font-weight: 700; color: #c2bed0; line-height: 1; }
+.ckw-cell i { font-style: normal; font-size: 9.5px; color: #b6b2c5; line-height: 1; font-variant-numeric: tabular-nums; }
+.ckw-cell.is-signed {
+  background: linear-gradient(135deg, #7369e8, #5b5bd6); border-color: #5b5bd6;
+  box-shadow: 0 3px 8px rgba(91, 91, 214, .22);
+}
 .ckw-cell.is-signed b { color: #fff; }
-.ckw-cell.is-missed { background: #fff2f1; border-color: #f6d9d6; }
+.ckw-cell.is-signed i { color: rgba(255, 255, 255, .78); }
+.ckw-cell.is-missed { background: #fff5f4; border-color: #f6ddda; }
 .ckw-cell.is-missed b { color: #d9605a; }
-.ckw-cell.is-today:not(.is-signed) { border-color: var(--primary); background: #f6f4ff; }
+.ckw-cell.is-missed i { color: #c99b98; }
+.ckw-cell.is-today:not(.is-signed) { border-color: var(--primary); border-style: dashed; background: #f7f5ff; }
 .ckw-cell.is-today b { color: var(--primary); }
-.ckw-cell.is-future { background: #fbfbfd; border-color: #efeff4; }
-.ckw-cell.is-future b, .ckw-cell.is-unknown b { color: #c9c7d2; }
-.ck-tip { font-size: 11.5px; color: var(--muted); line-height: 1.6; }
+.ckw-cell.is-future { background: #fcfcfe; border-style: dashed; }
+.ckw-cell.is-future b, .ckw-cell.is-unknown b { color: #d0cdda; }
+/* 说明拆成图例和一句话，图例用颜色对应格子状态，一眼能对上 */
+.ck-tip { margin-top: 10px; font-size: 11px; color: var(--muted); line-height: 1.65; }
+.ck-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 5px; }
+.ck-legend span { display: inline-flex; align-items: center; gap: 4px; color: #8a86a0; }
+.ck-legend b {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 5px;
+  background: #f0eef9; color: #7973a2; font-size: 10px; font-weight: 700;
+}
+.ck-legend span:first-child b { background: #eceaff; color: var(--primary); }
+.ck-legend span:nth-child(2) b { background: #fff0ef; color: #d9605a; }
+.ck-tip p { margin: 0; }
+.ck-tip strong { color: var(--primary-dark); font-weight: 700; }
 /* 断签补签（2026-11-18）：一条窄带，断签才出现。紫虚线刻意和下面那张暖橙广告卡分开——
    一眼看出「这是把连签接回来」，不是又一份白送的灯火。补不满时退成灰面、不给按钮。 */
 .ck-makeup {
@@ -8981,6 +9077,11 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
     display: block;
     position: sticky;
     top: 72px;
+    /* sticky 自带层叠上下文：不写 z-index 的话，整个右栏（连卡片里 z-index 80 的
+       悬停全文浮层一起）都被压在头部（z-index 10）下面，浮层一探到头部就被裁掉
+       （2026-11-22 站长截图）。给右栏抬到头部之上，浮层才能盖过头部；
+       右栏本身 top:72px 吸顶，平时碰不到头部，不影响别的。 */
+    z-index: 20;
     /* 2026-11-16：去掉原来的 margin-top: 26px——那是照搬旧页头推荐位（.rank-top）的上边距，
        分栏后右栏已和左栏同一行起步，再垫就在推荐位上方留一条死白（站长截图投诉）。
        现在右栏顶对齐左栏的下拉行，只隔动态条自带的 12px。 */
@@ -13736,35 +13837,112 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
   }
 }
 
-/* ===== 造梦者书架 /creators（2026-11-20，从独立页并入 SPA，类名统一 cr- 前缀）===== */
-.cr-hd { padding: 8px 0 22px; text-align: center; }
-.cr-hd h1, .cr-hd h2 { font-size: 22px; font-weight: 600; letter-spacing: .4px; }
-.cr-sub { font-size: 13px; color: var(--muted); margin-top: 5px; }
-.cr-tally { font-size: 12px; color: #9aa0b3; margin-top: 7px; }
-/* 排序胶囊 + 搜索：标题正下方一行，手机上胶囊居中、搜索框占满 */
-.cr-tools { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
-.cr-pills { display: inline-flex; background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 3px; }
-.cr-pill { font-family: inherit; font-size: 12.5px; font-weight: 500; color: var(--muted); background: none; border: 0; border-radius: 999px; padding: 6px 16px; cursor: pointer; transition: background .15s, color .15s; }
-.cr-pill:hover { color: var(--text); }
-.cr-pill.active { background: var(--primary); color: #fff; font-weight: 600; }
-.cr-search input { font-family: inherit; font-size: 13px; color: var(--text); width: 200px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--card); outline: none; transition: border-color .15s, box-shadow .15s; }
+/* ===== 造梦者书架 /creators（2026-11-20 并入 SPA；2026-11-22 加企业认证 tab；
+        2026-11-22 四改：大 hero 面板压成一行工具条，列表区整体上移）===== */
+.cr-hd { padding: 14px 0 18px; }
+
+/* 工具条：标题/副标在左，排序胶囊 + 搜索在右，一行放下；放不下按需折行 */
+.cr-bar { display: flex; align-items: center; gap: 12px 18px; flex-wrap: wrap; }
+.cr-bar-title { display: flex; align-items: baseline; gap: 10px; flex: 1 1 auto; min-width: 0; }
+.cr-hd h2 {
+  font-size: 17px; font-weight: 700; letter-spacing: .3px; white-space: nowrap;
+  display: flex; align-items: center; gap: 7px;
+}
+.cr-hd h2 .ico { width: 18px; height: 18px; color: var(--primary); }
+.cr-sub { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* 排序胶囊 + 搜索：与标题同一行；手机上胶囊均分、搜索框占满 */
+.cr-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cr-pills {
+  display: inline-flex; gap: 2px; background: rgba(255,255,255,.9);
+  border: 1px solid var(--border); border-radius: 999px; padding: 4px;
+  box-shadow: 0 3px 12px rgba(50, 45, 100, .05);
+}
+.cr-pill {
+  display: inline-flex; align-items: center; gap: 5px; font-family: inherit;
+  font-size: 12.5px; font-weight: 500; color: var(--muted); background: none; border: 0;
+  border-radius: 999px; padding: 7px 14px; cursor: pointer; white-space: nowrap;
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.cr-pill .ico { width: 14px; height: 14px; }
+.cr-pill:hover { color: var(--text); background: rgba(91,91,214,.06); }
+.cr-pill.active { background: var(--primary); color: #fff; font-weight: 600; box-shadow: 0 3px 10px rgba(91,91,214,.25); }
+.cr-pill.active:hover { color: #fff; }
+.cr-pill-cert { color: #2b7ea8; }
+.cr-pill-cert.active { background: linear-gradient(135deg, #2f9bd0, #1477aa); box-shadow: 0 3px 10px rgba(20,119,170,.24); }
+.cr-search { position: relative; }
+.cr-search > .ico {
+  position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+  width: 15px; height: 15px; color: #a5a9bc; pointer-events: none;
+}
+.cr-search input {
+  font-family: inherit; font-size: 13px; color: var(--text); width: 210px;
+  padding: 9px 14px 9px 35px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--card); outline: none; transition: border-color .15s, box-shadow .15s;
+}
 .cr-search input::placeholder { color: #b0b4c4; }
 .cr-search input:focus { border-color: #c9c9f0; box-shadow: 0 0 0 3px rgba(108, 99, 255, .08); }
+
+/* 概览行：全站数据 + 当前排序说明，一行灰字；数字还是主紫，只是不再裹胶囊占地方 */
+.cr-meta {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px;
+  margin-top: 10px; font-size: 12px; color: #8d92a8;
+}
+.cr-highlights { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.cr-hl { display: inline-flex; align-items: baseline; gap: 4px; }
+.cr-hl b { font-size: 13px; color: var(--primary); font-weight: 700; }
+
+/* 左右两栏（2026-11-22）：≥1100px 左书架、右栏直接放 rank 槽的自荐推广位；
+   窄屏只留左栏（和榜单同一断点），推广位仍照旧出现在榜单 / 酒馆 */
+.cr-side { display: none; }
+.cr-layout { display: block; }
+@media (min-width: 1100px) {
+  .cr-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
+  .cr-side { display: block; position: sticky; top: 72px; z-index: 20; }  /* z 同 .rank-side：浮层要盖过头部 */
+}
+.cr-side .ad-slot { margin: 0; }
+
+/* 卡片墙：更圆、更轻的阴影；封面图 hover 微微推进 */
 .cr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 16px; }
-.cr-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; text-decoration: none; color: var(--text); display: block; transition: transform .15s, border-color .15s, box-shadow .15s; }
-.cr-card:hover { transform: translateY(-3px); border-color: #c9c9f0; box-shadow: 0 8px 22px rgba(28, 24, 66, .08); }
-.cr-cover { height: 108px; background: #eef0f6; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
-.cr-cover img { width: 100%; height: 100%; object-fit: cover; }
+.cr-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+  overflow: hidden; text-decoration: none; color: var(--text); display: block;
+  transition: transform .18s, border-color .18s, box-shadow .18s;
+}
+.cr-card:hover { transform: translateY(-4px); border-color: #c9c9f0; box-shadow: 0 12px 28px rgba(35, 30, 85, .10); }
+.cr-cover { height: 118px; background: #eef0f6; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; }
+.cr-cover::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(20,20,45,.18), transparent 42%);
+}
+.cr-cover img { width: 100%; height: 100%; object-fit: cover; transition: transform .3s ease; }
+.cr-card:hover .cr-cover img { transform: scale(1.045); }
 .cr-ph { color: #b6bac8; font-size: 12px; }
-.cr-rank { position: absolute; top: 8px; left: 8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 20px; background: rgba(31,35,48,.72); color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; }
-.cr-rank.top { background: linear-gradient(135deg, #ffd66b, #f59e0b); color: #5a4300; font-weight: 600; }
+.cr-rank {
+  position: absolute; top: 9px; left: 9px; z-index: 2;
+  min-width: 24px; height: 24px; padding: 0 6px; border-radius: 20px;
+  background: rgba(31,35,48,.58); border: 1px solid rgba(255,255,255,.28);
+  color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.cr-rank.top {
+  background: linear-gradient(135deg, #ffd66b, #f59e0b); color: #5a4300;
+  font-weight: 700; border-color: rgba(255,255,255,.7); box-shadow: 0 2px 8px rgba(200,140,20,.25);
+}
 /* 「单件最佳」排序时，封面左下挂一行代表作名（最高那件的访客数已经顶进统计格） */
-.cr-best { position: absolute; left: 8px; right: 8px; bottom: 6px; font-size: 11px; color: #fff; background: rgba(31,35,48,.62); border-radius: 8px; padding: 3px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
-.cr-body { padding: 12px 14px 14px; }
-.cr-who { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.cr-av { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; background: #eeeefc; }
-.cr-av-ph { width: 34px; height: 34px; border-radius: 50%; flex: 0 0 auto; background: #eeeefc; color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 500; }
-.cr-name { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
+.cr-best { position: absolute; left: 8px; right: 8px; bottom: 6px; z-index: 2; font-size: 11px; color: #fff; background: rgba(31,35,48,.62); border-radius: 8px; padding: 3px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.cr-body { padding: 13px 14px 14px; }
+.cr-who { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+.cr-av { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; background: #eeeefc; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #e9e8fb; }
+.cr-av-ph { width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto; background: #eeeefc; color: var(--primary); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #e9e8fb; }
+.cr-name { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
+/* 企业认证作者：名字后一枚小蓝盾，悬停显示核验主体（服务端给的 cert 字段） */
+.cr-cert-v {
+  flex: 0 0 auto; width: 17px; height: 17px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #1687bd; background: #e8f6fd; border: 1px solid #cfeaf8; cursor: help;
+}
+.cr-cert-v .ico { width: 12px; height: 12px; }
 /* 卡片上的关注按钮：口径跟作者页 / 详情页同一颗（实心主色 ↔ 已关注描边）。
    名字长的时候按钮不被挤没：cr-name 有 min-width:0 弹性收缩，按钮 flex:0 0 auto 站住。 */
 .cr-follow {
@@ -13781,11 +13959,12 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
 .cr-follow.is-on:hover { background: #fff5f5; color: var(--danger); border-color: #f0c9cb; }
 .cr-follow .ico { font-size: 1em; padding: 0; background: none; border-radius: 0; }
 .cr-follow .fb-num { font-weight: 500; opacity: .7; }
-.cr-stats { display: flex; gap: 14px; font-size: 12px; color: var(--muted); }
+.cr-stats { display: flex; align-items: center; font-size: 12px; color: var(--muted); }
+.cr-stats > span + span::before { content: ""; display: inline-block; width: 1px; height: 11px; background: #e3e5ee; margin: 0 10px; vertical-align: -1px; }
 .cr-stats b { color: var(--text); font-weight: 600; }
 .cr-uv b { color: var(--primary); }
 /* GitHub Star 榜作品卡（与作者卡共用 .cr-card/.cr-cover，只加 star 专属件） */
-.cr-star-num { position: absolute; right: 8px; bottom: 6px; font-size: 12px; font-weight: 700; color: #7a5300; background: rgba(255, 221, 128, .94); border-radius: 8px; padding: 3px 9px; box-shadow: 0 1px 4px rgba(120, 80, 0, .18); }
+.cr-star-num { position: absolute; right: 8px; bottom: 6px; z-index: 2; font-size: 12px; font-weight: 700; color: #7a5300; background: rgba(255, 221, 128, .94); border-radius: 8px; padding: 3px 9px; box-shadow: 0 1px 4px rgba(120, 80, 0, .18); }
 .cr-star-card .cr-body { padding-bottom: 15px; }
 .cr-star-title { font-size: 13.5px; font-weight: 600; line-height: 1.45; min-height: 2.9em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .cr-star-meta { display: flex; flex-direction: column; gap: 3px; margin-top: 9px; font-size: 11.5px; color: var(--muted); }
@@ -13794,16 +13973,81 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
 /* Star 卡作者名后的关注按钮：比作者卡的小一号，整行别把窄卡撑破 */
 .cr-star-author .cr-follow { flex: 0 0 auto; padding: 3px 8px; font-size: 10.5px; }
 .cr-star-repo { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #9aa0b3; }
+
+/* 企业认证产品卡：冷蓝色系 + 盾章 + 明确外链，一眼和作者卡分开 */
+.cr-cert-cover {
+  height: 112px; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  background: radial-gradient(circle at 20% 20%, #ddf1fd, transparent 55%),
+              linear-gradient(135deg, #eef8ff, #e7f1ff 60%, #f4f0ff);
+}
+.cr-cert-cover::before { content: ""; position: absolute; width: 140px; height: 140px; border-radius: 50%; border: 1px solid rgba(47,155,208,.14); right: -30px; top: -60px; }
+/* 企业主体的作品卡用真实封面；没有图才回落首字 logo */
+.cr-cert-cover img { width: 100%; height: 100%; object-fit: cover; transition: transform .3s ease; }
+.cr-cert-card:hover .cr-cert-cover img { transform: scale(1.045); }
+.cr-cert-mark {
+  position: absolute; right: 9px; top: 9px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; color: #136f9d; white-space: nowrap;
+  background: rgba(255,255,255,.92); border: 1px solid #cbe8f7;
+  border-radius: 999px; padding: 4px 9px; box-shadow: 0 2px 6px rgba(20,110,160,.10);
+}
+.cr-cert-mark .ico { width: 13px; height: 13px; }
+.cr-cert-logo {
+  width: 56px; height: 56px; border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26px; font-weight: 700; color: #1477aa;
+  background: linear-gradient(135deg, #fff, #e6f5ff); border: 1px solid rgba(255,255,255,.9);
+  box-shadow: 0 8px 20px rgba(21,113,160,.16); transition: transform .18s;
+}
+.cr-cert-card:hover .cr-cert-logo { transform: scale(1.06) rotate(-2deg); }
+.cr-cert-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-cert-desc {
+  margin-top: 6px; font-size: 12px; line-height: 1.55; color: var(--muted); min-height: 2.9em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.cr-cert-foot {
+  display: flex; justify-content: space-between; gap: 8px;
+  margin-top: 11px; padding-top: 10px; border-top: 1px dashed #e6e8f0;
+  font-size: 11px; color: #8b91a6;
+}
+.cr-cert-go { color: #1477aa; font-weight: 600; white-space: nowrap; }
+
 .cr-more { display: flex; justify-content: center; margin-top: 26px; }
 .cr-more button { font-size: 13px; color: var(--primary); background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 9px 22px; cursor: pointer; }
 .cr-more button:hover { border-color: #c9c9f0; }
-.cr-empty { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 13px; padding: 60px 0; }
+.cr-empty { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 13px; padding: 56px 20px; background: rgba(255,255,255,.6); border: 1px dashed var(--border); border-radius: 16px; }
+.cr-empty a { color: var(--primary); text-decoration: none; font-weight: 600; }
+.cr-empty a:hover { text-decoration: underline; }
+@media (max-width: 820px) {
+  .cr-pill { padding: 7px 11px; font-size: 12px; }
+  .cr-search input { width: 180px; }
+  .cr-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+}
 @media (max-width: 640px) {
-  .cr-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-  .cr-tools { margin-top: 12px; gap: 10px; }
-  .cr-search input { width: 150px; }
+  /* 手机：标题一行、副标跟在下面，胶囊均分一行，搜索框占满一行 */
+  .cr-hd { padding: 10px 0 14px; }
+  .cr-bar { gap: 10px; }
+  .cr-bar-title { flex-direction: column; align-items: flex-start; gap: 2px; flex: 1 1 100%; }
+  .cr-sub { white-space: normal; }
+  .cr-tools { flex: 1 1 100%; gap: 9px; }
+  .cr-pills { width: 100%; justify-content: space-between; }
+  /* 窄屏藏掉胶囊图标：四个 tab 全都单行站住，GitHub Star 不再折成两行 */
+  .cr-pill { flex: 1 1 0; justify-content: center; padding: 7px 3px; font-size: 11px; gap: 0; }
+  .cr-pill .ico { display: none; }
+  .cr-search, .cr-search input { width: 100%; }
+  .cr-meta { margin-top: 8px; font-size: 11px; gap: 4px 12px; }
+  .cr-hl b { font-size: 12px; }
+  .cr-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .cr-cover { height: 100px; }
+  .cr-cert-cover { height: 100px; }
+  .cr-cert-logo { width: 46px; height: 46px; font-size: 22px; border-radius: 13px; }
+  .cr-body { padding: 11px 11px 12px; }
+  .cr-who { gap: 6px; }
   .cr-follow { padding: 4px 8px; font-size: 11px; }
-  .cr-stats { gap: 10px; }
+  .cr-stats { font-size: 11px; }
+  .cr-stats > span + span::before { margin: 0 6px; }
+  .cr-cert-desc { font-size: 11.5px; }
+  .cr-cert-foot { font-size: 10.5px; }
 }
 
 /* ============================================================

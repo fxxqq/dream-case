@@ -151,7 +151,7 @@ function syncSortToggle() {
 // 搜索时程序自动复位筛选永远不写这条记忆，跟开关无关。
 const FILTERS_KEY = 'dm_filters';
 const REMEMBER_KEY = 'dm_filters_remember';
-const FILTER_KEYS = ['type', 'scene', 'category', 'openSource', 'range'];
+const FILTER_KEYS = ['type', 'scene', 'category', 'openSource', 'range', 'payment'];
 function readRemember() {
   try { return localStorage.getItem(REMEMBER_KEY) === '1'; } catch { return false; }  // 默认不勾
 }
@@ -170,6 +170,7 @@ function readSavedFilters() {
         if (k === 'type' && !TYPES.includes(v)) return;
         if (k === 'openSource' && !['全部', '开源', '闭源'].includes(v)) return;
         if (k === 'range' && !['全部', '近3天', '近7天', '近30天'].includes(v)) return;
+        if (k === 'payment' && !['全部', '免费', '部分免费', '付费'].includes(v)) return;
         out[k] = v;
       });
     }
@@ -218,6 +219,7 @@ const state = {
   scene: SAVED_FILTERS.scene || '全部',      // 场景筛选：全部 / work / study / life / create / relax / family（key 由 /api/scene-meta 下发）
   openSource: SAVED_FILTERS.openSource || '全部', // 是否开源筛选：全部 / 开源 / 闭源（后端 os=open|closed，可见性不受影响）
   range: SAVED_FILTERS.range || '全部',      // 发布时间筛选：全部 / 近3天 / 近7天 / 近30天
+  payment: SAVED_FILTERS.payment || '全部',  // 付费情况筛选：全部 / 免费 / 部分免费 / 付费（后端 payment=free|freemium|paid）
   q: '',
   page: 1,
   hasMore: false,
@@ -483,7 +485,7 @@ const LINK_LABEL = {
   '小程序': '📱 微信扫码打开', '浏览器插件': '🧩 前往安装', '机器人': '🦾 体验机器人', 'API': '🔌 查看文档'
 };
 // 收费形式（标注「需要付费」时可选）→ 中文标签
-const PAID_MODELS = { freemium: '部分免费', member: '会员专享', onetime: '单篇购买', subscription: '订阅制', buyout: '一次买断', trial: '试用后付费', lamp: '灯火解锁' };
+const PAID_MODELS = { freemium: '部分免费', freeuse: '免费能用（有付费功能）', member: '会员专享', onetime: '单篇购买', subscription: '订阅制', buyout: '一次买断', trial: '试用后付费', lamp: '灯火解锁' };
 // 灯火解锁不是「付费墙」：作品本身不标价，所以 paid 标记为 false，单独看 paidModel
 // （送灯火 donation 2026-11-07 下线：打赏是全站通用能力，不再作为作品标注）
 const NON_PAID_MODELS = ['lamp'];
@@ -1238,7 +1240,10 @@ function checkinCardHtml(ck) {
       </div>
       ${ckWeekHtml(ck, schedule)}
       ${arriveLine}
-      <div class="ck-tip">✓ 已签 · ✕ 断签 · ? 暂无记录。一轮 ${cycle} 天共 ${schedule.reduce((a, b) => a + b, 0)} 盏、断签从头记；攒的灯火可换<span style="white-space:nowrap">「推荐」</span>曝光位，也可送给喜欢的作品。</div>
+      <div class="ck-tip">
+        <div class="ck-legend"><span><b>✓</b>已签</span><span><b>✕</b>断签</span><span><b>?</b>暂无记录</span></div>
+        <p>一轮 ${cycle} 天共 <strong>${schedule.reduce((a, b) => a + b, 0)}</strong> 盏、断签从头记；攒的灯火可换「推荐」曝光位，也可送给喜欢的作品。</p>
+      </div>
       ${ckMakeupHtml(ck)}
       ${ckAdHtml(ck)}
     </div>`;
@@ -1250,13 +1255,14 @@ function checkinCardHtml(ck) {
 function ckWeekHtml(ck, schedule) {
   const week = Array.isArray(ck && ck.week) ? ck.week : [];
   if (!week.length) return '';
-  const mark = { signed: '✓', missed: '✕', today: '今', future: '', unknown: '?' };
+  const mark = { signed: '✓', missed: '✕', today: '今', future: '·', unknown: '?' };
   const tip = { signed: '已签到', missed: '断了', today: '今天，点上方按钮签到', future: '还没到', unknown: '暂无记录' };
   const heads = week.map(c => `<th class="${c.today ? 'is-today' : ''}">${c.dow || ''}</th>`).join('');
   const cells = week.map(c => {
     const s = mark[c.state] != null ? c.state : 'unknown';
     const cls = ['ckw-cell', 'is-' + s];
-    return `<td class="${cls.join(' ')}" title="${c.date} ${tip[s]}"><b>${mark[s]}</b></td>`;
+    const date = String(c.date || '').slice(5).replace('-', '/');
+    return `<td class="${cls.join(' ')}" title="${c.date} ${tip[s]}"><span class="ckw-in"><b>${mark[s]}</b><i>${date}</i></span></td>`;
   }).join('');
   const signed = week.filter(c => c.state === 'signed').length;
   const cycle = ck.cycle || 7;
@@ -1264,8 +1270,8 @@ function ckWeekHtml(ck, schedule) {
   const sched = (Array.isArray(schedule) && schedule.length ? schedule : [5, 5, 10, 10, 20, 20, 30]).join('/');
   return `<div class="ck-week">
       <div class="ck-week-head">
-        <span>本周签到 <em>已签 ${signed} 天</em></span>
-        <span class="ck-week-cycle">本轮第 ${dayInCycle}/${cycle} 天 · 每天 ${sched} 盏</span>
+        <span class="ck-week-label">本周签到 <em>已签 ${signed} 天</em></span>
+        <span class="ck-week-cycle">本轮第 <b>${dayInCycle}</b>/${cycle} 天<span class="ck-week-sep"></span>每天 ${sched} 盏</span>
       </div>
       <table class="ck-week-tbl"><thead><tr>${heads}</tr></thead><tbody><tr>${cells}</tr></tbody></table>
     </div>`;
@@ -4331,9 +4337,9 @@ const AD_GATE_SLOTS = ['home-bottom', 'footer'];
 const AD_GATE_KEY = 'dm_adgate';
 const AD_GATE_GUEST_DAYS = 3;   // 游客累计到访满 3 天
 let AD_GATE_DAILY = { 'home-bottom': 1, footer: 5 };   // 每天最多展示次数，按槽位分开记；会被 /api/ads 的 gate 覆盖
-// rank 槽三个容器的同屏条数（后台「广告位」页可配，/api/ads 的 display 下发，2026-11-16 起）：
-// rankTop = 星梦榜顶部通栏 / rankSide = 星梦榜右栏竖排 / barSide = 酒馆右栏竖排；拿不到就用这组默认值
-let AD_DISPLAY = { rankTop: 4, rankSide: 3, barSide: 2 };
+// rank 槽四个容器的同屏条数（后台「广告位」页可配，/api/ads 的 display 下发，2026-11-16 起）：
+// rankTop = 星梦榜顶部通栏 / rankSide = 星梦榜右栏竖排 / barSide = 酒馆右栏竖排 / crSide = 造梦者书架右栏竖排；拿不到就用这组默认值
+let AD_DISPLAY = { rankTop: 4, rankSide: 3, barSide: 2, crSide: 3 };
 const AD_GATE_GUEST_ONLY = ['home-bottom'];              // 只有这些位对游客设「到访满 3 天」门槛
 
 function adGatePass(slot) {
@@ -4397,7 +4403,7 @@ function isAdClosed(a, map) {
 // ---------- 点击包频控：点过一次的作品推荐，本机不再推（2026-11-11） ----------
 // 只对「纯点击包」的灯火兑换位生效（服务端 publicAd 标了 clickBased）：
 // 点开过作品的人不需要再看这条广告，额度自动留给没看过的新访客。
-// 曝光包不受影响——看一眼就走不该终结一条广告的投放；曝光侧的频控走上面的 AD_VIEW_CAP。
+// 曝光包不受影响——看一眼就走不该终结一条广告的投放；曝光侧的频控已上移服务端（每访客每天 3 次 / 代投每 IP 7 次）。
 // 记录在本机 localStorage（与「不想看」同一套机制），不按服务端 IP 累计——
 // 公司/校园共享出口 IP 会把一群人误伤成一「个人」。180 天滚动过期，
 // 后台改了广告内容（指纹变了）也重新给机会。
@@ -4451,50 +4457,12 @@ function closeAd(id) {
   showToast('已关闭这条广告，之后不再显示');
 }
 
-// ---------- 首页第一格：看腻了就不再显示（本机频控，2026-11-06） ----------
-// 同一访客 7 天里看过这张卡 3 次（同一天最多算 1 次）后，这台浏览器不再显示它，这一格让回普通作品。
-// 只影响展示，不换广告、不动排队、不动服务端计费：服务端本来就按「一人一天最多扣 1 次曝光额度」，
-// 第 2 次以后的展示不扣灯火，藏掉既不亏投放者，也省得同一张卡反复糊在同一个人脸上。
-// 7 天是滚动窗口，过期后重新有机会看到；后台改了广告内容（指纹变了）也重新计数。
-const AD_VIEW_KEY = 'dm_promo_views';
-const AD_VIEW_CAP = 3;
-const AD_VIEW_TTL = 7 * 24 * 3600e3;
-let adViewMem = null;                     // localStorage 不可用时的兜底
-function adViewMap() {
-  let raw = null;
-  try { raw = JSON.parse(localStorage.getItem(AD_VIEW_KEY) || '{}'); }
-  catch (e) { raw = adViewMem; }
-  if (!raw || typeof raw !== 'object') raw = {};
-  const now = Date.now();
-  Object.keys(raw).forEach(k => {
-    const r = raw[k];
-    if (!r || !Array.isArray(r.days)) { delete raw[k]; return; }
-    r.days = r.days.filter(t => typeof t === 'number' && now - t < AD_VIEW_TTL);
-    if (!r.days.length) delete raw[k];
-  });
-  return raw;
-}
-function saveAdViews(map) {
-  try { localStorage.setItem(AD_VIEW_KEY, JSON.stringify(map)); }
-  catch (e) { adViewMem = map; }
-}
-function isAdViewCapped(a, map) {
-  const r = map[a.id];
-  return !!r && r.fp === adFingerprint(a) && r.days.length >= AD_VIEW_CAP;
-}
-// 卡片真的插进首屏才算「看过一次」；同一天重复渲染（loadAds / loadWorks 各一次、刷新）只记 1 次，
-// 避免后台同步、筛选切换或用户狂刷把次数刷满。
-function bumpAdView(a) {
-  const map = adViewMap();
-  const now = Date.now(), day = Math.floor(now / 86400e3);
-  const fp = adFingerprint(a);
-  let r = map[a.id];
-  if (!r || r.fp !== fp) r = { fp, days: [] };
-  if (r.days.some(t => Math.floor(t / 86400e3) === day)) return;
-  r.days.push(now);
-  map[a.id] = r;
-  saveAdViews(map);
-}
+// ---------- 展示频控已上移到服务端（2026-11-22 站长定） ----------
+// 旧的「本机 7 天看 3 次就不再显示」(localStorage dm_promo_views) 已废除。
+// 新规则由服务端按自然日 + 访客身份权威计数并在下发时剔除：
+//   · 用户自己投的推广：同一访客每天最多 3 次（登录按账号 / 未登录按 vid / 兜底 IP）；
+//   · 站长代投：同一 IP 每天最多 7 次。
+// 前端只负责渲染下发的列表，不再自己记「看过几次」，也不再做隐藏拦截。
 
 let adsReady = null;   // 广告数据的首拉 Promise：loadWorks 第 1 页要等它，pageSize 才能把推荐卡那格算进去
 function ensureAds() {
@@ -4528,7 +4496,9 @@ async function loadAds() {
     applyAdsData(BOOT.ads);
   } else {
     try {
-      applyAdsData(await (await fetch('/api/ads')).json());
+      // 带上本机访客 ID：服务端据此做「每访客每天 3 次 / 代投每 IP 7 次」的展示频控，
+      // 不带的话未登录访客只能按出口 IP 算，共享网络下几个人会互相挤占额度。
+      applyAdsData(await (await fetch('/api/ads?vid=' + encodeURIComponent(visitorId()))).json());
     } catch { ADS = []; }
   }
   renderAllAdSlots();
@@ -4775,12 +4745,13 @@ function renderAdSlot(el, slot, opts = {}) {
   if (opts.stack == null && el.dataset && el.dataset.adStack) opts.stack = true;
   if (opts.maxCols != null || opts.stack) el._adOpts = { maxCols: opts.maxCols, stack: opts.stack };
   else if (el._adOpts) opts = el._adOpts;
-  // rank 槽三个容器按身份取后台配的条数（data/ad-display.json → /api/ads display）：
-  // data-ad-stack（星梦榜右栏）→ rankSide；data-ad-rail=bar（酒馆右栏）→ barSide；
-  // 都没有（星梦榜顶部通栏）→ rankTop，仍按视口在 4/3 里收着（900-1180 降 3）。
+  // rank 槽各容器按身份取后台配的条数（data/ad-display.json → /api/ads display）：
+  // data-ad-rail=creators（造梦者书架右栏）→ crSide；data-ad-stack（星梦榜右栏）→ rankSide；
+  // data-ad-rail=bar（酒馆右栏）→ barSide；都没有（星梦榜顶部通栏）→ rankTop，仍按视口在 4/3 里收着（900-1180 降 3）。
   // 右栏容器窄，并排会把标题挤碎，配置几条都一律竖排。
   if (slot === 'rank') {
-    const key = opts.stack ? 'rankSide' : ((el.dataset && el.dataset.adRail) === 'bar' ? 'barSide' : 'rankTop');
+    const key = (el.dataset && el.dataset.adRail) === 'creators' ? 'crSide'
+      : (opts.stack ? 'rankSide' : ((el.dataset && el.dataset.adRail) === 'bar' ? 'barSide' : 'rankTop'));
     const conf = Math.round(Number(AD_DISPLAY[key]));
     if (conf >= 1) {
       if (key === 'rankTop') {
@@ -4815,6 +4786,26 @@ function renderAdSlot(el, slot, opts = {}) {
     const curUrl = '/w/' + encodeURIComponent(state.currentWork.id);
     list = list.filter(a => a.url !== curUrl);
   }
+  // 2026-11-22 站长「后台配几条就摆几条」：本机 × 过（不想看）/ 点击包点过的记录会把池子
+  // 削到配置条数以下（重度访客一天就能把一个位子的单全藏一遍），右栏就少一条、像坏了。
+  // 服务端有「全封顶也补满」的同款兜底，这里是前端最后一道：不够摆时从本机藏掉的单里
+  // 按下发顺序补回来，位置永远摆满配置条数。唯一不补的是被永久屏蔽的作品——那是弹窗
+  // 承诺过的「不会再出现在你面前」，频控可以破例，屏蔽不能。
+  const wantFull = slot === 'detail' ? 2
+    : (slot === 'rank' && opts.maxCols) ? opts.maxCols : 0;
+  if (wantFull > 0 && list.length < wantFull) {
+    const hidIds = new Set(list.map(a => a.id));
+    const hiddenPool = (ADS || []).filter(a => a.slot === slot
+      && (isAdClosed(a, closed) || isAdClickDone(a, clicked)));
+    for (const a of hiddenPool) {
+      if (list.length >= wantFull) break;
+      const wid = a.workId || String(a.url || '').split('/w/')[1] || '';
+      if (!hidIds.has(a.id) && !(wid && (state.blocked || []).includes(wid))) {
+        list.push(a);
+        hidIds.add(a.id);
+      }
+    }
+  }
   if (!list.length) {
     // 页脚：以前没卖出广告也会补一张「招租」卡自己给自己招商，现在默认不补（AD_RENT_CARD=false）。
     // 页脚是全站每页都露出的位置，正常访客看得比广告主多，不该天天看见「这块位置还空着，看价格」。
@@ -4841,13 +4832,9 @@ function renderAdSlot(el, slot, opts = {}) {
     return;
   }
   el.style.display = 'block';
-  if (slot === 'rank') {
-    // 榜单顶部 + 酒馆顶部的定位是「推荐站内作品」：只要有人在投的作品推荐（推荐/积分兑换），
-    // 就只在这些里挑，运营横幅退位；同组内仍随机，各家机会均等。
-    // 一条作品推荐都没有时才回落到运营广告，位置不留白。
-    const redeemList = list.filter(a => a.source === 'redeem');
-    if (redeemList.length) list = redeemList;
-  }
+  // 产品推广位只出产品单（灯火兑换：用户自投 + 站长代投），运营广告彻底不进来
+  // （2026-11-22 站长定：产品位和 header/footer 商业位两套规则各走各的，互不兜底）。
+  // 服务端下发时已按位子分好侧，这里不再回落；没单就显示「虚位以待」招自己。
   if (slot === 'detail' || slot === 'rank') {
     // 详情位 / 榜单+酒馆顶部：每次渲染随机挑，各家曝光机会均等（站长单独设过升/降权的单
     // 按权重加权，见 weightedPick；顺序展示的位则由服务端排好序，升权先露脸）。
@@ -4963,7 +4950,9 @@ function isPlainListView() {
 // 浏览期间静止不动；
 // 访客叉掉当前条后 closeAd 重跑 mountListPromo，从剩下的里再随机挑一条补上。
 // 返回过滤后的全部在投推荐（作者自荐 redeem / 后台 admin）：
-// 过滤掉访客叉过的、7 天内看过≥3 次的、被永久屏蔽作品的。随便逛逛也走这里（它是普通列表视图）。
+// 过滤掉访客叉过的、被永久屏蔽作品的。随便逛逛也走这里（它是普通列表视图）。
+// 展示频控（每访客每天 3 次 / 代投每 IP 7 次）已改由服务端按 vid/IP 权威判定并在下发时剔除，
+// 前端不再做「7 天看 3 次本机」那套旧过滤——否则两套规则叠加、与「每天」口径冲突。
 // 2026-11-19 修：这里以前是「服务端排好序后 slice(0,5) 再抽」——在投超过 5 条时，排在后面的单子
 // 永远进不了候选池：状态是「在投」、天数照走，却一次都露不了脸，跟卡片上写的「各家机会均等」自相矛盾。
 // 「一次只显 1 条」本来就不需要候选上限，所以改成全池加权抽——与小程序端 pickForSlotMulti 的
@@ -4972,13 +4961,11 @@ function isPlainListView() {
 function listPromoAds() {
   if (!isPlainListView()) return [];
   const closed = adClosedMap();
-  const views = adViewMap();
   const clicked = adClickedMap();
   const blocked = state.blocked || [];
   return (ADS || [])
     .filter(x => x.slot === 'list-first' && (x.source === 'redeem' || x.source === 'admin'))
     .filter(a => !isAdClosed(a, closed))
-    .filter(a => !isAdViewCapped(a, views))
     .filter(a => !isAdClickDone(a, clicked))     // 点击包：本机点过一次就不再推
     .filter(a => {
       // 永久屏蔽：屏蔽过的作品就算正在买首页第一格，也不该换个「推荐」角标又冒出来。
@@ -5094,8 +5081,10 @@ function promoCardHtml(a) {
 // ---------- 企业合作工具卡（2026-11-17）----------
 // 作品流里出现的「工具」卡：和作品卡同一套骨架，但角标、底色、底脚文案都不一样，
 // 一眼能看出它不是某位作者做的作品；点击直接外跳（新标签），不套作品详情弹窗。
-// 数据来自 /api/tools 里带 feed:true 的条目。它压根不是作品：不进榜单、不进期刊计分、
-// 不进编年史、不参与「共 N 件」，也不出现在作者主页/收藏/随便逛逛。
+// 数据来自 /api/tools 里带 feed:true、且没勾「企业认证」的条目：它是推广位，不是作品，
+// 不进榜单、不进期刊计分、不进编年史、不参与「共 N 件」（只指未认证工具；认证产品已入作品池）。
+// 2026-11-22 起勾了企业认证的条目已在服务端同步成普通作品（进榜单 / 随便逛逛 / 可点赞收藏评论），
+// 这里必须跳过，否则同一个产品会在首页出现两张卡：一张作品卡、一张工具推广卡。
 // 2026-11-18 加「不再提示此工具」：弹窗里点了就记 localStorage，这条工具不再进流。
 const TOOL_HIDE_KEY = 'toolFeedHidden';
 function toolFeedHiddenSet() {
@@ -5116,7 +5105,7 @@ function hideToolFeed(id) {
 function toolFeedItems() {
   if (!isPlainListView()) return [];
   const hidden = toolFeedHiddenSet();
-  return (state.tools || []).filter(t => t && t.feed && t.active !== false && !hidden.has(String(t.id || '')));
+  return (state.tools || []).filter(t => t && t.feed && !t.cert && t.active !== false && !hidden.has(String(t.id || '')));
 }
 function toolFootText(t) {
   return [t.cert ? '企业认证' : '', t.partner ? '合作' : ''].filter(Boolean).join(' · ') || '工具推荐';
@@ -5222,7 +5211,6 @@ function mountListPromo() {
   if (!ad) return;
   const wrap = document.createElement('div');
   wrap.className = 'promo-slot';
-  bumpAdView(ad);   // 真的插进首屏才算「看过一次」，同一天只记一次
   wrap.innerHTML = promoCardHtml(ad);
   wirePromoClick(wrap.firstElementChild);
   const first = gallery.querySelector('.card, .work-row');
@@ -5273,7 +5261,8 @@ function mountWanderPromo() {
 
 // 随便逛逛：首屏之外的批次里随机插几张「作者灯火自荐位」卡（= 推荐，绝非后台广告）。
 // 只插 source==='redeem'（作者用灯火换的曝光），绝不插 source==='admin' 后台广告；
-// 优先推给「每看过的人」：排除本地已关闭 / 7天看过≥3次的，其余按本机看过次数最少优先；
+// 优先推给「没看过的人」：排除本地已关闭的，其余按本机看过次数最少优先；
+// 展示频控（每访客每天 3 次 / 代投每 IP 7 次）由服务端按 vid/IP 判定并在下发时剔除，前端不再做硬拦截。
 // 同一次浏览不重复插同一张；带小「推荐」角标、走 adTrack 曝光、wanderObserve 跳过 —— 绝不污染 n。
 const WANDER_PROMO_PER_BATCH = 1;            // 每批(约一屏)最多插几张，保持稀疏，别太多
 let wanderInsertedPromoIds = new Set();      // 本页会话已插过的推荐卡 id，避免重复
@@ -5287,7 +5276,6 @@ function promoWorkKey(a) {
 
 function wanderPromoPool() {
   const closed = adClosedMap();
-  const views = adViewMap();
   const clicked = adClickedMap();
   const blocked = state.blocked || [];
   const pool = (ADS || []).filter(a =>
@@ -5297,12 +5285,9 @@ function wanderPromoPool() {
     !String(a.slot || '').startsWith('mini-') &&      // 小程序专属槽位不进网页随便逛逛
     !(a.workId && blocked.includes(a.workId)) &&      // 用户屏蔽过的作品不插
     !isAdClosed(a, closed) &&                         // 本地关过的不再出现
-    !isAdViewCapped(a, views) &&                      // 7天看过≥3次的让回普通作品
     !isAdClickDone(a, clicked) &&                     // 点击包：本机点过一次就不再推
     !(promoWorkKey(a) && wanderInsertedPromoWorkIds.has(promoWorkKey(a)))  // 同一作品本次浏览只插一次
   );
-  // 「优先推给每看过的人」：本机看过次数最少的排前面
-  pool.sort((x, y) => ((views[x.id] && views[x.id].days.length) || 0) - ((views[y.id] && views[y.id].days.length) || 0));
   return pool;
 }
 
@@ -5352,7 +5337,6 @@ function wireWanderPromo(node, a) {
   }
   if (adObserver) adObserver.observe(node);
   else observeAds(document);
-  bumpAdView(a);                               // 真插进随便逛逛才算「看过一次」，7天看过≥3次后停投
   wanderInsertedPromoIds.add(a.id);
   if (id) wanderInsertedPromoWorkIds.add(id);   // 记作品，同一作品换了投放位也不再插第二次
 }
@@ -6560,6 +6544,8 @@ async function loadWorks(reset = true) {
   else if (state.openSource === '闭源') params.set('os', 'closed');
   const rangeParam = RANGE_PARAM[state.range];
   if (rangeParam) params.set('range', rangeParam);
+  const paymentParam = PAYMENT_PARAM[state.payment];
+  if (paymentParam) params.set('payment', paymentParam);
   // 带上本机标识：未登录时后端靠它把「这次搜索」记到具体一个人头上（行为流水），
   // 登录用户后端优先按账号认人，这个参数会被忽略。不影响列表内容，也不参与服务端缓存。
   params.set('vid', visitorId());
@@ -6613,7 +6599,7 @@ async function loadWorks(reset = true) {
     state.hasMore = !!data.hasMore;
     $('loadMore').style.display = state.hasMore ? 'inline-block' : 'none';
     if (reset) mountListPromo();   // 只在第一页插第一格宣传，加载更多不重复插
-    if (reset) mountToolCards();   // 企业合作工具卡（作品流里，但标了「工具 · 企业认证」）
+    if (reset) mountToolCards();   // 未认证的工具推广卡（认证产品已按普通作品入池）
   } catch {
     // 只剩「点灯」动画说明是首次加载就失败：清掉占位、给出空态，别让灯一直亮着转
     if ([...gallery.children].every(el => el.classList.contains('dm-load'))) gallery.innerHTML = '';
@@ -6633,6 +6619,10 @@ const RANGE_OPTS = ['全部', '近3天', '近7天', '近30天'];
 const RANGE_PARAM = { '近3天': '3d', '近7天': '7d', '近30天': '30d' };
 // 面板/按钮上的文案跟小程序一致：「全部」在时间维度读作「全部时间」
 const RANGE_LABEL = { '全部': '全部时间', '近3天': '近 3 天', '近7天': '近 7 天', '近30天': '近 30 天' };
+// 付费情况筛选：中文档位 ↔ 接口参数（口径与服务端 /api/works 一致，三档互斥）
+// 免费 = 未标付费（灯火解锁也算，作品本身不标价）；部分免费 = 免费能用但有付费功能（freemium/freeuse）；付费 = 真要付钱（排除前两类）
+const PAYMENT_OPTS = ['全部', '免费', '部分免费', '付费'];
+const PAYMENT_PARAM = { '免费': 'free', '部分免费': 'freemium', '付费': 'paid' };
 // 排序文案：tab 上短（随便逛逛/最新/最热），面板里跟小程序一致（随便逛逛/最新发布/最多点赞）
 const SORT_OPTS = [
   { value: 'wander', label: '随便逛逛' },
@@ -6783,7 +6773,7 @@ function renderFiltersPC() {
   // 一行从「3 个排序钮 + 5 个下拉 + 1 个记住框」降到「3 + 3 + 1」，扫一眼先看到常用的。
   // 面板里直接摊两组胶囊（不做二级下拉）：点一下就是一次筛选，跟原来一样即时生效；
   // 有生效项时按钮右侧显示「N 项」，不至于筛了却看不出来。
-  const moreCount = (state.openSource !== '全部' ? 1 : 0) + (state.range !== '全部' ? 1 : 0);
+  const moreCount = (state.openSource !== '全部' ? 1 : 0) + (state.range !== '全部' ? 1 : 0) + (state.payment !== '全部' ? 1 : 0);
   const moreHtml = `
     <div class="dd-filter dd-more" data-kind="more">
       <button type="button" class="dd-btn${moreCount ? ' has-value' : ''}">
@@ -6800,6 +6790,12 @@ function renderFiltersPC() {
           <span class="dd-more-title">时间</span>
           <div class="dd-more-chips">
             ${RANGE_OPTS.map(v => `<button type="button" class="dd-more-chip${state.range === v ? ' is-on' : ''}" data-more="range" data-v="${escapeHtml(v)}">${escapeHtml(RANGE_LABEL[v] || v)}</button>`).join('')}
+          </div>
+        </div>
+        <div class="dd-more-group">
+          <span class="dd-more-title">付费情况</span>
+          <div class="dd-more-chips">
+            ${PAYMENT_OPTS.map(v => `<button type="button" class="dd-more-chip${state.payment === v ? ' is-on' : ''}" data-more="payment" data-v="${escapeHtml(v)}">${escapeHtml(v)}</button>`).join('')}
           </div>
         </div>
       </div>
@@ -6860,7 +6856,7 @@ function renderFiltersPC() {
         }
         else { state.category = opt.dataset.v; }
         // 随便逛逛不认筛选：以前电脑上只有场景会切回最新，形态/分类/开源/时间点了像没生效。
-        // 五项统一切回最新（与手机端一致），再落筛选记忆，刷新后筛选才真能按记忆生效。
+        // 各项统一切回最新（与手机端一致），再落筛选记忆，刷新后筛选才真能按记忆生效。
         wanderBreakoutLatest();
         saveFilters();
         closeAllDD();
@@ -6868,11 +6864,12 @@ function renderFiltersPC() {
         loadWorks();
       });
     });
-    // 「更多筛选」面板里的胶囊：开源 / 时间两支笔，走同一套落库与重载流程
+    // 「更多筛选」面板里的胶囊：开源 / 时间 / 付费情况三支笔，走同一套落库与重载流程
     dd.querySelectorAll('.dd-more-chip').forEach(chip => {
       chip.addEventListener('click', e => {
         e.stopPropagation();
         if (chip.dataset.more === 'os') state.openSource = chip.dataset.v;
+        else if (chip.dataset.more === 'payment') state.payment = chip.dataset.v;
         else state.range = chip.dataset.v;
         wanderBreakoutLatest();
         saveFilters();
@@ -6935,6 +6932,12 @@ function renderFiltersH5() {
       text: () => state.range === '全部' ? '时间' : RANGE_LABEL[state.range],
       options: () => RANGE_OPTS.map(v => ({ value: v, label: RANGE_LABEL[v] })),
       apply: v => { state.range = v; wanderBreakoutLatest(); saveFilters(); }
+    },
+    {
+      kind: 'payment', current: () => state.payment, active: () => state.payment !== '全部',
+      text: () => state.payment === '全部' ? '付费' : state.payment,
+      options: () => asOpts(PAYMENT_OPTS),
+      apply: v => { state.payment = v; wanderBreakoutLatest(); saveFilters(); }
     },
     {
       kind: 'sort', current: () => state.sort, active: () => false,
@@ -7261,8 +7264,12 @@ function updateNavActive() {
 // ② 名字搜索（本地过滤，不请求）；③ 卡片上加关注按钮（复用 toggleFollow，游客点了弹登录）。
 // 2026-11-20 三改：加「GitHub Star」榜——只收投稿到本站、开源、star>100 的作品，作品卡（非作者卡）。
 // 数据走公开 /api/github-stars（content/github-star-picks.json 人工快照），跟作者榜分池子存。
+// 2026-11-22：加「企业认证」tab——走公开 /api/cert-products，含两类：企业主体作者的作品，
+// 以及后台勾了「企业认证」的产品（已同步成作品库里的普通作品）。这里只做集中查看：
+// 它们平时就跟普通作品一起进榜单、搜索和随便逛逛，认证作者本人也仍在作者榜里（名字后面多一枚蓝V）。
 let crList = [], crShown = 0, crMode = 'uv', crQuery = '';
 let crStarList = [], crStarAt = '';   // GitHub Star 榜作品池 + 快照时间
+let crCertList = [];                  // 企业认证产品池
 let crFollowed = new Set();   // 我已关注的作者 uid（登录才有；游客点按钮走 toggleFollow 的登录弹窗）
 const CR_PAGE = 24;
 function crSorted() {
@@ -7277,6 +7284,50 @@ function crStarSorted() {
   const q = crQuery.trim().toLowerCase();
   if (!q) return crStarList;                       // 服务端已按 star 降序
   return crStarList.filter(w => [w.title, w.author, w.repo].some(v => String(v || '').toLowerCase().includes(q)));
+}
+function crCertSorted() {
+  const q = crQuery.trim().toLowerCase();
+  if (!q) return crCertList;                       // 后台录入顺序就是展示顺序
+  return crCertList.filter(t => [t.name, t.desc, t.subject, t.author].some(v => String(v || '').toLowerCase().includes(q)));
+}
+// 企业认证卡：接口现在只返回作品，全部走站内详情（跟首页作品卡同口径）；整卡外链是老数据兜底。
+// 卡片上的「企业认证」标是站方核验资质；工具卡底脚按后台勾的 partner 明示「合作」，
+// 外链一律 nofollow sponsored。
+function crCertCardHtml(t, i) {
+  const rank = (i < 3 ? '<span class="cr-rank top">' + (i + 1) + '</span>' : '<span class="cr-rank">' + (i + 1) + '</span>');
+  const mark = '<span class="cr-cert-mark">' + ic('shield') + '企业认证</span>';
+  // 外部工具卡（老数据 / 接口没上线时的兜底）：首字 logo + 整卡外链
+  if (!t.path) {
+    const letter = escapeHtml(String(t.name || '?').trim().slice(0, 1).toUpperCase());
+    const foot = t.partner ? '合作推广' : '站方核验';
+    return '<a class="cr-card cr-cert-card" data-cert-id="' + escapeHtml(t.id || '') + '"' +
+      ' href="' + escapeHtml(t.url) + '" target="_blank" rel="noopener nofollow sponsored"' +
+      ' title="查看《' + escapeHtml(t.name) + '》官网">' +
+      '<div class="cr-cert-cover">' + rank + mark + '<span class="cr-cert-logo">' + letter + '</span></div>' +
+      '<div class="cr-body">' +
+        '<div class="cr-cert-name" title="' + escapeHtml(t.name) + '">' + escapeHtml(t.name) + '</div>' +
+        '<div class="cr-cert-desc">' + (t.desc ? escapeHtml(t.desc) : '经过站方核验的企业产品，好用就自己去试试。') + '</div>' +
+        '<div class="cr-cert-foot"><span>' + escapeHtml(foot) + '</span><span class="cr-cert-go">去看看 ↗</span></div>' +
+      '</div>' +
+    '</a>';
+  }
+  // 企业主体作品：用作品封面，点开站内详情（data-nav 会被全局拦到 openWork，关弹窗回书架）
+  const name = escapeHtml(String(t.name || '企业产品'));
+  const tip = '企业认证 · 已核验主体：' + escapeHtml(t.subject || '') +
+    (t.at ? '（' + escapeHtml(String(t.at).slice(0, 10)) + ' 核验）' : '');
+  const cover = t.cover
+    ? '<img src="' + escapeHtml(t.cover) + '" alt="" loading="lazy" />'
+    : '<span class="cr-cert-logo">' + escapeHtml(String(t.name || '?').trim().slice(0, 1).toUpperCase()) + '</span>';
+  return '<a class="cr-card cr-cert-card" href="' + escapeHtml(t.path) + '" data-nav title="查看《' + name + '》">' +
+    '<div class="cr-cert-cover">' + rank +
+      '<span class="cr-cert-mark" title="' + tip + '">' + ic('shield') + '企业认证</span>' + cover +
+    '</div>' +
+    '<div class="cr-body">' +
+      '<div class="cr-cert-name" title="' + name + '">' + name + '</div>' +
+      '<div class="cr-cert-desc">' + (t.desc ? escapeHtml(t.desc) : '经过站方核验的企业产品，点进去看看。') + '</div>' +
+      '<div class="cr-cert-foot"><span>' + escapeHtml(t.author || '企业产品') + '</span><span class="cr-cert-go">看看详情 ↗</span></div>' +
+    '</div>' +
+  '</a>';
 }
 // 作品卡：整卡是 <a data-nav> 进详情页；star 做封面金色角标，仓库地址做卡脚小字。
 // 不在卡里塞第二个 <a>（GitHub 外链）——嵌套链接非法，详情页本来就有外链入口。
@@ -7322,6 +7373,10 @@ function crCardHtml(r, i) {
           ? '<img class="cr-av" src="' + escapeHtml(r.avatar) + '" alt="" loading="lazy" />'
           : '<span class="cr-av-ph">' + escapeHtml(String(r.name || '?').slice(0, 1).toUpperCase()) + '</span>') +
         '<span class="cr-name">' + escapeHtml(r.name) + '</span>' +
+        (r.cert && r.cert.subject
+          ? '<span class="cr-cert-v" title="企业认证 · 已核验主体：' + escapeHtml(r.cert.subject) +
+            (r.cert.at ? '（' + escapeHtml(String(r.cert.at).slice(0, 10)) + ' 核验）' : '') + '">' + ic('shield') + '</span>'
+          : '') +
         crFollowBtnHtml(r) +
       '</div>' +
       '<div class="cr-stats">' +
@@ -7337,32 +7392,61 @@ function crCardHtml(r, i) {
     : '<div class="cr-card">' + inner + '</div>';
 }
 function crRenderMore() {
-  const list = crMode === 'star' ? crStarSorted() : crSorted();
+  const list = crMode === 'cert' ? crCertSorted() : (crMode === 'star' ? crStarSorted() : crSorted());
   const next = list.slice(crShown, crShown + CR_PAGE);
   const grid = $('crGrid');
   grid.insertAdjacentHTML('beforeend', next.map((r, k) =>
-    crMode === 'star' ? crStarCardHtml(r, crShown + k) : crCardHtml(r, crShown + k)).join(''));
+    crMode === 'cert' ? crCertCardHtml(r, crShown + k)
+      : (crMode === 'star' ? crStarCardHtml(r, crShown + k) : crCardHtml(r, crShown + k))).join(''));
   crShown += next.length;
   $('crMore').hidden = crShown >= list.length;
   try { if (window.Icons && Icons.hydrate) Icons.hydrate(grid); } catch { /* 图标脚本没加载就裸文字 */ }
 }
+// 2026-11-22 四改：概览行合并后不再重复报数（总人数在左边概览里），
+// 这里只说「当前怎么排 / 搜到了几个」，一行灰字带过。
 function crTallyText(n) {
   if (!n) return '';
+  const q = crQuery.trim();
+  if (crMode === 'cert') return q ? '找到 ' + n + ' 件企业产品' : '已核验企业主体 · 与普通作品同池参与榜单';
   if (crMode === 'star') {
     const snap = crStarAt ? ' · 数据截至 ' + String(crStarAt).slice(0, 10) : '';
-    return n + ' 件开源作品 · 按 GitHub Star 排序' + (crQuery.trim() ? ' · 搜索「' + crQuery.trim() + '」' : snap);
+    return (q ? '找到 ' + n + ' 件开源作品' : '按 GitHub Star 排序') + snap;
   }
-  return n + ' 位创作者 · ' + (crQuery.trim() ? '搜索「' + crQuery.trim() + '」' : (crMode === 'top' ? '按单件作品访客排序' : '按总访客排序'));
+  return q ? '找到 ' + n + ' 位创作者' : (crMode === 'top' ? '按单件作品访客排序' : '按总访客排序');
 }
 function crRepaint() {
   const grid = $('crGrid');
-  const list = crMode === 'star' ? crStarSorted() : crSorted();
+  const list = crMode === 'cert' ? crCertSorted() : (crMode === 'star' ? crStarSorted() : crSorted());
   crShown = 0;
   grid.innerHTML = '';
   $('crTally').textContent = crTallyText(list.length);
+  grid.classList.toggle('is-cert', crMode === 'cert');
+  const moreBtn = $('crMoreBtn');
+  if (moreBtn) moreBtn.textContent = crMode === 'cert' ? '加载更多企业产品 →' : '加载更多创作者 →';
   crRenderMore();
   if (!list.length) grid.innerHTML = '<div class="cr-empty">' +
-    (crQuery.trim() ? '没找到相关的' + (crMode === 'star' ? '开源作品' : '创作者') : '书架还在整理中，稍后再来看看') + '</div>';
+    (crQuery.trim()
+      ? '没找到相关的' + (crMode === 'star' ? '开源作品' : crMode === 'cert' ? '企业产品' : '创作者')
+      : crMode === 'cert'
+        ? '还没有企业认证产品。<a href="/enterprise" data-nav>提交你的产品 →</a>'
+        : '书架还在整理中，稍后再来看看') + '</div>';
+}
+// 页头概览：三个数字从当前榜单数据现算，认证企业数从认证产品池按主体去重（
+// 不再只数有访客的作者——新录的企业产品今天还没人访问，也得算进去）
+function crRenderHighlights() {
+  const box = $('crHighlights');
+  if (!box) return;
+  const works = crList.reduce((n, r) => n + (Number(r.works) || 0), 0);
+  const uv = crList.reduce((n, r) => n + (Number(r.uv) || 0), 0);
+  const cert = new Set(crCertList.map(t => t.subject).filter(Boolean)).size;
+  const cells = [
+    ['位创作者', crList.length],
+    ['件作品', works],
+    ['总访客', fmtStatNum(uv)]
+  ];
+  if (cert) cells.push(['家企业认证', cert, '已核验企业主体（按企业认证产品去重）']);
+  box.innerHTML = cells.map(([label, value, title]) =>
+    '<span class="cr-hl"' + (title ? ' title="' + escapeHtml(title) + '"' : '') + '><b>' + value + '</b>' + label + '</span>').join('');
 }
 async function loadCreators() {
   const grid = $('crGrid');
@@ -7374,10 +7458,11 @@ async function loadCreators() {
     // 已登录就顺手拉「我关注的」：卡片按钮初始态要靠它画（关注关系只有服务端知道）
     const jobs = [
       fetch('/api/creators', { credentials: 'same-origin', headers: { Accept: 'application/json' } }),
-      fetch('/api/github-stars', { credentials: 'same-origin', headers: { Accept: 'application/json' } }).catch(() => null)
+      fetch('/api/github-stars', { credentials: 'same-origin', headers: { Accept: 'application/json' } }).catch(() => null),
+      fetch('/api/cert-products', { credentials: 'same-origin', headers: { Accept: 'application/json' } }).catch(() => null)
     ];
     if (state.user) jobs.push(fetch('/api/me/following', { credentials: 'same-origin', cache: 'no-store' }));
-    const [res, starRes, foll] = await Promise.all(jobs);
+    const [res, starRes, certRes, foll] = await Promise.all(jobs);
     const d = await res.json();
     crList = Array.isArray(d.creators) ? d.creators : [];
     if (starRes && starRes.ok) {
@@ -7385,10 +7470,21 @@ async function loadCreators() {
       crStarList = Array.isArray(sd && sd.items) ? sd.items : [];
       crStarAt = (sd && sd.at) || '';
     }
+    if (certRes && certRes.ok) {
+      const cd = await certRes.json().catch(() => null);
+      crCertList = Array.isArray(cd && cd.items) ? cd.items : [];
+    } else {
+      // 接口万一没上线，用全局工具清单兜底（后台勾了企业认证的条目字段同口径）
+      crCertList = (state.tools || []).filter(t => t && t.cert && t.active !== false).map(t => ({
+        id: String(t.id || ''), name: String(t.name || ''), desc: String(t.desc || ''),
+        detail: String(t.detail || ''), url: String(t.url || ''), partner: !!t.partner
+      }));
+    }
     if (foll && foll.ok) {
       const fd = await foll.json().catch(() => null);
       crFollowed = new Set(((fd && fd.items) || []).map(it => String(it.id)).filter(Boolean));
     }
+    crRenderHighlights();
     crRepaint();
   } catch (e) {
     grid.innerHTML = '<div class="cr-empty">书架暂时打不开，刷新试试</div>';
@@ -7406,8 +7502,22 @@ document.addEventListener('click', async e => {
       b.setAttribute('aria-selected', on ? 'true' : 'false');
     });
     const cs = $('crSearch');
-    if (cs) cs.placeholder = crMode === 'star' ? '找一件开源作品…' : '找一位创作者…';
+    if (cs) cs.placeholder = crMode === 'star' ? '找一件开源作品…'
+      : crMode === 'cert' ? '找一个企业产品…' : '找一位创作者…';
     crRepaint();
+    return;
+  }
+  // 外部工具认证卡：跟首页工具卡一样先弹详情（说清「这不是作品、是外部产品」），
+  // 作品卡没有 data-cert-id，直接走全局 data-nav → openWork 进详情，关弹窗回书架。
+  // 中键 / Ctrl+点 / 右键复制链接保持原生外链行为。
+  const certCard = e.target.closest('.cr-cert-card[data-cert-id]');
+  if (certCard) {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const t = crCertList.find(x => String(x.id) === certCard.dataset.certId);
+    if (!t) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    openToolDetail(t);
     return;
   }
   // 卡片上的关注：整卡是 <a>，先拦住跳转，再走全站同一套 toggleFollow（游客会弹登录框）。
@@ -9180,8 +9290,39 @@ function saveQrImage(src, id) {
   });
 }
 
+// 2026-11-22 二改拍板：搜索框放下面、头部不放。桌面端首页它落进列表标题行的
+// #listSearchSlot；其他页面桌面端头部不显示搜索（要搜回首页）。手机端不变：
+// 搜索框必须待在头部给覆盖层用（.header-inner.search-open 才显示），所以要搬回头部。
+// 全站仍只有一个 #searchInput，搬的是同一个节点，建议/历史/防抖绑定不用维护两份。
+function syncSearchBoxPlacement(path) {
+  const form = document.querySelector('.search-box');
+  const header = document.querySelector('.header-inner');
+  const slot = $('listSearchSlot');
+  if (!form || !header || !slot) return;
+  const inList = !isH5View() && (path || location.pathname) === '/';
+  const target = inList ? slot : header;
+  if (form.parentElement === target) return;
+  const input = $('searchInput');
+  const wasFocused = !!input && document.activeElement === input;
+  let start = null, end = null;
+  if (wasFocused) { try { start = input.selectionStart; end = input.selectionEnd; } catch (e) {} }
+  if (inList) slot.appendChild(form);
+  else {
+    // 放回头部时插在导航前，保持「logo → 搜索 → 导航」的原顺序（桌面端由 CSS 藏掉）
+    const nav = header.querySelector('.main-nav');
+    if (nav) header.insertBefore(form, nav); else header.appendChild(form);
+  }
+  // 从别的页搜着词跳回首页时节点会搬家导致失焦；且搬进 homeView 时它可能还是
+  // display:none，得等这一轮路由把视图显示出来再补 focus（直接 focus 会静默失败）
+  if (wasFocused && input) requestAnimationFrame(() => {
+    input.focus();
+    if (start !== null) { try { input.setSelectionRange(start, end); } catch (e) {} }
+  });
+}
+
 function route() {
   const path = location.pathname;
+  syncSearchBoxPlacement(path);
   detailLeaving = false; // back() 已落地，防重入标记解除
   // 从详情弹窗退回：列表视图原样保留，不重新拉数据（分页、滚动位置、「展示更多」都不动）
   const keepList = skipNextListReload;
@@ -9199,7 +9340,7 @@ function route() {
   const isColumn = path === '/column' || path.startsWith('/column/');
   // 品牌橱窗页：企业合作内容的落地页，标题由服务端按品牌写好，SPA 不覆盖
   const isBrandPage = path.startsWith('/brand/');
-  const isStaticPage = isChronicle || isColumn || isBrandPage || path === '/rules' || path === '/install' || path === '/invite' || path === '/ads' || path === '/enterprise' || path === '/open';
+  const isStaticPage = isChronicle || isColumn || isBrandPage || path === '/rules' || path === '/install' || path === '/invite' || path === '/ads' || path === '/enterprise' || path === '/open' || path === '/app';
   document.body.classList.toggle('on-work', isWorkPage);
   if (!isWorkPage && !isStaticPage) removeSeoBlock();
   document.documentElement.removeAttribute('data-page');
@@ -9217,6 +9358,7 @@ function route() {
         : path === '/ads' ? '投放合作'
         : path === '/enterprise' ? '企业产品入驻'
         : path === '/open' ? '开源好物'
+        : path === '/app' ? '造梦橱窗 App'
         : (path === '/invite' ? '邀请你来收录作品' : '作品规范')));
       updateNavActive();
       return;
@@ -11092,6 +11234,21 @@ async function openJournal(no, type) {
   }
 }
 
+// 榜单规则弹窗：从期刊架「期刊怎么出」进来时默认展开「星梦期刊是什么」，
+// 从榜单图例的「榜单规则」进来维持原样（默认展开「各维度怎么算」）。
+function openRankRules(focus) {
+  const modal = $('rankRulesModal');
+  if (!modal) return;
+  const target = focus === 'journal'
+    ? modal.querySelector('#rrJournalQa')
+    : modal.querySelector('#rrDimensionsQa');
+  modal.querySelectorAll('.rr-qa').forEach(dd => { dd.open = false; });
+  if (target) target.open = true;
+  const body = modal.querySelector('.rank-rules-body');
+  if (body) body.scrollTop = target ? Math.max(0, target.offsetTop - body.offsetTop - 8) : 0;
+  showModal(modal);
+}
+
 // 期刊架的交互：切换周榜/月榜、点期号翻整本、封面行跳到作品、底部「去看榜单」
 function bindJournalRack() {
   const rack = $('journalRack');
@@ -11108,7 +11265,7 @@ function bindJournalRack() {
   const body = $('journalBody');
   if (body) body.addEventListener('click', e => {
     const help = e.target.closest('[data-jhelp]');
-    if (help) { showModal($('rankRulesModal')); return; }
+    if (help) { openRankRules('journal'); return; }
     const b = e.target.closest('[data-jno]');
     if (b) openJournal(Number(b.dataset.jno));
   });
@@ -12964,8 +13121,13 @@ function setupUploadForm() {
     const nonMini = types.filter(t => t !== '小程序');
     $('linkField').style.display = nonMini.length ? 'block' : 'none';
     $('qrField').style.display = rule.qr ? 'block' : 'none';
-    // Web 形态的「网站地址」就是作品入口，官网字段纯属重复 → 勾了 Web 就隐藏
-    $('siteField').style.display = types.includes('Web') ? 'none' : 'block';
+    // Web 形态的「网站地址」就是作品入口，新投稿勾了 Web 时官网字段纯属重复 → 默认藏起来。
+    // 但老作品 / 一键回填可能已经存了 site：藏起来就等于永远看不到、也清不掉，详情页却照样
+    // 拿它多画一颗「官网」按钮。所以有值时也露出来，让作者自己决定留着还是清空。
+    const hasSiteValue = !!String(form.site.value || '').trim();
+    $('siteField').style.display = types.includes('Web') && !hasSiteValue ? 'none' : 'block';
+    const siteNote = $('siteNote');
+    if (siteNote) siteNote.style.display = types.includes('Web') && hasSiteValue ? 'block' : 'none';
     renderLinkInputs(types);
     // 移动端形态：宣传图缩略图按手机竖屏比例
     const mobile = isMobileTypes(types);
@@ -13792,10 +13954,12 @@ function setupUploadForm() {
         }
       }
     }
+    // 官网要先回填再 setSelectedTypes：applyTypeFields 靠 site 有没有值决定 Web 作品是否露出官网框，
+    // 顺序反了老作品那份看不见的 site 就永远藏在表单里，详情页却一直显示「官网」按钮。
+    form.site.value = w.site || ''; // 官网回填
     setSelectedTypes(typesOf(w));
     fillWorkTitle(w);
     form.prompt.value = w.intro || '';
-    form.site.value = w.site || ''; // 官网回填
     setQuickLookValues(w);   // 「一眼看懂」回填（老作品多半是空的，空着就保持收起）
     posUI.reset();   // AI 提示条回到初始态：上一件作品的「已填入 / 确认替换」不能带进来
     if (gapFocus) { qlUI.setOpen(true); qlUI.paint(); }   // 补全进来直接展开：缺的那栏就藏在这一块里
@@ -21228,6 +21392,7 @@ function resetListFilters() {
   state.type = '全部';
   state.openSource = '全部';
   state.range = '全部';
+  state.payment = '全部';
   renderFilters();
 }
 
@@ -21310,7 +21475,9 @@ function setupSearchSuggest() {
   const close = () => { panel.hidden = true; };
 
   // 手机端头部一行版：搜索框藏进放大镜，点开整条头部变成搜索覆盖层（页面内容不动），取消/再点收起
-  const inner = input.closest('.header-inner');
+  // 这里不能从 input 往上找：桌面首页搜索框会被 syncSearchBoxPlacement 搬到列表标题行，
+  // 而覆盖层的 search-open 始终挂在头部容器上，直接取头部容器才不会随搬家失效。
+  const inner = document.querySelector('.header-inner');
   const mBtn = $('mSearchBtn');
   // 输入框里有词时覆盖层不自动收：手机端一旦收起，当前搜的词就被藏进放大镜，
   // 结果页看着搜着东西、输入框却是空的。所以点外面 / 回车 / 点词条 / Esc 都不收，
@@ -21409,6 +21576,10 @@ const FIND_FALLBACK_CHIPS = ['效率工具', '小程序', '开源'];
 // 首屏示例（2026-11-20）：跟小程序 pages/find 的 SAMPLES 保持同一组三句。
 // 都是具体场景——「找工具」这种抽象话跟上面的搜索框没区别，看不出这是「说人话找作品」。
 const FIND_SAMPLES = ['想把录音转成文字', '整理电脑里的重复文件', '手机上记账'];
+// 2026-11-22 站长要求：上面三句下面再加三句，拿今天录入的企业产品当场景。
+// 走的是同一个 /api/find，不另开入口；三句分别落 AI 办公、AI 短剧、学术写作，
+// 都是今天那批作品里真有的关键词，点了就能翻出东西，不是摆着好看的例句。
+const FIND_PRODUCT_SAMPLES = ['AI办公提效', 'AI短剧制作', '论文降AI率'];
 const findBotState = { open: false, busy: false };
 
 function fbLog() { return $('fbLog'); }
@@ -21429,7 +21600,7 @@ function fbMsg(cls, text) {
   return div;
 }
 
-// 空手进来先给三句能直接点的话（小程序同款）。点一下就等于替他问一次，不是装饰性
+// 空手进来先给六句能直接点的话（前三句小程序同款，后三句是企业产品场景）。点一下就等于替他问一次，不是装饰性
 // placeholder——不写清这个，新访客会把弹窗当成另一个关键词搜索框。
 function fbIntro() {
   const box = fbLog();
@@ -21440,16 +21611,18 @@ function fbIntro() {
   title.className = 'fb-intro-t';
   title.textContent = '试试这样说';
   card.appendChild(title);
-  const chips = document.createElement('div');
-  chips.className = 'fb-chips fb-intro-chips';
-  FIND_SAMPLES.forEach(w => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.dataset.fbKw = w;
-    b.textContent = w;
-    chips.appendChild(b);
+  [FIND_SAMPLES, FIND_PRODUCT_SAMPLES].forEach(group => {
+    const chips = document.createElement('div');
+    chips.className = 'fb-chips fb-intro-chips';
+    group.forEach(w => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.fbKw = w;
+      b.textContent = w;
+      chips.appendChild(b);
+    });
+    card.appendChild(chips);
   });
-  card.appendChild(chips);
   const note = document.createElement('div');
   note.className = 'fb-intro-note';
   note.textContent = '它把这句话翻成检索条件，再去站里的作品里真翻一遍。';
@@ -21777,7 +21950,7 @@ function setupHeader() {
   // PC 榜单：形态 / 周期 / 排序 / 数量 四个下拉（移动端由 tab 栏承担，这套不显示）
   // 榜单规则弹窗：图例行里的按钮进出
   const rankRulesModal = $('rankRulesModal');
-  $('rankRulesBtn').onclick = () => showModal(rankRulesModal);
+  $('rankRulesBtn').onclick = () => openRankRules();
   $('closeRankRules').onclick = () => hideModal(rankRulesModal);
   bindMaskClose(rankRulesModal, () => hideModal(rankRulesModal));
 
@@ -22890,6 +23063,7 @@ async function init() {
     location.pathname === '/chronicle' || location.pathname === '/rules' || location.pathname === '/install' || location.pathname === '/invite' ||
     location.pathname === '/ads' ||
     location.pathname === '/enterprise' ||   // 企业产品入驻页：同样整页 SSR
+    location.pathname === '/app' ||          // App 下载页：整页 SSR，漏了会被当垃圾删掉
     location.pathname.startsWith('/brand/') ||   // 品牌橱窗页：整页 SSR，删了这块就只剩空首页
     location.pathname === '/open' ||
     location.pathname === '/column' || location.pathname.startsWith('/column/');
@@ -23417,6 +23591,7 @@ window.addEventListener('resize', () => {
   if (now === __h5View) return;
   __h5View = now;
   renderFilters();
+  syncSearchBoxPlacement();   // 桌面（列表标题行）↔ 手机覆盖层：搜索框跟着断点回各自容器
   if (location.pathname === '/rank') loadRankView();
 });
 
