@@ -9248,6 +9248,17 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .jrn-help:hover { color: var(--primary); }
 .jrn-empty { font-size: 12px; color: var(--muted); text-align: center; padding: 14px 2px; }
 
+/* 榜单右栏的公众号二维码（2026-11-22）：贴在期刊架下面，和右栏其他卡片同一套白底圆角。 */
+.rank-gzh {
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 14px 13px 11px; margin-bottom: 14px; text-align: center;
+}
+.rank-gzh img {
+  display: block; width: 190px; max-width: 100%; height: auto; margin: 0 auto;
+  border: 1px solid var(--border); border-radius: 10px; background: #fff;
+}
+.rank-gzh b { display: block; margin-top: 9px; font-size: 11.5px; font-weight: 500; color: var(--muted); }
+
 /* ---------- 星梦期刊 · 单期详情（杂志式的一页） ---------- */
 .modal.journal-modal { max-width: 660px; padding: 24px 24px 22px; }
 /* 底部留白要 ≥ 36px：.modal-head 带 -24px 的 margin-top（把标题行顶到圆角上沿），
