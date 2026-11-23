@@ -166,7 +166,9 @@ nav { display: flex; gap: 8px; flex: 1; }
 .pub-btn.is-open .plus-ico { transform: rotate(45deg); }
 
 .pub-menu {
-  position: absolute; top: calc(100% + 10px); right: 0; width: 252px;
+  /* 11-23 加宽 252→300：五条说明里「网站、小程序、APP、应用程序都能收」在 252px 下折成两行，
+     加宽后单行显示；手机端 .pub-menu 走 width:auto 的抽屉，不受这里影响 */
+  position: absolute; top: calc(100% + 10px); right: 0; width: 300px;
   padding: 6px; z-index: 95;
   background: var(--card); border: 1px solid var(--border); border-radius: 14px;
   box-shadow: 0 16px 40px rgba(31, 35, 48, .14), 0 2px 6px rgba(31, 35, 48, .05);
@@ -252,7 +254,10 @@ nav { display: flex; gap: 8px; flex: 1; }
 .draft-bar[hidden] { display: none; }
 
 /* Hero：主标题（关键词渐变高亮）+ 一句副标题，进场轻微上浮 */
-.hero { text-align: center; padding: 44px 0 10px; position: relative; isolation: isolate; }
+/* z-index:5：搜索框搬到 hero 后，下拉建议会伸到「大家在找」甚至精选卡上面；
+   hero 原本是 isolation 隔离出来的层（z:auto），后面任何定位元素都能盖住它。
+   抬到 5 让整块 hero 在后续内容之上，下拉才不会被挡（组合条内部再压过热词行）。 */
+.hero { text-align: center; padding: 44px 0 10px; position: relative; isolation: isolate; z-index: 5; }
 /* 首屏内容压在光晕上面（光晕是装饰层，不能盖住文字） */
 .hero > *:not(.aurora) { position: relative; z-index: 2; }
 
@@ -358,6 +363,46 @@ nav { display: flex; gap: 8px; flex: 1; }
 }
 .hero-find:active { transform: translateY(0); box-shadow: 0 1px 6px rgba(91, 76, 222, .14); }
 .hero-find:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* ---------- 首屏搜索组合条（2026-11-23）----------
+   搜索输入框 + 「搜索」+「找找AI」成一排，放在老胶囊的位置。
+   桌面显示这一条、藏掉老的「说不清叫什么」胶囊；手机端反过来（见 ≤640px 档）。
+   输入框就是头部那一个 .search-box（syncSearchBoxPlacement 搬进来），这里只改尺寸和外观。 */
+/* 选择器带 .hero 前缀：上面 `.hero > *:not(.aurora)` 的具体度同样是两级，
+   只写 .hero-search-combo 会被它按 z-index:2 压回去（热词行是后面的兄弟节点，照样盖住下拉）。 */
+.hero > .hero-search-combo {
+  display: flex; align-items: center; justify-content: center; flex-wrap: wrap;
+  gap: 8px; margin-top: 16px;
+  /* 同在 hero 内，热词行是 z-index:2；下拉要盖住它，组合条得更高 */
+  z-index: 5;
+}
+.hero-search-combo .hero-search-slot { flex: 1 1 340px; min-width: 0; max-width: 440px; display: flex; }
+/* hero 里的搜索框撑满槽位：盖掉头部/列表那套 flex-basis 收窄规则 */
+.hero-search-combo .search-box,
+.hero-search-combo .search-box:focus-within,
+.hero-search-combo .search-box.is-focus,
+.hero-search-combo .search-box:has(input:not(:placeholder-shown)) { flex: 1 1 100%; width: 100%; min-width: 0; }
+.hero-search-combo .search-box input {
+  height: 42px; padding-left: 36px; border-radius: 11px; font-size: 14px; background: #fff;
+  box-shadow: 0 2px 12px rgba(91, 76, 222, .08);
+}
+.hero-search-combo .search-box input:focus { border-color: var(--primary); box-shadow: 0 2px 16px rgba(91, 76, 222, .16); }
+.hero-search-combo .search-icon { left: 13px; font-size: 15px; }
+.hero-search-go {
+  flex: 0 0 auto; height: 42px; padding: 0 20px; border: 0; border-radius: 11px;
+  background: var(--primary); color: #fff; font: inherit; font-size: 13.5px; font-weight: 600;
+  cursor: pointer; transition: filter .15s, transform .15s;
+}
+.hero-search-go:hover { filter: brightness(1.06); }
+.hero-search-go:active { transform: translateY(1px); }
+.hero-search-go:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+/* 组合条里的「找找AI」：保留白底渐变描边，但圆角跟输入框 /「搜索」按钮统一成 11px，
+   三个是一排的一体控件，别一个方一个圆。高度也对齐。 */
+.hero-find.hero-find-go {
+  margin-top: 0; height: 42px; padding: 0 15px; border-radius: 11px; font-size: 12.5px;
+}
+/* 桌面：藏掉老的「说不清叫什么」胶囊，入口由组合条里的「找找AI」承接 */
+.hero .hero-find#heroFindBtn { display: none; }
 /* 两处小动效（星标呼吸 + 「让找找帮你翻」流光）都裹在 no-preference 里：
    用户系统开了减弱动效就整套静止，静态观感不变。 */
 @media (prefers-reduced-motion: no-preference) {
@@ -2763,7 +2808,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .fb-mask { position: absolute; inset: 0; background: rgba(22, 24, 38, .42); animation: fbFade .16s ease-out; }
 @keyframes fbFade { from { opacity: 0; } to { opacity: 1; } }
 .fb-box {
-  position: relative; width: min(520px, calc(100vw - 32px)); margin-top: 10vh;
+  position: relative; width: min(680px, calc(100vw - 32px)); margin-top: 10vh;
   background: var(--card); border-radius: 18px; overflow: hidden;
   box-shadow: 0 24px 64px rgba(20, 22, 40, .26);
   display: flex; flex-direction: column;
@@ -5258,6 +5303,10 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
   }
   .hero-search:active { border-color: var(--primary); color: var(--primary); }
   .hero-search .ico { font-size: 15px; }
+  /* 手机端不摆搜索组合条：输入框待在头部覆盖层，hero 这一条整个藏掉，
+     恢复老胶囊（跟搜索胶囊一样贴左、满宽也塞得下）。 */
+  .hero-search-combo { display: none; }
+  .hero .hero-find#heroFindBtn { display: inline-flex; }
   /* 手机端「问找找」跟着搜索胶囊走：同一行塞不下（胶囊满宽），就贴在它下面，
      收一点高度——hero 每多 30px，首屏就少露半张作品卡。 */
   .hero-find { margin: -4px 0 10px; padding: 5px 13px 6px; font-size: 12px; box-shadow: 0 1px 2px rgba(91, 76, 222, .05), 0 3px 12px rgba(91, 76, 222, .08); }
@@ -6692,6 +6741,16 @@ a.board-row:hover:not(.is-me) { background: #f5f3ff; }
 .xp-bonus { font-style: normal; font-weight: 500; font-size: 10.5px; color: #b8791f; background: #fdf3e0; border-radius: 4px; padding: 1px 5px; margin-left: 5px; }
 .xp-tip { font-size: 12px; line-height: 1.7; color: var(--muted); margin: 0 0 10px; }
 .xp-go { font-size: 12px; padding: 6px 14px; }
+/* 爱猹收网页端现金曝光包：与灯火兑换并列，余额 + 购买入口 + 用余额投放 */
+.wpay-sec { border: 1px solid #d8eadf; background: #f8fcf9; border-radius: 12px; padding: 12px 14px; }
+.wpay-bal { font-size: 12.5px; line-height: 1.7; margin: 0 0 8px; color: var(--text); }
+.wpay-bal b { color: var(--primary); }
+.wpay-buy { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 8px 0; }
+.wpay-buy-link { font-size: 12px; padding: 6px 14px; }
+.wpay-qr { width: 92px; height: 92px; object-fit: contain; background: #fff; border: 1px solid var(--border); border-radius: 6px; }
+.wpay-tip, .wpay-note { font-size: 12px; line-height: 1.7; color: var(--muted); margin: 0 0 8px; }
+.wpay-note { margin: 8px 0 0; }
+.wpay-go { font-size: 12px; padding: 6px 14px; }
 .redeem-empty {
   padding: 16px 14px; font-size: 12.5px; line-height: 1.7; color: var(--muted);
   background: #fafafd; border: 1px dashed #e4e4f2; border-radius: 10px;
@@ -13408,6 +13467,49 @@ html.dm-quiet .jar-fly-star { display: none; }
 .task-more-main span { display: block; font-size: 12px; color: var(--muted); margin-top: 1px; }
 .task-more-val { flex: none; font-size: 12.5px; color: #b45309; font-weight: 600; }
 .task-more-go { flex: none; font-size: 16px; line-height: 1; color: var(--muted); opacity: .45; }
+/* 限时任务：跟账号任务同一套行，标题后跟一枚「限时」小章 */
+.task-sec-limited .task-sec-head h3::after {
+  content: "限时"; display: inline-block; margin-left: 7px; padding: 1px 6px;
+  border-radius: 999px; background: #fff1e8; color: #b45309;
+  font-size: 10.5px; font-weight: 700; vertical-align: 2px;
+}
+.task-done.is-wait { color: #b45309; }
+.lt-reject-note { margin-top: 5px !important; color: #b42318 !important; }
+.task-empty { padding: 18px 14px; text-align: center; font-size: 12.5px; color: var(--muted); }
+.lt-sec-foot { margin: 7px 5px 0; font-size: 11.5px; line-height: 1.7; color: var(--muted); }
+.modal-limited-task { max-width: 460px; }
+.lt-body { padding: 18px 20px 20px; }
+.lt-desc { margin: 0 0 12px; font-size: 13px; line-height: 1.7; color: var(--text); }
+.lt-go {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 11px 14px; border-radius: 12px; background: var(--primary); color: #fff;
+  font-size: 13.5px; font-weight: 700; text-decoration: none;
+}
+.lt-go:hover { background: var(--primary-dark); }
+.lt-go[hidden] { display: none; }
+.lt-proof {
+  margin: 10px 0 12px; padding: 10px 12px; border-radius: 10px;
+  background: #f7f8fc; color: var(--muted); font-size: 12px; line-height: 1.7;
+}
+.lt-upload {
+  display: flex; align-items: center; justify-content: center; min-height: 92px;
+  border: 1px dashed var(--border); border-radius: 12px; background: #fcfcff;
+  color: var(--muted); font-size: 12.5px; cursor: pointer; text-align: center; padding: 12px;
+}
+.lt-upload:hover { border-color: var(--primary); color: var(--primary); }
+.lt-upload:focus-visible { border-color: var(--primary); outline: 2px solid var(--primary); outline-offset: 2px; }
+.lt-upload input { display: none; }
+.lt-body textarea {
+  width: 100%; box-sizing: border-box; margin-top: 12px; min-height: 62px; resize: vertical;
+  border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px;
+  font: inherit; font-size: 12.5px; background: #fff; color: var(--text);
+}
+.lt-hint { margin: 9px 2px 14px; font-size: 11.5px; line-height: 1.7; color: var(--muted); }
+.lt-acts { display: flex; gap: 10px; justify-content: flex-end; }
+.lt-acts button { padding: 8px 16px; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.lt-acts .btn-ghost { border: 1px solid var(--border); background: #fff; color: var(--text); }
+.lt-acts .btn-primary { border: 1px solid var(--primary); background: var(--primary); color: #fff; }
+.lt-acts .btn-primary:disabled { opacity: .6; cursor: default; }
 .task-foot { margin: 16px 4px 0; font-size: 12px; line-height: 1.9; color: var(--muted); }
 .task-foot a { color: var(--primary); }
 .task-loading { padding: 40px 0; text-align: center; color: var(--muted); font-size: 13px; }
@@ -14372,13 +14474,88 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
 .cm-act-danger:hover { border-color: #c9302c; color: #c9302c; }
 .cm-act:disabled { opacity: .5; cursor: default; }
 .cm-empty { color: var(--muted); font-size: 13px; margin: 10px 0; }
-/* 详情竖排条里的「加入合集」：跟收藏同一组，不加额外文字 */
-.detail-rail .btn-collect { color: var(--muted); }
-.detail-rail .btn-collect:hover { color: var(--primary); }
+/* 收藏页每件作品下的「整理进合集」：次级整理动作，低对比、不抢卡片主视觉。
+   详情页原本那颗并排的「加入合集」已撤（2026-11-23），合集统一从这儿进。 */
+.fav-coll-pick {
+  position: relative; z-index: 3;   /* 盖在 .card-link 透明整卡链接之上，点它不该打开详情 */
+  display: inline-flex; align-self: flex-start; align-items: center; gap: 5px;
+  margin-top: 8px; padding: 4px 9px; min-height: 28px; line-height: 1; white-space: nowrap;
+  border: 1px solid var(--border); border-radius: 999px; background: #fff;
+  color: var(--muted); font: inherit; font-size: 12px; cursor: pointer;
+}
+.fav-coll-pick:hover { border-color: var(--primary); color: var(--primary); }
+.fav-coll-pick .ico { font-size: 13px; }
+.row-coll-pick {
+  position: relative; z-index: 3;
+  width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border);
+  background: #fff; color: #b9bdd0; font-size: 15px; cursor: pointer; flex-shrink: 0;
+  transition: color .15s, border-color .15s, transform .15s;
+}
+.row-coll-pick:hover { color: var(--primary); border-color: var(--primary); transform: scale(1.08); }
+@media (max-width: 640px) {
+  /* 手机端收藏/屏蔽两颗已在缩略图角上藏着；合集入口收小一圈留在行内，
+     不再是详情页那颗常驻按钮——但整理能力不能因为换视图就消失 */
+  .work-row .row-coll-pick { width: 24px; height: 24px; font-size: 12px; }
+}
 @media (max-width: 640px) {
   .modal-collect { max-width: none; }
   .cm-row { padding: 9px 10px; }
   .cm-row-acts { gap: 4px; }
+}
+
+/* 合集收进「我的收藏」页第二栏：两栏是并列视图，不是两个独立入口 */
+.fav-tabs {
+  display: inline-flex; gap: 4px; padding: 3px; margin: 4px 0 18px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg-soft, #f6f6fb);
+}
+.fav-tab {
+  border: 0; border-radius: 7px; background: transparent; color: var(--muted);
+  padding: 7px 14px; font: inherit; font-size: 13.5px; cursor: pointer;
+}
+.fav-tab:hover { color: var(--text); }
+.fav-tab.is-on { background: #fff; color: var(--primary); box-shadow: 0 1px 4px rgba(24,22,52,.09); font-weight: 600; }
+#favPaneCollections .spp-tip { margin: 0 0 12px; }
+.me-sec-link {
+  margin-left: auto; border: 0; background: none; color: var(--primary);
+  font: inherit; font-size: 12.5px; cursor: pointer; padding: 0;
+}
+.me-sec-link:hover { text-decoration: underline; }
+
+/* 详情竖排条「合集」的就地浮层：贴着按钮出，不叠第二层全屏遮罩 */
+.coll-pop {
+  position: fixed; z-index: 130; width: 330px; max-width: calc(100vw - 16px);
+  max-height: min(70vh, 560px); overflow-y: auto; padding: 14px;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--card, #fff);
+  box-shadow: 0 18px 50px rgba(24, 22, 52, .22), 0 2px 8px rgba(24, 22, 52, .08);
+  user-select: text; -webkit-user-select: text;
+  animation: dmModalIn .18s ease both;
+}
+.coll-pop[style*="display: none"] { animation: none; }
+.cp-head { display: flex; align-items: center; justify-content: space-between; }
+.cp-head b { font-size: 15px; }
+.cp-close { border: 0; background: none; color: var(--muted); font-size: 16px; cursor: pointer; line-height: 1; }
+.cp-tip { margin: 5px 0 12px; font-size: 12.5px; color: var(--muted); }
+.cp-new { display: grid; gap: 8px; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+.cp-new input[type="text"] {
+  width: 100%; box-sizing: border-box; padding: 9px 11px; font: inherit; font-size: 13.5px;
+  border: 1px solid var(--border); border-radius: 8px; background: #fff;
+}
+.cp-new input[type="text"]:focus { outline: 2px solid rgba(91, 91, 214, .2); border-color: var(--primary); }
+.cp-new-btn { width: 100%; padding: 8px 10px; font-size: 13px; }
+.cp-new-btn:disabled { opacity: .55; cursor: default; }
+.coll-pop .cm-list { max-height: 30vh; }
+.cp-manage {
+  display: block; width: 100%; margin-top: 12px; padding: 4px 0 0;
+  border: 0; background: none; color: var(--muted); font: inherit; font-size: 12px;
+  text-align: center; cursor: pointer;
+}
+.cp-manage:hover { color: var(--primary); }
+@media (max-width: 720px) {
+  /* 窄屏（竖排条已转横排）贴按钮会挡内容，改成底部卡片 */
+  .coll-pop {
+    left: 8px !important; right: 8px !important; top: auto !important; bottom: 8px;
+    width: auto; max-width: none; max-height: 72vh;
+  }
 }
 
 /* ---- 酒馆悬赏（2026-11-22） ---- */

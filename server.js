@@ -6509,7 +6509,7 @@ const ADMIN_PERMS = [
   { key: 'works',   label: '作品审核', desc: '待审核 / 已下架 / 全部作品：通过、驳回、下架、精选置顶、认领归属', tabs: ['pending','offline','all'] },
   { key: 'users',   label: '用户与灯火', desc: '用户列表、标签、重置密码、调灯火、灯火明细、主理人名单', tabs: ['users','points'] },
   { key: 'content', label: '内容运营', desc: '评论、造梦酒馆、造梦勋章：隐藏 / 删除 / 授勋', tabs: ['comments','ideas','badges'] },
-  { key: 'review',  label: '审核处理', desc: '投诉、众判、认领申请、匿名投稿排查、意见反馈、微信客服、账号申诉', tabs: ['reports','jury','claims','anonip','feedback','wxkf','appeals'] },
+  { key: 'review',  label: '审核处理', desc: '投诉、众判、认领申请、匿名投稿排查、意见反馈、微信客服、账号申诉、限时任务截图', tabs: ['reports','jury','claims','anonip','feedback','wxkf','appeals','limited'] },
   { key: 'data',    label: '数据查看', desc: '搜索词、行为流水、注册统计、推荐效果、流量构成、产品推荐', tabs: ['searchkw','behavior','regstats','redeem','traffic','promos'] },
   { key: 'config',  label: '站点配置', desc: '分类 / 形态 / 推荐位 / 广告 / 品牌 / 群发 / 作者回复 / 兑换码 / 悬赏奖励 / 友链 / 实名核验', tabs: ['categories','types','tools','ads','brands','broadcast','replies','gift','bounty','friends','smsauth'] },
   // 四个独立小模块（2026-11-17 从 data / config 拆出）：给名单管理员只开「看」，
@@ -6546,6 +6546,7 @@ const ADMIN_API_PERM = {
   scenes: 'config',
   replies: 'config', open: 'opensub', starsync: 'opensub', 'notify-old-comments': 'config',
   'sms-config': 'config',   // 实名核验开关：看归 config，改只认站长（见下一条）
+  'limited-tasks': 'review', // 限时任务截图审核：名单管理员可看，通过/驳回/改配置只认站长
   admins: 'admins',
   promotions: 'promote',   // 推广清单：只有站长能看和改（模块 ownerOnly，接口再挂 requireOwner 双保险）
   'invite-products': 'promote', // 邀请/返佣链接产品登记册：同推广清单，站长专属可编辑（编辑走作品编辑器 + 登记册同步）
@@ -6557,7 +6558,7 @@ const ADMIN_API_PERM = {
 // 这几个模块对名单管理员只开「看」：写操作（非 GET）一律只认站长（2026-11-17）。
 // 口径同「随便逛逛」只读化：前端藏按钮只是体验，闸门在这里；GET 看板按权限模块正常放行。
 // sms-config（实名核验开关，2026-11-19）：一开就全站强制核验 + 开始烧短信费，只有站长能拨。
-const ADMIN_OWNER_WRITE_SEGS = new Set(['discover', 'link-health', 'open', 'starsync', 'anon-submits', 'sms-config', 'bounty-config']);
+const ADMIN_OWNER_WRITE_SEGS = new Set(['discover', 'link-health', 'open', 'starsync', 'anon-submits', 'sms-config', 'bounty-config', 'limited-tasks']);
 // 取 /api/admin 之后的一级路径段：'/api/admin/works/abc/approve' → 'works'
 function adminApiSeg(p) {
   const rest = String(p || '').split('?')[0].replace(/^\/api\/admin(?=\/|$)/, '');
@@ -6716,6 +6717,9 @@ function auditDescribe(req) {
   }
   m = p.match(/^\/api\/admin\/claims\/([^/]+)\/([a-z-]+)$/);
   if (m) return (m[2] === 'approve' ? '通过认领申请 ' : '驳回认领申请 ') + m[1];
+  m = p.match(/^\/api\/admin\/limited-tasks\/([^/]+)\/review$/);
+  if (m) return (s(b.action) === 'approve' ? '通过限时任务截图 ' : '驳回限时任务截图 ') + m[1];
+  if (p === '/api/admin/limited-tasks/config') return '改限时任务配置';
   m = p.match(/^\/api\/admin\/reports\/([^/]+)\/([a-z-]+)$/);
   if (m) return m[2] === 'adopt-cat' ? '采纳分类建议（建议 ' + m[1] + '）'
     : (m[2] === 'takedown' ? '按投诉下架作品（投诉 ' : '标记投诉已处理（投诉 ') + m[1] + '）';
@@ -8781,6 +8785,108 @@ function taskBoardOf(user) {
   return { points: shareStatsOf(user.id).points, claimable: claimable, items: items };
 }
 
+// ---------- 限时任务（2026-11-23）----------
+// 站长口径：只看「注册有佣金」的作品——CPA / CPA+CPS（commissionType='CPA'/'mixed'），
+// 纯 CPS（成交才抽成）和只送积分/额度的不算。名单从作品库现算，不在限时任务配置里另抄一份，
+// 免得后台改了作品归属/链接/佣金模式，两边对不上。
+// 两条硬口径：每个账号每个任务只发一次；每人每天最多提交 2 个不同任务。
+const LIMITED_TASK_FILE = 'limited-tasks.json';
+const LIMITED_TASK_SUB_FILE = 'limited-task-submits.json';
+const LIMITED_SHOT_RE = /^\/uploads\/[A-Za-z0-9_.-]+\.(?:jpe?g|png|gif|webp)$/i;
+function ltDayKey(ms) { return new Date((Number(ms) || Date.now()) + 8 * 3600e3).toISOString().slice(0, 10); }
+function limitedTaskConf() {
+  const d = readJSON(LIMITED_TASK_FILE, null);
+  if (!d || typeof d !== 'object') {
+    return { enabled: false, title: '限时任务', desc: '', points: 2000, dailyLimit: 2, endsAt: '', proofText: '', updatedAt: '' };
+  }
+  return {
+    enabled: d.enabled !== false,
+    title: String(d.title || '限时任务').slice(0, 40),
+    desc: String(d.desc || '').slice(0, 200),
+    points: Math.max(0, Math.min(10000, Number(d.points) || 2000)),
+    dailyLimit: Math.max(1, Math.min(10, Number(d.dailyLimit) || 2)),
+    endsAt: String(d.endsAt || '').slice(0, 30),
+    proofText: String(d.proofText || '').slice(0, 200),
+    updatedAt: d.updatedAt || ''
+  };
+}
+function saveLimitedTaskConf(cfg) {
+  writeJSON(LIMITED_TASK_FILE, { ...cfg, updatedAt: new Date().toISOString() });
+}
+// 任务名单 = 后台「只看注册有佣金的」同一个口径，外加在架可见；下架/隐藏的不给人做。
+function limitedTaskItems(cfg) {
+  return works.filter(w => (w.commissionType === 'CPA' || w.commissionType === 'mixed') && isVisible(w))
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .map(w => {
+      // titleName 可能为空（如「商汤 Seko」「Loomy」）：整条 title 兜底，别截成半个名字
+      const name = String(w.titleName || w.title || w.id).slice(0, 60);
+      return {
+        id: String(w.id), name,
+        desc: String(w.titleTag || w.introText || '').slice(0, 160),
+        link: String(w.link || ((w.links || {})['Web']) || '').slice(0, 500),
+        proof: cfg.proofText, commissionType: w.commissionType
+      };
+    })
+    .filter(x => x.id && x.name && x.link);
+}
+function limitedTaskSubmits() {
+  const a = readJSON(LIMITED_TASK_SUB_FILE, []);
+  return Array.isArray(a) ? a : [];
+}
+function saveLimitedTaskSubmits(a) { writeJSON(LIMITED_TASK_SUB_FILE, a); }
+// 后台按作品看「完成人数」：只认审核通过（灯火已发），同一账号同一作品只算一次。
+// 驳回后重传再通过的也只落一个 uid；pending/rejected 一并给出，方便对照转化。
+function limitedTaskDoneByWork() {
+  const acc = {};
+  limitedTaskSubmits().forEach(s => {
+    if (!s || !s.itemId || !['approved', 'pending', 'rejected'].includes(s.status)) return;
+    const e = acc[s.itemId] || (acc[s.itemId] = { approved: new Set(), pending: new Set(), rejected: new Set() });
+    e[s.status].add(String(s.uid));
+  });
+  const out = {};
+  Object.keys(acc).forEach(id => {
+    out[id] = { done: acc[id].approved.size, pending: acc[id].pending.size, rejected: acc[id].rejected.size };
+  });
+  return out;
+}
+function limitedTaskClosed(cfg) {
+  if (!cfg.enabled) return true;
+  if (!cfg.endsAt) return false;
+  // 截止日用北京时间 23:59:59；留空就是「站长随时可在后台收口」
+  const t = Date.parse(String(cfg.endsAt).slice(0, 10) + 'T23:59:59+08:00');
+  return Number.isFinite(t) ? Date.now() > t : false;
+}
+function limitedTaskView(userId) {
+  const cfg = limitedTaskConf();
+  const mine = limitedTaskSubmits().filter(s => s && String(s.uid) === String(userId));
+  const day = ltDayKey();
+  const usedToday = new Set(mine.filter(s => ltDayKey(s.at) === day).map(s => s.itemId)).size;
+  const closed = limitedTaskClosed(cfg);
+  const items = limitedTaskItems(cfg).map(it => {
+    const recs = mine.filter(s => s.itemId === it.id).sort((a, b) => (b.at || 0) - (a.at || 0));
+    const done = recs.find(s => s.status === 'approved');
+    const waiting = recs.find(s => s.status === 'pending');
+    const last = recs[0] || null;
+    let state = 'todo';
+    if (done) state = 'done';
+    else if (waiting) state = 'pending';
+    else if (closed) state = 'closed';
+    else if (usedToday >= cfg.dailyLimit) state = 'dayfull';
+    else if (last && last.status === 'rejected') state = 'rejected';
+    return {
+      ...it, points: cfg.points, state,
+      note: last && last.status === 'rejected' ? String(last.handleNote || '截图没通过，看清要求可以再传一次') : '',
+      submittedAt: waiting ? waiting.at : null,
+      doneAt: done ? (done.handledAt || done.at) : null
+    };
+  });
+  return {
+    title: cfg.title, desc: cfg.desc, points: cfg.points, dailyLimit: cfg.dailyLimit,
+    endsAt: cfg.endsAt, closed, usedToday, items,
+    canSubmit: !closed && usedToday < cfg.dailyLimit
+  };
+}
+
 // 微信建号：账号名 wx_<openid 尾部>（重名自动加后缀），随机密码 + passSet=false（同 GitHub 建号）
 function makeWechatUser(openid) {
   const username = oauthUsernameFor('wx' + String(openid).slice(-10), 'wx_', openid);
@@ -9775,11 +9881,128 @@ app.get('/api/tasks', (req, res) => {
     points: board.points,
     claimable: board.claimable,
     items: board.items,
+    // 限时体验任务：注册合作产品 → 回传截图 → 审核后发灯火（与一次性账号任务分开算）
+    limited: limitedTaskView(user.id),
     // 「更多赚灯火」那几条的实时状态：签到今天签没签、看广告还能不能看（前端不重复算规则）
     checkin: checkinView(user),
     setupBonus: setupBonusStateOf(user),
     providers: { github: GH_ENABLED, google: GOOGLE_ENABLED, wechat: WECHAT_ENABLED }
   });
+});
+
+// 限时任务：交注册截图。图先走 /api/uploads/intro 拿到站内 URL，这里只收 URL 不走 multer，
+// 免得同一张图在两条上传链路上各存一份；服务端再验一次路径与文件是否真在盘上。
+app.post('/api/tasks/limited/submit', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('ltask:' + user.id, 20, 3600e3)) return res.status(429).json({ error: '提交太频繁，稍后再试' });
+  const b = req.body || {};
+  const cfg = limitedTaskConf();
+  if (limitedTaskClosed(cfg)) return res.status(400).json({ error: '这批限时任务已经结束' });
+  const item = limitedTaskItems(cfg).find(x => x.id === String(b.itemId || '').slice(0, 40));
+  if (!item) return res.status(400).json({ error: '这个产品不在当前任务名单里' });
+  const shot = String(b.shot || '');
+  if (!LIMITED_SHOT_RE.test(shot) || !fs.existsSync(path.join(UPLOAD_DIR, path.basename(shot)))) {
+    return res.status(400).json({ error: '请先上传一张注册截图（jpg / png / webp，≤8MB）' });
+  }
+  const subs = limitedTaskSubmits();
+  const mine = subs.filter(s => s && String(s.uid) === String(user.id));
+  if (mine.some(s => s.itemId === item.id && s.status === 'approved')) {
+    return res.status(400).json({ error: '这个任务已经领过灯火了，每个账号每个任务只发一次' });
+  }
+  if (mine.some(s => s.itemId === item.id && s.status === 'pending')) {
+    return res.status(400).json({ error: '这份截图还在审核中，别重复提交' });
+  }
+  const day = ltDayKey();
+  const used = new Set(mine.filter(s => ltDayKey(s.at) === day).map(s => s.itemId));
+  if (!used.has(item.id) && used.size >= cfg.dailyLimit) {
+    return res.status(400).json({ error: `每天最多做 ${cfg.dailyLimit} 个限时任务，明天再来` });
+  }
+  const rec = {
+    id: 'lt-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    uid: String(user.id), itemId: item.id, itemName: item.name,
+    shot, note: String(b.note || '').slice(0, 100),
+    status: 'pending', at: Date.now(), handledAt: 0, handledBy: '', handleNote: '', points: 0
+  };
+  subs.push(rec);
+  try {
+    saveLimitedTaskSubmits(subs);
+    addNotice(user.id, {
+      kind: 'system', link: '/tasks',
+      title: `「${item.name}」注册截图已收到`,
+      text: `站长核对通过后，${cfg.points} 盏灯火会直接到账；届时有消息提醒，也可以回任务页看进度。`
+    });
+  } catch (e) {
+    const idx = subs.indexOf(rec); if (idx >= 0) subs.splice(idx, 1);
+    return res.status(500).json({ error: '提交没存上，请重试' });
+  }
+  res.status(201).json({ ok: true, view: limitedTaskView(user.id) });
+});
+
+// 后台：限时任务的待审队列 + 配置。名单本身从作品库现算，后台只改开关/截止/额度/截图要求。
+app.get('/api/admin/limited-tasks', requireAdmin, (req, res) => {
+  const cfg = limitedTaskConf();
+  const all = limitedTaskSubmits().slice().sort((a, b) => (b.at || 0) - (a.at || 0));
+  const doneByItem = limitedTaskDoneByWork();
+  res.json({
+    config: cfg,
+    items: limitedTaskItems(cfg).map(it => ({
+      ...it, stats: doneByItem[it.id] || { done: 0, pending: 0, rejected: 0 }
+    })),
+    doneByItem,
+    pending: all.filter(s => s.status === 'pending').map(s => ({ ...s, user: (users.find(u => String(u.id) === String(s.uid)) || {}).username || '' })),
+    handled: all.filter(s => s.status !== 'pending').slice(0, 80).map(s => ({ ...s, user: (users.find(u => String(u.id) === String(s.uid)) || {}).username || '' })),
+    stats: {
+      pending: all.filter(s => s.status === 'pending').length,
+      approved: all.filter(s => s.status === 'approved').length,
+      rejected: all.filter(s => s.status === 'rejected').length,
+      today: all.filter(s => ltDayKey(s.at) === ltDayKey()).length
+    }
+  });
+});
+app.post('/api/admin/limited-tasks/config', requireAdmin, (req, res) => {
+  const b = req.body || {};
+  const cfg = limitedTaskConf();
+  cfg.enabled = b.enabled !== false;
+  cfg.title = String(b.title || cfg.title).slice(0, 40);
+  cfg.desc = String(b.desc || '').slice(0, 200);
+  cfg.points = Math.max(0, Math.min(10000, parseInt(b.points, 10) || cfg.points));
+  cfg.dailyLimit = Math.max(1, Math.min(10, parseInt(b.dailyLimit, 10) || cfg.dailyLimit));
+  cfg.endsAt = String(b.endsAt || '').slice(0, 10);
+  cfg.proofText = String(b.proofText || '').slice(0, 200);
+  saveLimitedTaskConf(cfg);
+  res.json({ ok: true, config: cfg });
+});
+app.post('/api/admin/limited-tasks/:id/review', requireAdmin, (req, res) => {
+  const rec = limitedTaskSubmits().find(s => s && s.id === req.params.id);
+  if (!rec) return res.status(404).json({ error: '找不到这份提交' });
+  if (rec.status !== 'pending') return res.status(400).json({ error: '这条已经处理过了' });
+  const action = (req.body || {}).action;
+  if (action !== 'approve' && action !== 'reject') return res.status(400).json({ error: '操作不合法' });
+  const note = String((req.body || {}).note || '').slice(0, 100);
+  const cfg = limitedTaskConf();
+  rec.status = action === 'approve' ? 'approved' : 'rejected';
+  rec.handledAt = Date.now();
+  rec.handledBy = adminWho(req) || '后台';
+  rec.handleNote = note;
+  rec.points = action === 'approve' ? cfg.points : 0;
+  try { saveLimitedTaskSubmits(limitedTaskSubmits().map(s => s.id === rec.id ? rec : s)); }
+  catch (e) { return res.status(500).json({ error: '保存审核结果失败' }); }
+  if (action === 'approve') {
+    const total = addPoints(rec.uid, rec.points, 'limitedtask', rec.id);
+    addNotice(rec.uid, {
+      kind: 'points', link: '/tasks', points: rec.points, delta: rec.points,
+      title: `「${rec.itemName || '限时任务'}」奖励 +${rec.points} 盏灯火`,
+      text: `注册截图审核通过，${rec.points} 盏灯火已到账，当前余额 ${total} 盏。这个任务不能再领第二次。`
+    });
+  } else {
+    addNotice(rec.uid, {
+      kind: 'system', link: '/tasks',
+      title: `「${rec.itemName || '限时任务'}」截图没通过`,
+      text: note ? `审核意见：${note}。看清截图要求后可以重新上传，今天的任务名额不另扣。` : '截图没通过，看清截图要求后可以重新上传。'
+    });
+  }
+  res.json({ ok: true, status: rec.status, points: rec.points });
 });
 
 // ================= 头像 =================
@@ -11787,6 +12010,7 @@ const POINTS_KIND_TEXT = {
   barreply: '酒馆回应奖励',
   'barreply-recall': '酒馆回应奖励已收回',
   bounty: '酒馆悬赏奖励',
+  limitedtask: '限时任务奖励',
   gift: '站长激励',
   admin: '站长调整',
   tip_in: '收到打赏',
@@ -15867,8 +16091,9 @@ function activateRedemption(r) {
   const now = Date.now();
   r.status = 'active';
   r.startsAt = now;
-  // 期限从这一刻算（排队等待不占天数），天数用下单时选的那个，别用当前位置的现值
-  r.endsAt = now + redemptionDaysOf(r) * 86400e3;
+  // 期限从这一刻算（排队等待不占天数），天数用下单时选的那个，别用当前位置的现值。
+  // 现金买曝光（noExpire）不设期限：用到次数耗尽为止，扶正排队时也不能给它补一个到期时间。
+  r.endsAt = r.noExpire ? 0 : now + redemptionDaysOf(r) * 86400e3;
   const ad = ads.find(a => a.id === r.adId);
   if (ad) {
     ad.active = true;
@@ -16413,6 +16638,13 @@ function createRedeemCore(user, body, opts) {
   if (paid) {
     redemption.paid = true;
     redemption.cashFen = (opts && opts.cashFen) || 0;
+    // 现金买曝光不设到期：付的是真钱，爱猹收没有退款接口，14 天后自动下线等于让客户白花钱。
+    // 只按次数耗尽结束。仅调用方显式声明 noExpire 才生效——小程序 XPAY 的旧口径不动。
+    if (opts && opts.noExpire) {
+      redemption.noExpire = true;
+      redemption.endsAt = 0;
+      ad.endsAt = 0;
+    }
   }
   redemptions.push(redemption);
   saveRedemptions();
@@ -16757,6 +16989,210 @@ app.post('/api/xpay/deliver', (req, res) => {
   res.json({ ErrCode: 0, ErrMsg: 'ok' });
 });
 
+// ================= 爱猹收 WatchaPay（网页端现金买曝光包） =================
+// 2026-11-23 接入。与小程序 XPAY 并存、互不串台：XPAY 卖小程序位，这里只卖网页端三个位
+// （detail / rank / list-first），接口层直接拒绝小程序位，防止前端改参数跨渠道投放。
+// 权益形态是「额度包」：用户买到的是曝光次数余额，不是灯火、不是会员、不是可流通虚拟币；
+// 对外文案守住「橱窗展示位投放服务」，别写「充值」「引流」「涨粉」。
+// 链路：查余额(access，不扣减) → 原子核销(consume，幂等键防重) → createRedeemCore(paid:true) 建投放单。
+// 顺序与补偿：先核销后发货；核销成功但建单失败时订单留 consumed 态，同幂等键重试只补建单，
+// 平台侧同键同参不重复扣。任何未知响应一律失败关闭，不建单、不把余额快照当预留。
+// 凭证只在服务端：data/watchapay.json（gitignore）或环境变量，绝不进前端 / URL / 日志 / 测试快照。
+const WATCHAPAY_CONF = (() => {
+  let f = {};
+  try { f = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'watchapay.json'), 'utf8')) || {}; } catch { /* 没配就是没开通 */ }
+  return {
+    apiKey: String(process.env.WATCHAPAY_API_KEY || f.apiKey || '').trim(),
+    entitlementId: String(process.env.WATCHAPAY_ENTITLEMENT_ID || f.entitlementId || '').trim(),
+    baseUrl: String(process.env.WATCHAPAY_BASE_URL || f.baseUrl || 'https://pay.watcha.cn').trim().replace(/\/+$/, ''),
+    mock: process.env.WATCHAPAY_MOCK === '1'   // 仅本地跑通代码用，不能当沙箱验证
+  };
+})();
+const WATCHAPAY_ENABLED = WATCHAPAY_CONF.mock || !!(WATCHAPAY_CONF.apiKey && WATCHAPAY_CONF.entitlementId);
+const WATCHAPAY_WEB_SLOTS = ['detail', 'rank', 'list-first'];
+
+// 内测白名单：与 XPAY 同一批人；设 WATCHAPAY_BETA_USERS=all 就是全站登录用户可见。
+// 别只在前端藏：state / redeem 两个接口一起拦，直接调接口也买不了。
+const WATCHAPAY_BETA_USERS = new Set(
+  String(process.env.WATCHAPAY_BETA_USERS || 'umvvz1cl5xcs7').split(/[^A-Za-z0-9_-]+/).filter(Boolean)
+);
+const WATCHAPAY_BETA_ALL = /^(all|\*|1|on|true|yes)$/i.test(String(process.env.WATCHAPAY_BETA_USERS || ''));
+function watchapayAllows(user) {
+  return WATCHAPAY_BETA_ALL ? !!user : (!!user && WATCHAPAY_BETA_USERS.has(String(user.id)));
+}
+
+// 本地订单账本：涉及钱，全部同步落盘，不走合并写
+let watchaOrders = readJSON('watchapay-orders.json', []);
+if (!Array.isArray(watchaOrders)) watchaOrders = [];
+function saveWatchaOrders() {
+  try { writeJSON('watchapay-orders.json', watchaOrders); } catch (e) { console.error('[saveWatchaOrders]', e.message); }
+}
+
+async function watchaApi(apiPath, payload) {
+  const r = await fetch(WATCHAPAY_CONF.baseUrl + apiPath, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + WATCHAPAY_CONF.apiKey, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(12000)
+  });
+  const d = await r.json().catch(() => ({}));
+  return { ok: r.ok, status: r.status, data: d && typeof d === 'object' ? d : {} };
+}
+// 余额快照：查询绝不扣减。return_url 必须是完整 HTTP(S)。
+async function watchaAccess(uid) {
+  if (WATCHAPAY_CONF.mock) return { ok: true, status: 200, data: { access: 'granted', entitlement: { type: 'quota', remaining: 1000 } } };
+  return await watchaApi('/v1/entitlements/access', {
+    entitlement_id: WATCHAPAY_CONF.entitlementId,
+    user_id: String(uid),
+    return_url: SITE_ORIGIN_DEFAULT + '/promote'
+  });
+}
+async function watchaConsume(uid, amount, key) {
+  if (WATCHAPAY_CONF.mock) return { ok: true, status: 200, data: { consumed: amount, entitlement: { type: 'quota', remaining: 1000 - amount } } };
+  return await watchaApi('/v1/entitlements/consume', {
+    entitlement_id: WATCHAPAY_CONF.entitlementId,
+    user_id: String(uid), amount, idempotency_key: key
+  });
+}
+function watchaRemaining(d) {
+  const n = d && d.entitlement && d.entitlement.remaining;
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+// 购买入口：url 可为 HTTP(S) 或支付宝 alipays:// 深链，不能只按 HTTP(S) 过滤；
+// 二维码是图片地址，只认 HTTP(S)。没有 url 就没有购买动作。
+function watchaPurchaseOf(d) {
+  const p = d && d.purchase;
+  if (!p || typeof p.url !== 'string') return null;
+  const url = p.url.trim();
+  if (!/^(https?:\/\/|alipays:\/\/platformapi\/startapp\?)/i.test(url)) return null;
+  const qr = typeof p.qr_code_url === 'string' && /^https?:\/\//i.test(p.qr_code_url.trim()) ? p.qr_code_url.trim() : '';
+  return { url, qrCodeUrl: qr };
+}
+
+// 前端据此渲不渲染现金区：没配 Key / 非白名单 / 未登录一律 enabled:false，不泄露余额与购买链接
+app.get('/api/watchapay/state', async (req, res) => {
+  res.set('Cache-Control', 'no-cache');
+  const user = currentUser(req);
+  const on = WATCHAPAY_ENABLED && watchapayAllows(user);
+  if (!on) return res.json({ enabled: false, remaining: 0, purchase: null });
+  if (!rateLimit('watcha-state:' + user.id, 30, 60000)) return res.json({ enabled: true, remaining: 0, purchase: null, error: '查询太频繁' });
+  try {
+    const a = await watchaAccess(user.id);
+    if (!a.ok) return res.json({ enabled: true, remaining: 0, purchase: null, error: '查询余额失败' });
+    res.json({
+      enabled: true,
+      remaining: watchaRemaining(a.data),
+      purchase: watchaPurchaseOf(a.data),
+      access: a.data.access || ''
+    });
+  } catch (e) {
+    res.json({ enabled: true, remaining: 0, purchase: null, error: '查询余额失败' });
+  }
+});
+
+// 核销曝光次数并建投放单：与灯火兑换走同一个 createRedeemCore，只是钱在爱猹收侧收。
+app.post('/api/watchapay/redeem', async (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!WATCHAPAY_ENABLED) return res.status(400).json({ error: '现金曝光包还没开通' });
+  if (!watchapayAllows(user)) return res.status(403).json({ error: '现金曝光包还在内测，暂时没开放' });
+  if (!rateLimit('watcha:' + user.id, 8, 60000)) return res.status(429).json({ error: '操作太频繁，稍等一下' });
+  const b = req.body || {};
+  const key = String(b.idempotencyKey || '').trim();
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(key)) return res.status(400).json({ error: '请求标识不合法' });
+  const views = parseInt(b.views, 10);
+  if (!(views > 0) || views > 200) return res.status(400).json({ error: '曝光次数要在 1 到 200 之间' });
+  const slot = String(b.slot || 'detail');
+  if (!WATCHAPAY_WEB_SLOTS.includes(slot)) return res.status(400).json({ error: '这个位置不能用现金曝光包投放' });
+
+  // 同幂等键重放：已发货直接回原结果；已扣未发货只补建单，绝不二次扣减
+  const old = watchaOrders.find(o => o.idempotencyKey === key && o.uid === user.id);
+  if (old) {
+    if (old.status === 'delivered') return res.json({ ok: true, already: true, redemptionId: old.redemptionId });
+    if (old.status === 'failed') return res.status(409).json({ error: old.lastError || '上一笔没完成，请重试' });
+    const u2 = users.find(u => u.id === old.uid);
+    if (!u2) return res.status(404).json({ error: '账号不存在' });
+    const retry = createRedeemCore(u2, { slot: old.slot, views: old.views, workId: old.workId, days: old.days, ackFresh: true }, { paid: true, cashFen: 0, noExpire: true });
+    if (retry.error) return res.status(retry.status || 409).json({ error: retry.error });
+    old.status = 'delivered'; old.redemptionId = retry.redemptionId; old.deliveredAt = Date.now(); delete old.lastError;
+    saveWatchaOrders();
+    return res.json({ ok: true, redeemed: true, redemptionId: retry.redemptionId, ...redeemPayload(user) });
+  }
+
+  // 付款前先做业务预检：避免「钱扣了却投不出去」（与 XPAY 下单预检同一套规则）
+  const work = works.find(w => w.id === String(b.workId || ''));
+  if (!work || work.deleted) return res.status(404).json({ error: '作品不存在' });
+  if (work.userId !== user.id) return res.status(403).json({ error: '只能推广自己名下的作品' });
+  if (!isVisible(work)) return res.status(400).json({ error: '作品还没上线，上线后才能投放' });
+  if (work.crypto) return res.status(400).json({ error: '涉虚拟货币内容的作品不参与推荐位投放' });
+  expireRedemptions();
+  const cfg = redeemCfg(slot);
+  if (redemptions.filter(r => r.userId === user.id && r.status === 'active').length >= cfg.maxActive) {
+    return res.status(400).json({ error: `同时最多 ${cfg.maxActive} 条投放，先等其中一条投完或撤下` });
+  }
+  if (redemptions.some(r => r.userId === user.id && r.workId === work.id && r.slot === slot && ['active', 'queued'].includes(r.status))) {
+    return res.status(400).json({ error: '这件作品已经在这个位置投放或排队了' });
+  }
+  const freshHours = cfg.freshHours || 0;
+  if (freshHours && b.ackFresh !== true) {
+    const ageHours = (Date.now() - new Date(work.createdAt || 0).getTime()) / 3600e3;
+    if (ageHours >= 0 && ageHours < freshHours) {
+      return res.status(409).json({ error: `这件作品刚发布 ${Math.max(1, Math.round(ageHours))} 小时，本来就在首页第一屏，先确认一下再投`, code: 'fresh' });
+    }
+  }
+
+  // 余额只是快照，不预留；权威是下面的原子 consume
+  let a;
+  try { a = await watchaAccess(user.id); } catch (e) { return res.json({ ok: false, error: '查询余额失败，请稍后再试' }); }
+  if (!a.ok) return res.json({ ok: false, status: a.status, error: '查询余额失败，请稍后再试' });
+  const balance = watchaRemaining(a.data);
+  if (balance < views) {
+    return res.status(409).json({ error: `曝光次数不够：需要 ${views} 次，还剩 ${balance} 次`, need: views, balance, purchase: watchaPurchaseOf(a.data) });
+  }
+
+  let c;
+  try { c = await watchaConsume(user.id, views, key); }
+  catch (e) {
+    watchaOrders.push({ idempotencyKey: key, uid: user.id, workId: work.id, slot, views, days: redeemDaysOf(slot, b.days), status: 'failed', lastError: '核销请求失败', createdAt: Date.now() });
+    saveWatchaOrders();
+    return res.json({ ok: false, error: '核销请求失败，请稍后再试' });
+  }
+  if (!c.ok) {
+    const code = c.data && c.data.error && c.data.error.code;
+    if (code === 'insufficient_quota') return res.status(409).json({ error: '曝光次数不够，请先购买', balance: 0, purchase: watchaPurchaseOf(a.data) });
+    if (code === 'idempotency_conflict') return res.status(409).json({ error: '这笔正在处理中，请稍后重试', code });
+    watchaOrders.push({ idempotencyKey: key, uid: user.id, workId: work.id, slot, views, days: redeemDaysOf(slot, b.days), status: 'failed', lastError: '核销失败', createdAt: Date.now() });
+    saveWatchaOrders();
+    return res.status(502).json({ error: '核销失败，请稍后再试', code: code || '' });
+  }
+  if (Number(c.data.consumed) !== views) {
+    watchaOrders.push({ idempotencyKey: key, uid: user.id, workId: work.id, slot, views, days: redeemDaysOf(slot, b.days), status: 'failed', lastError: '核销数量异常', createdAt: Date.now() });
+    saveWatchaOrders();
+    return res.status(502).json({ error: '核销结果异常，请联系站长' });
+  }
+  const order = {
+    idempotencyKey: key, uid: user.id, workId: work.id, slot, views,
+    days: redeemDaysOf(slot, b.days), status: 'consumed',
+    consumed: views, remainingAfter: watchaRemaining(c.data), createdAt: Date.now()
+  };
+  watchaOrders.push(order); saveWatchaOrders();   // 先落 consumed：崩溃后同键重试只补建单
+
+  const out = createRedeemCore(user, { slot, views, workId: work.id, days: order.days, ackFresh: true }, { paid: true, cashFen: 0, noExpire: true });
+  if (out.error) {
+    order.status = 'failed'; order.lastError = out.error; saveWatchaOrders();
+    return res.status(out.status || 409).json({ error: out.error, code: 'deliver_failed' });
+  }
+  order.status = 'delivered'; order.redemptionId = out.redemptionId; order.deliveredAt = Date.now();
+  delete order.lastError; saveWatchaOrders();
+  addNotice(user.id, {
+    kind: 'points',
+    title: '现金曝光包已生效',
+    text: `你买的 ${views} 次曝光已在「${cfg.name}」上线，可在「推荐」里看实时曝光。本次核销后还剩 ${order.remainingAfter} 次。`,
+    workId: work.id
+  });
+  res.json({ ok: true, redemptionId: out.redemptionId, remaining: order.remainingAfter, queued: out.queued, ...redeemPayload(user) });
+});
+
 // 站内搜索命中哪些字段、各值多少分。
 // 之前只匹配「标题 / 作者账号 / 简介 / 分类」，直接导致三类搜不到：
 //   · 形态名（搜「小程序」「Web」「iOS」全 0，站里明明有）
@@ -16773,6 +17209,9 @@ const SEARCH_FIELDS = [
   [w => [w.author, displayNameOf(w.author), w.authorReal].join(' '), 6],
   [w => catsOf(w).join(' '), 5],
   [w => typesOf(w).join(' '), 5],
+  // 卡片标题后那句标签语：「商汤做的 AI 短剧工具，一键出片」里的「短剧」只在这里出现。
+  // 权重压到与分类同级 —— 它是营销语，不能盖过作品名和作者自标关键词。
+  [w => w.titleTag || '', 5],
   // 用户真会打的标签词：开源 / 付费 / 预告
   [w => [w.openSource === true ? '开源' : '', w.paid ? '付费 收费' : '', stageOf(w) === 'wip' ? '预告 开发中' : ''].join(' '), 3],
   [w => w.prompt, 2],
@@ -19857,7 +20296,9 @@ async function findCondAI(q) {
 // 分两档：真命中了词的进 A 档；只蹭上分类的进 B 档，A 档不够 3 条才补位。
 // 只蹭形态的不补——搜「记账的小程序」时「小程序」人人都占，补进来就是噪声。
 function findMatch(list, cond) {
-  const kws = (cond.keywords || []).map(k => String(k).toLowerCase().trim()).filter(k => k.length >= 2);
+  // 同一个词可能以两种大小写进条件（autoKeywords 留原样、滑窗统一转小写），
+  // 归一化后必须去重，否则一次命中会在 hitWords 里记两遍，回复就成「按『ai、ai』翻了…」
+  const kws = [...new Set((cond.keywords || []).map(k => String(k).toLowerCase().trim()).filter(k => k.length >= 2))];
   const cats = cond.categories || [], tps = cond.types || [];
   const A = [], B = [];
   for (const w of list) {
@@ -19912,11 +20353,11 @@ app.post('/api/find', async (req, res) => {
   const ip = clientIp(req);
   if (q.length < 2) return res.status(400).json({ error: '说一句话，我才知道你要找什么' });
   if (hitSensitive(q)) return res.status(400).json({ error: '这句话里有不适宜的词，换个说法吧' });
-  // 登录用户额度高：模型额度是站长付的，但常来人更值得多给几次
-  if (!rateLimit('find:u:' + (user ? user.id : 'ip:' + ip), user ? 30 : 10, 3600e3)) {
-    return res.status(429).json({ error: user ? '这一小时问得有点多，歇一会儿再来' : '匿名每小时 10 次，登录后能问更多' });
+  // 2026-11-23 站长放宽：模型走免费档，规则命中更是纯本地，别把人挡在门外。
+  // 匿名按出口 IP 算（同一 WiFi / NAT 共用），登录按账号算，额度翻几倍留个防刷底。
+  if (!rateLimit('find:u:' + (user ? user.id : 'ip:' + ip), user ? 150 : 50, 3600e3)) {
+    return res.status(429).json({ error: user ? '这一小时问得有点多，歇一会儿再来' : '匿名每小时 50 次，登录后能问更多' });
   }
-  if (!rateLimit('find-all', 6, 60000)) return res.status(429).json({ error: '找找有点忙，等一分钟再试' });
 
   const list = publicWorks(req);
   const cacheKey = q.toLowerCase();
@@ -19933,6 +20374,9 @@ app.post('/api/find', async (req, res) => {
     // 免费档排队实测 0.8–15s 都有，为「可能多一条」让人干等 3.5 秒不值得。
     // 一条都没撞上时才值得问一次模型——那才是它真能帮上忙的地方（换个说法找同义词）。
     if (!hits.length) {
+      // 全站闸只挡「真要去问模型」的请求：规则 10ms 能答的直接放行，不再白吃名额。
+      // 免费档也留 30 次/分钟，防脚本循环打（每次最坏等 3.5s，堆并发会拖慢整个服务）。
+      if (!rateLimit('find-all', 30, 60000)) return res.status(429).json({ error: '找找有点忙，等一分钟再试' });
       const ai = await findCondAI(q);
       if (ai) {
         const aiHits = findMatch(list, ai);
@@ -19954,10 +20398,14 @@ app.post('/api/find', async (req, res) => {
   // 回复里引用的词＝排第一那件真正命中的词（不是条件里的全部候选）：
   // 「按『清理垃圾』翻了 1 件」比「按『能、把录音』」可信得多。短词优先，最多两个。
   const topHits = hits.length ? hits[0].hitWords : [];
-  const kwLabel = topHits
-    .filter(k => k.length >= 2)
+  // 展示时还原访客原话里的大小写（「AI」别变成「ai」），且同一个词只说一次
+  const shownKw = k => {
+    const at = q.toLowerCase().indexOf(k);
+    return at < 0 ? k : q.slice(at, at + k.length);
+  };
+  const kwLabel = [...new Set(topHits.filter(k => k.length >= 2))]
     .filter(k => !topHits.some(o => o !== k && o.length > k.length && o.includes(k)))
-    .sort((a, b) => a.length - b.length).slice(0, 2).join('、');
+    .sort((a, b) => a.length - b.length).slice(0, 2).map(shownKw).join('、');
   // 纯分类/形态浏览（「小程序」「效率工具」）没有命中词，就用那个名字说一句
   const shapeLabel = cond.types[0] || cond.categories[0] || '';
   // 全都只在简介里提到关键词：不算找到，只能算沾边，得说出来。
@@ -22875,6 +23323,7 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
     feedback: feedback.filter(f => f.status === '待查看').length,
     appeals: appeals.filter(a => a.status === '待查看').length,
     claims: claims.filter(c => c.status === 'pending').length,
+    limitedTasks: limitedTaskSubmits().filter(s => s.status === 'pending').length,
     friendReqs: friendReqs.length,
     // 开源好物提交队列：前台弹窗提交、star 没过自动线等着人工看的
     openSubmits: openSource.pendingSubmitCount(),
@@ -24039,6 +24488,8 @@ app.post('/api/admin/starsync', requireAdmin, async (req, res) => {
 app.get('/api/admin/works', requireAdmin, (req, res) => {
   const status = req.query.status;
   let list = works.slice();
+  // 后台作品表的「任务完成」列：限时任务审核通过的去重人数（一人一件只算一次）
+  const ltDoneByWork = limitedTaskDoneByWork();
   if (status === 'offline') {
     // 「已下架」不是单一 status：管理员下架走 rejected，作者自主下架走 hidden，两条都收进来
     list = list.filter(isOffline);
@@ -24057,10 +24508,74 @@ app.get('/api/admin/works', requireAdmin, (req, res) => {
   list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   // 降权位次用「整个 status 列表」算，别被下面的搜索影响（否则搜一下名次就变了）
   const shifts = blockShiftMap(list.filter(w => !w.pinned).map(w => w.id));
+  // 后台作品表表头排序（2026-11-23）：跟用户管理一样点表头切升降序。
+  // 默认不传 sort 就是上面的发布时间倒序，老调用不变；只认白名单键，避免按任意字段排。
+  // 注意：降权位次（shifts）在上面先按发布时间算好，换排序不改降权结果，只是换个看数据的角度。
+  const wSort = String(req.query.sort || '');
+  const wSortNumKeys = ['likes', 'views', 'pv', 'uv', 'favs', 'tips', 'reports'];
+  // favs 在原始作品上；上面判定用 w[field]，这里不用特判即可
+  const wSortMatch = wSort.match(/^(\w+)(Asc|Desc)$/);
+  const wSortTimeKeys = { new: 'createdAt', old: 'createdAt', updatedNew: 'updatedAt', updatedOld: 'updatedAt' };
+  if (wSort === 'old') {
+    list.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  } else if (wSort === 'updatedNew' || wSort === 'updatedOld') {
+    const key = wSortTimeKeys[wSort];
+    const sign = wSort === 'updatedOld' ? 1 : -1;
+    list.sort((a, b) => sign * (new Date(a[key] || a.createdAt) - new Date(b[key] || b.createdAt))
+      || new Date(b.createdAt) - new Date(a.createdAt));
+  } else if (wSort === 'titleAsc' || wSort === 'titleDesc' || wSort === 'authorAsc' || wSort === 'authorDesc') {
+    const field = wSort.startsWith('title') ? 'title' : 'author';
+    const sign = wSort.endsWith('Asc') ? 1 : -1;
+    list.sort((a, b) => sign * String(a[field] || '').localeCompare(String(b[field] || ''), 'zh-CN')
+      || new Date(b.createdAt) - new Date(a.createdAt));
+  } else if (wSortMatch && wSortNumKeys.includes(wSortMatch[1])) {
+    const field = wSortMatch[1];
+    const asc = wSortMatch[2] === 'Asc';
+    const val = w => {
+      if (field === 'pv' || field === 'uv') return workVisitStats(w.id)[field];
+      if (field === 'tips') return tipAggOf(w.id).total;
+      return Number(w[field]) || 0;
+    };
+    list.sort((a, b) => {
+      const av = val(a), bv = val(b);
+      return (asc ? av - bv : bv - av) || new Date(b.createdAt) - new Date(a.createdAt);
+    });
+  }
   // 关键词筛选（后台作品列表的搜索框）：标题 / 一句话介绍 / 作者账号与昵称 / 分类 / 形态 / 正文 / 链接 / 作品 ID。
   // 空格分隔多个词按「都要命中」算（AND），方便「记账 张三」这种组合；最多取 5 个词，避免长串拖慢。
   const q = String(req.query.q || '').replace(/\s+/g, ' ').trim().slice(0, 60);
-  const totalAll = list.length;   // 只按 status（＋「只看匿名」）筛完的总数，前端用来显示「匹配 3 件 · 全部 88 件」
+  // 后台筛选卡片的多字段筛选（2026-11-23）：每个字段独立、精确命中，跟上面的全文 q 可叠加。
+  // 全部可选、不传就是老行为；放在 shifts 之后算，降权位次仍按整个 status 列表，不受筛选影响。
+  // totalAll 在这些筛选之后取，前端「匹配 N 件 · 全部 M 件」的 M 才是同一口径。
+  const fName = normSearchText(req.query.name || '').trim();
+  const fId = String(req.query.id || '').trim().toLowerCase();
+  const fAuthor = normSearchText(req.query.author || '').trim();
+  const fType = String(req.query.type || '').trim();
+  const fCategory = String(req.query.category || '').trim();
+  const fState = String(req.query.state || '').trim();
+  const fComm = String(req.query.commType || '').trim();
+  const fOwner = String(req.query.owner || '').trim();   // real=实名 / anon=匿名（跟上面的 anon=1 兼容）
+  if (fName || fId || fAuthor || fType || fCategory || fState || fComm || fOwner) {
+    list = list.filter(w => {
+      if (fName && !normSearchText([w.titleName || w.title, w.titleTag, w.introText].filter(Boolean).join(' ')).includes(fName)) return false;
+      if (fId && !String(w.id || '').toLowerCase().includes(fId)) return false;
+      if (fAuthor && !normSearchText([w.author, displayNameOf(w.author)].filter(Boolean).join(' ')).includes(fAuthor)) return false;
+      if (fType && !(Array.isArray(w.types) ? w.types : [w.type]).some(t => String(t || '') === fType)) return false;
+      if (fCategory && String(w.category || '') !== fCategory) return false;
+      if (fState) {
+        if (fState === 'offline') { if (!isOffline(w)) return false; }
+        else if ((w.status || 'approved') !== fState) return false;
+      }
+      if (fComm) {
+        const ct = w.commissionType || 'none';
+        if (fComm === 'none' ? ct !== 'none' : ct !== fComm) return false;
+      }
+      if (fOwner === 'anon' && !isAnonWork(w)) return false;
+      if (fOwner === 'real' && isAnonWork(w)) return false;
+      return true;
+    });
+  }
+  const totalAll = list.length;   // 只按 status（＋筛选卡片的各字段）筛完的总数，前端用来显示「匹配 3 件 · 全部 88 件」
   if (q) {
     // 规范化跟前台搜索共用一套（全角转半角、标点当分隔），后台搜「ＡＩ」也能命中「AI」
     const terms = normSearchText(q).split(' ').filter(Boolean).slice(0, 5);
@@ -24083,6 +24598,7 @@ app.get('/api/admin/works', requireAdmin, (req, res) => {
     keywordsRaw: Array.isArray(w.keywords) ? w.keywords : null,
     pubTimeCustom: !!w.pubTimeCustom,   // 发布时间是后台手动设置的（列表里挂「手动时间」小标）
     commissionType: w.commissionType || '',   // 联盟佣金模式（CPA/CPS/mixed），列表挂角标，仅后台可见
+    limitedDone: (ltDoneByWork[w.id] || {}).done || 0,   // 限时任务审核通过人数（后台作品表「任务完成」列）
     aiReview: w.aiReview || null,   // AI 初审意见（pass/reason/note），待审列表展示给管理员参考
     watchHits: Array.isArray(w.watchHits) ? w.watchHits : [],   // 命中重点复核词（代理IP/翻墙/换网络环境）：列表挂「重点复核」小标
     crypto: w.crypto === true,   // 涉币标记：卡片挂提示、不进榜单期刊、不能买推荐位（列表挂「涉币」小标）
@@ -24091,6 +24607,8 @@ app.get('/api/admin/works', requireAdmin, (req, res) => {
     offlineReason: w.offlineReason || '',
     offlineAt: w.offlineAt || '',
     juryRemoved: !!w.juryRemoved,   // 众判下架：列表标签写「众判下架」而不是「管理员下架」
+    // 后台表的「发布时间 / 更新时间」两列用；publicWork 不带时间，这里补上（2026-11-23）
+    createdAt: w.createdAt || '',
     updatedAt: w.updatedAt || w.createdAt,
     authorReal: w.authorReal || '',
     ownerReal: w.ownerReal ? ((users.find(u => u.id === w.ownerReal) || {}).username || '') : '',

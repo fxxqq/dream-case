@@ -35,6 +35,13 @@ const EDIT_MIN_CJK = 3;   // 汉字至少 3 个才容忍 1 个错字
 const EDIT_MIN_LAT = 4;   // 拼音至少 4 个字母才容忍 1 个错字母
 // 只在权重 ≥ 4 的字段上做容错（标题/关键词/作者/分类/形态），正文和域名上的错字不值得算。
 const FUZZY_MIN_WEIGHT = 4;
+// 第 5 层兜底：中文长词在库里没有连续写法时（「短剧生成」vs 标签语里的「短剧工具」），
+// 拆成 2 字片段做「任一命中」。只在严格匹配 + 容错都是 0 结果时启用。
+const LOOSE_MIN_CJK = 3;    // 至少 3 字才拆：2 字词拆成单字全是噪音
+const LOOSE_MAX_PARTS = 6;  // 片段数封顶，防止超长查询把索引跑爆
+const LOOSE_POS_DECAY = 0.5; // 片段位置衰减：越靠前越贴近用户原意
+const LOOSE_MAX_ROWS = 3;   // 严格结果少于这么多才补充：多于 3 条说明用户意图已被满足
+const LOOSE_BOOST = 0.6;    // 补充项统一打折，整词命中的永远排在前面
 
 // ---------- 1. 规范化 ----------
 // 全角！～ → 半角、顿号逗号分号当空格、连续空白合并。
@@ -326,7 +333,8 @@ function looseOf(f) {
 // 缓存挂 WeakMap（作品对象回收就跟着回收），版本号取 updatedAt + title：
 // 后台改标题是最常见的编辑，title 一比就知道变没变。
 function versionOf(w) {
-  return (w.updatedAt || w.createdAt || '') + '\u0001' + (w.title || '');
+  // titleTag 已进搜索字段，后台单独改标签语时也要让缓存失效（此时 title / updatedAt 可能没变）
+  return (w.updatedAt || w.createdAt || '') + '\u0001' + (w.title || '') + '\u0001' + (w.titleTag || '');
 }
 
 function createSearcher({ fields }) {
@@ -389,6 +397,41 @@ function createSearcher({ fields }) {
     try { return analyze(w, q).s; } catch { return 0; }   // 单件数据脏不该让整个搜索失败
   }
 
+  // ---- 第 5 层兜底：中文 2 字滑窗 ----
+  // 「短剧生成」整串在库里没有，但「短剧」是真实品类词。把中文连续段切成 2 字片段，
+  // 按片段在原查询里的先后编号（越靠前越贴近用户原意）。英文/数字/短中文原样保留。
+  function looseTokens(tokens) {
+    const out = [];
+    for (const t of tokens) {
+      let split = false;
+      for (const run of (t.match(/[\u3400-\u9fff]+/g) || [])) {
+        if (run.length < LOOSE_MIN_CJK) continue;
+        split = true;
+        for (let i = 0; i + 1 < run.length && out.length < LOOSE_MAX_PARTS; i++) {
+          out.push({ tok: run.slice(i, i + 2), pos: out.length });
+        }
+      }
+      if (!split) out.push({ tok: t, pos: out.length });
+    }
+    return out;
+  }
+
+  // 兜底打分：每个片段都走正常打分（字段权重 × 匹配质量 × 长度惩罚）再乘位置衰减，
+  // 命中片段越多说明越贴近整句，给一点叠加加成。任一片段命中即入结果，分数决定排序。
+  function looseScore(w, parts) {
+    let total = 0, hits = 0, raw = false, firstHit = false;
+    for (let i = 0; i < parts.length; i++) {
+      const r = scoreWork(w, [parts[i].tok], null);
+      if (r.s <= 0) continue;
+      hits++;
+      if (i === 0) firstHit = true;   // 首个片段通常是品类核心词（短剧），不是「生成」这种泛词
+      if (r.raw) raw = true;
+      total += r.s / (1 + parts[i].pos * LOOSE_POS_DECAY);
+    }
+    if (!hits) return null;
+    return { s: total * (1 + 0.18 * (hits - 1)), raw, hits, firstHit };
+  }
+
   // 一批作品跑一遍。
   // 零结果才容错：第一遍严格匹配，只有某个词在整批里一条都没命中时，才带着容错重跑一遍。
   // 这样做的好处 —— ① 代价只在「用户看到 0 结果」时付；② 平时绝不误伤（搜「记账」不会
@@ -424,7 +467,36 @@ function createSearcher({ fields }) {
       }
     }
 
-    return { rows, suggest: suggestOf(rows, kw, { pureLetter, tokens, miss }) };
+    // 第 5 层：中文长词（≥3 字）严格结果不足时，用 2 字片段补充。
+    // 不能只等 0 结果：库里只要有一件作品的 prompt 写了完整「短剧生成」，严格就有 1 条，
+    // 那些在标签语里写「短剧」的工具就全被挡在外面。补充项一律打折，整词命中永远在前。
+    const suggestRows = rows.slice();   // 「你是不是想搜」只看严格/容错的结果，不看补充项
+    if (tokens.length === 1 && rows.length < LOOSE_MAX_ROWS && !(opts && opts.strict)) {
+      const parts = looseTokens(tokens);
+      if (parts.length) {
+        const strict = rows.slice();
+        const seen = new Set(strict.map(r => r.w));
+        let maxLoose = 0;
+        for (const w of list) {
+          if (seen.has(w)) continue;
+          const r = looseScore(w, parts);
+          // 只补命中核心片段的；单靠「生成」「工具」这种后位泛词命中会灌水
+          if (!r || (!r.firstHit && r.hits < 2)) continue;
+          const s = r.s * LOOSE_BOOST;
+          maxLoose = Math.max(maxLoose, s);
+          rows.push({ w, s, raw: r.raw, py: false, hits: r.hits });
+        }
+        // 整词命中的结果整体压在补充项前面（内部相对顺序不变）
+        if (maxLoose > 0 && strict.length) {
+          const minStrict = Math.min(...strict.map(r => r.s));
+          const factor = (maxLoose * 1.2) / minStrict;
+          if (factor > 1) for (const r of strict) r.s *= factor;
+        }
+      }
+    }
+    // 全靠片段补充才命中 ≠ 打错字，别弹同音纠错提示
+    if (!suggestRows.length) return { rows, suggest: null };
+    return { rows, suggest: suggestOf(suggestRows, kw, { pureLetter, tokens, miss }) };
   }
 
   // 「你是不是想搜」：只在「用户明显打错/打偏」时给，别变成噪音。

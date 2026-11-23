@@ -1581,7 +1581,7 @@ async function afterAuth(data) {
   // 登录/注册成功立刻重画「我的」页（正开着的话），别让人登录完还看着未登录视图
   await refreshMeViewIfActive();
   // 收藏/点赞独立页正开着的话，登录后把列表补上（未登录进来时是空壳）
-  if (location.pathname === '/favs') loadFavPage();
+  if (location.pathname === '/favs') showFavTab(favTab);
   else if (location.pathname === '/likes') loadLikedPage();
   else if (location.pathname === '/following') loadFollowPage();
   // 微信等 OAuth 建的临时号：登录成功后主动弹一次「账号与密码」引导完善
@@ -1609,7 +1609,7 @@ async function doLogout() {
   await refreshMeViewIfActive();   // 退出入口在「我的」页里，同步重画回未登录视图
   // 星标依赖登录态，退出后同步刷新当前列表
   if (location.pathname === '/') loadWorks();
-  if (location.pathname === '/favs') loadFavPage();
+  if (location.pathname === '/favs') showFavTab(favTab);
   else if (location.pathname === '/likes') loadLikedPage();
   else if (location.pathname === '/following') { $('followList').innerHTML = ''; $('followEmpty').style.display = 'block'; }
   if (detailModal.style.display === 'flex' && state.currentWork) {
@@ -3810,13 +3810,14 @@ function cardHtml(w, opts = {}) {
           <span class="stat-line">${cardStatsHtml(w)}</span>
           <span>${formatDate(w.createdAt)}</span>
         </div>
+        ${opts.collPick ? `<button type="button" class="fav-coll-pick" data-coll-pick="${w.id}" title="把这件作品整理进合集">${ic('folder')} 整理进合集</button>` : ''}
         ${ownTools ? cardOwnerToolsHtml(w) : ''}
       </div>
     </div>`;
 }
 
 // 列表视图：一行一个作品，紧凑排版（参考 Product Hunt 风格）
-function listHtml(w) {
+function listHtml(w, opts = {}) {
   const cc = w.commentCount || 0;
   const [ctName, ctIntro] = cardTitleLines(w);
   const juryChip = juryChipHtml(w, true);   // 认定票占多数才出（口径见 juryChipHtml）；放 meta 行首，
@@ -3840,6 +3841,7 @@ function listHtml(w) {
       </div>
       <button class="row-like ${isLikedNow(w) ? 'active' : ''}" data-likework="${w.id}" aria-label="${isLikedNow(w) ? '取消赞' : '点赞'}" title="${isLikedNow(w) ? '取消赞' : '点赞'}">${ic('heart')}</button>
       <button class="row-fav ${isFav(w.id) ? 'active' : ''}" data-fav="${w.id}" title="收藏">${ic('fav')}</button>
+      ${opts.collPick ? `<button class="row-coll-pick" data-coll-pick="${w.id}" title="把这件作品整理进合集" aria-label="整理进合集">${ic('folder')}</button>` : ''}
       ${/* 自己的作品不放「不看这个」，但按钮本体要留着占位（visibility:hidden），
             否则这一行右侧比别人窄、收藏圆钮和别的行对不齐（2026-11-11 站长截图反馈） */''}
       <button class="row-block${w.owned ? ' is-owned' : ''}" data-blockwork="${w.id}" data-bw-title="${escapeHtml(w.title)}" title="不再看这个作品（只对你生效）" aria-label="不再看这个作品"${w.owned ? ' tabindex="-1" aria-hidden="true"' : ''}>${ic('block')}</button>
@@ -3908,7 +3910,8 @@ function bindCardNode(el) {
   // 被当成作品卡绑上会去请求 /api/works/undefined，白弹一个「作品不存在」的报错
   if (el.classList.contains('tool-card') || el.classList.contains('tool-row')) return;
   el.addEventListener('click', e => {
-    if (e.target.dataset.fav || e.target.dataset.shareWork || e.target.closest('[data-likework]')) return;
+    if (e.target.dataset.fav || e.target.dataset.shareWork || e.target.closest('[data-likework]')
+        || e.target.closest('[data-coll-pick]')) return;   // 收藏页「整理进合集」入口：只弹浮层，不开详情
     // 对比勾选框是独立控件：点它不能顺手打开作品详情
     if (e.target.closest('.cmp-pick')) { e.stopPropagation(); return; }
     // 扇面里的每颗按钮（含触发器）都归 .card-actions 管，不能再让卡片顺手把详情打开
@@ -7243,6 +7246,7 @@ function closeAllViews() {
     el.classList.remove('dm-view-enter');
   });
   hideModal(detailModal);
+  hideCollPop();           // 合集小面板跟着详情一起收
   hideModal(statsModal);   // 灯火/数据面板是弹层：路由切走（比如点了榜单行去作者主页）必须一起收，别盖在新页面上
   closeQrZoom();   // 详情被关掉时二维码放大层一起收，别留一张盖住全屏的图
   closeImgFull();  // 全屏看图层同理：详情关了它必须跟着收
@@ -8674,7 +8678,6 @@ function renderMePage() {
       <a class="me-tile" href="/u/${encodeURIComponent(state.user.slug || state.user.id || state.user.username)}" data-nav><span class="me-tile-ico">${ic('home', 20)}</span>我的主页</a>
       <button type="button" class="me-tile" id="meStats"><span class="me-tile-ico">${ic('bars', 20)}</span>作品数据</button>
       <button type="button" class="me-tile" id="meFav"><span class="me-tile-ico">${ic('fav', 20)}</span>我的收藏</button>
-      <button type="button" class="me-tile" id="meCollections"><span class="me-tile-ico">${ic('folder', 20)}</span>我的合集</button>
     </div>
     <div class="me-ck-card">
       <div class="me-ck-left">
@@ -8712,7 +8715,7 @@ function renderMePage() {
       <a class="me-idea-card" href="/bar" data-nav>还没想过表达，去造梦酒馆看看大家在想什么 <i>›</i></a>
     </div>
     <div class="me-sec">
-      <div class="me-sec-head"><h3>我的收藏</h3><span class="me-sec-count">${favs} 件</span></div>
+      <div class="me-sec-head"><h3>我的收藏</h3><span class="me-sec-count">${favs} 件</span><button type="button" class="me-sec-link" id="meFavCollections">我的合集 ›</button></div>
       <div class="me-fav-list" id="meFavList"><div class="me-fav-empty">加载中…</div></div>
     </div>`}
     <div class="me-foot">
@@ -8727,8 +8730,9 @@ function renderMePage() {
   const goFavs = () => toggleFavorites();
   $('meFav').onclick = goFavs;
   $('meStatFavs').onclick = goFavs;
-  const meCollectionsBtn = $('meCollections');
-  if (meCollectionsBtn) meCollectionsBtn.onclick = openCollectionManage;
+  // 合集收在「我的收藏」页第二栏：这里只留次级入口，不再和收藏平级占一块瓷砖
+  const meFavCollections = $('meFavCollections');
+  if (meFavCollections) meFavCollections.onclick = () => navigate('/favs?tab=collections');
   // 关注数那颗数字：直接进「我关注的创作者」页（未登录时那一页自己会弹登录）
   const meFollowingBtn = $('meFollowing');
   if (meFollowingBtn) meFollowingBtn.onclick = () => navigate('/following');
@@ -9338,23 +9342,24 @@ function saveQrImage(src, id) {
   });
 }
 
-// 2026-11-22 二改拍板：搜索框放下面、头部不放。桌面端首页它落进列表标题行的
-// #listSearchSlot；其他页面桌面端头部不显示搜索（要搜回首页）。手机端不变：
-// 搜索框必须待在头部给覆盖层用（.header-inner.search-open 才显示），所以要搬回头部。
+// 2026-11-23 站长拍板：搜索框搬回首屏 hero，跟「搜索 / 找找AI」两个按钮组成一条。
+// 桌面端首页落进 hero 的 #heroSearchSlot（老 #listSearchSlot 已撤）；其他页面桌面端
+// 头部不显示搜索（要搜回首页），手机端不变：搜索框必须待在头部给覆盖层用
+// （.header-inner.search-open 才显示），所以搬回头部。
 // 全站仍只有一个 #searchInput，搬的是同一个节点，建议/历史/防抖绑定不用维护两份。
 function syncSearchBoxPlacement(path) {
   const form = document.querySelector('.search-box');
   const header = document.querySelector('.header-inner');
-  const slot = $('listSearchSlot');
+  const slot = $('heroSearchSlot');
   if (!form || !header || !slot) return;
-  const inList = !isH5View() && (path || location.pathname) === '/';
-  const target = inList ? slot : header;
+  const inHero = !isH5View() && (path || location.pathname) === '/';
+  const target = inHero ? slot : header;
   if (form.parentElement === target) return;
   const input = $('searchInput');
   const wasFocused = !!input && document.activeElement === input;
   let start = null, end = null;
   if (wasFocused) { try { start = input.selectionStart; end = input.selectionEnd; } catch (e) {} }
-  if (inList) slot.appendChild(form);
+  if (inHero) slot.appendChild(form);
   else {
     // 放回头部时插在导航前，保持「logo → 搜索 → 导航」的原顺序（桌面端由 CSS 藏掉）
     const nav = header.querySelector('.main-nav');
@@ -9617,7 +9622,8 @@ function route() {
       openAuth('login');
       showToast(isFav ? '登录后可查看你的收藏' : (isFollow ? '登录后可查看你关注的创作者' : '登录后可查看你点赞的作品'));
     }
-    if (isFav) loadFavPage(); else if (isFollow) loadFollowPage(); else loadLikedPage();
+    if (isFav) showFavTab(new URLSearchParams(location.search).get('tab') === 'collections' ? 'collections' : 'works');
+    else if (isFollow) loadFollowPage(); else loadLikedPage();
     updateNavActive();
     return;
   }
@@ -15305,6 +15311,7 @@ function setupDetailActions() {
   if ($('tipPanel') && $('tipPanel').parentElement !== document.body) document.body.appendChild($('tipPanel'));
   $('closeDetail').onclick = () => {
     hideModal(detailModal);
+    hideCollPop();   // 详情关了，贴着竖排条的合集小面板不能孤零零留在页面上
     // 弹窗是从首页/榜单/作者页打开的（history.state.dm === 'work'）就回退到原页面，
     // state 丢了就按打开前记下的来源页回去，只有从 /w/xxx 直链打开时才回首页
     leaveDetailNav(true);
@@ -15440,12 +15447,8 @@ function setupDetailActions() {
     paintFavButtons(w.id);
     showToast(added ? '已加入收藏' : '已取消收藏', undefined, 'ok');
   };
-  // 合集是「公开的一份清单」，和私人收藏分开：从详情竖排条进，选完再回来，详情弹窗不关
-  const dcBtn = $('detailCollect');
-  if (dcBtn) dcBtn.onclick = () => {
-    if (!state.user) { showToast('登录后才能把作品加进合集', undefined, 'err'); openAuth('login'); return; }
-    if (state.currentWork) openCollectionPick(state.currentWork.id);
-  };
+  // 2026-11-23：详情页竖排条的「加入合集」已撤——和 ★收藏 并排两个「存起来」的动作
+  // 分不清。合集入口收进 /favs 的收藏作品上（见 loadFavPage），这里不再重复占一颗按钮。
 
   // ---------- 打赏（灯火转移） ----------
   // 档位与服务端一致；余额、档位选择、最近打赏名单都归这个面板管。
@@ -18660,6 +18663,8 @@ let redeemSel = { workId: '', mode: 'view', views: 0, clicks: 0, slot: 'detail',
 let redeemData = null;
 // 现金直购（内测）：/api/xpay/goods 的结果，白名单账号才拿到 enabled:true
 let xpayData = null;
+// 爱猹收网页端现金曝光包：/api/watchapay/state 的结果（余额 + 购买入口），白名单账号才有 enabled:true
+let watchaState = null;
 // 投放效果榜数据：loadRedeemPanel 并行拉好存这里，renderRedeem 每次重绘都带上（选择操作会整版重绘）
 let promoBoardData = null;
 // 「为什么这个推荐位值」折叠卡的展开状态：切作品/位置/套餐都会整版重绘，别让人展开一次就被打回
@@ -18891,6 +18896,43 @@ function xpaySectionHtml() {
     </div>`;
 }
 
+// 爱猹收网页端现金曝光包（内测）：白名单账号才渲染。与小程序 XPAY 错开——这里卖网页端三个位
+// （详情 / 榜单 / 首页第一格），支付宝付款换成「曝光次数余额」，投放时核销对应次数，
+// 走的还是同一个 createRedeemCore：展示、防刷、撤下退补规则完全一致。
+// 文案守住口径：买的是曝光次数，不是灯火、不是流量、不是可充值虚拟币。
+function watchapaySectionHtml() {
+  const d = watchaState;
+  if (!d || !d.enabled) return '';
+  const views = redeemMode() === 'view' ? (redeemSel.views || 0) : 0;
+  const balance = d.remaining || 0;
+  const works = (redeemData && Array.isArray(redeemData.works)) ? redeemData.works : [];
+  const hasWork = works.some(w => w.id === redeemSel.workId);
+  const webSlot = ['detail', 'rank', 'list-first'].includes(redeemSel.slot);
+  const ready = hasWork && webSlot && views > 0;
+  const purchase = d.purchase || null;
+  let actionHtml;
+  if (!ready) {
+    actionHtml = '<p class="wpay-tip">先在上面选一件自己的作品、一个网页端位置（详情页 / 榜单 / 首页第一格）和曝光次数，就能用余额直接投放。</p>';
+  } else if (views > balance) {
+    actionHtml = purchase && purchase.url
+      ? `<p class="wpay-tip">余额还差 ${views - balance} 次，先去买曝光次数：</p>
+         <div class="wpay-buy">
+           <a class="btn-primary wpay-buy-link" href="${escapeHtml(purchase.url)}" target="_blank" rel="noopener noreferrer">去支付宝购买 →</a>
+           ${purchase.qrCodeUrl ? `<img class="wpay-qr" src="${escapeHtml(purchase.qrCodeUrl)}" alt="购买二维码" />` : ''}
+         </div>`
+      : '<p class="wpay-tip">余额不够，请稍后再试。</p>';
+  } else {
+    actionHtml = `<button type="button" class="btn-primary wpay-go" id="watchaGo">用余额投放 ${views} 次曝光</button>`;
+  }
+  return `
+    <div class="redeem-sec wpay-sec">
+      <div class="redeem-sec-head">现金买曝光 <span class="xp-badge">内测</span><span>支付宝付款 · 次数余额累计，不是灯火</span></div>
+      <p class="wpay-bal">曝光次数余额 <b>${balance}</b> 次${views > 0 ? ` · 本次需要 <b>${views}</b> 次` : ''}</p>
+      ${actionHtml}
+      <p class="wpay-note">买到的次数先存在账上，投放时按所选次数核销；展示、防刷和撤下退回跟灯火投放是同一套规则。</p>
+    </div>`;
+}
+
 // 推荐面板入口：各处按钮统一跳独立页面 /promote。
 // 未登录也直接进：/promote 未登录态自带「登录后才能投放 + 先登录」引导和投放效果榜，
 // 让游客先看得到推荐效果再决定要不要登录；弹窗拦在前面反而把效果榜挡住了。
@@ -18927,7 +18969,11 @@ async function loadRedeemPanel() {
       .then(r => r.json())
       .then(d => { xpayData = d; return d; })
       .catch(() => { xpayData = null; return null; });
-    const [res] = await Promise.all([fetch('/api/redeem/options', { cache: 'no-store' }), boardP, xpayP]);
+    const watchaP = fetch('/api/watchapay/state', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { watchaState = d; return d; })
+      .catch(() => { watchaState = null; return null; });
+    const [res] = await Promise.all([fetch('/api/redeem/options', { cache: 'no-store' }), boardP, xpayP, watchaP]);
     redeemData = await res.json();
   } catch {
     body.innerHTML = '<div class="stats-loading">加载失败，请稍后重试</div>';
@@ -19342,9 +19388,11 @@ function renderRedeem() {
         ? [r.endsAt ? `最迟 ${redeemDate(r.endsAt)} 下线` : '', '站长代投（不消耗灯火）'].filter(Boolean).join(' · ')
         : '站长代投 · 不涉及灯火')
       : (r.status === 'active'
-      ? [r.endsAt ? `${r.daysPicked ? `投 ${r.days} 天 · ` : ''}最迟 ${redeemDate(r.endsAt)} 下线` : '', `已消耗 ${spent} 盏`, canBack > 0 ? `撤下可退 ${canBack} 盏` : '额度已用完']
+      ? [r.paid ? '现金买曝光 · 用到次数耗尽为止，不设到期' : (r.endsAt ? `${r.daysPicked ? `投 ${r.days} 天 · ` : ''}最迟 ${redeemDate(r.endsAt)} 下线` : ''),
+          r.paid ? `已曝光 ${r.used || 0}/${r.views || 0} 次` : `已消耗 ${spent} 盏`,
+          r.paid ? '' : (canBack > 0 ? `撤下可退 ${canBack} 盏` : '额度已用完')]
           .filter(Boolean).join(' · ')
-      : queued ? `随时可撤，全额退回 ${canBack} 盏${r.daysPicked ? ` · 轮到后投 ${r.days} 天` : ''}`
+      : queued ? (r.paid ? '排队中 · 随时可取消，排在前面那单结束后开始，用到次数耗尽为止' : `随时可撤，全额退回 ${canBack} 盏${r.daysPicked ? ` · 轮到后投 ${r.days} 天` : ''}`)
         : (r.refunded ? `已消耗 ${(r.price || 0) - (r.refunded || 0)} 盏 · 已退回 ${r.refunded} 盏灯火` : ''));
     return `<div class="redeem-item${queued ? ' is-queued' : ''}">
         <div class="ri-top">
@@ -19507,6 +19555,7 @@ function renderRedeem() {
       ${targetHtml}
     </div>
     ${xpaySectionHtml()}
+    ${watchapaySectionHtml()}
     <details class="redeem-value" id="redeemValue"${redeemValueOpen ? ' open' : ''}>
       <summary>
         <span class="rv-tag">为什么值</span>
@@ -19547,6 +19596,42 @@ function renderRedeem() {
   bindPromoBoard(body, 'scroll');
   const xg = $('xpayGoMini');
   if (xg) xg.onclick = () => { const m = $('miniModal'); if (m) showModal(m); };
+  const wg = $('watchaGo');
+  if (wg) wg.onclick = async () => {
+    const views = redeemMode() === 'view' ? (redeemSel.views || 0) : 0;
+    if (!(views > 0)) { showToast('先选一个曝光次数', undefined, 'err'); return; }
+    // 一次操作固定一个幂等键：网络重试、同键重放都不会二次核销
+    const idem = 'wp' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    const post = async ack => {
+      const r = await fetch('/api/watchapay/redeem', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          idempotencyKey: idem, views, slot: redeemSel.slot, workId: redeemSel.workId,
+          days: redeemSel.days, ackFresh: ack
+        })
+      });
+      return await r.json().catch(() => ({}));
+    };
+    wg.disabled = true; wg.textContent = '正在投放…';
+    try {
+      let d = await post(false);
+      // 刚发布提醒跟灯火单同一规则：确认后带 ackFresh 复用同一键重试，服务端这段还没扣钱
+      if (d.code === 'fresh' && d.error) {
+        if (!confirm(d.error + '\n\n仍然要投？')) return;
+        wg.textContent = '正在投放…';
+        d = await post(true);
+      }
+      if (d.error) { showToast(d.error, undefined, 'err'); return; }
+      showToast('投放已生效，去「我的投放」看效果');
+      try { watchaState = await fetch('/api/watchapay/state', { cache: 'no-store' }).then(r => r.json()); } catch (e) { /* 刷新失败不影响已生效的投放 */ }
+      loadRedeemPanel();
+      return;
+    } catch (e) {
+      showToast('网络出错，请重试', undefined, 'err');
+    } finally {
+      if (wg.isConnected) { wg.disabled = false; wg.textContent = `用余额投放 ${views} 次曝光`; }
+    }
+  };
   body.querySelectorAll('[data-rwork]').forEach(el => {
     el.onclick = () => {
       redeemSel.workId = el.dataset.rwork;
@@ -20268,12 +20353,18 @@ async function cancelRedeem(id) {
   const usedTxt = r && !r.comp && (r.views || 0) === 0 && (r.clicks || 0) > 0
     ? `已点击 ${r.clickUsed || 0} 次`
     : `已曝光 ${r ? r.used || 0 : 0} 次${r && r.clicks ? ` · 已点击 ${r.clickUsed || 0} 次` : (r && r.clicksReal ? ` · 被点开 ${r.clicksReal} 次` : '')}`;
-  // 站长代投单没有灯火往来，确认话术单独一套
-  const msg = r && r.comp
-    ? (queued ? '取消排队？\n\n这是站长代投的推荐，不涉及灯火，取消后轮到别人。' : '撤下这条推荐？\n\n这是站长代投的推荐（不消耗灯火），撤下后前台立即不再展示。')
-    : (queued
-    ? `取消排队？\n\n这一单还没开始投放，${back} 盏灯火会全额退回，立即到账。`
-    : `撤下这条推荐？\n\n这一单花了 ${r ? r.price || 0 : 0} 盏，${usedTxt}，对应消耗 ${spent} 盏；剩下没用的部分退回 ${back} 盏灯火，立即到账。`);
+  // 站长代投单没有灯火往来；现金单次数已核销、爱猹收没有退款接口，确认话术各自单独一套
+  let msg;
+  if (r && r.comp) {
+    msg = queued ? '取消排队？\n\n这是站长代投的推荐，不涉及灯火，取消后轮到别人。'
+      : '撤下这条推荐？\n\n这是站长代投的推荐（不消耗灯火），撤下后前台立即不再展示。';
+  } else if (r && r.paid) {
+    msg = queued ? '取消排队？\n\n这一单已经付过钱、次数暂未扣除，取消后会释放位置，但已付的曝光次数不会退回。'
+      : `撤下这条推荐？\n\n${usedTxt}。这是现金买的曝光，已核销的次数不会退回、也没有退款入口；撤下后前台立即不再展示。确定不再投了吗？`;
+  } else {
+    msg = queued ? `取消排队？\n\n这一单还没开始投放，${back} 盏灯火会全额退回，立即到账。`
+      : `撤下这条推荐？\n\n这一单花了 ${r ? r.price || 0 : 0} 盏，${usedTxt}，对应消耗 ${spent} 盏；剩下没用的部分退回 ${back} 盏灯火，立即到账。`;
+  }
   if (!confirm(msg)) return;
   try {
     const res = await fetch('/api/me/ads/' + encodeURIComponent(id) + '/cancel', { method: 'POST' });
@@ -21490,7 +21581,7 @@ function toggleFavorites() {
     return;
   }
   if (location.pathname !== '/favs') navigate('/favs');
-  else loadFavPage();
+  else showFavTab('works');   // 从「我的收藏」入口进来一律回作品栏，合集是它下面的一栏
 }
 
 // 我的点赞：独立页面 /likes（与 /favs 同一批改造）。
@@ -21520,10 +21611,13 @@ async function loadFavPage() {
       const map = new Map((all.items || []).map(w => [w.id, w]));
       items = (state.favs || []).map(id => map.get(id)).filter(Boolean);
     }
-    g.innerHTML = items.map(w => isRowView() ? listHtml(w) : cardHtml(w)).join('');
+    g.innerHTML = items.map(w => isRowView()
+      ? listHtml(w, { collPick: true }) : cardHtml(w, { collPick: true })).join('');
     syncViewClass(g);
     bindCards(g);
     em.style.display = items.length ? 'none' : 'block';
+    // 合集浮层的「已加入」态要读完整作品列表；只这张页用，别在初始化时全局拉
+    if (state.user) myCollections(true).catch(() => {});
   } catch {
     g.innerHTML = '';
     em.style.display = 'block';
@@ -21679,7 +21773,7 @@ function setupSearchSuggest() {
   const close = () => { panel.hidden = true; };
 
   // 手机端头部一行版：搜索框藏进放大镜，点开整条头部变成搜索覆盖层（页面内容不动），取消/再点收起
-  // 这里不能从 input 往上找：桌面首页搜索框会被 syncSearchBoxPlacement 搬到列表标题行，
+  // 这里不能从 input 往上找：桌面首页搜索框会被 syncSearchBoxPlacement 搬进 hero，
   // 而覆盖层的 search-open 始终挂在头部容器上，直接取头部容器才不会随搬家失效。
   const inner = document.querySelector('.header-inner');
   const mBtn = $('mSearchBtn');
@@ -21996,15 +22090,24 @@ function setupFindBot() {
 // 找找入口委托（2026-11-15）：脚本加载到这就挂上，不等 setupHeader / 路由。
 // openFindBot 有 open 幂等闸、fbAsk 有 busy 闸，就算别处也绑过一份也不会重复开/重复问。
 document.addEventListener('click', e => {
-  if (e.target.closest('#sgAsk')) {
+  // hero 搜索组合条里的「搜索」按钮：等价于在输入框里回车（输入本身也是防抖自动搜，
+  // 这颗按钮给习惯点一下的人一个明确动作）。取当前词 -> 记历史 -> 收起下拉 -> 立刻搜。
+  if (e.target.closest('#heroSearchGo')) {
+    const inp = $('searchInput');
+    const v = inp ? inp.value.trim() : '';
+    if (v) pushSearchHistory(v);
+    const sug = $('searchSuggest'); if (sug) sug.hidden = true;
+    if (inp) inp.blur();
+    applySearch(v);
+    return;
+  }
+  if (e.target.closest('#sgAsk') || e.target.closest('#heroFindGo')) {
     const seed = ($('searchInput') && $('searchInput').value.trim()) || '';
     openFindBot(seed);
     if (seed.length >= 2) fbAsk(seed);
     return;
   }
   if (e.target.closest('#heroFindBtn')) openFindBot('');
-  // 列表标题行搜索框后面那句「让找找ai帮你找」：同一个委托，别再单独绑 onclick
-  if (e.target.closest('#listFindHint')) openFindBot('');
 });
 
 // 酒馆图文帖的缩略图：捕获阶段截住，点图只放大，不要连带打开帖子详情
@@ -23834,6 +23937,84 @@ const TASK_MORE = [
   { key: 'upload', icon: 'edit', name: '投稿作品', sub: '过审上线就有灯火，还能上首屏' }
 ];
 
+// ---------- 限时任务：体验产品 → 回传注册截图 ----------
+// 名单不写死在前端：服务端按作品库的 commissionType 现算（CPA / CPA+CPS 是后台筛选口径，前台不展示）。
+let limitedTaskCurrent = null;
+const LT_SHOT_TIP = '点这里选图，或 Ctrl+V 粘贴截图（≤8MB）';
+// 粘贴进来的 blob 没有文件名，塞进 file input 前补一个，服务端仍按图片头验真
+function setLtShotFile(f, fromPaste) {
+  const input = $('ltShot');
+  if (!input) return;
+  if (fromPaste && f) {
+    const dt = new DataTransfer();
+    dt.items.add(f);
+    input.files = dt.files;
+  } else if (!f) {
+    input.value = '';
+  }
+  const label = $('ltShotName');
+  if (label) label.textContent = f
+    ? `${fromPaste ? '已粘贴：' : ''}${f.name || '截图'} · ${Math.ceil(f.size / 1024)} KB`
+    : LT_SHOT_TIP;
+}
+function limitedTaskRowHtml(it, d) {
+  const state = it.state || 'todo';
+  const pill = it.points ? `<span class="task-pill">+${it.points} 盏</span>` : '';
+  let right;
+  if (state === 'todo' || state === 'rejected') {
+    right = `<button type="button" class="task-btn" data-limited-task="${escapeHtml(it.id)}">${state === 'rejected' ? '重新提交' : '去体验'}</button>`;
+  } else if (state === 'pending') {
+    right = '<span class="task-done is-wait">审核中</span>';
+  } else if (state === 'done') {
+    right = `<span class="task-done">${ic('check')}已到账</span>`;
+  } else {
+    right = `<span class="task-done is-muted">${state === 'dayfull' ? '今天已满' : '已结束'}</span>`;
+  }
+  const note = state === 'rejected' && it.note
+    ? `<p class="lt-reject-note">${escapeHtml(it.note)}</p>` : '';
+  return `
+    <li class="task-item${state === 'done' ? ' is-done' : ''}">
+      <div class="task-row">
+        <span class="task-ico" data-kind="lamp">${ic('lamp')}</span>
+        <div class="task-main">
+          <div class="task-title"><b>${escapeHtml(it.name || '')}</b>${(state === 'todo' || state === 'rejected') ? pill : ''}</div>
+          <p>${escapeHtml(it.desc || '注册体验后回传截图，审核通过送灯火')}</p>
+          ${note}
+        </div>
+        ${right}
+      </div>
+    </li>`;
+}
+function limitedTaskSectionHtml(d) {
+  const lim = d.limited || {};
+  const items = Array.isArray(lim.items) ? lim.items : [];
+  const used = Number(lim.usedToday || 0);
+  const cap = Number(lim.dailyLimit || 2);
+  return `
+    <div class="task-sec task-sec-limited">
+      <div class="task-sec-head"><h3>限时任务</h3><span>体验产品 · 今日 ${used}/${cap}</span></div>
+      <ul class="task-list">${items.length
+        ? items.map(it => limitedTaskRowHtml(it, lim)).join('')
+        : '<li class="task-empty">当前没有可以体验的产品。</li>'}</ul>
+      <p class="lt-sec-foot">${escapeHtml(lim.desc || '体验产品注册并回传截图，人工审核通过后发放灯火')}${lim.endsAt ? ` · 截止 ${escapeHtml(lim.endsAt)}` : ''}</p>
+    </div>`;
+}
+function limitedTaskGuestHtml() {
+  return `
+    <div class="task-sec task-sec-limited">
+      <div class="task-sec-head"><h3>限时任务</h3><span>体验产品 · 登录后查看</span></div>
+      <ul class="task-list">
+        <li class="task-item"><div class="task-row">
+          <span class="task-ico" data-kind="lamp">${ic('lamp')}</span>
+          <div class="task-main"><div class="task-title"><b>体验产品，注册回传截图</b><span class="task-pill">+2000 盏</span></div>
+          <p>去产品页注册账号，回传注册截图，人工审核通过后灯火直接到账。登录后就能参加。</p></div>
+          <button type="button" class="task-btn" data-task-login>登录后领取</button>
+        </div></li>
+      </ul>
+      <p class="lt-sec-foot">每个账号每个任务只能领一次，每天最多 2 个；截图需人工审核。</p>
+    </div>`;
+}
+
 // 游客版：只讲「有什么、值多少」，数字按任务的理论上限写（账号 500 + 首帖 50），不假装是用户自己的状态
 function tasksGuestHtml() {
   const row = (icon, name, pts, desc) => `
@@ -23867,6 +24048,7 @@ function tasksGuestHtml() {
         ${row('shield', '预留手机号（法规要求）', 300, '按《网络安全法》要求，投稿 / 发帖 / 私信要核验真实身份：现在先留号（不发短信、不花钱），通道开放后验证一次即到账')}
       </ul>
     </div>
+    ${limitedTaskGuestHtml()}
     <div class="task-sec">
       <div class="task-sec-head"><h3>邀请朋友</h3><span>每位朋友 +1000 盏，可累计</span></div>
       <ul class="task-list">
@@ -23961,6 +24143,7 @@ function tasksPageHtml(d) {
       <div class="task-sec-head"><h3>账号任务</h3><span>完成即到账</span></div>
       <ul class="task-list">${items.map(taskItemHtml).join('')}</ul>
     </div>
+    ${limitedTaskSectionHtml(d)}
     ${refItems.length ? `
     <div class="task-sec">
       <div class="task-sec-head"><h3>邀请朋友</h3><span>每位朋友 +1000 盏，可累计</span></div>
@@ -24001,6 +24184,94 @@ async function loadTasksWxQr(panel) {
   }
 }
 
+function openLimitedTask(id) {
+  if (!state.user) { openAuth('login'); return; }
+  const lim = (tasksBoard && tasksBoard.limited) || {};
+  const it = (lim.items || []).find(x => x.id === id);
+  if (!it) return;
+  if (it.state === 'pending' || it.state === 'done') return;
+  if (it.state === 'dayfull' || it.state === 'closed') {
+    showToast(it.state === 'dayfull' ? `每天最多做 ${lim.dailyLimit || 2} 个，明天再来` : '这批限时任务已经结束', undefined, 'err');
+    return;
+  }
+  limitedTaskCurrent = it;
+  const m = $('limitedTaskModal');
+  if (!m) return;
+  $('ltTitle').textContent = it.name || '限时任务';
+  $('ltDesc').textContent = `通过页面里的链接去注册账号，回传注册截图；审核通过后 +${it.points || lim.points || 2000} 盏灯火。`;
+  const link = $('ltLink');
+  link.href = it.link || '#';
+  link.hidden = !it.link;
+  $('ltProof').textContent = it.proof || lim.desc || '';
+  setLtShotFile(null);
+  $('ltNote').value = '';
+  $('ltHint').textContent = `今天已提交 ${lim.usedToday || 0}/${lim.dailyLimit || 2} 个 · 每个账号每个任务只发一次 · 截图只给审核人看`;
+  $('ltSubmit').disabled = false;
+  $('ltSubmit').textContent = '提交审核';
+  bindLimitedTaskModal();
+  showModal(m);
+}
+function bindLimitedTaskModal() {
+  const m = $('limitedTaskModal');
+  if (!m || m.dataset.bound) return;
+  m.dataset.bound = '1';
+  m.querySelectorAll('[data-lt-close]').forEach(b => { b.onclick = () => hideModal(m); });
+  m.onclick = e => { if (e.target === m) hideModal(m); };
+  const file = $('ltShot');
+  if (file) file.onchange = () => setLtShotFile(file.files && file.files[0]);
+  // Ctrl+V 贴截图：弹窗开着时图片贴在哪都收；纯文本留给「补充说明」输入框
+  if (!m.dataset.pasteBound) {
+    m.dataset.pasteBound = '1';
+    document.addEventListener('paste', e => {
+      if (m.style.display === 'none') return;
+      const cd = e.clipboardData;
+      if (!cd) return;
+      const items = Array.from(cd.items || []);
+      let blob = items.find(i => i.kind === 'file' && /^image\/(png|jpe?g|webp|gif)$/i.test(i.type || ''));
+      blob = blob && blob.getAsFile();
+      if (!blob) blob = Array.from(cd.files || []).find(f => /^image\/(png|jpe?g|webp|gif)$/i.test(f.type || ''));
+      if (!blob) return;
+      e.preventDefault();
+      if (blob.size > 8 * 1024 * 1024) { showToast('截图不能超过 8MB', undefined, 'err'); return; }
+      const ext = /jpe?g/i.test(blob.type) ? 'jpg' : /webp/i.test(blob.type) ? 'webp' : /gif/i.test(blob.type) ? 'gif' : 'png';
+      const shot = blob.name ? blob : new File([blob], `粘贴截图-${Date.now()}.${ext}`, { type: blob.type || 'image/png' });
+      setLtShotFile(shot, true);
+      showToast('截图已粘贴，可以直接提交');
+    });
+  }
+  const submit = $('ltSubmit');
+  if (submit) submit.onclick = submitLimitedTask;
+}
+async function submitLimitedTask() {
+  const it = limitedTaskCurrent;
+  const file = $('ltShot') && $('ltShot').files && $('ltShot').files[0];
+  if (!it || !file) { showToast('先选一张注册截图', undefined, 'err'); return; }
+  if (file.size > 8 * 1024 * 1024) { showToast('截图不能超过 8MB', undefined, 'err'); return; }
+  const btn = $('ltSubmit');
+  btn.disabled = true; btn.textContent = '上传中…';
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const ur = await fetch('/api/uploads/intro', { method: 'POST', body: fd });
+    const ud = await ur.json().catch(() => ({}));
+    if (!ur.ok || !ud.url) throw new Error(ud.error || '截图上传失败');
+    btn.textContent = '提交中…';
+    const r = await fetch('/api/tasks/limited/submit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemId: it.id, shot: ud.url, note: ($('ltNote') || {}).value || '' })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '提交失败');
+    hideModal($('limitedTaskModal'));
+    tasksBoard = d.view ? { ...(tasksBoard || {}), limited: d.view } : null;
+    renderTasksPage();
+    showToast('截图已收到，审核通过后灯火直接到账');
+  } catch (e) {
+    showToast(e.message || '提交失败，请重试', undefined, 'err');
+    btn.disabled = false; btn.textContent = '提交审核';
+  }
+}
+
 function bindTasksPage(box) {
   box.querySelectorAll('[data-task-act]').forEach(btn => {
     btn.onclick = () => {
@@ -24023,6 +24294,11 @@ function bindTasksPage(box) {
       }
     };
   });
+  // 限时任务：打开截图弹窗（名单由服务端从作品库现算）
+  box.querySelectorAll('[data-limited-task]').forEach(btn => {
+    btn.onclick = () => openLimitedTask(btn.dataset.limitedTask);
+  });
+  bindLimitedTaskModal();
   // 「更多赚灯火」：都复用已有的入口，不另做一套流程
   box.querySelectorAll('[data-more]').forEach(btn => {
     btn.onclick = () => {
@@ -24129,30 +24405,36 @@ function paintCollManage() {
   if (btn) btn.textContent = collEditId ? '保存修改' : '新建合集';
 }
 
-async function openCollectionManage() {
+function openCollectionManage() {
   if (!state.user) { showToast('登录后才能建合集', undefined, 'err'); openAuth('login'); return; }
-  const mask = $('collectModal');
-  if (!mask) return;
-  collEditId = '';
-  const t = $('cmTitle'), d = $('cmDesc'), p = $('cmPublic');
-  if (t) t.value = '';
-  if (d) d.value = '';
-  if (p) p.checked = true;
-  showModal(mask);
-  paintCollManage();
-  try { collMine = await myCollections(true); paintCollManage(); }
-  catch { showToast('合集列表加载失败，刷新再试', undefined, 'err'); }
+  navigate('/favs?tab=collections');
 }
-$('closeCollect') && ($('closeCollect').onclick = () => hideModal($('collectModal')));
-bindMaskClose && bindMaskClose($('collectModal'), () => hideModal($('collectModal')));
 
-async function openCollectionPick(workId) {
-  const mask = $('collectPickModal');
-  if (!mask) return;
-  collPickWork = String(workId || '');
-  showModal(mask);
+// 浮层贴着详情竖排条那颗文件夹按钮定位；窗口缩放/内容高度变化时重算一次即可，
+// 这种小面板不值得挂 ResizeObserver。窄屏由 CSS 改成底部卡片，忽略这里的坐标。
+function positionCollPop() {
+  const pop = $('collPop'), anchor = collPopAnchor;
+  if (!pop || !anchor) return;
+  const r = anchor.getBoundingClientRect();
+  const w = pop.offsetWidth || 320, h = pop.offsetHeight || 320;
+  let left = r.right + 10;
+  if (left + w > window.innerWidth - 8) left = r.left - w - 10;
+  left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+  let top = Math.max(8, Math.min(r.top - 8, window.innerHeight - h - 8));
+  pop.style.left = Math.round(left) + 'px';
+  pop.style.top = Math.round(top) + 'px';
+}
+function hideCollPop() {
+  const pop = $('collPop');
+  if (pop) pop.style.display = 'none';
+  collPopAnchor = null;
+}
+let collPopAnchor = null;
+
+async function loadCollPickList() {
   const box = $('cpList');
-  if (box) box.innerHTML = '<p class="cm-empty">正在读你的合集…</p>';
+  if (!box) return;
+  box.innerHTML = '<p class="cm-empty">正在读你的合集…</p>';
   try {
     collMine = await myCollections(true);
     // 加入态要看每件合集的完整作品列表；并发防抖没必要，最多 20 份
@@ -24163,15 +24445,34 @@ async function openCollectionPick(workId) {
       } catch { return c; }
     }));
     collMine = full;
-    if (box) box.innerHTML = full.length
+    box.innerHTML = full.length
       ? full.map(c => collRowHtml(c, true)).join('')
-      : '<p class="cm-empty">你还没有合集，先去「我的 → 我的合集」建一个。</p>';
+      : '<p class="cm-empty">还没有合集。上面起个名字，新建时自动把这件作品放进去。</p>';
   } catch {
-    if (box) box.innerHTML = '<p class="cm-empty">加载失败，刷新再试</p>';
+    box.innerHTML = '<p class="cm-empty">加载失败，刷新再试</p>';
   }
 }
-$('closeCollectPick') && ($('closeCollectPick').onclick = () => hideModal($('collectPickModal')));
-bindMaskClose && bindMaskClose($('collectPickModal'), () => hideModal($('collectPickModal')));
+
+function openCollectionPick(workId, anchor) {
+  const pop = $('collPop');
+  if (!pop) return;
+  collPickWork = String(workId || '');
+  collPopAnchor = anchor || null;
+  if ($('cpNewTitle')) $('cpNewTitle').value = '';
+  pop.style.display = 'block';
+  positionCollPop();
+  loadCollPickList();
+}
+$('cpClose') && ($('cpClose').onclick = hideCollPop);
+// 点浮层外面（含详情弹窗遮罩）就收起；按钮自身这一下交给它自己的 onclick 处理
+document.addEventListener('click', e => {
+  const pop = $('collPop');
+  if (!pop || pop.style.display === 'none') return;
+  if (e.target.closest('#collPop') || e.target.closest('[data-coll-pick]')) return;
+  hideCollPop();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') hideCollPop(); });
+window.addEventListener('resize', positionCollPop, { passive: true });
 
 function setupCollections() {
   const create = $('cmCreate');
@@ -24248,6 +24549,83 @@ function setupCollections() {
     } catch (er) { showToast(er.message || '操作失败', undefined, 'err'); }
     btn.disabled = false;
   });
+  // 就地新建：建好立刻把当前作品放进去，省掉「先去我的页建、再回来找」这一圈
+  const newBtn = $('cpNewBtn');
+  if (newBtn) newBtn.onclick = async () => {
+    const title = ($('cpNewTitle').value || '').trim();
+    if (!title) { showToast('给合集起个名字', undefined, 'err'); return; }
+    newBtn.disabled = true;
+    let newId = '';
+    try {
+      const cr = await fetch('/api/collections', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, desc: '', isPublic: !!$('cpNewPublic').checked })
+      });
+      const cd = await cr.json();
+      if (!cr.ok) throw new Error(cd.error || '新建失败');
+      newId = cd.id;
+      const wr = await fetch('/api/collections/' + encodeURIComponent(cd.id) + '/works', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workId: collPickWork, on: true })
+      });
+      if (!wr.ok) {
+        const wd = await wr.json().catch(() => ({}));
+        throw new Error(wd.error || '放入失败');
+      }
+      $('cpNewTitle').value = '';
+      await loadCollPickList();
+      showToast('已建好并放进合集', undefined, 'ok');
+    } catch (er) {
+      // 合集已经建好、只是放入这步失败：别让人再点一次新建出两份同名合集
+      showToast(newId ? '合集已建好，但放入失败，请在列表里再点一次' : (er.message || '操作失败'), undefined, 'err');
+      if (newId) loadCollPickList();
+    }
+    newBtn.disabled = false;
+  };
+  const manage = $('cpManage');
+  if (manage) manage.onclick = () => { hideCollPop(); navigate('/favs?tab=collections'); };
+  const tabs = $('favTabs');
+  if (tabs) tabs.addEventListener('click', e => {
+    const b = e.target.closest('[data-fav-tab]');
+    if (b) showFavTab(b.dataset.favTab);
+  });
+  // /favs 里每件收藏作品上的「整理进合集」：原地出同一个浮层，新建/加入都走老接口。
+  // 委托在 gallery 上，切视图重渲染也不用重绑；卡片本身的 click 已在 bindCardNode 里让路。
+  const favGallery = $('favGallery');
+  if (favGallery) favGallery.addEventListener('click', e => {
+    const b = e.target.closest('[data-coll-pick]');
+    if (!b) return;
+    e.stopPropagation();
+    if (!state.user) { showToast('登录后才能把作品加进合集', undefined, 'err'); openAuth('login'); return; }
+    openCollectionPick(b.dataset.collPick, b);
+  });
+}
+
+// /favs 的两栏：作品是「我存了什么」，合集是「我怎么整理」。合集挂在这一页里，不再另起一层入口。
+let favTab = 'works';
+function showFavTab(tab, load = true) {
+  hideCollPop();   // 切栏就收起贴着作品卡的合集浮层，别让它飘到另一栏上
+  favTab = tab === 'collections' ? 'collections' : 'works';
+  const pw = $('favPaneWorks'), pc = $('favPaneCollections');
+  if (pw) pw.style.display = favTab === 'works' ? 'block' : 'none';
+  if (pc) pc.style.display = favTab === 'collections' ? 'block' : 'none';
+  document.querySelectorAll('#favTabs .fav-tab').forEach(b => b.classList.toggle('is-on', b.dataset.favTab === favTab));
+  // 地址栏跟着分栏走：刷新/分享链接时停在用户正在看的那栏，而不是跳回默认栏
+  try {
+    const u = new URL(location.href);
+    if (favTab === 'collections') u.searchParams.set('tab', 'collections');
+    else u.searchParams.delete('tab');
+    history.replaceState(history.state, '', u.pathname + u.search + u.hash);
+  } catch { /* 老浏览器不支持 URL/history，界面切换照旧可用 */ }
+  if (!load) return;
+  if (favTab === 'collections') {
+    if (!state.user) return;
+    const box = $('cmList');
+    if (box) box.innerHTML = '<p class="cm-empty">正在读你的合集…</p>';
+    myCollections(true).then(() => paintCollManage()).catch(() => {
+      if (box) box.innerHTML = '<p class="cm-empty">合集列表加载失败，刷新再试</p>';
+    });
+  } else loadFavPage();
 }
 
 async function loadCollectionPage(id) {

@@ -217,6 +217,17 @@
         <button type="button" class="hero-find" id="heroFindBtn" title="说不清叫什么？用一句话描述你想找的东西，找找去站里翻给你">
           <span class="hf-star" aria-hidden="true">✦</span>说不清叫什么？<b>找找ai帮你翻</b>
         </button>
+        <!-- 2026-11-23 站长拍板：搜索框从列表标题行搬回首屏，紧跟「搜索 / 找找AI」两个按钮。
+             全站仍只有一个 .search-box（由 syncSearchBoxPlacement 搬进 #heroSearchSlot），
+             下拉建议 / 搜索历史 / 防抖绑定全部沿用，不做第二套。桌面显示这一条、藏掉上面的老胶囊；
+             手机端（≤640px）反过来——仍用上面的搜索胶囊 + 头部覆盖层，这一条整个藏掉。 -->
+        <div class="hero-search-combo" id="heroSearchCombo">
+          <div class="hero-search-slot" id="heroSearchSlot"></div>
+          <button type="button" class="hero-search-go" id="heroSearchGo">搜索</button>
+          <button type="button" class="hero-find hero-find-go" id="heroFindGo" title="说不清叫什么？用一句话描述你想找的东西，找找去站里翻给你">
+            <span class="hf-star" aria-hidden="true">✦</span>找找<b>AI</b>
+          </button>
+        </div>
         <!-- 大家在找：2026-11-14 从酒馆热搜榜搬来——「搜」归搜索区，酒馆只留想法。
              只放站内搜得到的词（点了落空结果是坑人的），12 条全出：种子词贴「热」、
              近期真被搜过的贴「新」，桌面折两行、手机只露前 4 个。点一下就是一次站内搜索。
@@ -328,12 +339,8 @@
             </button>
             <span class="feat-info-pop" role="tooltip"><b class="rt">随便逛逛 · 排序规则</b>· <b>机会均等</b>：在你还没看过的作品里完全随机抽，新老作品概率一样，每件都有被看到的机会（站方手动加权的作品会略有倾斜）。<br>· <b>这样才算「看过」</b>：往下滚动之后，卡片一半以上进入屏幕、停留半秒；刷新后没往下拉、或快速划过的都不算。<br>· <b>看过的不再推给你</b>：名单只记在你自己的浏览器里，不影响其他访客看到它。<br>· <b>看遍全站之后</b>：会用「重温」随机补齐，也可以点「随便翻翻」全站乱序翻页，或随时切回「最新 / 最热」。<br>· 一旦使用筛选或搜索，会自动切回「最新」排序。<br>· <b>想从头再看一遍</b>：点<button class="feat-info-link" id="resetSeenLink" type="button">清空已看</button>，所有作品会重新推荐给你（浏览 / 访客统计不受影响）。            </span>
           </span>
-          <!-- 2026-11-22（二改拍板）：搜索框放下面、头部不再放——桌面端首页它落在这个槽里，
-               紧挨「全部作品 共 N 件」；内页桌面端头部不显示搜索（回首页搜），
-               手机端仍是头部覆盖层。搬动逻辑见 app.js 的 syncSearchBoxPlacement()。 -->
-          <div class="list-search-slot" id="listSearchSlot"></div>
-          <!-- 搜索框只认字面：说不清作品叫什么，就点这句让找找 AI 按描述翻 -->
-          <button type="button" class="list-find-hint" id="listFindHint" title="说不清叫什么？用一句话描述，找找ai去站里翻">你也可以让<b>找找ai</b>帮你找</button>
+          <!-- 2026-11-23：搜索框搬到首屏 hero（输入框 + 搜索 + 找找AI 三件套），
+               列表行不再重复放搜索框和找找提示。搬动逻辑见 app.js 的 syncSearchBoxPlacement()。 -->
         </span>
         <div class="head-controls">
           <!-- 每行 4 / 5 / 6 个：用户自己选，记在本机。
@@ -1112,10 +1119,27 @@
         <h2 class="page-title"><i class="ico" data-ico="fav"></i> 我的收藏</h2>
         <p>收藏跟着账号走，换设备也不会丢</p>
       </div>
-      <section class="gallery" id="favGallery"></section>
-      <div class="empty" id="favEmpty" style="display:none">
-        <div class="empty-icon"><i class="ico" data-ico="palette"></i></div>
-        <p>还没有收藏的作品——遇到喜欢的点卡片右上角 ★，也可以点亮一盏灯火支持 TA</p>
+      <!-- 合集是收藏的一种整理方式：收进本页的第二栏，不再和「我的收藏」平级占「我的」页瓷砖 -->
+      <div class="fav-tabs" id="favTabs">
+        <button type="button" class="fav-tab is-on" data-fav-tab="works">收藏的作品</button>
+        <button type="button" class="fav-tab" data-fav-tab="collections">我的合集</button>
+      </div>
+      <div id="favPaneWorks">
+        <section class="gallery" id="favGallery"></section>
+        <div class="empty" id="favEmpty" style="display:none">
+          <div class="empty-icon"><i class="ico" data-ico="palette"></i></div>
+          <p>还没有收藏的作品——遇到喜欢的点卡片右上角 ★，也可以点亮一盏灯火支持 TA</p>
+        </div>
+      </div>
+      <div id="favPaneCollections" style="display:none">
+        <p class="spp-tip">把相关的作品攒成一份清单，公开后别人能从链接里一口气看完。</p>
+        <div class="cm-form">
+          <input type="text" id="cmTitle" maxlength="60" placeholder="合集名字，比如「离线也能用的小工具」" />
+          <input type="text" id="cmDesc" maxlength="300" placeholder="一句话介绍（选填）" />
+          <label class="cm-public"><input type="checkbox" id="cmPublic" checked /> 公开给所有人看</label>
+          <button type="button" class="btn-primary" id="cmCreate">新建合集</button>
+        </div>
+        <div id="cmList" class="cm-list"></div>
       </div>
     </section>
 
@@ -1215,7 +1239,6 @@
             <a href="/invite" class="footer-link">邀请收录</a>
             <a href="/howto" class="footer-link">投稿指南</a>
             <a href="/guide" class="footer-link">外宣指南</a>
-            <a href="/app" class="footer-link">App 下载</a>
           </div>
           <div class="fgroup">
             <span class="fg-label">合作</span>
@@ -1236,6 +1259,7 @@
             <a href="#install" class="footer-link" id="installEntry">安装到桌面</a>
             <!-- 小程序引导：把网页访客导去小程序（流量主在那一端）；点了直接开小程序弹窗，里面是本站小程序码 -->
             <button type="button" class="footer-link footer-mini-link" id="footerMiniLink">小程序版体验更佳 ›</button>
+            <a href="/app" class="footer-link">App 下载</a>
           </div>
           <div class="fgroup">
             <span class="fg-label">站务</span>
@@ -1629,6 +1653,31 @@
     </div>
   </div>
 
+  <!-- 限时任务：体验产品 → 回传截图 → 人工审核发灯火 -->
+  <div class="modal-mask" id="limitedTaskModal" style="display:none">
+    <div class="modal modal-limited-task">
+      <div class="modal-head">
+        <h2 id="ltTitle">限时任务</h2>
+        <button type="button" class="close-btn" data-lt-close title="关闭">✕</button>
+      </div>
+      <div class="lt-body">
+        <p class="lt-desc" id="ltDesc"></p>
+        <a class="lt-go" id="ltLink" href="#" target="_blank" rel="noopener noreferrer">打开产品注册页 ↗</a>
+        <p class="lt-proof" id="ltProof"></p>
+        <label class="lt-upload" for="ltShot" tabindex="0" title="点这里选图，或按 Ctrl+V 直接粘贴剪贴板里的截图">
+          <input type="file" id="ltShot" accept="image/jpeg,image/png,image/webp,image/gif" />
+          <span id="ltShotName">点这里选图，或 Ctrl+V 粘贴截图（≤8MB）</span>
+        </label>
+        <textarea id="ltNote" maxlength="100" placeholder="补充说明，选填（比如注册邮箱，可打码）"></textarea>
+        <p class="lt-hint" id="ltHint">截图只给审核人看。每个账号每个任务只发一次；每天最多 2 个。</p>
+        <div class="lt-acts">
+          <button type="button" class="btn-ghost" data-lt-close>取消</button>
+          <button type="button" class="btn-primary" id="ltSubmit">提交审核</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 数据与推荐：我的作品浏览/点赞/收藏/评论 + 可切范围的浏览趋势 + 推荐入口 -->
   <div class="modal-mask" id="statsModal" style="display:none">
     <div class="modal modal-stats">
@@ -1770,34 +1819,18 @@
     </div>
   </div>
 
-  <!-- 我的合集：新建 / 改名 / 公开私密 / 删除。列表动态渲染，事件在容器上委托 -->
-  <div class="modal-mask" id="collectModal" style="display:none">
-    <div class="modal modal-collect">
-      <div class="modal-head">
-        <h2>我的合集</h2>
-        <button class="close-btn" id="closeCollect" title="关闭">✕</button>
-      </div>
-      <p class="spp-tip">把相关的作品攒成一份清单，公开后别人能从链接里一口气看完。</p>
-      <div class="cm-form">
-        <input type="text" id="cmTitle" maxlength="60" placeholder="合集名字，比如「离线也能用的小工具」" />
-        <input type="text" id="cmDesc" maxlength="300" placeholder="一句话介绍（选填）" />
-        <label class="cm-public"><input type="checkbox" id="cmPublic" checked /> 公开给所有人看</label>
-        <button type="button" class="btn-primary" id="cmCreate">新建合集</button>
-      </div>
-      <div id="cmList" class="cm-list"></div>
+  <!-- 详情竖排条「合集」的就地浮层：不套第二层遮罩弹窗，点开就能新建并放入 / 放进已有合集。
+       位置由 JS 按按钮坐标定位，挂在 body 末尾才不会被详情弹窗的 overflow:hidden 裁掉 -->
+  <div class="coll-pop" id="collPop" style="display:none">
+    <div class="cp-head"><b>放进合集</b><button type="button" class="cp-close" id="cpClose" title="关闭">✕</button></div>
+    <p class="cp-tip">新建一份，或者选一个已有的合集</p>
+    <div class="cp-new">
+      <input type="text" id="cpNewTitle" maxlength="60" placeholder="新合集名字，比如「离线也能用的小工具」" />
+      <label class="cm-public"><input type="checkbox" id="cpNewPublic" checked /> 公开给所有人看</label>
+      <button type="button" class="btn-primary cp-new-btn" id="cpNewBtn">新建并放入</button>
     </div>
-  </div>
-
-  <!-- 加入合集：从作品详情「加入合集」进来，列出本人合集，点一下切换加入/移出 -->
-  <div class="modal-mask" id="collectPickModal" style="display:none">
-    <div class="modal modal-collect">
-      <div class="modal-head">
-        <h2>加入合集</h2>
-        <button class="close-btn" id="closeCollectPick" title="关闭">✕</button>
-      </div>
-      <p class="spp-tip">选一个你自己的合集；私密的只有你能看。</p>
-      <div id="cpList" class="cm-list"></div>
-    </div>
+    <div id="cpList" class="cm-list"></div>
+    <button type="button" class="cp-manage" id="cpManage">在「我的收藏 → 我的合集」里管理 ›</button>
   </div>
 
   <!-- 作品对比：发现页勾 2～3 件，并排看价格 / 平台 / 开源 / 最近更新这些容易来回翻的事实 -->
@@ -2199,7 +2232,6 @@
         <button class="btn-like" id="detailLike" title="给这件作品点个赞"><i class="ico b-ico" data-ico="heart"></i><span class="sr-label" id="detailLikeLabel">点赞</span><span id="detailLikes">0</span></button>
         <button class="btn-like btn-watch" id="detailWatch" style="display:none"></button>
         <button class="btn-like btn-fav" id="detailFav" title="收藏后可在顶部「我的收藏」里找到"><i class="ico" data-ico="fav"></i><span class="sr-label">收藏</span><span class="fav-num" id="detailFavNum">0</span></button>
-        <button class="btn-like btn-collect" id="detailCollect" title="把这件作品加进你自己的合集"><i class="ico" data-ico="folder"></i><span class="sr-label">加入合集</span></button>
         <!-- 评论在截图/介绍下面，不往下滚看不到；给一个带数的锚点，点了直接跳过去 -->
         <button class="btn-like btn-cmt" id="detailCmt" title="跳到评论区：说点什么，或向作者提问"><i class="ico" data-ico="chat"></i><span class="sr-label">评论</span><span id="detailCmtNum">0</span></button>
         <!-- 送灯火是唯一带「暖意」的动作，保留可见文字，竖排时缩成图标+小字 -->

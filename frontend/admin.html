@@ -74,6 +74,8 @@
     .stat-tile span { font-size:11.5px; color:var(--muted); }
     /* 用户管理页的 8 个数字改成 4×2 网格：不再挤成一条窄带 */
     .stats.stats-user { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:0 18px 12px; }
+    /* 台账挪到用户表格下方后，跟分页条拉开一点距离 */
+    .stats.stats-user.after-table { margin-top:16px; }
     .stats.stats-user .stat-tile { min-width:0; padding:8px 11px; background:#fafaff; }
     .stats.stats-user .stat-tile b { font-size:17px; }
     .uf-stats-cap { grid-column:1/-1; font-size:12px; color:var(--muted); margin:2px 0 0; }
@@ -587,11 +589,11 @@
        flex:1 + min-width:140px，勾选框得单独收回来，不然会被拉成一条长条 */
     .form-inline label.chk-inline { display:flex; align-items:center; gap:6px; font-size:12.5px; color:#4b4f5b; cursor:pointer; white-space:nowrap; }
     .form-inline label.chk-inline input[type=checkbox] { flex:0 0 auto; width:15px; height:15px; min-width:0; padding:0; margin:0; border-radius:4px; background:none; accent-color:#5b5bd6; cursor:pointer; }
-    /* 作品列表「只看匿名」：勾上后整条变成主色，一眼看出「现在看的是筛过的列表」 */
-    .form-inline label.work-anon { padding:4px 10px 4px 8px; border:1px solid var(--border); border-radius:999px; background:#fff; }
-    .form-inline label.work-anon:hover { border-color:var(--primary); }
-    .form-inline label.work-anon.on { border-color:var(--primary); background:#f1f1fd; color:var(--primary); }
-    .form-inline label.work-anon b { font-weight:600; font-variant-numeric:tabular-nums; }
+    /* 作品列表「只看匿名 / 只看注册有佣金」：勾上后整条变成主色，一眼看出「现在看的是筛过的列表」 */
+    .form-inline label.work-anon, .form-inline label.work-cpa { padding:4px 10px 4px 8px; border:1px solid var(--border); border-radius:999px; background:#fff; }
+    .form-inline label.work-anon:hover, .form-inline label.work-cpa:hover { border-color:var(--primary); }
+    .form-inline label.work-anon.on, .form-inline label.work-cpa.on { border-color:var(--primary); background:#f1f1fd; color:var(--primary); }
+    .form-inline label.work-anon b, .form-inline label.work-cpa b { font-weight:600; font-variant-numeric:tabular-nums; }
 
     /* 用户管理·顶部筛选区（2026-11-22 站长要求：筛选条件全部提到最上面，一排「标签 + 控件」摆清楚）
        跟参考后台那种菜品管理页一个路子：条件区独立成一张白卡，控件都带名字，不再靠 placeholder 猜 */
@@ -619,6 +621,76 @@
     .colpick-list input { width:14px; height:14px; margin:0; accent-color:var(--primary); cursor:pointer; }
     .ucol-grp { margin-left:auto; padding-left:8px; font-size:11px; color:#9a9db0; white-space:nowrap; }
     .colpick-foot { display:flex; justify-content:flex-end; gap:6px; padding:9px 12px; border-top:1px solid var(--border); background:#fafaff; border-radius:0 0 10px 10px; flex:0 0 auto; }
+
+    /* 作品管理表格（2026-11-23）：和用户管理同一套表头 / 排序 / 展示列交互 */
+    .work-table-wrap {
+      margin:0 18px 16px; overflow:auto; max-height:calc(100vh - 260px); background:#fff;
+      border:1px solid var(--border); border-radius:12px;
+    }
+    table.work-table { width:100%; min-width:0; border-collapse:collapse; table-layout:fixed; }
+    .work-table thead th {
+      position:sticky; z-index:1; padding:9px 10px; background:#f7f7fc; border-bottom:1px solid var(--border);
+      color:var(--muted); font-size:12px; font-weight:600; text-align:left; white-space:nowrap;
+    }
+    .work-table thead th[data-wsort] { cursor:pointer; user-select:none; }
+    .work-table thead th[data-wsort]:hover { color:var(--primary); background:#f0f0fb; }
+    .work-table thead th.on { color:var(--primary); }
+    .work-table thead th .su { display:inline-block; margin-left:4px; font-size:11px; color:#b6bad0; font-weight:400; }
+    .work-table thead th.on .su { color:var(--primary); }
+    .work-table thead tr.wgroup-row th {
+      top:0; z-index:3; padding:4px 10px; background:#eeedfa; border-bottom:1px solid #dcdbed;
+      color:#5b52b8; font-size:11px; font-weight:700; text-align:center; letter-spacing:.06em;
+    }
+    .work-table thead tr.wcol-row th { top:24px; z-index:2; }
+    /* .row 是后台通用 flex 行，这里覆盖回表格行，别让 padding/gap 把列撑歪 */
+    .work-table tbody tr.row.row-work { display:table-row; padding:0; gap:0; border-bottom:none; }
+    .work-table tbody tr:nth-child(even) { background:#fcfcff; }
+    .work-table tbody tr:hover { background:#f3f3fd; }
+    .work-table tbody tr.row.row-work:last-child td { border-bottom:none; }
+    .work-table td {
+      padding:8px 10px; border-bottom:1px solid var(--border);
+      vertical-align:top; font-size:12px; line-height:1.5; overflow-wrap:anywhere;
+    }
+    .work-table tbody tr:last-child td { border-bottom:none; }
+    .work-table td.num { font-variant-numeric:tabular-nums; text-align:right; }
+    .work-table td.num b { font-weight:600; }
+    .work-table td.num .zero { color:#c3c6d2; }
+    .work-table .cell-sub { display:block; font-size:10.5px; line-height:1.45; color:var(--muted); }
+    .work-table .row-title { margin:0 0 3px; font-size:13px; }
+    .work-table .row-meta { margin-top:2px; }
+    .work-table .row-actions { display:flex; gap:4px; flex-wrap:wrap; }
+    .work-table .row-actions .btn { white-space:nowrap; padding:2px 7px; font-size:11px; }
+    .work-table .w-tags { display:flex; flex-wrap:wrap; gap:3px; align-items:center; }
+    .work-table .w-tags .tag { margin:0; }
+    .work-table .w-kw { color:#444; font-size:11.5px; line-height:1.5; }
+    .work-table .w-intro { color:var(--muted); font-size:11.5px; line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .work-table .w-link { color:#5b5bd6; }
+    .work-table .w-date { white-space:nowrap; }
+
+    /* ===== 后台通用「筛选卡片 + 表格 + 分页」底座（2026-11-23，照站长给的参考图）=====
+       先在作品页落地做样板，之后其余列表页统一套这套 class；只新增，不改上面已有的 .work-table / .user-table。 */
+    .dm-card { margin:0 18px 14px; background:#fff; border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
+    .dm-card-title { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--text); margin-bottom:12px; }
+    .dm-card-title::before { content:''; width:3px; height:14px; border-radius:2px; background:var(--primary); }
+    .dm-filter-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:12px 16px; }
+    .dm-field { display:flex; flex-direction:column; gap:5px; min-width:0; }
+    .dm-field > label { font-size:12px; color:var(--muted); white-space:nowrap; }
+    .dm-field input, .dm-field select { width:100%; min-width:0; height:33px; padding:0 9px; border:1px solid var(--border); border-radius:8px; background:#fff; color:var(--text); font-size:13px; box-sizing:border-box; }
+    .dm-field input:focus, .dm-field select:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 2px rgba(91,91,214,.12); }
+    .dm-filter-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border); }
+    /* 分页条：共 N 条 · 每页条数 · 页码 · 前往第几页 */
+    .dm-pager { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; margin:14px 18px 4px 0; font-size:12.5px; color:var(--muted); }
+    .dm-pager .dm-pg-total { margin-right:auto; }
+    .dm-pager select { height:30px; padding:0 6px; border:1px solid var(--border); border-radius:7px; background:#fff; color:var(--text); font-size:12.5px; }
+    .dm-pager .dm-pg-nums { display:inline-flex; align-items:center; gap:4px; }
+    .dm-pager .dm-pg-nums button { min-width:29px; height:29px; padding:0 7px; border:1px solid var(--border); border-radius:7px; background:#fff; color:var(--text); font-size:12.5px; cursor:pointer; }
+    .dm-pager .dm-pg-nums button:hover:not(:disabled) { border-color:var(--primary); color:var(--primary); }
+    .dm-pager .dm-pg-nums button.on { background:var(--primary); border-color:var(--primary); color:#fff; font-weight:600; }
+    .dm-pager .dm-pg-nums button:disabled { opacity:.45; cursor:not-allowed; }
+    .dm-pager .dm-pg-jump input { width:46px; height:29px; padding:0 5px; border:1px solid var(--border); border-radius:7px; text-align:center; font-size:12.5px; }
+    /* 复选框列 */
+    .dm-check { width:15px; height:15px; margin:0; accent-color:var(--primary); cursor:pointer; vertical-align:middle; }
+    .work-table th.dm-check-col, .work-table td.dm-check-col { width:34px; min-width:34px; text-align:center; padding-left:6px; padding-right:6px; }
 
     /* 可折叠说明：默认只露一个圆圈感叹号，点开展开全文（用户管理页那段长说明用） */
     .hint-fold { padding:0 18px; }
@@ -1388,6 +1460,7 @@
               <button class="tab" data-tab="ideas">造梦酒馆</button>
               <button class="tab" data-tab="badges">造梦勋章</button>
               <button class="tab" data-tab="opensub">开源收录</button>
+              <button class="tab" data-tab="limited">限时任务</button>
               <button class="tab" data-tab="categories">分类管理</button>
               <button class="tab" data-tab="scenes">场景归类</button>
               <button class="tab" data-tab="types">形态管理</button>
@@ -1820,10 +1893,10 @@
       <div class="field">
         <label>作品 *</label>
         <input type="search" id="pmCompQ" placeholder="搜作品名 / 一句话介绍 / 作者 / ID" autocomplete="off" />
-        <label style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--muted);cursor:pointer" title="注册有佣金 = CPA（注册/有效用户即结算）或 CPA+CPS 混合；纯 CPS 要成交才结算，不在筛选内">
+        <label style="display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap" title="注册有佣金 = CPA（注册/有效用户即结算）或 CPA+CPS 混合；纯 CPS 要成交才结算，不在筛选内">
           <input type="checkbox" id="pmCompCpaOnly" /> 只看注册有佣金的（CPA / CPA+CPS）
         </label>
-        <div id="pmCompResults" style="margin-top:8px;display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto"></div>
+        <div id="pmCompResults" style="margin-top:8px;display:flex;flex-direction:column;gap:6px;max-height:380px;overflow:auto"></div>
         <!-- 选中作品后显示这位作者在本站投过什么（服务端全历史聚合），帮站长判断是常客还是头一次 -->
         <div id="pmCompBuyer" class="pm-buyer-box" hidden></div>
       </div>
@@ -1948,10 +2021,10 @@
     </div>
   </div>
 
-  <!-- 用户管理：送 / 扣灯火弹窗（数量 + 附言都在这里填，附言必填防止忘写） -->
+  <!-- 用户管理：调整灯火弹窗（数量填正数 = 送、负数 = 扣；附言必填防止忘写） -->
   <div class="modal-mask" id="pointsMask">
     <div class="modal" style="max-width:440px">
-      <h2 id="ptTitle">送灯火</h2>
+      <h2 id="ptTitle">调整灯火</h2>
       <div class="field">
         <label>给谁</label>
         <input id="ptWho" disabled />
@@ -2490,7 +2563,7 @@
         if (currentTab === 'traffic') renderTraffic(s);
         // 作品/互动统计卡已撤出「注册统计」页（2026-11-12 站长：跟注册无关），KPI 行只由 reg-stats 渲染
         // 待处理数直接标在对应标签上，一眼看到哪里有活
-        updateTabBadges({ pending: s.pending, offline: s.offline || 0, reports: s.reports, claims: s.claims || 0, feedback: s.feedback, friends: s.friendReqs || 0, wxkf: s.kf || 0, opensub: s.openSubmits || 0, admins: s.adminApps || 0, badges: s.badgeApplies || 0, jury: s.juryOpen || 0, replies: s.repliesUnread || 0 });
+        updateTabBadges({ pending: s.pending, offline: s.offline || 0, reports: s.reports, claims: s.claims || 0, feedback: s.feedback, friends: s.friendReqs || 0, wxkf: s.kf || 0, opensub: s.openSubmits || 0, limited: s.limitedTasks || 0, admins: s.adminApps || 0, badges: s.badgeApplies || 0, jury: s.juryOpen || 0, replies: s.repliesUnread || 0 });
       } catch (e) {
         if (e.status === 401 || e.status === 403) backToLogin('口令已失效，请重新输入');
         else toast(e.message);
@@ -2962,6 +3035,7 @@
       if (tab === 'discover') return loadDiscover();
       if (tab === 'featured') return loadFeaturedAdmin();
       if (tab === 'opensub') return loadOpenSub();
+      if (tab === 'limited') return loadLimitedAdmin();
       if (tab === 'traffic') return loadTraffic();
       if (tab === 'outlinks') return loadOutlinks();
       if (tab === 'linkhealth') return loadLinkHealth();
@@ -5002,7 +5076,7 @@
         panel.querySelectorAll('.reply-au').forEach(el => {
           el.onclick = () => {
             if (!(ADMIN_ME && ADMIN_ME.isOwner)) return toast('只有站长能送灯火');
-            openPointsModal({ uid: el.dataset.uid, uname: el.dataset.uname, take: false, from: 'replies' });
+            openPointsModal({ uid: el.dataset.uid, uname: el.dataset.uname, from: 'replies' });
           };
         });
         panel.querySelectorAll('[data-reply-send]').forEach(btn => {
@@ -5033,8 +5107,17 @@
     let curStatus = '全部';   // 当前作品列表的筛选状态（原地改行时判断是否该移出列表）
     let workQuery = '';       // 作品列表搜索词（全部作品 / 待审核 / 已下架 共用一个框，服务端按它过滤后再分页）
     let workAnonOnly = false; // 「只看匿名」：匿名投稿（无归属）＋ 匿名发布（前台只显示「匿名」）都算
+    let workCpaOnly = false;  // 「只看注册有佣金」：CPA / CPA+CPS（注册/有效用户即结算），纯 CPS 不算
     let watchScanDays = 30;   // 「一键复查」的时间范围（7/30/90/0=全部），列表重绘不丢
     let workSearchTimer = null;
+    let workSort = '';        // 表头排序键：空 = 默认发布时间倒序；其余与服务端白名单一一对应
+    let workPageSize = 20;    // 每页条数（参考图默认 20 / 页；列表重绘不丢）
+    let workSelected = new Set(); // 复选框选中的作品 id（切筛选清空，避免跨页误操作）
+    // 筛选卡片的字段值：跟顶部全文框 workQuery 分开存，两套可叠加；切 tab / 翻页都保留
+    const workFilters = { name: '', id: '', author: '', type: '', category: '', state: '', commType: '', owner: '' };
+    const WORK_TYPES_FILTER = ['Web', 'iOS', 'Android', 'macOS', 'Windows', 'Linux', '小程序', '浏览器插件', '机器人', 'API', 'cli 命令行工具'];
+    let workCatOptions = [];   // 筛选卡片「分类」下拉，首次加载列表时拉一次，不依赖后面才 let 的 adminCatList
+
 
     // 单行 HTML：loadWorks 与原地补丁共用，保证两种渲染完全一致
     // 链接缩略显示：去协议，超长截断，悬停 title 显示完整地址
@@ -5054,61 +5137,115 @@
       if (m && ADMIN_CJK_RE.test(m[2][0]) && (ADMIN_CJK_RE.test(m[1]) || m[1].length >= 3)) return [m[1], m[2]];
       return [s, ''];
     }
+    // 作品列表里「作品」列只放名字；原来跟在后面的那句介绍拆到独立的「简介」列
     function rowTitleHtml(w) {
-      const [name, tag] = adminTitleLines(w);
-      return esc(name) + (tag ? ` <span class="row-intro">${esc(tag)}</span>` : '');
+      return esc(adminTitleLines(w)[0]);
     }
-    function rowHtml(w) {
-      // 关键词直接摊在列表行里：站长不用逐件点「编辑」才知道搜索词是什么。
-      // keywords 是实际生效的那组（没存过就按标题/简介现算），keywordsRaw 用来区分谁填的：
-      // null = 系统自动配的、数组 = 作者/站长自己存过的（含 [] 刻意清空）。
-      const kws = Array.isArray(w.keywords) ? w.keywords : [];
-      const kwLine = kws.length
-        ? `<div class="row-kw" title="${esc(kws.join('、'))}">关键词${w.keywordsRaw === null ? '（自动）' : ''}：${esc(kws.join('、'))}</div>`
-        : `<div class="row-kw">关键词：无${Array.isArray(w.keywordsRaw) ? '（已清空，搜索只靠标题/简介）' : '（没配到词）'}</div>`;
+    function workIntroHtml(w) {
+      const [, tag] = adminTitleLines(w);
+      // 老数据没拆过标题时退到作品介绍摘要，免得整列空白
+      const text = tag || w.introText || w.intro || '';
+      return text
+        ? `<div class="w-intro" title="${esc(text)}">${esc(text)}</div>`
+        : '<span class="zero">—</span>';
+    }
+    // ---- 作品表列定义（表头 / 单元格 / 展示列 / 排序共用一份，2026-11-23）----
+    // 跟「用户管理」那张表一个路子：一项数据一栏，表头点一下切换升降序，右上「展示列」勾掉用不上的。
+    // 角标（待审核 / 精选 / 涉币 …）和操作菜单原本塞在标题行里，这里收进「标记」「操作」两栏，一项都没删。
+    const WORK_COL_SAVE_KEY = 'adminWorkHiddenCols';
+    const WORK_COLS_DEFAULT_HIDDEN = ['favs', 'tips', 'reports', 'updated'];
+    const WORK_COL_INIT_KEY = 'adminWorkHiddenColsV2Init';
+    let workHiddenCols = WORK_COLS_DEFAULT_HIDDEN.slice();
+    try {
+      const raw = localStorage.getItem(WORK_COL_SAVE_KEY);
+      const v = raw != null ? JSON.parse(raw) : null;
+      if (localStorage.getItem(WORK_COL_INIT_KEY) === '1') {
+        if (Array.isArray(v)) workHiddenCols = v.filter(k => typeof k === 'string');
+      } else if (Array.isArray(v) && v.length) {
+        workHiddenCols = v.filter(k => typeof k === 'string');
+      }
+      localStorage.setItem(WORK_COL_INIT_KEY, '1');
+    } catch (e) { workHiddenCols = WORK_COLS_DEFAULT_HIDDEN.slice(); }
+    function saveWorkHiddenCols(arr) {
+      workHiddenCols = arr.slice();
+      try { localStorage.setItem(WORK_COL_SAVE_KEY, JSON.stringify(workHiddenCols)); } catch (e) { /* 隐私模式算了 */ }
+    }
+    // 分组决定分组表头和组内顺序；以后加新列没列进来的落「其他」，不会被吞掉
+    const WORK_COL_GROUPS = [
+      { name: '作品', keys: ['title', 'intro', 'flags', 'types', 'claim', 'claimcode', 'comm', 'keywords', 'link'] },
+      { name: '归属', keys: ['author', 'category'] },
+      { name: '数据', keys: ['likes', 'views', 'pv', 'uv', 'favs', 'tips', 'limitedDone', 'reports'] },
+      { name: '时间', keys: ['created', 'updated'] },
+      { name: '操作', keys: ['ops'] }
+    ];
+    const WORK_SORT_LABEL = {
+      new: '发布时间从新到旧', old: '发布时间从旧到新',
+      updatedNew: '更新时间从新到旧', updatedOld: '更新时间从旧到新',
+      titleAsc: '作品名 A→Z', titleDesc: '作品名 Z→A',
+      authorAsc: '作者 A→Z', authorDesc: '作者 Z→A',
+      likesDesc: '点赞从多到少', likesAsc: '点赞从少到多',
+      viewsDesc: '浏览从多到少', viewsAsc: '浏览从少到多',
+      pvDesc: 'PV 从多到少', pvAsc: 'PV 从少到多',
+      uvDesc: 'UV 从多到少', uvAsc: 'UV 从少到多',
+      favsDesc: '收藏从多到少', favsAsc: '收藏从少到多',
+      tipsDesc: '灯火从多到少', tipsAsc: '灯火从少到多',
+      reportsDesc: '投诉从多到少', reportsAsc: '投诉从少到多'
+    };
+    function workColGroup(key) {
+      const g = WORK_COL_GROUPS.find(x => x.keys.indexOf(key) >= 0);
+      return g ? g.name : '其他';
+    }
+    function orderedWorkCols() {
+      const pos = new Map();
+      WORK_COL_GROUPS.forEach((g, gi) => g.keys.forEach((k, ki) => pos.set(k, [gi, ki])));
+      return workColDefs().slice().sort((a, b) => {
+        const pa = pos.get(a.key) || [99, 99], pb = pos.get(b.key) || [99, 99];
+        return pa[0] - pb[0] || pa[1] - pb[1];
+      });
+    }
+    function visibleWorkCols() {
+      return orderedWorkCols().filter(c => c.fixed || workHiddenCols.indexOf(c.key) < 0);
+    }
+    // 状态角标：原来全挤在标题后面，这里整组收进「标记」栏，顺序和文案原样保留。
+    // 形态（Web / API）、认领状态、认领暗号已从这一栏拆成独立列，别再加回来。
+    function workFlagTags(w) {
+      return [
+        w.status === 'pending' ? '<span class="tag warn">待审核</span>' : '',
+        Array.isArray(w.watchHits) && w.watchHits.length ? `<span class="tag bad" title="命中重点复核词：${esc(w.watchHits.join('、'))}。代理 IP / 翻墙 / 科学上网 / 换网络环境类服务一律不收（《作品规范》第四条硬红线），先核对是「做这个服务」还是「只是提到这个词」">重点复核</span>` : '',
+        w.crypto ? '<span class="tag warn" title="涉虚拟货币内容：前台卡片挂「涉币 · 信息参考」提示；不进榜单、不进星梦期刊；作者不能拿它买推荐位。只做信息展示，站方不背书">涉币</span>' : '',
+        w.stage === 'wip' ? `<span class="tag warn" title="还在做：进首页「即将上线」预告卡，不进主列表；站长可在编辑器里改阶段">预告${typeof w.progress === 'number' ? ' · ' + w.progress + '%' : ''}</span>` : '',
+        w.stage === 'reviewing' ? '<span class="tag warn" title="等平台上架审核：展示成灰卡，链接和码先不给点">等平台审核</span>' : '',
+        w.anon ? '<span class="tag">匿名投稿</span>' : '',
+        w.anonymous ? '<span class="tag">匿名发布</span>' : '',
+        w.status === 'rejected' ? `<span class="tag bad">${w.juryRemoved ? '众判下架' : '管理员下架'}</span>` : '',
+        w.jury && w.jury.flagged && !w.jury.removed ? `<span class="tag warn" title="众人小法官进行中：认定 ${w.jury.sus} 票 · 反对 ${w.jury.ok} 票；认定票净差满 ${w.jury.gap} 票会自动下架待整改">众判中 ${w.jury.sus}·${w.jury.ok}</span>` : '',
+        w.hidden ? '<span class="tag bad">作者下架</span>' : '',
+        w.featured ? '<span class="tag ok">精选' + (w.featuredUntil ? '·剩' + featDaysLeft(w.featuredUntil) + '天' : '') + '</span>' : '',
+        w.pinned ? '<span class="tag">置顶</span>' : '',
+        w.discHide ? '<span class="tag warn" title="只从「发现」页摘掉：搜索、分类页、作者页、详情页、收藏都照旧可见">发现页隐藏</span>' : '',
+        w.pubTimeCustom ? '<span class="tag" title="发布时间是后台手动设置的，首页「最近 / 最新」按这个时间排">手动时间</span>' : '',
+        w.openSource === true ? '<span class="tag ok">开源</span>' : '',
+        w.paidModel === 'lamp' && w.lampPrice ? `<span class="tag warn" title="访客要花 ${w.lampPrice} 盏灯火解锁才看得到入口">灯火解锁 · ${w.lampPrice} 盏</span>` : '',
+        w.paid ? `<span class="tag warn">付费${w.paidModel && PAID_MODELS[w.paidModel] ? ' · ' + PAID_MODELS[w.paidModel] : ''}</span>` : '',
+        w.blockCount ? `<span class="tag warn" title="被 ${w.blockCount} 个账号屏蔽${w.blockOwnerCount ? `（其中站长 ${w.blockOwnerCount} 位，按 3 分计）` : ''}${w.blockShift ? ` · 首页「最新」已降 ${w.blockShift} 位` : ` · 权重不足 2 分，暂不降权`}">屏蔽 ${w.blockCount}${w.blockOwnerCount ? `（站长 ${w.blockOwnerCount}）` : ''}</span>` : ''
+      ].filter(Boolean).join('');
+    }
+    // 认领三件事拆开：形态走「形态」列；可认领 / 已授权 / 奖励走「认领」列；暗号单独一列
+    function workClaimTags(w) {
+      return [
+        w.claimable ? `<span class="tag warn" title="${w.claimed ? '已开放认领，审核通过会转移归属' : '无归属作品（匿名投稿 / 后台代传）默认可认领'}">可认领</span>` : '',
+        w.claimAuthorized ? `<span class="tag ok" title="站长已授权 @${esc(w.claimAuthorized)}：TA 登录后可一键认领，无需交证据、无需审核">已授权·@${esc(w.claimAuthorized)}</span>` : '',
+        w.claimBonus && w.claimBonus.points ? `<span class="tag warn" title="作者填对暗号时，在默认上传奖励之外额外送 ${w.claimBonus.points} 盏灯火${w.claimBonus.reason ? '（' + esc(w.claimBonus.reason) + '）' : ''}；人工审核 / 授权认领不发这笔">认领+${w.claimBonus.points}盏</span>` : ''
+      ].filter(Boolean).join('');
+    }
+    function workClaimCodeTag(w) {
+      return w.claimCode
+        ? `<span class="tag ok" title="这件作品单独设置的认领暗号（≤10 位，不区分大小写）：作者填对当场归属，认领成功后自动作废；同一暗号设在同一位作者的几件上时，填一次整批归属">暗号·${esc(w.claimCode)}</span>`
+        : '';
+    }
+    // 操作菜单：原来在操作区，原样收进「操作」栏
+    function workActionsHtml(w) {
       return `
-          <div class="row" data-row="${w.id}">
-            <div class="row-main">
-              <div class="row-title">${rowTitleHtml(w)}
-                <span class="tag">${esc((w.types && w.types.length ? w.types : [w.type || '网站']).join(' / '))}</span>
-                ${w.commissionType === 'CPA' ? '<span class="tag ok" title="CPA：注册/有效用户即结算佣金，不用等成交">CPA · 注册即有佣金</span>' : ''}
-                ${w.commissionType === 'mixed' ? '<span class="tag ok" title="CPA+CPS 混合：注册有效用户即结算，成交另有抽成">CPA+CPS</span>' : ''}
-                ${w.status === 'pending' ? '<span class="tag warn">待审核</span>' : ''}
-                ${Array.isArray(w.watchHits) && w.watchHits.length ? `<span class="tag bad" title="命中重点复核词：${esc(w.watchHits.join('、'))}。代理 IP / 翻墙 / 科学上网 / 换网络环境类服务一律不收（《作品规范》第四条硬红线），先核对是「做这个服务」还是「只是提到这个词」">重点复核</span>` : ''}
-                ${w.crypto ? '<span class="tag warn" title="涉虚拟货币内容：前台卡片挂「涉币 · 信息参考」提示；不进榜单、不进星梦期刊；作者不能拿它买推荐位。只做信息展示，站方不背书">涉币</span>' : ''}
-                ${w.stage === 'wip' ? `<span class="tag warn" title="还在做：进首页「即将上线」预告卡，不进主列表；站长可在编辑器里改阶段">预告${typeof w.progress === 'number' ? ' · ' + w.progress + '%' : ''}</span>` : ''}
-                ${w.stage === 'reviewing' ? '<span class="tag warn" title="等平台上架审核：展示成灰卡，链接和码先不给点">等平台审核</span>' : ''}
-                ${w.anon ? '<span class="tag">匿名投稿</span>' : ''}
-                ${w.anonymous ? '<span class="tag">匿名发布</span>' : ''}
-                ${w.status === 'rejected' ? `<span class="tag bad">${w.juryRemoved ? '众判下架' : '管理员下架'}</span>` : ''}
-                ${w.jury && w.jury.flagged && !w.jury.removed ? `<span class="tag warn" title="众人小法官进行中：认定 ${w.jury.sus} 票 · 反对 ${w.jury.ok} 票；认定票净差满 ${w.jury.gap} 票会自动下架待整改">众判中 ${w.jury.sus}·${w.jury.ok}</span>` : ''}
-                ${w.hidden ? '<span class="tag bad">作者下架</span>' : ''}
-                ${w.featured ? '<span class="tag ok">精选' + (w.featuredUntil ? '·剩' + featDaysLeft(w.featuredUntil) + '天' : '') + '</span>' : ''}
-                ${w.pinned ? '<span class="tag">置顶</span>' : ''}
-                ${w.discHide ? '<span class="tag warn" title="只从「发现」页摘掉：搜索、分类页、作者页、详情页、收藏都照旧可见">发现页隐藏</span>' : ''}
-                ${w.pubTimeCustom ? '<span class="tag" title="发布时间是后台手动设置的，首页「最近 / 最新」按这个时间排">手动时间</span>' : ''}
-                ${w.openSource === true ? '<span class="tag ok">开源</span>' : ''}
-                ${w.paidModel === 'lamp' && w.lampPrice ? `<span class="tag warn" title="访客要花 ${w.lampPrice} 盏灯火解锁才看得到入口">灯火解锁 · ${w.lampPrice} 盏</span>` : ''}
-                ${w.paid ? `<span class="tag warn">付费${w.paidModel && PAID_MODELS[w.paidModel] ? ' · ' + PAID_MODELS[w.paidModel] : ''}</span>` : ''}
-                ${w.claimable ? `<span class="tag warn" title="${w.claimed ? '已开放认领，审核通过会转移归属' : '无归属作品（匿名投稿 / 后台代传）默认可认领'}">可认领</span>` : ''}
-                ${w.claimAuthorized ? `<span class="tag ok" title="站长已授权 @${esc(w.claimAuthorized)}：TA 登录后可一键认领，无需交证据、无需审核">已授权·@${esc(w.claimAuthorized)}</span>` : ''}
-                ${w.claimCode ? `<span class="tag ok" title="这件作品单独设置的认领暗号（≤10 位，不区分大小写）：作者填对当场归属，认领成功后自动作废；同一暗号设在同一位作者的几件上时，填一次整批归属">暗号·${esc(w.claimCode)}</span>` : ''}
-                ${w.claimBonus && w.claimBonus.points ? `<span class="tag warn" title="作者填对暗号时，在默认上传奖励之外额外送 ${w.claimBonus.points} 盏灯火${w.claimBonus.reason ? '（' + esc(w.claimBonus.reason) + '）' : ''}；人工审核 / 授权认领不发这笔">认领+${w.claimBonus.points}盏</span>` : ''}
-                ${w.blockCount ? `<span class="tag warn" title="被 ${w.blockCount} 个账号屏蔽${w.blockOwnerCount ? `（其中站长 ${w.blockOwnerCount} 位，按 3 分计）` : ''}${w.blockShift ? ` · 首页「最新」已降 ${w.blockShift} 位` : ` · 权重不足 2 分，暂不降权`}">屏蔽 ${w.blockCount}${w.blockOwnerCount ? `（站长 ${w.blockOwnerCount}）` : ''}</span>` : ''}
-              </div>
-              <div class="row-meta">${w.authorId ? `<span class="au-tip" data-id="${w.id}" title="点作者名给 TA 送灯火">@${esc(w.author)}</span>` : `@${esc(w.author)}`}${w.anonymous && (w.authorReal || w.ownerReal) ? `（原提交：${esc(w.authorReal || '')}${w.ownerReal ? ' / @' + esc(w.ownerReal) : ''}）` : ''} · ${esc(w.category)} · ${Icons.icon('heart', 12)}${w.likes} · ${Icons.icon('eye', 12)}${w.views}
-                · <span class="pvuv" title="今日 PV ${w.pvToday || 0} · UV ${w.uvToday || 0}">PV ${w.pv || 0} · UV ${w.uv || 0}</span>
-                ${w.reports ? `· <span style="color:#e5484d">投诉 ${w.reports}</span>` : ''}
-                ${w.offlineAt ? `· 下架于 ${new Date(w.offlineAt).toLocaleString('zh-CN')}` : ''}
-                ${w.offlineReason ? `<span style="color:#a32d2d">· 下架原因：${esc(w.offlineReason)}</span>` : ''}
-                ${w.aiReview && w.aiReview.pass === false ? `<span style="color:#a32d2d">· AI 初审不通过：${esc(w.aiReview.reason || '未说明原因')}</span>` : ''}
-                ${w.aiReview && w.aiReview.pass === null ? `<span style="color:var(--muted)">· AI 初审不可用：${esc(w.aiReview.note || '转人工')}</span>` : ''}
-                ${w.aiReview && w.aiReview.pass === true && w.status === 'pending' ? '<span style="color:#2e7d32">· AI 初审通过（等人工复核）</span>' : ''}
-                ${Array.isArray(w.watchHits) && w.watchHits.length ? `<span style="color:#a32d2d">· 命中复核词：${esc(w.watchHits.join('、'))}</span>` : ''}
-                ${w.link ? `· <a href="${esc(w.link)}" target="_blank" rel="noopener" class="row-link" title="${esc(w.link)}">${esc(shortUrl(w.link))}</a>` : ''}
-                ${w.repo ? `· <a href="${esc(w.repo)}" target="_blank" rel="noopener" class="row-link repo" title="源码：${esc(w.repo)}">源码：${esc(shortUrl(w.repo, 30))}</a>` : ''}</div>
-              ${kwLine}
-            </div>
             <div class="row-actions">
               <button class="btn btn-ghost btn-sm" data-act="edit" data-id="${w.id}">编辑</button>
               <div class="act-more">
@@ -5134,14 +5271,216 @@
                   <button class="mi mi-danger" data-act="del" data-id="${w.id}">删除</button>
                 </div>
               </div>
-            </div>
-          </div>`;
+            </div>`;
     }
+    const numTd = (v, sub) => `<td class="num">${Number(v) ? `<b>${plNum(v)}</b>` : '<span class="zero">0</span>'}${sub ? `<span class="cell-sub">${sub}</span>` : ''}</td>`;
+    function workColDefs() {
+      return [
+        { key: 'title', label: '作品', w: 200, sort: 'titleDesc', alt: 'titleAsc', fixed: true,
+          title: '作品名；点标题进编辑（一句话介绍在「简介」列）',
+          cell: w => `<td><div class="row-title"><a href="javascript:void(0)" data-act="edit" data-id="${w.id}" title="打开编辑">${rowTitleHtml(w)}</a></div></td>` },
+        { key: 'intro', label: '简介', w: 230,
+          title: '标题里的一句话介绍；（老数据）退而取作品介绍摘要',
+          cell: w => `<td>${workIntroHtml(w)}</td>` },
+        { key: 'flags', label: '标记', w: 170,
+          title: '状态 / 审核 / 投放等角标（原标题后面那一串）；形态、认领、暗号、佣金各自单独成列',
+          cell: w => `<td><div class="w-tags">${workFlagTags(w) || '<span class="zero">—</span>'}</div></td>` },
+        { key: 'types', label: '形态', w: 90,
+          title: '作品形态（Web / API / iOS / Android 等），原来混在「标记」里，现在单独成列',
+          cell: w => `<td>${esc((w.types && w.types.length ? w.types : [w.type || '网站']).join(' / '))}</td>` },
+        { key: 'claim', label: '认领', w: 110,
+          title: '可认领 / 已授权某人 / 认领奖励；具体暗号在「暗号」列',
+          cell: w => `<td><div class="w-tags">${workClaimTags(w) || '<span class="zero">—</span>'}</div></td>` },
+        { key: 'claimcode', label: '暗号', w: 100,
+          title: '作者填对这个暗号即可当场认领；认领成功后自动作废',
+          cell: w => `<td><div class="w-tags">${workClaimCodeTag(w) || '<span class="zero">—</span>'}</div></td>` },
+        { key: 'comm', label: '佣金', w: 132,
+          title: '注册有佣金 = CPA / CPA+CPS；纯 CPS 要成交才结算，不算。配合上面的「只看注册有佣金」一次列全',
+          cell: w => `<td>${w.commissionType === 'CPA'
+            ? '<span class="tag ok" title="CPA：注册 / 有效用户即结算佣金，不用等成交">CPA · 注册即有佣金</span>'
+            : w.commissionType === 'mixed'
+              ? '<span class="tag ok" title="CPA+CPS：注册有效用户即结算，成交另有抽成">CPA+CPS</span>'
+              : w.commissionType === 'CPS'
+                ? '<span class="tag" title="CPS：要成交才有佣金，不算「注册有佣金」">CPS · 成交才有佣金</span>'
+                : '<span class="zero">—</span>'}</td>` },
+        { key: 'keywords', label: '关键词', w: 170,
+          title: '实际生效的搜索词；（自动）= 系统配的',
+          cell: w => {
+            const kws = Array.isArray(w.keywords) ? w.keywords : [];
+            return `<td><div class="w-kw" title="${esc(kws.join('、'))}">${kws.length
+              ? esc(kws.join('、')) + (w.keywordsRaw === null ? '<span class="cell-sub">（自动）</span>' : '')
+              : '<span class="zero">无' + (Array.isArray(w.keywordsRaw) ? '（已清空）' : '') + '</span>'}</div></td>`;
+          } },
+        { key: 'link', label: '链接', w: 190,
+          title: '作品入口与源码地址',
+          cell: w => `<td>${w.link ? `<a href="${esc(w.link)}" target="_blank" rel="noopener" class="w-link row-link" title="${esc(w.link)}">${esc(shortUrl(w.link))}</a>` : '<span class="zero">—</span>'}${w.repo ? `<span class="cell-sub"><a href="${esc(w.repo)}" target="_blank" rel="noopener" class="row-link repo" title="源码：${esc(w.repo)}">源码：${esc(shortUrl(w.repo, 30))}</a></span>` : ''}</td>` },
+        { key: 'author', label: '作者', w: 120, sort: 'authorDesc', alt: 'authorAsc',
+          title: '@作者；有归属账号的点一下就能给 TA 送灯火',
+          cell: w => `<td>${w.authorId ? `<span class="au-tip" data-id="${w.id}" title="点作者名给 TA 送灯火">@${esc(w.author)}</span>` : `@${esc(w.author)}`}${w.anonymous && (w.authorReal || w.ownerReal) ? `<span class="cell-sub">原提交：${esc(w.authorReal || '')}${w.ownerReal ? ' / @' + esc(w.ownerReal) : ''}</span>` : ''}</td>` },
+        { key: 'category', label: '分类', w: 90, cell: w => `<td>${esc(w.category || '—')}</td>` },
+        { key: 'likes', label: '点赞', w: 68, sort: 'likesDesc', alt: 'likesAsc', cell: w => numTd(w.likes) },
+        { key: 'views', label: '浏览', w: 68, sort: 'viewsDesc', alt: 'viewsAsc', cell: w => numTd(w.views) },
+        { key: 'pv', label: 'PV', w: 66, sort: 'pvDesc', alt: 'pvAsc', title: '累计打开次数', cell: w => numTd(w.pv, `今日 ${w.pvToday || 0}`) },
+        { key: 'uv', label: 'UV', w: 66, sort: 'uvDesc', alt: 'uvAsc', title: '累计访客人数（一人只算一次）', cell: w => numTd(w.uv, `今日 ${w.uvToday || 0}`) },
+        { key: 'favs', label: '收藏', w: 66, sort: 'favsDesc', alt: 'favsAsc', cell: w => numTd(w.favs) },
+        { key: 'tips', label: '灯火', w: 70, sort: 'tipsDesc', alt: 'tipsAsc', title: '收到灯火总数 / 人数', cell: w => numTd(w.tipsTotal, w.tipsCount ? `${w.tipsCount} 人` : '') },
+        { key: 'limitedDone', label: '任务完成', w: 86, title: '限时任务里审核通过并发放灯火的人数；同一账号同一作品只算一次',
+          cell: w => w.limitedDone ? `<td class="num"><b>${Number(w.limitedDone)}</b><span class="cell-sub">人完成</span></td>` : '<td class="num"><span class="zero">—</span></td>' },
+        { key: 'reports', label: '投诉', w: 66, sort: 'reportsDesc', alt: 'reportsAsc',
+          cell: w => w.reports ? `<td class="num"><b style="color:#e5484d">${w.reports}</b></td>` : '<td class="num"><span class="zero">0</span></td>' },
+        { key: 'created', label: '发布时间', w: 110, sort: 'new', alt: 'old',
+          title: '后台手动设置过时间的会挂「手动时间」标',
+          cell: w => `<td class="w-date">${w.createdAt ? esc(new Date(w.createdAt).toLocaleString('zh-CN')) : '—'}</td>` },
+        { key: 'updated', label: '更新时间', w: 110, sort: 'updatedNew', alt: 'updatedOld',
+          cell: w => `<td class="w-date">${w.updatedAt ? esc(new Date(w.updatedAt).toLocaleString('zh-CN')) : '—'}${w.offlineAt ? `<span class="cell-sub" style="color:#a32d2d">下架 ${esc(new Date(w.offlineAt).toLocaleString('zh-CN'))}</span>` : ''}</td>` },
+        { key: 'ops', label: '操作', w: 120, fixed: true, title: '编辑 / 上架下架 / 精选置顶 / 认领 / 删除等',
+          cell: w => `<td>${workActionsHtml(w)}</td>` }
+      ];
+    }
+
+    function workRowHtml(w) {
+      return `<tr class="row row-work" data-row="${w.id}"><td class="dm-check-col"><input type="checkbox" class="dm-check" data-wcheck="${w.id}"${workSelected.has(w.id) ? ' checked' : ''} aria-label="选中 ${esc(w.title || w.id)}" /></td>${visibleWorkCols().map(c => c.cell(w)).join('')}</tr>`;
+    }
+    // 筛选卡片（参考图布局）：label 在上、输入在下，搜索 / 重置 / 新增在下方按钮条。
+    // 字段值存 workFilters，点「搜索」才拉数据（避免边打字边请求）；回车也能搜。
+    function workFilterCardHtml() {
+      const f = workFilters;
+      const input = (key, ph) => `<div class="dm-field"><label>${ph}</label><input type="text" data-wf="${key}" value="${esc(f[key] || '')}" placeholder="${ph}" /></div>`;
+      const select = (key, label, opts) => `<div class="dm-field"><label>${label}</label><select data-wf="${key}">${opts.map(([v, t]) => `<option value="${esc(v)}"${f[key] === v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
+      const cats = workCatOptions;
+      return `<div class="dm-card">
+        <div class="dm-card-title">筛选条件</div>
+        <div class="dm-filter-grid">
+          ${input('name', '作品名 / 一句话介绍')}
+          ${input('id', '作品 ID')}
+          ${input('author', '作者账号 / 昵称')}
+          ${select('type', '形态', [['', '全部形态'], ...WORK_TYPES_FILTER.map(t => [t, t])])}
+          ${select('category', '分类', [['', '全部分类'], ...cats.map(c => [c, c])])}
+          ${select('state', '上架状态', [['', '全部状态'], ['approved', '已通过'], ['pending', '待审核'], ['rejected', '管理员下架'], ['offline', '已下架（含作者下架）']])}
+          ${select('commType', '佣金模式', [['', '全部佣金'], ['CPA', 'CPA · 注册有佣金'], ['mixed', 'CPA+CPS'], ['CPS', 'CPS · 成交佣金'], ['none', '无佣金']])}
+          ${select('owner', '归属', [['', '全部归属'], ['real', '实名'], ['anon', '匿名']])}
+        </div>
+        <div class="dm-filter-actions">
+          <button class="btn btn-primary btn-sm" id="wfSearch" type="button">搜索</button>
+          <button class="btn btn-ghost btn-sm" id="wfReset" type="button">重置</button>
+          <button class="btn btn-ghost btn-sm" id="wfNew" type="button">＋ 新增</button>
+          <span class="hint" style="padding:0;margin-left:auto">筛选可与顶部搜索框叠加；改完点「搜索」生效</span>
+        </div>
+      </div>`;
+    }
+    // 规范分页条（参考图）：共 N 条 · 每页条数下拉 · 上一页/页码/下一页 · 前往第几页
+    function workPagerHtml(total, pages) {
+      const sizeOpts = [10, 20, 50, 100, 200].map(n => `<option value="${n}"${workPageSize === n ? ' selected' : ''}>${n} 条/页</option>`).join('');
+      // 页码窗口：当前页左右各 2 个，首尾页始终在
+      const set = new Set([1, pages, curPage - 2, curPage - 1, curPage, curPage + 1, curPage + 2]);
+      const nums = [...set].filter(p => p >= 1 && p <= pages).sort((a, b) => a - b);
+      let numsHtml = '';
+      nums.forEach((p, i) => {
+        if (i && p - nums[i - 1] > 1) numsHtml += '<span style="color:#c3c6d2">…</span>';
+        numsHtml += `<button type="button" data-wpage="${p}" class="${p === curPage ? 'on' : ''}">${p}</button>`;
+      });
+      return `<div class="dm-pager">
+        <span class="dm-pg-total">共 <b>${plNum(total)}</b> 条</span>
+        <select id="wfPageSize" title="每页显示条数">${sizeOpts}</select>
+        <span class="dm-pg-nums">
+          <button type="button" data-wpage="${curPage - 1}"${curPage <= 1 ? ' disabled' : ''}>‹</button>
+          ${numsHtml}
+          <button type="button" data-wpage="${curPage + 1}"${curPage >= pages ? ' disabled' : ''}>›</button>
+        </span>
+        <span class="dm-pg-jump">前往 <input type="number" id="wfJump" min="1" max="${pages}" value="${curPage}" /> 页</span>
+      </div>`;
+    }
+    function workTableBarHtml(total, totalAll) {
+      const cols = orderedWorkCols().filter(c => !c.fixed);
+      return `
+        <div class="uf-tablebar">
+          <span class="hint" style="font-size:12px">共 ${total} 件${totalAll > total ? `（全部 ${totalAll} 件）` : ''} · ${WORK_SORT_LABEL[workSort] || '发布时间从新到旧'} · 点表头可切换排序</span>
+          <div class="colpick">
+            <button class="btn btn-ghost btn-sm" id="workColBtn" type="button" title="按作品 / 归属 / 数据 / 时间分组，用不上的在这里勾掉">展示列 ▾</button>
+            <div class="colpick-panel" id="workColPanel" hidden>
+              <div class="colpick-list">
+                ${cols.map(c => `<label><input type="checkbox" data-wcol="${c.key}"${workHiddenCols.indexOf(c.key) < 0 ? ' checked' : ''} /> ${c.label}<span class="ucol-grp">${esc(workColGroup(c.key))}</span></label>`).join('')}
+              </div>
+              <div class="colpick-foot">
+                <button class="btn btn-ghost btn-sm" id="workColAll" type="button" title="把全部列都打开">显示全部</button>
+                <button class="btn btn-ghost btn-sm" id="workColDefault" type="button" title="回到常用列组合">恢复默认</button>
+                <button class="btn btn-primary btn-sm" id="workColOk" type="button">确认</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+    function workTableHtml(list) {
+      if (!list.length) return '<div class="empty">暂无作品</div>';
+      const cols = visibleWorkCols();
+      const w = cols.reduce((a, c) => a + c.w, 0);
+      const groups = WORK_COL_GROUPS.map(g => ({ name: g.name, n: cols.filter(c => g.keys.indexOf(c.key) >= 0).length })).filter(g => g.n > 0);
+      const grouped = new Set();
+      WORK_COL_GROUPS.forEach(g => g.keys.forEach(k => grouped.add(k)));
+      const rest = cols.filter(c => !grouped.has(c.key)).length;
+      if (rest) groups.push({ name: '其他', n: rest });
+      return `<div class="work-table-wrap">
+          <table class="work-table" style="min-width:${w + 34}px">
+            <colgroup><col style="width:34px" />${cols.map(c => `<col style="width:${c.w}px" />`).join('')}</colgroup>
+            <thead>
+              <tr class="wgroup-row"><th></th>${groups.map(g => `<th colspan="${g.n}">${esc(g.name)}</th>`).join('')}</tr>
+              <tr class="wcol-row"><th class="dm-check-col"><input type="checkbox" class="dm-check" id="wfCheckAll" title="全选 / 取消本页" /></th>${cols.map(c => `<th${c.sort ? ` data-wsort="${c.sort}" data-wa="${c.alt}"` : ''}${c.title ? ` title="${esc(c.title)}"` : ''}>${c.label}${c.sort ? ' <span class="su"></span>' : ''}</th>`).join('')}</tr>
+            </thead>
+            <tbody>${list.map(workRowHtml).join('')}</tbody>
+          </table>
+        </div>`;
+    }
+    function paintWorkSort() {
+      panel.querySelectorAll('th[data-wsort]').forEach(th => {
+        const on = th.dataset.wsort === workSort || th.dataset.wa === workSort;
+        th.classList.toggle('on', on);
+        const a = th.querySelector('.su');
+        if (a) a.textContent = on ? (th.dataset.wsort === workSort ? '↓' : '↑') : '↕';
+      });
+    }
+    function bindWorkTableSort() {
+      panel.querySelectorAll('th[data-wsort]').forEach(th => {
+        th.onclick = () => {
+          workSort = (workSort === th.dataset.wsort) ? th.dataset.wa : th.dataset.wsort;
+          loadWorks(curStatus, 1);
+        };
+      });
+      paintWorkSort();
+    }
+    function renderWorkTableOnly() {
+      const box = panel.querySelector('.work-table-wrap');
+      if (!box) return;
+      box.outerHTML = workTableHtml(WORK_LIST);
+      bindWorkTableSort();
+    }
+    function bindWorkColPick() {
+      const btn = $('workColBtn'), box = $('workColPanel');
+      if (!btn || !box) return;
+      const sync = () => box.querySelectorAll('input[data-wcol]').forEach(x => { x.checked = workHiddenCols.indexOf(x.dataset.wcol) < 0; });
+      btn.onclick = e => { e.stopPropagation(); box.hidden = !box.hidden; };
+      box.querySelectorAll('input[data-wcol]').forEach(cb => {
+        cb.onchange = () => {
+          const hidden = [];
+          box.querySelectorAll('input[data-wcol]').forEach(x => { if (!x.checked) hidden.push(x.dataset.wcol); });
+          saveWorkHiddenCols(hidden);
+          renderWorkTableOnly();
+        };
+      });
+      const all = $('workColAll');
+      if (all) all.onclick = () => { saveWorkHiddenCols([]); sync(); renderWorkTableOnly(); };
+      const def = $('workColDefault');
+      if (def) def.onclick = () => { saveWorkHiddenCols(WORK_COLS_DEFAULT_HIDDEN); sync(); renderWorkTableOnly(); };
+      const ok = $('workColOk');
+      if (ok) ok.onclick = () => { box.hidden = true; };
+    }
+    let WORK_LIST = [];   // 当前页作品，展示列勾选时原地重画表格用
 
     // 只替换这一行（或直接移除），不重渲染整个列表 → 页面不跳动、滚动位置不变
     const isOfflineRow = x => (x.status || 'approved') === 'rejected' || !!x.hidden;
     // 「只看匿名」的行内口径：与服务端 isAnonWork 一致——匿名投稿（anon，无归属）＋ 匿名发布（anonymous）
     const isAnonRow = x => !!(x && (x.anon || x.anonymous));
+    // 「注册有佣金」行内口径：与服务端 /api/admin/works?commission=1 一致，CPA / mixed 两种算，纯 CPS 不算
+    const isCpaRow = x => !!(x && (x.commissionType === 'CPA' || x.commissionType === 'mixed'));
     // 搜索中原地改了标题 / 作者，可能就不再命中关键词了 —— 这时也要把这行移出列表。
     // 走不到昵称（后台列表没带），只可能少移一行，不会多移，下次搜索仍能搜到。
     function workMatchesQuery(w, q) {
@@ -5158,11 +5497,14 @@
       const stay = w && (curStatus === '全部'
         || (curStatus === 'offline' ? isOfflineRow(w) : w.status === curStatus))
         && (!workAnonOnly || isAnonRow(w))
+        && (!workCpaOnly || isCpaRow(w))
         && workMatchesQuery(w, workQuery);
       if (!stay) { el.style.transition = 'opacity .2s'; el.style.opacity = '0'; setTimeout(() => el.remove(), 200); return; }
-      const tmp = document.createElement('div');
-      tmp.innerHTML = rowHtml(w).trim();
-      el.replaceWith(tmp.firstElementChild);
+      // 表格行要用 <table><tbody> 包一层解析，直接塞进 div 浏览器会把 <tr> 吃掉
+      const table = document.createElement('table');
+      table.innerHTML = '<tbody>' + workRowHtml(w) + '</tbody>';
+      const fresh = table.querySelector('tr');
+      if (fresh) el.replaceWith(fresh);
     }
 
     // 后台作品列表分页：每页 200 条。作品多了以后一次拉全站会把接口和渲染都撑爆，
@@ -5176,10 +5518,23 @@
       const bar = $('workBar');
       if (bar) bar.style.display = 'flex';
       try {
+        if (!workCatOptions.length) {
+          try { workCatOptions = ((await api('/api/categories')) || []).filter(c => c !== '全部'); } catch (e) { workCatOptions = []; }
+        }
         const r = await api('/api/admin/works?status=' + encodeURIComponent(status)
-          + '&pageSize=' + ADMIN_PAGE_SIZE + '&page=' + curPage
+          + '&pageSize=' + workPageSize + '&page=' + curPage
           + (q ? '&q=' + encodeURIComponent(q) : '')
-          + (workAnonOnly ? '&anon=1' : ''));
+          + (workAnonOnly ? '&anon=1' : '')
+          + (workCpaOnly ? '&commission=1' : '')
+          + (workFilters.name ? '&name=' + encodeURIComponent(workFilters.name) : '')
+          + (workFilters.id ? '&id=' + encodeURIComponent(workFilters.id) : '')
+          + (workFilters.author ? '&author=' + encodeURIComponent(workFilters.author) : '')
+          + (workFilters.type ? '&type=' + encodeURIComponent(workFilters.type) : '')
+          + (workFilters.category ? '&category=' + encodeURIComponent(workFilters.category) : '')
+          + (workFilters.state ? '&state=' + encodeURIComponent(workFilters.state) : '')
+          + (workFilters.commType ? '&commType=' + encodeURIComponent(workFilters.commType) : '')
+          + (workFilters.owner ? '&owner=' + encodeURIComponent(workFilters.owner) : '')
+          + (workSort ? '&sort=' + encodeURIComponent(workSort) : ''));
         // 兼容：接口不带 pageSize 时返回数组；现在带了，返回 { items, total, totalAll, anonTotal, page, pageSize, pages, q }
         const list = Array.isArray(r) ? r : (r.items || []);
         const total = Array.isArray(r) ? list.length : (r.total || list.length);
@@ -5193,19 +5548,19 @@
         // 命中数贴在搜索框右边：列表翻到下面、列表头滚出屏幕时也知道搜到几件
         const hit = $('workHit');
         if (hit) hit.innerHTML = q ? `匹配 <b>${total}</b> 件` : '';
-        const nav = pages > 1 ? `<span style="display:inline-flex;align-items:center;gap:6px;margin-left:auto">
-            <button class="btn btn-ghost btn-sm" data-page="${curPage - 1}"${curPage <= 1 ? ' disabled' : ''}>‹ 上一页</button>
-            <span style="color:var(--muted);font-size:12px;white-space:nowrap">第 ${curPage} / ${pages} 页</span>
-            <button class="btn btn-ghost btn-sm" data-page="${curPage + 1}"${curPage >= pages ? ' disabled' : ''}>下一页 ›</button>
-          </span>` : '';
+        // 分页改用底部规范分页条 workPagerHtml（共 N 条 / 每页条数 / 页码 / 前往），这里不再放旧版「上一页/下一页」
+        const filterTxt = [workAnonOnly ? '只看匿名' : '', workCpaOnly ? '只看注册有佣金' : ''].filter(Boolean).join(' + ');
         const countTxt = q
           ? `匹配 ${total} 件${totalAll > total ? ` · 全部 ${totalAll} 件` : ''}`
-          : (workAnonOnly ? `只看匿名 ${total} 件` : `共 ${total} 件`);
+          : (filterTxt ? `${filterTxt} ${total} 件` : `共 ${total} 件`);
         // 「只看匿名」勾选项：跟着列表头一起重绘（状态存在 workAnonOnly，切 tab / 搜索都保留）。
         // 用原生 checkbox 而不是胶囊按钮：跟「用户管理 → 只看有作品的」同一个交互，管理员不用学第二套。
         // 件数只在没勾时显示（「只看匿名 23」= 这个列表里有多少匿名作品）；勾上后件数已经写在左边的计数里，别重复。
         const anonChk = `<label class="chk-inline work-anon${workAnonOnly ? ' on' : ''}" title="勾上只列匿名作品：匿名投稿（提交时没账号、作品无归属）和匿名发布（作者选择不显示名字）都算">
             <input type="checkbox" id="workAnonOnly"${workAnonOnly ? ' checked' : ''} /> 只看匿名${!workAnonOnly && anonTotal ? ` <b>${anonTotal}</b>` : ''}
+          </label>`;
+        const cpaChk = `<label class="chk-inline work-cpa${workCpaOnly ? ' on' : ''}" title="勾上只列注册有佣金的产品：佣金模式 CPA（注册 / 有效用户即结算）或 CPA+CPS（注册 + 成交两段）；纯 CPS 要成交才结算，不算">
+            <input type="checkbox" id="workCpaOnly"${workCpaOnly ? ' checked' : ''} /> 只看注册有佣金
           </label>`;
         const head = `<div class="form-inline" style="border-bottom:1px solid var(--border)">
             <button class="btn btn-primary" id="newWorkBtn">＋ 新建作品</button>
@@ -5217,19 +5572,79 @@
             </select>
             <span style="color:var(--muted);font-size:12px">${countTxt}${!q && status === 'offline' ? ' · 点「查看」核对内容后「恢复上架」，作品会立刻回到首页和榜单（浏览/点赞/灯火数据都保留）' : ''}</span>
             ${anonChk}
-            ${nav}
+            ${cpaChk}
           </div>`;
+        WORK_LIST = list;
+        const filterCard = workFilterCardHtml();
+        const pager = workPagerHtml(total, pages);
         if (!list.length) {
-          const empty = q
-            ? `没有匹配「${esc(q)}」的作品，换个词试试，或者点搜索框右边的「清空」${workAnonOnly ? '；也可能是勾着「只看匿名」——取消勾选再搜' : ''}`
-            : (workAnonOnly
-              ? '这个列表里没有匿名作品，取消「只看匿名」就能看到全部'
+          const empty = q || Object.values(workFilters).some(Boolean)
+            ? `没有匹配的作品，换个条件试试，或者点「重置」清空筛选`
+            : (filterTxt
+              ? `这个列表里没有符合「${filterTxt}」的作品，取消勾选就能看到全部`
               : (status === 'offline' ? '没有被下架的作品' : '暂无作品'));
-          panel.innerHTML = head + `<div class="empty">${empty}</div>`;
+          panel.innerHTML = filterCard + head + `<div class="empty">${empty}</div>` + pager;
+          bindWorkFilterCard();
           return;
         }
-        panel.innerHTML = head + list.map(rowHtml).join('');
+        // 表格上方那排：统计 + 当前排序 + 展示列下拉（跟用户管理同一套）
+        panel.innerHTML = filterCard + head + workTableBarHtml(total, totalAll) + workTableHtml(list) + pager;
+        bindWorkTableSort();
+        bindWorkColPick();
+        bindWorkFilterCard();
+        bindWorkChecks(list);
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    }
+
+    // 筛选卡片：输入不立即触发（边打字边请求浪费），点「搜索」或回车才生效；重置回空并按下面的钩子清空。
+    function bindWorkFilterCard() {
+      const card = panel.querySelector('.dm-card');
+      if (!card) return;
+      // 点搜索先把 DOM 里的值收进 workFilters（重绘会用状态回填，不读 DOM）
+      const syncFilters = () => card.querySelectorAll('[data-wf]').forEach(el => { workFilters[el.dataset.wf] = el.value || ''; });
+      const doSearch = () => { syncFilters(); workSelected.clear(); loadWorks(curStatus, 1); };
+      const s = card.querySelector('#wfSearch');
+      if (s) s.onclick = doSearch;
+      card.querySelectorAll('[data-wf]').forEach(el => {
+        el.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } };
+      });
+      const reset = card.querySelector('#wfReset');
+      if (reset) reset.onclick = () => {
+        Object.keys(workFilters).forEach(k => { workFilters[k] = ''; });
+        workSelected.clear();
+        loadWorks(curStatus, 1);
+      };
+      const add = card.querySelector('#wfNew');
+      if (add) add.onclick = () => { const b = $('newWorkBtn'); if (b) b.click(); };
+      // 每页条数：改了回第 1 页
+      const size = panel.querySelector('#wfPageSize');
+      if (size) size.onchange = () => { workPageSize = Number(size.value) || 20; workSelected.clear(); loadWorks(curStatus, 1); };
+      // 页码按钮 + 前往
+      panel.querySelectorAll('[data-wpage]').forEach(b => {
+        b.onclick = () => { const p = Number(b.dataset.wpage); if (p >= 1) loadWorks(curStatus, p); };
+      });
+      const jump = panel.querySelector('#wfJump');
+      if (jump) jump.onkeydown = e => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const p = Number(jump.value) || 1;
+        loadWorks(curStatus, Math.max(1, p));
+      };
+    }
+    // 复选框：本页全选 / 单选，选中态存 workSelected 跨展示列重画不丢；切筛选时由调用方清空。
+    function bindWorkChecks(list) {
+      const all = panel.querySelector('#wfCheckAll');
+      if (all) {
+        const ids = list.map(w => w.id);
+        all.checked = ids.length > 0 && ids.every(id => workSelected.has(id));
+        all.onchange = () => {
+          ids.forEach(id => { if (all.checked) workSelected.add(id); else workSelected.delete(id); });
+          panel.querySelectorAll('[data-wcheck]').forEach(c => { c.checked = all.checked; });
+        };
+      }
+      panel.querySelectorAll('[data-wcheck]').forEach(c => {
+        c.onchange = () => { if (c.checked) workSelected.add(c.dataset.wcheck); else workSelected.delete(c.dataset.wcheck); };
+      });
     }
 
     // 「只看匿名」勾选：勾选项跟着列表头每次重绘都会换一个新的 DOM，所以事件委托挂在 panel 上（重绘不丢监听）。
@@ -5237,8 +5652,9 @@
     panel.addEventListener('change', e => {
       if (!e.target) return;
       if (e.target.id === 'watchScanDays') { watchScanDays = Number(e.target.value) || 0; return; }
-      if (e.target.id !== 'workAnonOnly') return;
-      workAnonOnly = !!e.target.checked;
+      if (e.target.id !== 'workAnonOnly' && e.target.id !== 'workCpaOnly') return;
+      if (e.target.id === 'workAnonOnly') workAnonOnly = !!e.target.checked;
+      else workCpaOnly = !!e.target.checked;
       loadWorks(curStatus, 1);
     });
 
@@ -7777,7 +8193,7 @@
       if (auBtn) {
         const w = WORK_CACHE[auBtn.dataset.id] || {};
         if (!w.authorId) { toast('这件作品没有归属账号，收不了送灯火'); return; }
-        openPointsModal({ uid: w.authorId, uname: w.author, name: w.authorName || w.author, take: false });
+        openPointsModal({ uid: w.authorId, uname: w.author, name: w.authorName || w.author });
         return;
       }
       const btn = e.target.closest('[data-act]');
@@ -10654,7 +11070,8 @@
           pmCompWork = null;
           pmCompBuyerLoad(null);
         }
-        const d = await api('/api/admin/works?status=approved&pageSize=8&page=1&q=' + encodeURIComponent(q) + suffix);
+        // 候选一次拉全（当前 CPA 作品 13 个，写 8 会只显示前 8 个）；列表容器自己滚动
+        const d = await api('/api/admin/works?status=approved&pageSize=200&page=1&q=' + encodeURIComponent(q) + suffix);
         pmCompItems = Array.isArray(d.items) ? d.items : (Array.isArray(d) ? d : []);
         if (pmCompWork && !pmCompItems.some(x => x.id === pmCompWork.id)) {
           const again = await api('/api/admin/works?status=approved&pageSize=5&page=1&q=' + encodeURIComponent(pmCompWork.id) + suffix);
@@ -11014,7 +11431,7 @@
     // 2026-11-22 站长定：列按「账号 → 灯火 → 作品 → 操作」分组，组内也按常看的顺序摆。
     // 这个数组同时决定分组表头、组内顺序；没列进来的（以后加新列）落到「其他」组，不会被吞掉。
     const USER_COL_GROUPS = [
-      { name: '账号', keys: ['name', 'account', 'badges', 'reg', 'active', 'todayVisits', 'client', 'ip'] },
+      { name: '账号', keys: ['name', 'utags', 'sameip', 'account', 'badges', 'reg', 'active', 'todayVisits', 'client', 'ip'] },
       { name: '灯火', keys: ['points', 'adminNet', 'promoSpent', 'spendTotal', 'tipIn', 'tipOut', 'checkin', 'ad', 'wxbind', 'ghBind', 'pwa'] },
       { name: '作品', keys: ['works'] },
       { name: '操作', keys: ['ops'] }
@@ -11064,18 +11481,33 @@
         u.adTotal ? `累计 领 ${plNum(u.adSelfTotal || 0)} · 代送 ${plNum(u.adTipTotal || 0)}` : ''
       ].filter(Boolean).join('<br />');
       return [
-        { key: 'name', label: '用户', w: 170, sort: 'nameDesc', alt: 'nameAsc', fixed: true,
-          title: '昵称 + 身上贴的标签；账号名在右边「账号」列',
+        // 2026-11-23 站长说「用户」格里昵称 + 身份标签 + 同IP 挤成一团，拆成三列（对应截图红圈）：
+        // 用户列只留昵称和账号状态；身份标签、同IP 各自独立成列，方便逐列看 / 隐藏。
+        { key: 'name', label: '用户', w: 160, sort: 'nameDesc', alt: 'nameAsc', fixed: true,
+          title: '昵称 + 账号状态（站长 / 屏蔽 / 来源 / 小程序）；身份标签和同IP各占右边一列',
           cell: u => `<td>
             <div class="row-title">@${esc(u.name)}
               ${u.isOwner ? '<span class="tag bad" title="站长：屏蔽作品按 3 分计">站长</span>' : ''}
               ${u.blockedCount ? `<span class="tag" title="自己屏蔽过的作品数（只影响 TA 自己的列表）">屏蔽 ${u.blockedCount}</span>` : ''}
               ${u.acqFr ? `<span class="tag src" title="来源渠道（首触${u.acqAt ? ' ' + esc(fmtDate(u.acqAt)) : ''}）">来源 ${esc(u.acqFrName || u.acqFr)}</span>` : ''}
               ${u.regFrom === 'mini' ? '<span class="tag src" title="通过小程序「微信一键登录」建号">小程序</span>' : ''}
-              ${(u.sameIp && u.sameIp.length) ? (() => { const rest = u.sameIp.slice(0, 3).join('、') + (u.sameIp.length > 3 ? ` 等${u.sameIp.length + 1}个号` : ''); return `<span class="tag bad" title="与以下账号注册 IP 相同，疑似同一人/小号：${esc(u.sameIp.join('、'))}">⚠ 同IP ×${u.sameIp.length + 1}：${esc(rest)}</span>`; })() : ''}
-              ${(u.tags || []).map(t => `<span class="tag utag" data-tag="${esc(t)}">${esc(t)}</span>`).join('')}
             </div>
           </td>` },
+        { key: 'utags', label: '身份标签', w: 150,
+          title: '后台给 TA 贴的荣誉 / 身份标签（造梦元老、体验官等），会展示在作品卡片和作者主页；用「标签」按钮贴 / 摘',
+          cell: u => {
+            const tags = u.tags || [];
+            return `<td><div class="row-meta">${tags.length
+              ? tags.map(t => `<span class="tag utag" data-tag="${esc(t)}">${esc(t)}</span>`).join('')
+              : '<span class="zero">—</span>'}</div></td>`;
+          } },
+        { key: 'sameip', label: '同IP', w: 210,
+          title: '与这些账号的注册 IP 相同，疑似同一人 / 小号；同一 WiFi 也可能是不同人，仅供参考',
+          cell: u => {
+            if (!u.sameIp || !u.sameIp.length) return '<td><span class="zero">—</span></td>';
+            const rest = u.sameIp.slice(0, 3).join('、') + (u.sameIp.length > 3 ? ` 等${u.sameIp.length + 1}个号` : '');
+            return `<td><span class="tag bad" title="与以下账号注册 IP 相同：${esc(u.sameIp.join('、'))}">⚠ ×${u.sameIp.length + 1}：${esc(rest)}</span></td>`;
+          } },
         { key: 'account', label: '账号', w: 175,
           title: '登录用的账号名；主号＝自己注册，辅助＝wx 开头、微信扫码/小程序自动建的号',
           cell: u => `<td><div class="row-title"><span class="tag acct-name">${esc(u.username)}</span> ${acctTag(u)}</div></td>` },
@@ -11130,13 +11562,12 @@
           cell: u => `<td>${u.lastClient ? `<span class="tag cli" title="最后一次活跃的端 · ${esc(fmtDateTime(u.lastClient.at || u.lastActiveAt))}">${esc(u.lastClient.text)}</span>` : '<span class="zero">—</span>'}</td>` },
         { key: 'ip', label: '归属地', w: 160, title: '归属地（只显示城市，IP 明文悬停才看得到、点一下复制）',
           cell: u => `<td>${ipMetaHtml(u)}</td>` },
-        { key: 'ops', label: '操作', w: 175, fixed: true, title: '激励 / 标签 / 送扣灯火 / 重置密码',
+        { key: 'ops', label: '操作', w: 175, fixed: true, title: '激励 / 标签 / 调整灯火 / 重置密码',
           cell: u => `<td>
             <div class="row-actions">
               <button class="btn btn-primary btn-sm rw-open">激励</button>
               <button class="btn btn-ghost btn-sm tags-edit">标签</button>
-              <button class="btn btn-ghost btn-sm pt-give">送灯火</button>
-              <button class="btn btn-danger btn-sm pt-take">扣灯火</button>
+              <button class="btn btn-ghost btn-sm pt-open" title="正数送、负数扣，扣到 0 为止">调整灯火</button>
               <button class="btn btn-ghost btn-sm pw-reset" title="生成一个临时密码并立即生效">重置密码</button>
             </div>
           </td>` }
@@ -11359,10 +11790,13 @@
     }
     // 点面板外面自动收起「展示列」
     document.addEventListener('click', e => {
-      const p = document.getElementById('userColPanel');
-      if (!p || p.hidden) return;
-      if (e.target.closest && e.target.closest('.colpick')) return;
-      p.hidden = true;
+      // 用户管理 / 作品管理两个「展示列」下拉共用这条：点面板外面就收起
+      ['userColPanel', 'workColPanel'].forEach(id => {
+        const p = document.getElementById(id);
+        if (!p || p.hidden) return;
+        if (e.target.closest && e.target.closest('.colpick')) return;
+        p.hidden = true;
+      });
     });
 
     async function loadUsers() {
@@ -11385,7 +11819,7 @@
         adminTaglib = Array.isArray(lib) ? lib : [];
         const lt = data.ledgerTotals || {};
         const tile = (v, label) => `<div class="stat-tile"><b>${v}</b><span>${label}</span></div>`;
-        const tilesHtml = `<div class="stats stats-user">`
+        const tilesHtml = `<div class="stats stats-user after-table">`
           + `<div class="uf-stats-cap">灯火台账总览 <span>全站累计，不随当前筛选变化</span></div>`
           + tile(plNum(lt.people), '在账用户')
           + tile(plNum(lt.points) + ' 盏', '灯火总量')
@@ -11405,18 +11839,17 @@
         const listHtml = userTableHtml(list);
         // 重画整块面板前先记下焦点在哪：搜索框正在打字的话，画完把焦点还回去
         const searchWasFocused = !!(document.activeElement && document.activeElement.id === 'userSearch');
-        panel.innerHTML = userFilterBarHtml() + tilesHtml + `
+        panel.innerHTML = userFilterBarHtml() + `
           <details class="hint-fold"><summary title="点开查看激励 / 灯火 / 标签 / IP 说明">!</summary>
-          <div class="hint"><b>表头</b>：除 IP / 操作外都能点，点一下切升降序；灯火台账那几列和原来的「灯火明细」是同一份账。<br />
-          <b>激励</b>：贴标签 + 送灯火一键完成（选标签、填灯火数、写附言，提交后一次生效），最常用的入口。只想单独改标签用「标签」，只想单独调灯火用「送灯火 / 扣灯火」。<br />
+          <div class="hint"><b>表头</b>：除 IP / 操作外都能点，点一下切升降序；灯火台账那几列和原来的「灯火明细」是同一份账。<b>用户 / 身份标签 / 同IP</b> 拆成三列：昵称和账号状态在「用户」列，荣誉标签（造梦元老等）在「身份标签」列，同IP 小号线索在「同IP」列，可在「展示列」里按需隐藏。<br />
+          <b>激励</b>：贴标签 + 送灯火一键完成（选标签、填灯火数、写附言，提交后一次生效），最常用的入口。只想单独改标签用「标签」，只想单独调灯火用「调整灯火」（填正数送、负数扣）<br />
           灯火：数量和附言在弹窗里填，<b>附言必填</b>（写清来由，会记进对方账本并通知本人）。扣灯火扣到 0 为止。开源作品系统自动送 50 盏；GitHub star 由作者在个人菜单 /「我的」页点「更新 star 奖励」后按 1:1 发放（单仓库每日封顶 2000，超过 100 star 或归属存疑的转人工核定），非 GitHub 仓库一律人工核对发放。<br />
           <b>标签</b>：点用户行的「标签」可以给 TA 贴 / 摘荣誉标签（如「优秀产品体验官」），贴上后展示在 TA 的作品卡片、详情页和作者主页，并通知本人。标签库里可以新增标签、改名（改名会同步所有人身上的标签）。<br />
           <b>⚠ 同IP</b>：注册 IP 相同的账号会互相标记（红色标签列出对方昵称），疑似同一人/小号——注意同一 WiFi 下也可能是不同人，仅供参考。<br />
           <b>IP</b>：每个用户记「注册 IP」和「最近活跃 IP」（换 IP 立刻更新，没换就跟着活跃时间刷新），后面绿色小块是归属地（离线库 ip2region 解析，精确到市，误差和 VPN / 运营商出口有关，仅供参考；IPv6 和内网 IP 不显示归属地），点 IP 可复制；只在这个后台显示，前台和公开接口都不返回。小程序建的号不记注册 IP（运营商 NAT 一个出口几百人共用，会全是误报）。</div></details>
-          <div class="taglib-bar" id="taglibBar"></div>
           ${userTableBarHtml(total, totalAll)}
           <div id="userList">` + listHtml + `</div>` +
-          pagerHtml;
+          pagerHtml + tilesHtml + `<div class="taglib-bar" id="taglibBar"></div>`;
         bindUserFilter(searchWasFocused);
         bindUserTableSort();
         paintUserSort();
@@ -11630,16 +12063,13 @@
         return;
       }
 
-      // 送 / 扣灯火：弹窗填写数量 + 附言（附言必填，防止忘写来由）
-      const give = e.target.classList.contains('pt-give');
-      const take = e.target.classList.contains('pt-take');
-      if (give || take) {
+      // 调整灯火：一个按钮搞定，弹窗里填正数 = 送、负数 = 扣（附言必填，防止忘写来由）
+      if (e.target.classList.contains('pt-open')) {
         const row = userRowOf(e.target);
         openPointsModal({
           uid: row.dataset.uid,
           uname: row.dataset.uname || '',
           name: (row.querySelector('.row-title').textContent.trim().split(/\s+/)[0] || '').replace(/^@/, ''),
-          take: !!take,
           // 用户行上就有灯火余额，直接拿来用，不再多打一次接口
           points: parseInt((row.querySelector('.pt-val') || {}).textContent, 10)
         });
@@ -11675,7 +12105,7 @@
     bindMaskClose($('pwMask'), () => { $('pwValue').value = ''; $('pwMask').style.display = 'none'; });
 
     // 灯火弹窗：关闭 / 确认
-    let ptsTarget = null;   // { uid, uname, name, take }
+    let ptsTarget = null;   // { uid, uname, name, from }
     let ptBase = null;      // 目标用户当前灯火数；null = 还没拿到（作品列表点作者名要现查）
 
     // 余额行：现在 N 盏 → 操作后 M 盏。数量框一改就重算，免得点确认前心里没数。
@@ -11684,9 +12114,7 @@
       if (!box) return;
       if (ptBase == null) { box.innerHTML = '<span class="hint" style="padding:0">读取中…</span>'; return; }
       const raw = parseInt($('ptDelta').value, 10);
-      const delta = Number.isFinite(raw) && raw
-        ? (ptsTarget && ptsTarget.take ? -Math.abs(raw) : Math.abs(raw))
-        : 0;
+      const delta = Number.isFinite(raw) ? raw : 0;   // 正数送、负数扣，直接按填的算
       const after = Math.max(0, ptBase + delta);   // addPoints 里也是 Math.max(0, ...)：扣到 0 为止
       let html = `现在 <b>${ptBase}</b> 盏`;
       if (delta) html += ` → 操作后 <b>${after}</b> 盏`;
@@ -11694,16 +12122,16 @@
       box.innerHTML = html;
     }
 
-    // 统一的弹窗入口：用户行「送 / 扣灯火」、作品列表点作者名、「作者回复」点作者名都走这里。
+    // 统一的弹窗入口：用户行「调整灯火」、作品列表点作者名、「作者回复」点作者名都走这里。
     // target.points 有值就直接用；没有（作品列表 / 私信页）就查一次接口补上，失败也不挡操作。
     // target.name 缺省时（私信页只有账号名）用余额接口回的昵称补进「给谁送」那一行。
     function openPointsModal(target) {
       ptsTarget = target;
       ptBase = Number.isFinite(target.points) ? target.points : null;
-      $('ptTitle').textContent = (target.take ? '从 @' + target.uname + ' 扣灯火' : '给 @' + target.uname + ' 送灯火');
+      $('ptTitle').textContent = '调整 @' + target.uname + ' 的灯火';
       $('ptWho').value = target.name ? `@${target.name}（${target.uname}）` : `@${target.uname}`;
       $('ptDelta').value = 100;
-      $('ptDeltaHint').textContent = target.take ? '填多少扣多少，扣到 0 为止，会计入对方账本' : '会计入对方账本，对方会收到站内消息通知';
+      $('ptDeltaHint').textContent = '填正数 = 送，填负数 = 扣（扣到 0 为止）；都计入对方账本并通知本人';
       $('ptNote').value = '';
       renderPtBalance();
       $('pointsMask').style.display = 'flex';
@@ -11733,8 +12161,8 @@
       if (!Number.isFinite(val) || val === 0) return toast('请输入非 0 整数');
       const note = $('ptNote').value.trim();
       if (!note) { $('ptNote').focus(); return toast('附言必填：写清灯火来由，对方账本里能看到'); }
-      const delta = ptsTarget.take ? -Math.abs(val) : Math.abs(val);
-      if (ptsTarget.take && !confirm(`确定从 @${ptsTarget.uname} 扣 ${Math.abs(val)} 盏灯火？`)) return;
+      const delta = val;   // 填多少就是多少：正数送、负数扣
+      if (delta < 0 && !confirm(`确定从 @${ptsTarget.uname} 扣 ${Math.abs(val)} 盏灯火？`)) return;
       try {
         const r = await api('/api/admin/points', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -12760,6 +13188,116 @@
             });
             toast('已忽略');
             loadOpenSub();
+          } catch (e) { toast(e.message); btn.disabled = false; }
+        };
+      });
+    }
+
+    // ---- 限时任务（CPA / CPA+CPS 注册截图审核） ----
+    // 名单不在这里维护：作品库里 commissionType=CPA / mixed 且在架可见的作品自动进池，
+    // 和「只看注册有佣金的」筛选是同一口径。这里只管审核截图和全局配置。
+    async function loadLimitedAdmin() {
+      let d;
+      try { d = await api('/api/admin/limited-tasks'); }
+      catch (e) { panel.innerHTML = '<div class="empty">加载失败：' + esc(e.message || e) + '</div>'; return; }
+      const cfg = d.config || {}, items = d.items || [], pending = d.pending || [], handled = d.handled || [];
+      const ro = adminReadOnly();
+      const when = t => t ? new Date(t).toLocaleString('zh-CN') : '—';
+      const shotHtml = s => s.shot
+        ? `<a href="${esc(s.shot)}" target="_blank" rel="noopener noreferrer" title="点开看原图"><img src="${esc(s.shot)}" alt="注册截图" style="width:110px;max-height:78px;object-fit:cover;border:1px solid var(--border);border-radius:8px;display:block;margin-top:8px" /></a>`
+        : '';
+      const subRow = (s, doneMode) => `
+        <div class="row">
+          <div class="row-main">
+            <div class="row-title">${s.user ? '@' + esc(s.user) : '用户 ' + esc(s.uid)}
+              <span class="tag">${esc(s.itemName || s.itemId)}</span>
+              ${doneMode ? `<span class="tag ${s.status === 'approved' ? 'ok' : ''}">${s.status === 'approved' ? '已发 ' + (s.points || 0) + ' 盏' : '未通过'}</span>` : ''}
+            </div>
+            <div class="row-meta">${when(s.at)}${s.note ? ' · 用户备注：' + esc(s.note) : ''}${s.handleNote ? ' · 审核意见：' + esc(s.handleNote) : ''}</div>
+            ${shotHtml(s)}
+          </div>
+          ${(doneMode || ro) ? '' : `<div class="row-actions">
+            <button class="btn btn-primary btn-sm" data-lt-approve="${esc(s.id)}">通过 +${cfg.points || 2000}</button>
+            <button class="btn btn-ghost btn-sm" data-lt-reject="${esc(s.id)}">驳回</button>
+          </div>`}
+        </div>`;
+      panel.innerHTML = `
+        <div class="hint" style="padding:16px 18px;line-height:1.8">
+          用户去注册「注册有佣金」的产品（<b>CPA / CPA+CPS</b>，纯 CPS 不算），回传注册截图进这里。
+          审核通过当场发灯火，每个账号每个任务只发一次；每人每天最多 ${cfg.dailyLimit || 2} 个。
+          任务名单来自作品库的佣金模式标记，不在这里另填。
+        </div>
+        ${ro ? '' : `
+        <div class="form-inline" style="border-bottom:1px solid var(--border)">
+          <label style="display:inline-flex;align-items:center;gap:6px"><input type="checkbox" id="ltEnabled" ${cfg.enabled ? 'checked' : ''}/> 开放任务</label>
+          <input id="ltTitle" maxlength="40" value="${esc(cfg.title || '')}" placeholder="栏目标题" style="flex:2;min-width:150px" />
+          <input id="ltPoints" type="number" min="0" max="10000" value="${cfg.points || 2000}" title="每单灯火" style="width:100px" />
+          <input id="ltDaily" type="number" min="1" max="10" value="${cfg.dailyLimit || 2}" title="每天最多几个任务" style="width:100px" />
+          <input id="ltEnds" type="date" value="${esc(String(cfg.endsAt || '').slice(0, 10))}" title="截止日，留空=不限" style="width:150px" />
+          <button class="btn btn-primary" id="ltCfgSave">保存配置</button>
+        </div>
+        <div style="padding:12px 18px;border-bottom:1px solid var(--border)">
+          <input id="ltDesc" maxlength="200" value="${esc(cfg.desc || '')}" placeholder="栏目说明（前台可见）" style="width:100%;margin-bottom:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px" />
+          <input id="ltProof" maxlength="200" value="${esc(cfg.proofText || '')}" placeholder="截图要求：要拍到什么、哪些信息可打码" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px" />
+        </div>`}
+        <div class="form-inline" style="border-bottom:1px solid var(--border)">
+          <b style="font-size:14px">当前任务名单（${items.length}）</b>
+          <span style="color:var(--muted);font-size:12px">作品库 commissionType = CPA / mixed，且已上架可见</span>
+        </div>
+        ${items.length ? items.map(w => `
+          <div class="row">
+            <div class="row-main">
+              <div class="row-title">${esc(w.name)} <span class="tag ok">${w.commissionType === 'mixed' ? 'CPA+CPS' : 'CPA'}</span>
+                <span class="tag" title="审核通过并发放灯火的人数；同一账号同一作品只算一次">已完成 ${w.stats ? w.stats.done : 0} 人</span></div>
+              <div class="row-meta">${esc(w.desc || '')}${w.link ? ' · <a href="' + esc(w.link) + '" target="_blank" rel="noopener noreferrer">打开注册页 ↗</a>' : ''}${w.stats && (w.stats.pending || w.stats.rejected) ? ` · 待审 ${w.stats.pending || 0} · 未通过 ${w.stats.rejected || 0}` : ''}</div>
+            </div>
+          </div>`).join('') : '<div class="empty">作品库里还没有标记 CPA / CPA+CPS 的在架作品。先在作品编辑器里给产品打佣金模式，这边和前台就会自动出现。</div>'}
+        <div class="form-inline" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+          <b style="font-size:14px">待审核（${pending.length}）</b>
+          <span style="color:var(--muted);font-size:12px">今日提交 ${(d.stats && d.stats.today) || 0} · 已发 ${(d.stats && d.stats.approved) || 0}</span>
+        </div>
+        ${pending.length ? pending.map(s => subRow(s, false)).join('') : '<div class="empty">没有待审核的注册截图。</div>'}
+        ${handled.length ? `<div class="form-inline" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border)"><b style="font-size:14px">最近处理过的（${handled.length}）</b></div>${handled.slice(0, 40).map(s => subRow(s, true)).join('')}` : ''}
+      `;
+      const save = $('ltCfgSave');
+      if (save) save.onclick = async () => {
+        save.disabled = true;
+        try {
+          await api('/api/admin/limited-tasks/config', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              enabled: $('ltEnabled').checked, title: $('ltTitle').value.trim(),
+              points: Number($('ltPoints').value), dailyLimit: Number($('ltDaily').value),
+              endsAt: $('ltEnds').value, desc: $('ltDesc').value.trim(), proofText: $('ltProof').value.trim()
+            })
+          });
+          toast('限时任务配置已保存'); loadLimitedAdmin();
+        } catch (e) { toast(e.message); save.disabled = false; }
+      };
+      panel.querySelectorAll('[data-lt-approve]').forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm('确认截图真实、这个注册有佣金？通过会立刻发 ' + (cfg.points || 2000) + ' 盏，且不可撤销。')) return;
+          btn.disabled = true;
+          try {
+            await api('/api/admin/limited-tasks/' + encodeURIComponent(btn.dataset.ltApprove) + '/review', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'approve' })
+            });
+            toast('已通过，灯火当场到账'); loadLimitedAdmin();
+          } catch (e) { toast(e.message); btn.disabled = false; }
+        };
+      });
+      panel.querySelectorAll('[data-lt-reject]').forEach(btn => {
+        btn.onclick = async () => {
+          const note = prompt('驳回原因（会给用户看到，200 字内）：', '截图看不清注册状态，请重新上传');
+          if (!note || !note.trim()) return;
+          btn.disabled = true;
+          try {
+            await api('/api/admin/limited-tasks/' + encodeURIComponent(btn.dataset.ltReject) + '/review', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'reject', note: note.trim() })
+            });
+            toast('已驳回'); loadLimitedAdmin();
           } catch (e) { toast(e.message); btn.disabled = false; }
         };
       });
