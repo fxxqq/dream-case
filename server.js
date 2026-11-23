@@ -459,6 +459,66 @@ let comments = readJSON('comments.json', []);  // 作品评论
 // 站内消息：目前主要用来说明积分变动（管理员送分/扣分、扣费投放等），结构见 addNotice()
 let notices = readJSON('notices.json', []);
 if (!Array.isArray(notices)) notices = [];
+
+// ---------- 系统公告状态账（2026-11-23）：撤下后不再被启动补发复活 ----------
+// 背景：编年史 / 上线通告是写死在 server.js 里的启动型公告，靠「用户铃铛里还有没有
+// 同 key」去重。后台撤回会把铃铛里同 key 全删掉 —— 下次重启（发版 / pm2 restart）
+// 去重条件就失效了，公告原样再推一遍：点几次下架就复活几次。游客公告条同理。
+// 这里单独落一份账：
+//   done     —— 历史一次性通告视为已全量推过，启动任务不再补发（新用户走注册欢迎语）
+//   disabled —— 后台撤回 / 游客公告下架写入，连游客公告条都不再补挂
+// 迁移：首次带这份账启动时把已知的一次性通告标 done。不这么做的话，升级重启
+// 恰好会多推一轮 —— 正是这次要修的现象。想重新启用某条：删掉账里对应的 key。
+const LEGACY_BOOT_NOTICE_KEYS = ['chronicle-announce-1', 'chronicle-launch-2'];
+const SYSTEM_NOTICE_KEYS = LEGACY_BOOT_NOTICE_KEYS.concat(['find-fill-1']);
+let systemNoticeState = readJSON('system-notice-state.json', null);
+if (!systemNoticeState || typeof systemNoticeState !== 'object' || Array.isArray(systemNoticeState)) systemNoticeState = {};
+(function migrateSystemNoticeState() {
+  let dirty = false;
+  const at = new Date().toISOString();
+  // 发送账里同 key 的最后一条（数组头是新的）代表当前状态：撤回过的才算站长明确下架。
+  // 若撤回后又被后台主动重发，最新那条没有 recalledAt，就不动它。
+  const latestOf = new Map();
+  (readJSON('broadcasts.json', []) || []).forEach(b => {
+    if (b && b.key && !latestOf.has(b.key)) latestOf.set(b.key, b);
+  });
+  LEGACY_BOOT_NOTICE_KEYS.forEach(k => {
+    const rec = latestOf.get(k);
+    const wasRecalled = !!(rec && rec.recalledAt);
+    if (!systemNoticeState[k]) {
+      systemNoticeState[k] = { done: true, at, migrated: true };
+      dirty = true;
+    }
+    if (wasRecalled && !systemNoticeState[k].disabled) {
+      systemNoticeState[k].disabled = true;
+      systemNoticeState[k].disabledAt = at;
+      systemNoticeState[k].disabledFrom = 'migrate-recalled-broadcast';
+      dirty = true;
+    }
+  });
+  if (dirty) writeJSON('system-notice-state.json', systemNoticeState);
+})();
+function legacyRecalledKeys() {
+  return LEGACY_BOOT_NOTICE_KEYS.filter(k => {
+    const s = systemNoticeState[k];
+    return s && s.disabled && s.disabledFrom === 'migrate-recalled-broadcast';
+  });
+}
+function systemNoticeSuppressed(key) {
+  const s = systemNoticeState[String(key || '')];
+  return !!(s && (s.done || s.disabled));
+}
+function disableSystemNotice(key, from) {
+  const k = String(key || '').trim();
+  if (!SYSTEM_NOTICE_KEYS.includes(k)) return false;
+  const s = systemNoticeState[k] || (systemNoticeState[k] = {});
+  s.disabled = true;
+  s.disabledAt = new Date().toISOString();
+  s.disabledFrom = String(from || 'admin');
+  writeJSON('system-notice-state.json', systemNoticeState);
+  return true;
+}
+
 let feedback = readJSON('feedback.json', []);  // 意见反馈
 let claims = readJSON('claims.json', []);      // 作品认领申请（提交证据 → 管理员审核）
 let appeals = readJSON('appeals.json', []);    // 账号申诉（处理不服 → 站长人工判）
@@ -1159,6 +1219,18 @@ function claimBonusOf(w) {
 }
 function saveAds() { writeJSON('ads.json', ads); }
 function saveNotices() { writeJSON('notices.json', notices); }
+// 历史撤回过的系统公告：把之前被启动补发复活的存量清掉。只靠账里的标记跑一次，
+// 之后每次重启都是空操作；站长主动重发的新公告（最新发送账没有 recalledAt）不受影响。
+(function cleanupResurrectedSystemNotices() {
+  const keys = legacyRecalledKeys();
+  if (!keys.length) return;
+  const before = notices.length;
+  notices = notices.filter(n => !(n && keys.includes(n.key)));
+  if (notices.length !== before) {
+    saveNotices();
+    console.log(`[notices] 已清理 ${before - notices.length} 条撤回后复活的系统公告`);
+  }
+})();
 
 // ---------- 屏蔽统计：首页「最新」降权的唯一依据 ----------
 // 屏蔽的真相在 user.blocked 里（谁屏蔽了什么），但排序要的是反过来的索引——
@@ -2000,6 +2072,7 @@ function pushChronicleWelcome(user) {
   });
 }
 function broadcastChronicleOnce() {
+  if (systemNoticeSuppressed('chronicle-announce-1')) return 0;
   const notice = {
     kind: 'announce',
     key: 'chronicle-announce-1',
@@ -2023,14 +2096,14 @@ const LAUNCH_ANNOUNCE = {
   text: '「造梦橱窗」小程序正式上架，扫码即达；随小程序一起上线 3 个站内小程序推荐位，作品推荐从此能投给更精准的用户：他们可以在小程序里一键复制 App Store / 安卓下载链接，也可以直接扫码走进你的小程序——利好小程序、App 开发者'
 };
 function broadcastLaunchAnnounceOnce() {
-  if (!CHRON_LAUNCH_ANNOUNCE_ENABLED) return 0;
+  if (!CHRON_LAUNCH_ANNOUNCE_ENABLED || systemNoticeSuppressed(LAUNCH_ANNOUNCE.key)) return 0;
   const notice = { kind: 'announce', ...LAUNCH_ANNOUNCE };
   const sent = addNoticeBatch(users.filter(u => u && u.id).map(u => [u.id, notice]));
   if (sent) console.log(`[notices] 上线通告已推送给 ${sent} 位用户`);
   return sent;
 }
 function seedLaunchGuestOnce() {
-  if (!CHRON_LAUNCH_ANNOUNCE_ENABLED) return;
+  if (!CHRON_LAUNCH_ANNOUNCE_ENABLED || systemNoticeSuppressed(LAUNCH_ANNOUNCE.key)) return;
   if (guestNotices.some(n => n && n.key === LAUNCH_ANNOUNCE.key)) return;
   guestNotices.unshift({
     id: 'chronicle-launch-guest-2',
@@ -2070,7 +2143,7 @@ function findFillTargets() {
   return users.filter(u => u && u.id && owners.has(u.id));
 }
 function broadcastFindFillOnce() {
-  if (!FIND_FILL_ANNOUNCE) return 0;
+  if (!FIND_FILL_ANNOUNCE || systemNoticeSuppressed(FIND_FILL_NOTICE.key)) return 0;
   const pairs = findFillTargets().map(u => [u.id, {
     kind: 'announce',
     ...FIND_FILL_NOTICE,
@@ -2087,6 +2160,17 @@ function broadcastFindFillOnce() {
 // 新增 / 下架由后台「群发通知」页管理。同 key 只保留一条（再发 = 更新文案重新置顶）。
 let guestNotices = readJSON('guest-notices.json', []);
 function saveGuestNotices() { writeJSON('guest-notices.json', guestNotices); }
+// 同上：被 seed*GuestOnce 补回来的游客条也一并清掉，免得下次重启又挂上去。
+(function cleanupResurrectedGuestNotices() {
+  const keys = legacyRecalledKeys();
+  if (!keys.length) return;
+  const before = guestNotices.length;
+  guestNotices = guestNotices.filter(n => !(n && keys.includes(n.key)));
+  if (guestNotices.length !== before) {
+    saveGuestNotices();
+    console.log('[notices] 已清理撤回后复活的游客公告条');
+  }
+})();
 function upsertGuestNotice({ key, title, text, link }) {
   const k = String(key || '').trim() || 'gn-' + Date.now().toString(36);
   const item = {
@@ -2106,6 +2190,7 @@ function upsertGuestNotice({ key, title, text, link }) {
 }
 // 编年史公告补发到游客通道：key 去重，重启不重复
 function seedChronicleGuestOnce() {
+  if (systemNoticeSuppressed('chronicle-announce-1')) return;
   if (guestNotices.some(n => n && n.key === 'chronicle-announce-1')) return;
   guestNotices.unshift({
     id: 'chronicle-guest-1',
@@ -28511,9 +28596,12 @@ app.post('/api/admin/broadcast/recall', requireAdmin, (req, res) => {
   if (guestRemoved) saveGuestNotices();
   rec.recalledAt = new Date().toISOString();
   rec.recalled = removed;
+  // 系统公告 key 混在群发账里时，撤回必须写禁用账：否则下次重启启动任务看到铃铛里
+  // 没这条了，就当「还没发过」原样再推一遍（2026-11-23 修）。
+  const systemDisabled = disableSystemNotice(key, 'broadcast-recall');
   saveNotices();
   saveBroadcasts();
-  res.json({ ok: true, removed, guestRemoved, recalledAt: rec.recalledAt });
+  res.json({ ok: true, removed, guestRemoved, recalledAt: rec.recalledAt, systemDisabled });
 });
 
 // ---- 游客公告条：未登录访客也能看到的全站公告（后台管理） ----
@@ -28529,11 +28617,14 @@ app.post('/api/admin/guest-notice', requireAdmin, (req, res) => {
   res.json({ ok: true, item });
 });
 app.delete('/api/admin/guest-notice/:id', requireAdmin, (req, res) => {
+  const hit = guestNotices.find(n => n && n.id === req.params.id);
   const before = guestNotices.length;
   guestNotices = guestNotices.filter(n => n.id !== req.params.id);
   if (guestNotices.length === before) return res.status(404).json({ error: '公告不存在或已下架' });
   saveGuestNotices();
-  res.json({ ok: true });
+  // 系统公告的游客条被单独下架时同样写禁用账，免得 seedLaunchGuestOnce 重启补回来。
+  const systemDisabled = hit ? disableSystemNotice(hit.key, 'guest-notice-delete') : false;
+  res.json({ ok: true, systemDisabled });
 });
 
 // ---- 游客公告条：公开读取（不需要登录，首页顶部横幅的数据源） ----
