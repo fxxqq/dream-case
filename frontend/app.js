@@ -18914,21 +18914,25 @@ function watchapaySectionHtml() {
   if (!ready) {
     actionHtml = '<p class="wpay-tip">先在上面选一件自己的作品、一个网页端位置（详情页 / 榜单 / 首页第一格）和曝光次数，就能用余额直接投放。</p>';
   } else if (views > balance) {
-    actionHtml = purchase && purchase.url
-      ? `<p class="wpay-tip">余额还差 ${views - balance} 次，先去买曝光次数：</p>
-         <div class="wpay-buy">
-           <a class="btn-primary wpay-buy-link" href="${escapeHtml(purchase.url)}" target="_blank" rel="noopener noreferrer">去支付宝购买 →</a>
-           ${purchase.qrCodeUrl ? `<img class="wpay-qr" src="${escapeHtml(purchase.qrCodeUrl)}" alt="购买二维码" />` : ''}
-         </div>`
-      : '<p class="wpay-tip">余额不够，请稍后再试。</p>';
+    actionHtml = `<p class="wpay-tip">余额还差 ${views - balance} 次，买完就能投放。</p>`;
   } else {
     actionHtml = `<button type="button" class="btn-primary wpay-go" id="watchaGo">用余额投放 ${views} 次曝光</button>`;
   }
+  // 购买入口始终展示，不再拿「余额不足」当显示门槛：余额够的人也能随时加购。
+  // 描边按钮区别于「投放」主按钮，两个动作一眼分得清。
+  const buyHtml = purchase && purchase.url
+    ? `<div class="wpay-recharge">
+         <span class="wpay-recharge-label">加购曝光次数</span>
+         <a class="wpay-buy-link" href="${escapeHtml(purchase.url)}" target="_blank" rel="noopener noreferrer">去支付宝购买 →</a>
+         ${purchase.qrCodeUrl ? `<img class="wpay-qr" src="${escapeHtml(purchase.qrCodeUrl)}" alt="购买二维码" />` : ''}
+       </div>`
+    : '';
   return `
     <div class="redeem-sec wpay-sec">
       <div class="redeem-sec-head">现金买曝光 <span class="xp-badge">内测</span><span>支付宝付款 · 次数余额累计，不是灯火</span></div>
       <p class="wpay-bal">曝光次数余额 <b>${balance}</b> 次${views > 0 ? ` · 本次需要 <b>${views}</b> 次` : ''}</p>
       ${actionHtml}
+      ${buyHtml}
       <p class="wpay-note">买到的次数先存在账上，投放时按所选次数核销；展示、防刷和撤下退回跟灯火投放是同一套规则。</p>
     </div>`;
 }
