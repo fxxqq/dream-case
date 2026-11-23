@@ -40,7 +40,10 @@ SITE_URL="${SITE_URL:-}"   # 保留给需要自定义探针的场合；留空即
 PM2_APP="${PM2_APP:-ai-works}"
 KEEP_BAK="${KEEP_BAK:-10}"
 
-DEFAULT_FILES=(server.js sms-auth.js captcha.js frontend/app.js frontend/style.css frontend/index.html frontend/admin.html frontend/icons.js frontend/captcha.js)
+DEFAULT_FILES=(server.js sms-auth.js captcha.js frontend/app.js frontend/style.css frontend/index.html frontend/admin.html frontend/icons.js frontend/captcha.js frontend/paint.html)
+# paint.html（2026-11-23 追加）：落笔成画独立页。曾是 scp 单传的新文件，桌面发版带不上，
+# 站长连发几轮都「感觉少东西」——现在线上已有同路径文件，patch 机制能正常逐 hunk 跟踪，收编进清单。
+# fonts/MaShanZheng-Regular.ttf 仍不收：5.86MB 二进制基本不变，改动时按老规矩单独 scp。
 
 cd "$(dirname "$0")" || exit 1
 

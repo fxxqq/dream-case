@@ -929,7 +929,7 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
    伪元素挂在 .site-footer 上而不是 .footer-inner 上——「关于本站」弹窗会克隆 .footer-inner，不能带进弹窗。 */
 .site-footer {
   --fb-line: #dce0ea;
-  position: relative; padding: 30px 0 24px; margin-top: auto;
+  position: relative; padding: 52px 0 28px; margin-top: auto;
   background: #f3f3f9; color: var(--muted); font-size: 13px;
 }
 .site-footer::before {
@@ -1272,6 +1272,32 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .ai-fill-actions .btn-primary:disabled { opacity: .55; cursor: wait; }
 .ai-fill-overwrite { flex: none; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); cursor: pointer; }
 .ai-fill-status { flex: 1 1 100%; font-size: 12px; line-height: 1.55; color: var(--muted); }
+/* ---------- 让 AI 替我投稿（2026-11-23）：复用 ai-fill 的观感，配色换成暖紫 ---------- */
+.ai-feed { margin: -10px 0 16px; border: 1px solid var(--border); border-radius: 12px; background: #fdfbff; overflow: hidden; }
+.ai-feed-toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 10px 13px; border: 0; background: none; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--primary); text-align: left;
+}
+.ai-feed-toggle:hover { background: #f2f2fd; }
+.ai-feed-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.ai-feed.is-open .ai-fill-caret { transform: rotate(180deg); }
+.ai-feed-ico { background: #7c5cff; }
+.ai-feed-body { padding: 0 13px 13px; }
+.ai-feed-body input[type="text"] {
+  display: block; width: 100%; box-sizing: border-box;
+  padding: 9px 11px; border: 1px solid var(--border); border-radius: 9px;
+  font: inherit; font-size: 13px; line-height: 1.6; color: var(--text); background: #fff;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.ai-feed-body input[type="text"]:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(124, 92, 255, .12); }
+.ai-feed-rotate {
+  flex: none; border: 0; background: none; cursor: pointer;
+  font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px;
+  padding: 7px 2px;
+}
+.ai-feed-rotate:hover { color: var(--primary); }
+.ai-feed-rotate:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .ai-fill-status.is-ok { color: #1a7f56; }
 .ai-fill-status.is-warn { color: #8a5a00; }
 .ai-fill-status.is-err { color: #b42318; }
@@ -2184,6 +2210,9 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 
 /* ---------- 匿名投稿「存到我名下」 ---------- */
 .modal-claim { max-width: 440px; }
+/* 认领暗号从 /w/<id>?claim= 进来时，详情弹窗已开着（同为 z100、DOM 更靠后），
+   确认弹窗要压在详情之上才点得到；低于 dmMask(130)/举报(140)，不挡更高层的系统弹窗 */
+#codeClaimModal { z-index: 110; }
 .claim-body { font-size: 13.5px; color: var(--text); line-height: 1.75; }
 .claim-body p { margin: 0 0 10px; color: var(--muted); }
 .claim-body ul { margin: 0 0 16px; padding-left: 18px; color: var(--text); }
@@ -5001,6 +5030,8 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid #c
 .cot-btn.is-edit:hover { background: #e5e3ff; border-color: var(--primary); }
 .cot-btn.is-promo { background: #fff7e6; border-color: #f2d693; color: #a8690b; font-weight: 600; }
 .cot-btn.is-promo:hover { background: #ffefcf; border-color: #d99a2b; color: #8f5406; }
+.cot-btn.is-share { background: #eef6ff; border-color: #bdd9f2; color: #2b6cb0; font-weight: 600; }
+.cot-btn.is-share:hover { background: #e0efff; border-color: #5a9bd4; color: #2b6cb0; }
 .cot-btn.is-quiet { color: var(--muted); }
 .cot-btn.is-quiet:hover { border-color: var(--danger); color: var(--danger); }
 /* 下架状态的卡片按钮变「上架」：绿色系，和「下架」的红 hover 区分开 */
@@ -6751,10 +6782,47 @@ a.board-row:hover:not(.is-me) { background: #f5f3ff; }
 .wpay-recharge-label { font-size: 12px; color: var(--muted); }
 .wpay-buy-link { font-size: 12px; padding: 5px 13px; border: 1px solid var(--primary); border-radius: 7px; color: var(--primary); background: #fff; text-decoration: none; }
 .wpay-buy-link:hover { background: #f1f1fd; }
+/* 购买码可点开放大：缩略图保持小尺寸，按钮暗示可点，大图走全站通用放大层 */
+.wpay-qr-btn { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 0; border: 0; background: none; cursor: zoom-in; color: var(--muted); font-size: 10.5px; }
+.wpay-qr-btn:hover { color: var(--primary); }
+.wpay-qr-btn:hover .wpay-qr { border-color: var(--primary); }
 .wpay-qr { width: 92px; height: 92px; object-fit: contain; background: #fff; border: 1px solid var(--border); border-radius: 6px; }
 .wpay-tip, .wpay-note { font-size: 12px; line-height: 1.7; color: var(--muted); margin: 0 0 8px; }
 .wpay-note { margin: 8px 0 0; }
 .wpay-go { font-size: 12px; padding: 6px 14px; }
+/* 灯火包（2026-11-23）：小程序道具直购灯火的三档卡 + 扫码弹层，暖琥珀色与图标同一色系 */
+.lp-sec { border: 1px solid #f2dfc2; background: #fffcf6; border-radius: 12px; padding: 12px 14px; }
+.lp-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin: 6px 0 10px; }
+.lp-card { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.lp-icon { width: 34px; height: 34px; flex: none; object-fit: contain; }
+.lp-name { flex: 1; min-width: 0; font-size: 12px; line-height: 1.4; color: var(--text); }
+/* 名字里带「N 灯火」，截断会把 20000 看成 2000——宁可换行也不省略 */
+.lp-name b { color: #b8791f; }
+/* 数字和「灯火」绑一块：不许从中间断成「2000 灯 / 火」 */
+.lp-name .lp-num { white-space: nowrap; }
+.lp-price { font-weight: 700; font-size: 12px; color: #b8791f; white-space: nowrap; }
+.lp-buy { flex: none; font-size: 12px; padding: 5px 12px; }
+.lp-tip { font-size: 12px; line-height: 1.7; color: var(--muted); margin: 0; }
+/* 扫码买弹层：生码要一两秒，骨架转圈占住码的位置，图到了才亮起来，别让人对着一张破图等 */
+.lampbuy .lpbuy-qrwrap { position: relative; width: 240px; max-width: 72vw; margin: 0 auto 10px; }
+.lampbuy .lpbuy-qr { width: 100%; max-width: 100%; height: auto; display: block; background: #fff; opacity: 0; transition: opacity .2s; }
+.lampbuy .lpbuy-qrwrap.is-ready .lpbuy-qr { opacity: 1; }
+.lampbuy .lpbuy-skel {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  border-radius: 8px; background: #fff;
+  font-size: 12px; color: var(--muted); transition: opacity .2s;
+}
+.lampbuy .lpbuy-skel .spin {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 3px solid #e4e0fa; border-top-color: var(--primary);
+  animation: wxqr-spin .8s linear infinite;
+}
+.lampbuy .lpbuy-qrwrap.is-ready .lpbuy-skel { opacity: 0; pointer-events: none; }
+/* 失败态：骨架和空图一起收掉，只留状态行一句话说清 */
+.lampbuy .lpbuy-qrwrap.is-err .lpbuy-skel { display: none; }
+.lampbuy .lpbuy-qrwrap.is-err .lpbuy-qr { display: none; }
+.lampbuy .lpbuy-status { font-size: 13px; color: var(--text); margin: 0 0 8px; }
 .redeem-empty {
   padding: 16px 14px; font-size: 12.5px; line-height: 1.7; color: var(--muted);
   background: #fafafd; border: 1px dashed #e4e4f2; border-radius: 10px;
@@ -11732,7 +11800,8 @@ html.dm-quiet *::after {
    为什么不放在窗口里：形象涨到 12 个，264px 宽的小格看不清脸、更看不出动效，
    所以搬去独立页 /mascots，这里只保留入口 + 当前形象名。
    样式跟上面三颗浮标对齐（同一套 .bot-panel > button 观感），只是多一个右侧名字。 */
-.bot-panel > a.skin-fab em {
+.bot-panel > a.skin-fab em,
+.bot-panel > button.skin-fab em {
   margin-left: auto; font-style: normal; font-size: 12px;
   color: var(--muted); max-width: 96px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -14018,15 +14087,15 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
         2026-11-22 四改：大 hero 面板压成一行工具条，列表区整体上移）===== */
 .cr-hd { padding: 14px 0 18px; }
 
-/* 工具条：标题/副标在左，排序胶囊 + 搜索在右，一行放下；放不下按需折行 */
+/* 工具条：标题 + 排序胶囊 + 搜索都在左，右边只留一句副标话；放不下按需折行 */
 .cr-bar { display: flex; align-items: center; gap: 12px 18px; flex-wrap: wrap; }
-.cr-bar-title { display: flex; align-items: baseline; gap: 10px; flex: 1 1 auto; min-width: 0; }
+.cr-bar-title { display: flex; align-items: baseline; gap: 10px; flex: 0 0 auto; min-width: 0; }
 .cr-hd h2 {
   font-size: 17px; font-weight: 700; letter-spacing: .3px; white-space: nowrap;
   display: flex; align-items: center; gap: 7px;
 }
 .cr-hd h2 .ico { width: 18px; height: 18px; color: var(--primary); }
-.cr-sub { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cr-sub { margin-left: auto; font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
 /* 排序胶囊 + 搜索：与标题同一行；手机上胶囊均分、搜索框占满 */
 .cr-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -14205,7 +14274,7 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
   .cr-hd { padding: 10px 0 14px; }
   .cr-bar { gap: 10px; }
   .cr-bar-title { flex-direction: column; align-items: flex-start; gap: 2px; flex: 1 1 100%; }
-  .cr-sub { white-space: normal; }
+  .cr-sub { white-space: normal; margin-left: 0; flex: 1 1 100%; }
   .cr-tools { flex: 1 1 100%; gap: 9px; }
   .cr-pills { width: 100%; justify-content: space-between; }
   /* 窄屏藏掉胶囊图标：四个 tab 全都单行站住，GitHub Star 不再折成两行 */
@@ -14612,5 +14681,85 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
   .modal-compare { max-width: none; }
   .cmp-table { min-width: 520px; }
   .disc-m-remember { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+}
+
+/* ---------- 落笔成画（2026-11-23）----------
+   右上角胶囊 / 小住客面板共用 .paint-open；点开时一张宣纸（#f0e8d6）从 header 底下滑出铺满。
+   z-index 92：盖过底栏（80）/回顶按钮（89）/右下浮标（90），让位给发布菜单（95）与各弹窗（90+/9999）。
+   header 不动、保持可见可点——视觉上画是从 header 底下「长」出来的，不是又开了一页。
+   默认零加载：#paintFrame 平时不带 src，第一次点开才灌 /paint（app.js），收起时卸掉。 */
+.paint-layer {
+  position: fixed; inset: 0; z-index: 92;
+  overflow: hidden;                 /* 收起时把往上滑走的纸裁掉 */
+  visibility: hidden; pointer-events: none;
+  transition: visibility 0s .45s;   /* 滑完再隐藏，收起动画全程可见 */
+}
+.paint-layer.on {
+  visibility: visible; pointer-events: auto;
+  transition: visibility 0s;
+}
+.paint-sheet {
+  position: absolute; left: 0; right: 0; top: 60px; bottom: 0;   /* 60px = header 高 */
+  background: #f0e8d6;              /* 宣纸底色，iframe 加载 / 字体还没就位时先垫着 */
+  transform: translateY(-104%);
+  transition: transform .45s cubic-bezier(.32, .72, .35, 1);
+  box-shadow: 0 -8px 30px rgba(27, 26, 24, .12);
+}
+.paint-layer.on .paint-sheet { transform: translateY(0); }
+.paint-sheet iframe { display: block; width: 100%; height: 100%; border: 0; }
+/* 收笔：悬在纸面右上角，墨色小胶囊；Esc 在 /paint 里面是「换纸」，收起只认这颗 + 再点一次入口。
+   摘壁纸与收笔并排（.paint-actions 定位），设了壁纸才露出来。 */
+.paint-actions {
+  position: absolute; top: 12px; right: 16px; z-index: 5;
+  display: flex; align-items: center; gap: 8px;
+}
+.paint-wall, .paint-unwall, .paint-close {
+  border: 0; border-radius: 999px; padding: 7px 16px;
+  background: rgba(27, 26, 24, .07); color: rgba(27, 26, 24, .6);
+  font: 13px/1 "Kaiti SC", "STKaiti", "KaiTi", "楷体", serif;
+  cursor: pointer; transition: background .2s, color .2s;
+}
+.paint-wall:hover, .paint-unwall:hover, .paint-close:hover { background: rgba(27, 26, 24, .13); color: #1b1a18; }
+.paint-close { position: static; }
+/* 壁纸入口：首页右上角一颗常驻小胶囊（2026-11-23，站长定：header 导航里不放）。
+   fixed 钉在 header 下缘，z 85 在纸面层（92）之下——纸一开就被盖住，不抢戏 */
+.paint-entry {
+  position: fixed; top: 72px; right: 20px; z-index: 85;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border: 1px solid rgba(27, 26, 24, .14); border-radius: 999px;
+  background: rgba(255, 255, 255, .72); backdrop-filter: blur(6px);
+  color: #4b4237; font-size: 13px; font-weight: 500; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(27, 26, 24, .1);
+  transition: transform .15s, background .15s, box-shadow .15s;
+}
+.paint-entry:hover { transform: translateY(-1px); background: #fff; box-shadow: 0 6px 18px rgba(27, 26, 24, .16); }
+.paint-entry .ico { width: 16px; height: 16px; color: #7a6a52; }
+.paint-entry .ico svg { width: 16px; height: 16px; stroke-width: 2.2; }
+@media (max-width: 640px) {
+  .paint-entry { display: none; }   /* 手机入口走小住客面板 */
+}
+/* 壁纸层：纸面里「设为壁纸」后画铺在这（app.js 存 localStorage，回访还在）。
+   z-index:-1 钉在整页内容底下 + pointer-events:none——纯背景，绝不挡任何点击；
+   body 的底色已经传播到画布根上，负 z 层正好浮在它上面、所有内容之下。
+   画上后 aurora 光斑淡出（首屏本来就是它的舞台），卡片白底自动盖住保证正文可读 */
+#paintWp {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-size: cover; background-position: center;
+}
+body.paint-wp .aurora { opacity: 0; transition: opacity .8s; }
+/* 壁纸开着时，头部也融入画里（2026-11-23 站长：既然是壁纸，头部也弄成这样）：
+   白卡底换成宣纸色薄纱，画能透过来。故意不用 backdrop-filter——头部是吸顶的，
+   滚动内容会不停从它底下过，实时模糊是常驻合成开销（底栏当年也是为这个拆的） */
+body.paint-wp .site-header {
+  background: rgba(240, 232, 214, .68);
+  border-bottom-color: rgba(27, 26, 24, .12);
+}
+/* 页脚同一层薄纱口径：壁纸上下的「框」都融进画里，只剩中间内容区卡片自己浮着 */
+body.paint-wp .site-footer {
+  background: rgba(240, 232, 214, .68);
+}
+/* 手机端 header 整个移掉（height:0），纸直接从屏幕顶上滑下来铺满 */
+@media (max-width: 640px) {
+  .paint-sheet { top: 0; }
 }
 

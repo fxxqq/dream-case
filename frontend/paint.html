@@ -1,0 +1,2324 @@
+<!doctype html>
+<!-- 落笔成画：键入文字，墨自成景。接入自 https://github.com/ns2250225/ink （MIT License，
+     字体 Ma Shan Zheng 为 SIL OFL 开源授权）。除本注释与 noindex 外未改任何逻辑。 -->
+<!-- 独立静态页（与 /mascots /musicbox 同一路数）：不接 SPA、不进 sitemap，页面自带 noindex。 -->
+<!-- 2026-11-23 站长改（均为交互不改画笔逻辑）：
+     ① 去掉 #pen 输入框——不需要打字，直接点字；题诗按钮和 ?t= 参数仍走 typeText。
+     ② chips 从 27 个字改成字库全集：遍历 M（def 注册的一字一景映射）去重后全部列出，
+        引擎认得多少字就上多少字，以后 def 加字 chips 自动跟上。chips 区可滚动。
+     ③ 「设为壁纸」：按钮在父页纸面右上角（app.js），本页只听 dm-paint-wall-req 指令——合成当前画
+        → 缩到 ≤1600 宽 → JPEG → postMessage 回父页（app.js 存 localStorage 铺全站背景）。 -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>落笔成画</title>
+<meta name="robots" content="noindex">
+<style>
+@font-face{
+  font-family:"Mo Brush";
+  src:local("Ma Shan Zheng"),local("MaShanZheng-Regular"),url("fonts/MaShanZheng-Regular.ttf") format("truetype");
+  font-display:swap;
+}
+:root{
+  --paper:#f0e8d6; --ink:#1b1a18; --red:#b22c22;
+  --brush:"Mo Brush","Xingkai SC","STXingkai","华文行楷","Kaiti SC","STKaiti","KaiTi","楷体",serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var(--ink);-webkit-tap-highlight-color:transparent}
+#stage{position:fixed;inset:0;touch-action:none;cursor:crosshair}
+#stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;transition:opacity .85s ease}
+#far,#mid,#near,#text{mix-blend-mode:multiply}
+#stage.fade canvas:not(#paper){opacity:0}
+
+#intro{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding-bottom:14vh;pointer-events:none;transition:opacity 1.6s ease;z-index:5;text-align:center}
+#intro.gone{opacity:0}
+#intro h1{font:400 clamp(60px,12vw,160px)/1 var(--brush);color:rgba(27,26,24,.13);margin:0;letter-spacing:.1em;padding-left:.1em}
+#intro p{font:clamp(15px,1.7vw,21px)/1.6 var(--brush);color:rgba(27,26,24,.46);letter-spacing:.32em;margin:26px 0 0;padding-left:.32em}
+#intro p+p{margin-top:6px;color:rgba(27,26,24,.3);letter-spacing:.2em}
+
+#tools{position:fixed;left:max(22px,3vw);top:max(16px,2.2vh);display:flex;gap:6px;z-index:10}
+#tools button,#chips button{font-family:var(--brush);background:none;border:0;cursor:pointer;color:rgba(27,26,24,.5);
+  transition:color .25s,transform .25s;border-radius:4px}
+#tools button{font-size:20px;padding:6px 10px;letter-spacing:.1em}
+#tools button:hover,#chips button:hover{color:var(--ink)}
+#tools button:hover{transform:translateY(-1px)}
+#tools button:focus-visible,#chips button:focus-visible{outline:1.5px solid var(--red);outline-offset:1px}
+
+#ui{position:fixed;left:0;right:0;bottom:max(16px,env(safe-area-inset-bottom));display:flex;flex-direction:column;
+  align-items:center;gap:8px;z-index:10;pointer-events:none}
+#ui::before{content:"";position:absolute;left:0;right:0;bottom:calc(-1 * max(16px,env(safe-area-inset-bottom)));height:150px;z-index:-1;
+  background:linear-gradient(to top,rgba(240,232,214,.9),rgba(240,232,214,.6) 45%,rgba(240,232,214,0))}
+#ui>*{pointer-events:auto}
+#chips{display:flex;flex-wrap:wrap;justify-content:center;align-content:flex-start;max-width:min(1100px,96vw);max-height:min(20vh,180px);overflow-y:auto;
+  padding:0 10px;scrollbar-width:thin;scrollbar-color:rgba(27,26,24,.22) transparent;-webkit-overflow-scrolling:touch}
+#chips::-webkit-scrollbar{width:4px}
+#chips::-webkit-scrollbar-thumb{background:rgba(27,26,24,.22);border-radius:2px}
+#chips button{font-size:18px;padding:3px 6px}
+#chips button:hover{transform:translateY(-2px) scale(1.3)}
+@media (max-width:560px){#chips button{font-size:17px;padding:3px 5px}#tools button{font-size:18px;padding:6px 7px}}
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="paper"></canvas>
+  <canvas id="far"></canvas>
+  <canvas id="mid"></canvas>
+  <canvas id="near"></canvas>
+  <canvas id="live"></canvas>
+  <canvas id="text"></canvas>
+</div>
+
+<div id="intro">
+  <h1>落笔成画</h1>
+  <p>点一个字，墨自成景</p>
+  <p>山 · 水 · 月 · 舟 · 竹 · 梅 · 雪 …… 字都在底下</p>
+</div>
+
+<div id="tools">
+  <button id="btn-new" title="清空画面（Esc）">换纸</button>
+  <button id="btn-poem" title="自动题一句古诗">题诗</button>
+  <button id="btn-save" title="保存为图片">存画</button>
+</div>
+
+<div id="ui">
+  <div id="chips" aria-label="点选一字入画"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const {cos, sin, abs, min, max, pow, floor, ceil, round, hypot, atan2, PI} = Math;
+const TAU = PI * 2;
+const rand = (a = 1, b) => b === undefined ? Math.random() * a : a + Math.random() * (b - a);
+const randi = (a, b) => floor(rand(a, b + 1));
+const pick = a => a[floor(Math.random() * a.length)];
+const chance = p => Math.random() < p;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const ease = t => 1 - pow(1 - t, 3);
+const NT = new Float32Array(1024); for (let i = 0; i < 1024; i++) NT[i] = Math.random();
+const n1 = x => { const i = floor(x), f = x - i, u = f * f * (3 - 2 * f); return NT[i & 1023] * (1 - u) + NT[(i + 1) & 1023] * u; };
+const fbm = (x, o = 3) => { let s = 0, a = .5, n = 0; for (let i = 0; i < o; i++) { s += a * n1(x); n += a; x = x * 2.03 + 17.1; a *= .5; } return s / n; };
+const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+
+const INK = [26, 24, 22], PALE = [58, 72, 84], GREEN = [42, 62, 50], RED = [186, 44, 34],
+      PINK = [222, 124, 136], OCHRE = [198, 146, 38], PAPER = [240, 232, 214];
+const FONT = '"Mo Brush","Xingkai SC","STXingkai","华文行楷","Kaiti SC","STKaiti","KaiTi","楷体",serif';
+const Q = new URLSearchParams(location.search);
+const FAST = Q.has('fast');
+const CALM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const cv = {}, cx = {};
+for (const k of ['paper', 'far', 'mid', 'near', 'live', 'text']) { cv[k] = $('#' + k); cx[k] = cv[k].getContext('2d'); }
+const stage = $('#stage'), intro = $('#intro');
+
+/* ───────────── 场景状态 ───────────── */
+const S = { W: 0, H: 0, dpr: 1, u: 1, horizon: 0, seed: Math.random() };
+function resetState() {
+  Object.assign(S, {
+    nMount: 0, mounts: [], bank: { L: { used: 0, painted: false }, R: { used: 0, painted: false } }, bseed: rand(100),
+    sun: null, moon: null, water: 0, ground: 0, snowSky: false, rainSky: false,
+    birds: [], fish: [], boats: [], strands: [], petals: [], emitters: [], ripples: [], shimmer: [], puffs: [],
+    stars: [], lights: [], gusts: [], flies: [], drops: [], flakes: [], flour: [],
+    dragons: [], bolts: [], meteors: [], sparks: [], lanterns: [], kites: [], dflies: [], smokes: [], falls: [], flags: [], frogs: [], chims: [],
+    bow: null, vines: 0, dunes: 0,
+    rainEnd: 0, snowEnd: 0, leafEnd: 0, windEnd: 0, windStart: 0, windDir: 1,
+    insc: [], idx: 0, lastFig: -99, lastFigBoat: null, lastFigPos: null,
+    lastType: 0, sealOn: false, sealT: 0, textUntil: 0, textFinal: true,
+  });
+  resetSky();
+}
+function resetSky() { S.sky = new Float32Array(ceil(S.W / 4) + 2).fill(S.H * 2); S.skyP = null; }
+const skyAt = x => S.sky[clamp(round(x / 4), 0, S.sky.length - 1)];
+function lowerSky(ridge) {
+  for (let i = 0; i < ridge.length - 1; i++) {
+    const a = ridge[i], b = ridge[i + 1];
+    for (let k = ceil(a[0] / 4); k <= floor(b[0] / 4); k++) {
+      if (k < 0 || k >= S.sky.length) continue;
+      const y = lerp(a[1], b[1], (k * 4 - a[0]) / ((b[0] - a[0]) || 1));
+      if (y < S.sky[k]) S.sky[k] = y;
+    }
+  }
+  S.skyP = null;
+}
+function skyClip(g) {
+  if (!S.skyP) {
+    const p = new Path2D(); p.moveTo(-20, -20); p.lineTo(-20, min(S.sky[0], S.H + 20));
+    for (let k = 0; k < S.sky.length; k++) p.lineTo(k * 4, min(S.sky[k], S.H + 20));
+    p.lineTo(S.W + 20, min(S.sky[S.sky.length - 1], S.H + 20)); p.lineTo(S.W + 20, -20); p.closePath();
+    S.skyP = p;
+  }
+  g.clip(S.skyP);
+}
+
+/* ───────────── 宣纸 ───────────── */
+function drawPaper() {
+  const g = cx.paper, { W, H } = S;
+  g.fillStyle = rgba(PAPER, 1); g.fillRect(0, 0, W, H);
+  const t = document.createElement('canvas'); t.width = t.height = 256;
+  const tg = t.getContext('2d'), id = tg.createImageData(256, 256);
+  for (let i = 0; i < id.data.length; i += 4) {
+    const v = Math.random() < .5 ? 80 : 255;
+    id.data[i] = v; id.data[i + 1] = v * .96; id.data[i + 2] = v * .88; id.data[i + 3] = Math.random() * 15;
+  }
+  tg.putImageData(id, 0, 0);
+  g.fillStyle = g.createPattern(t, 'repeat'); g.fillRect(0, 0, W, H);
+  for (let i = 0; i < 16; i++) {
+    const x = rand(W), y = rand(H), r = rand(140, 460);
+    const gr = g.createRadialGradient(x, y, 0, x, y, r), c = chance(.5) ? '150,118,66' : '255,252,240';
+    gr.addColorStop(0, `rgba(${c},${rand(.03, .075)})`); gr.addColorStop(1, `rgba(${c},0)`);
+    g.fillStyle = gr; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+  }
+  const nf = W * H / 800;
+  for (let i = 0; i < nf; i++) {
+    const x = rand(W), y = rand(H), a = rand(TAU), l = rand(4, 24);
+    g.strokeStyle = chance(.6) ? `rgba(255,255,255,${rand(.1, .34)})` : `rgba(120,94,58,${rand(.04, .13)})`;
+    g.lineWidth = rand(.3, .9); g.beginPath(); g.moveTo(x, y);
+    g.quadraticCurveTo(x + cos(a) * l * .5 + rand(-3, 3), y + sin(a) * l * .5 + rand(-3, 3), x + cos(a) * l, y + sin(a) * l); g.stroke();
+  }
+  const vg = g.createRadialGradient(W / 2, H / 2, min(W, H) * .36, W / 2, H / 2, hypot(W, H) * .62);
+  vg.addColorStop(0, 'rgba(120,90,50,0)'); vg.addColorStop(1, 'rgba(104,76,40,.24)');
+  g.fillStyle = vg; g.fillRect(0, 0, W, H);
+}
+
+function resize(first) {
+  const W = innerWidth, H = innerHeight, dpr = min(2, devicePixelRatio || 1);
+  const sx = W / (S.W || W), sy = H / (S.H || H), keep = {};
+  if (!first) for (const k of ['far', 'mid', 'near']) {
+    const t = document.createElement('canvas'); t.width = cv[k].width; t.height = cv[k].height;
+    t.getContext('2d').drawImage(cv[k], 0, 0); keep[k] = t;
+  }
+  S.W = W; S.H = H; S.dpr = dpr; S.u = clamp(min(W, H) / 860, .5, 1.3); S.horizon = H * .7;
+  S.floor = max(H * .78, min(H - 60, $('#ui').getBoundingClientRect().top - 14));   // 水面元素的下界：输入区上沿
+  for (const k in cv) { cv[k].width = round(W * dpr); cv[k].height = round(H * dpr); cx[k].setTransform(dpr, 0, 0, dpr, 0, 0); }
+  drawPaper();
+  if (first) return;
+  for (const k in keep) cx[k].drawImage(keep[k], 0, 0, W, H);
+  for (const L of [S.birds, S.fish, S.boats, S.strands, S.petals, S.emitters, S.ripples, S.shimmer, S.puffs, S.stars, S.lights, S.flies,
+    S.dragons, S.lanterns, S.kites, S.dflies, S.smokes, S.falls, S.flags, S.frogs, S.chims])
+    for (const o of L) { if (o.x !== undefined) { o.x *= sx; o.y *= sy; } if (o.by !== undefined) o.by *= sy; if (o.hx !== undefined) { o.hx *= sx; o.hy *= sy; } }
+  for (const m of S.mounts) for (const p of m.ridge) { p[0] *= sx; p[1] *= sy; }
+  for (const c of [S.sun, S.moon]) if (c) { c.x *= sx; c.y *= sy; }
+  resetSky(); for (const m of S.mounts) if (m.kind !== 'far') lowerSky(m.ridge);
+  S.textUntil = performance.now() + 100; S.textFinal = false;
+}
+
+/* ───────────── 任务调度（生成器即笔序） ───────────── */
+let tasks = [], TK = 0;   // TK：已走过的笔序帧数，用来等前一笔墨干
+const run = g => (tasks.push(g), g);
+function tick() {
+  TK++;
+  tasks = tasks.filter(t => { try { return !t.next().done; } catch (e) { console.error(e); return false; } });
+}
+function* par(...gs) { gs = gs.filter(Boolean); while (gs.length) { gs = gs.filter(g => !g.next().done); if (gs.length) yield; } }
+function* seq(...gs) { for (const g of gs) if (g) yield* g; }
+function* wait(n) { while (n-- > 0) yield; }
+function* pool(list, k = 3) {
+  const act = []; let i = 0;
+  for (;;) {
+    while (act.length < k && i < list.length) act.push(list[i++]);
+    for (let j = act.length - 1; j >= 0; j--) if (act[j].next().done) act.splice(j, 1);
+    if (!act.length && i >= list.length) return;
+    yield;
+  }
+}
+
+/* ───────────── 笔墨基元 ───────────── */
+function smooth(pts, step) {
+  const out = [], n = pts.length;
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    const m = max(1, ceil(hypot(p2[0] - p1[0], p2[1] - p1[1]) / step));
+    for (let k = 0; k < m; k++) {
+      const t = k / m, t2 = t * t, t3 = t2 * t;
+      out.push([
+        .5 * (2 * p1[0] + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+        .5 * (2 * p1[1] + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)]);
+    }
+  }
+  out.push([pts[n - 1][0], pts[n - 1][1]]);
+  return out;
+}
+function resample(pts, step) {
+  const out = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1], m = max(1, ceil(hypot(b[0] - a[0], b[1] - a[1]) / step));
+    for (let k = 0; k < m; k++) out.push([lerp(a[0], b[0], k / m), lerp(a[1], b[1], k / m)]);
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+/* 毛笔：由多根“笔毫”组成，干处留飞白 */
+function* brush(g, pts, o = {}) {
+  const w = o.w ?? 5, ink = o.ink ?? .8, dry = o.dry ?? .25, color = o.color || INK, speed = o.speed ?? 10,
+        tin = o.tin ?? .12, tout = o.tout ?? .3, step = o.step ?? 2;
+  const path = o.linear ? resample(pts, step) : smooth(pts, step), n = path.length;
+  if (n < 2) return;
+  const K = clamp(round(w / 1.4), 1, 22), seed = rand(1000), br = [];
+  for (let j = 0; j < K; j++) {
+    const f = K === 1 ? 0 : j / (K - 1) - .5;
+    br.push({ off: f * (1 + rand(-.06, .06)), a: ink * (K === 1 ? 1 : rand(.5, 1)), seed: rand(1000), edge: abs(f) * 2 });
+  }
+  const nx = new Float32Array(n), ny = new Float32Array(n), ww = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = path[max(0, i - 1)], b = path[min(n - 1, i + 1)], dx = b[0] - a[0], dy = b[1] - a[1], l = hypot(dx, dy) || 1;
+    nx[i] = -dy / l; ny[i] = dx / l;
+    const t = i / (n - 1); let p = o.press ? o.press(t) : 1;
+    if (tin > 0) p *= min(1, .25 + .75 * t / tin);
+    if (tout > 0) p *= min(1, .08 + .92 * (1 - t) / tout);
+    ww[i] = w * p * (.8 + .4 * n1(seed + i * step * .03));
+  }
+  const lw = max(.7, w / K * 1.6), kf = min(1, .3 + K / 9);   // 细笔少断，粗笔多飞白
+  let i = 0;
+  while (i < n - 1) {
+    const e = min(n - 1, i + speed);
+    g.save(); if (o.clip) skyClip(g); g.lineCap = 'butt'; g.lineJoin = 'round';
+    if (o.erase) g.globalCompositeOperation = 'destination-out';
+    for (const b of br) {
+      g.beginPath(); let down = false, any = false;
+      for (let k = i; k <= e; k++) {
+        const d = dry * kf * (.4 + .9 * k / (n - 1)) * (1 + b.edge * .8);
+        if (n1(b.seed + k * step * .045) > d) {
+          const x = path[k][0] + nx[k] * b.off * ww[k], y = path[k][1] + ny[k] * b.off * ww[k];
+          if (down) g.lineTo(x, y); else g.moveTo(x, y);
+          down = true; any = true;
+        } else down = false;
+      }
+      if (any) { g.strokeStyle = rgba(color, b.a); g.lineWidth = lw * max(.35, ww[(i + e) >> 1] / w); g.stroke(); }
+    }
+    g.restore(); i = e; yield;
+  }
+}
+function closed(g, pts) {
+  const n = pts.length; g.beginPath();
+  g.moveTo((pts[n - 1][0] + pts[0][0]) / 2, (pts[n - 1][1] + pts[0][1]) / 2);
+  for (let i = 0; i < n; i++) { const a = pts[i], b = pts[(i + 1) % n]; g.quadraticCurveTo(a[0], a[1], (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); }
+  g.closePath();
+}
+function blob(x, y, rx, ry, n = 14, irr = .12) {
+  const sd = rand(1000), pts = [];
+  for (let i = 0; i < n; i++) { const a = i / n * TAU, r = 1 + (fbm(sd + i * .7, 2) - .5) * 2 * irr; pts.push([x + cos(a) * rx * r, y + sin(a) * ry * r]); }
+  return pts;
+}
+/* 晕染：多层抖动的淡墨叠加，边缘自然化开 */
+function* wash(g, poly, o = {}) {
+  const alpha = o.alpha ?? .4, want = o.layers ?? 14, jit = o.jit ?? 4, color = o.color || INK, per = o.per ?? 2, grow = o.grow ?? .5;
+  // 每层墨不淡于约 3%：再淡的叠加在 8 位画布上会被舍入掉
+  const layers = o.erase ? want : clamp(floor(Math.log(1 - alpha) / Math.log(.97)), 1, want), fpl = want / per / layers;
+  let mx = 0, my = 0, acc = 0; for (const p of poly) { mx += p[0]; my += p[1]; } mx /= poly.length; my /= poly.length;
+  const a = 1 - pow(1 - alpha, 1 / layers);
+  for (let L = 0; L < layers; L++) {
+    const s = lerp(grow, 1, pow((L + 1) / layers, .5));
+    g.save(); if (o.clip) skyClip(g); if (o.erase) g.globalCompositeOperation = 'destination-out';
+    closed(g, poly.map(p => [mx + (p[0] - mx) * s + rand(-jit, jit), my + (p[1] - my) * s + rand(-jit, jit)]));
+    g.fillStyle = rgba(color, a); g.fill(); g.restore();
+    acc += fpl; while (acc >= 1) { acc--; yield; }
+  }
+}
+/* 墨滴洇开：少量墨层逐圈外扩；淡墨用径向渐变，边缘化入纸中 */
+function* bloom(g, x, y, R, o = {}) {
+  const alpha = o.alpha ?? .4, color = o.color || INK, F = o.frames ?? 44, soft = o.soft ?? alpha <= .25, N = 28, sd = rand(1000), shape = [];
+  for (let i = 0; i < N; i++) shape.push(.72 + .56 * fbm(sd + i * .42, 3));
+  const D = clamp(round(alpha / .035), 3, F), a0 = 1 - pow(1 - alpha, 1 / (D * .75));
+  let acc = 0;
+  for (let j = 0; j < D; j++) {
+    const t = (j + 1) / D, r = R * pow(t, .5), a = a0 * (1 - t * .55), pts = [];
+    for (let i = 0; i < N; i++) { const an = i / N * TAU, rr = r * shape[i] * (1 + rand(-.035, .035)); pts.push([x + cos(an) * rr, y + sin(an) * rr]); }
+    g.save(); if (o.clip) skyClip(g);
+    closed(g, pts);
+    if (soft) {
+      const gr = g.createRadialGradient(x, y, 0, x, y, r * 1.05);
+      gr.addColorStop(0, rgba(color, a * 1.25)); gr.addColorStop(.5, rgba(color, a)); gr.addColorStop(1, rgba(color, 0));
+      g.fillStyle = gr;
+    } else g.fillStyle = rgba(color, a);
+    g.fill();
+    if (j === D - 1 && o.rim) { g.strokeStyle = rgba(color, alpha * .25); g.lineWidth = 1; g.stroke(); }
+    g.restore();
+    acc += F / D; while (acc >= 1) { acc--; yield; }
+  }
+}
+function* splatter(g, x, y, R, n, color = INK) {
+  for (let i = 0; i < n; i++) {
+    const an = rand(TAU), d = R * pow(rand(), .6), r = max(.6, (1 - d / R) * rand(1, 4) * S.u + rand(.3, 1.1));
+    g.fillStyle = rgba(color, rand(.4, .85)); g.beginPath();
+    g.ellipse(x + cos(an) * d, y + sin(an) * d, r, r * rand(.6, 1), an, 0, TAU); g.fill();
+    if (i % 4 === 3) yield;
+  }
+}
+/* 沿山脊向下渗墨：三遍积墨，每遍的墨锋自山脊向下走；上浓下淡，山脚留白成雾 */
+function* seepPass(g, ridge, o, a, yEnd, frames, top) {
+  const L = ridge.length, sd = rand(1000), D = (o.base - top) * 1.5 + 24, color = o.color || INK;
+  const gr = g.createLinearGradient(0, top, 0, yEnd);
+  gr.addColorStop(0, rgba(color, a)); gr.addColorStop(.35, rgba(color, a * .8)); gr.addColorStop(.75, rgba(color, a * .3)); gr.addColorStop(1, rgba(color, 0));
+  const nz = ridge.map(p => .7 + .6 * fbm(sd + p[0] * .008, 3));
+  let prev = 0;
+  for (let f = 1; f <= frames; f++) {
+    const t = 1 - pow(1 - f / frames, 1.8);
+    g.save(); if (o.clip) skyClip(g);
+    // 只画两道墨锋之间的新区域：每个像素只着墨一次，不靠极淡的叠加
+    g.beginPath();
+    for (let k = 0; k < L; k++) { const yy = ridge[k][1] + D * prev * nz[k] - (prev ? 0 : 3); k ? g.lineTo(ridge[k][0], yy) : g.moveTo(ridge[k][0], yy); }
+    for (let k = L - 1; k >= 0; k--) g.lineTo(ridge[k][0], ridge[k][1] + D * t * nz[k]);
+    g.closePath(); g.clip();
+    g.beginPath(); g.moveTo(ridge[0][0], ridge[0][1]);
+    for (let k = 1; k < L; k++) g.lineTo(ridge[k][0], ridge[k][1]);
+    g.lineTo(ridge[L - 1][0], o.base + 6); g.lineTo(ridge[0][0], o.base + 6); g.closePath();
+    g.fillStyle = gr; g.fill(); g.restore();
+    prev = t; yield;
+  }
+}
+function* seep(g, ridge, o) {
+  const L = ridge.length, color = o.color || INK;
+  if (o.base !== undefined) {
+    let top = Infinity; for (const p of ridge) top = min(top, p[1]);
+    const span = o.base - top, frames = max(6, round((o.layers ?? 28) * .8)), a = 1 - pow(1 - o.alpha, 1 / 3);
+    yield* par(...[.5, .78, 1].map((d, i) => seq(wait(round(i * frames * .3)), seepPass(g, ridge, o, a, top + span * d, frames, top))));
+    return;
+  }
+  const N = o.layers ?? 28, a = 1 - pow(1 - o.alpha, 1 / N), sd = rand(1000), j = 1.5;
+  for (let i = 0; i < N; i++) {
+    const fr = pow((i + 1) / N, 1.5);
+    g.save(); if (o.clip) skyClip(g);
+    g.beginPath(); g.moveTo(ridge[0][0], ridge[0][1]);
+    for (let k = 1; k < L; k++) g.lineTo(ridge[k][0] + rand(-j, j), ridge[k][1] + rand(-j, j));
+    for (let k = L - 1; k >= 0; k--) {
+      const p = ridge[k], nz = .7 + .6 * fbm(sd + p[0] * .006 + i * .21, 2);
+      g.lineTo(p[0], p[1] + (o.depth * fr * nz + 3) * (.2 + .8 * min(1, min(k, L - 1 - k) / (L * .14))));
+    }
+    g.closePath(); g.fillStyle = rgba(color, a); g.fill(); g.restore(); yield;
+  }
+}
+function* eraseBelow(g, ridge) {
+  const gr = g.createLinearGradient(ridge[0][0], 0, ridge[ridge.length - 1][0], 0);
+  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(.16, 'rgba(0,0,0,.36)'); gr.addColorStop(.84, 'rgba(0,0,0,.36)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  for (let i = 0; i < 10; i++) {
+    g.save(); g.globalCompositeOperation = 'destination-out'; g.beginPath(); g.moveTo(ridge[0][0], ridge[0][1]);
+    for (const p of ridge) g.lineTo(p[0], p[1]);
+    g.lineTo(ridge[ridge.length - 1][0], S.H + 10); g.lineTo(ridge[0][0], S.H + 10); g.closePath();
+    g.fillStyle = gr; g.fill(); g.restore(); yield;
+  }
+}
+function leaf(g, x, y, ang, len, wid, color, alpha) {
+  g.save(); g.translate(x, y); g.rotate(ang); g.beginPath(); g.moveTo(0, 0);
+  g.bezierCurveTo(len * .25, -wid, len * .6, -wid * .8, len, 0);
+  g.bezierCurveTo(len * .6, wid * .55, len * .25, wid * .7, 0, 0);
+  g.fillStyle = rgba(color, alpha); g.fill(); g.restore();
+}
+function* dots(g, ridge, n) {
+  const L = ridge.length;
+  for (let i = 0; i < n; i++) {
+    const j = randi(2, L - 3), c = randi(2, 5);
+    for (let k = 0; k < c; k++) {
+      const p = ridge[clamp(j + randi(-2, 2), 0, L - 1)];
+      g.fillStyle = rgba(INK, rand(.5, .85)); g.beginPath();
+      g.ellipse(p[0] + rand(-5, 5), p[1] + rand(-3, 5), rand(1.1, 2.6) * S.u, rand(.9, 2) * S.u, rand(TAU), 0, TAU); g.fill();
+    }
+    if (i % 3 === 2) yield;
+  }
+}
+
+/* ───────────── 山 ───────────── */
+function makeRidge(c, half, base, h, o = {}) {
+  const peaks = [{ c: rand(-.1, .1), h: 1, s: rand(.5, .7) }], np = o.peaks ?? randi(1, 3);
+  for (let i = 0; i < np; i++) peaks.push({ c: rand(.28, .72) * (i % 2 ? 1 : -1), h: rand(.4, .76), s: rand(.3, .5) });
+  const sd = rand(1000), sd2 = rand(1000), pts = [], sharp = o.sharp ?? 1.5;
+  for (let x = c - half; x <= c + half; x += 5) {
+    const u = (x - c) / half; let e = 0;
+    for (const p of peaks) { const z = abs((u - p.c) / p.s); if (z < 1) e = max(e, p.h * pow(1 - z, sharp)); }
+    e *= 1 - pow(abs(u), 4);
+    if (e < .015) continue;
+    e = e * (1 + (fbm(sd + x * .011, 4) - .5) * .7) + (n1(sd2 + x * .08) - .5) * .035 * min(1, e * 4);
+    pts.push([x, base - h * max(0, e)]);
+  }
+  return pts;
+}
+function creases(g, ridge, h, n, ink) {
+  const list = [], L = ridge.length, base = max(ridge[0][1], ridge[L - 1][1]);
+  if (L < 12) return list;
+  for (let i = 0; i < n; i++) {
+    const j = randi(4, L - 5), p = ridge[j], elev = base - p[1];
+    if (elev < h * .12) continue;
+    const sg = ridge[min(L - 1, j + 3)][1] - ridge[max(0, j - 3)][1] > 0 ? 1 : -1;
+    const x0 = p[0] + rand(-4, 4), y0 = p[1] + 3 + rand(.01, .3) * elev, len = min(rand(.08, .26) * h, p[1] + elev * .7 - y0);
+    if (len < 6) continue;
+    list.push(brush(g, [[x0, y0], [x0 + sg * len * .22, y0 + len * .5], [x0 + sg * len * .5, y0 + len]],
+      { w: rand(1.4, 3.4) * S.u, ink: ink * rand(.5, 1), dry: .55, speed: 8, tin: .1, tout: .5 }));
+  }
+  return list;
+}
+function addMountain() {
+  const { W, H } = S, k = S.nMount;
+  if (k >= 9) return [W * rand(.3, .6), H * .4];
+  S.nMount++;
+  const kind = k === 0 ? 'main' : k === 1 ? 'far' : k === 2 ? 'near' : pick(['far', 'near', 'far', 'mid']);
+  let c = W * (.1 + .8 * ((k * .618 + S.seed) % 1)), half, h, base;
+  if (kind === 'main') { c = W * rand(.36, .5); half = clamp(W * .25, min(H * .24, W * .42), H * .52); h = H * rand(.46, .52); base = H * .69; }
+  else if (kind === 'far') { half = clamp(W * rand(.2, .32), H * .22, H * .7); h = H * rand(.2, .3); base = H * rand(.56, .61); }
+  else { half = clamp(W * rand(.13, .2), min(H * .16, W * .34), H * .4); h = H * rand(.2, .33) * (kind === 'mid' ? 1.25 : 1); base = H * rand(.68, .73); }
+  h = min(h, half * 1.6);
+  const ridge = makeRidge(c, half, base, h, { sharp: kind === 'far' ? 1.25 : 1.6, peaks: kind === 'main' ? 2 : randi(1, 3) });
+  const m = { kind, ridge, c, half, h, base, born: TK }; S.mounts.push(m); run(paintMountain(m));
+  let top = ridge[0]; for (const p of ridge) if (p[1] < top[1]) top = p;
+  return [top[0], top[1] + h * .32];
+}
+function* paintMountain(m) {
+  const far = m.kind === 'far', main = m.kind === 'main', g = far ? cx.far : cx.mid, u = S.u;
+  if (far) { yield* seep(g, m.ridge, { base: m.base, alpha: rand(.24, .34), color: PALE, layers: 22, clip: true }); return; }
+  lowerSky(m.ridge); run(eraseBelow(cx.far, m.ridge));
+  yield* par(
+    seep(g, m.ridge, { base: m.base, alpha: main ? .46 : rand(.42, .54), layers: 30 }),
+    seq(wait(3), brush(g, m.ridge.slice(floor(m.ridge.length * .03), ceil(m.ridge.length * .97)), { w: (main ? 5 : 3.8) * u, ink: .74, dry: .4, speed: 16, tin: .12, tout: .16, step: 3 })));
+  // 前叠的小峰，增加层次
+  const folds = [];
+  for (let i = 0, n = main ? 2 : randi(0, 2); i < n; i++) {
+    const r = makeRidge(m.c + rand(-.3, .3) * m.half, m.half * rand(.3, .5), m.base + rand(-6, 2), m.h * rand(.32, .6), { sharp: rand(1.3, 1.9), peaks: randi(0, 1) });
+    if (r.length < 12) continue;
+    S.mounts.push({ kind: 'fold', ridge: r, base: m.base }); lowerSky(r); run(eraseBelow(cx.far, r));
+    folds.push(par(seep(g, r, { base: m.base + 6, alpha: rand(.3, .44), layers: 22 }),
+      seq(wait(3), brush(g, r.slice(floor(r.length * .18), ceil(r.length * .82)), { w: 3.2 * u, ink: .66, dry: .4, speed: 14, tin: .2, tout: .25, step: 3 })),
+      seq(wait(16), pool(creases(g, r, m.h * .5, 12, .42), 3)), seq(wait(20), dots(g, r, 8))));
+  }
+  yield* par(pool(creases(g, m.ridge, m.h, main ? 44 : 22, .44), 4), seq(wait(8), dots(g, m.ridge, main ? 22 : 12)), seq(wait(10), pool(folds, 2)));
+}
+
+/* ───────────── 水 ───────────── */
+function bankTop(side, x) {
+  const { W, H } = S;
+  if (side === 'L') return H * (.8 + .14 * pow(clamp(x / (W * .44), 0, 1), 1.7)) + (fbm(x * .01 + S.bseed, 3) - .5) * H * .035;
+  return H * (.84 + .12 * pow(clamp((W - x) / (W * .32), 0, 1), 1.7)) + (fbm(x * .01 + S.bseed + 50, 3) - .5) * H * .03;
+}
+const onBank = (x, y) => (x < S.W * .46 && y > bankTop('L', x) - 6) || (x > S.W * .68 && y > bankTop('R', x) - 6);
+function ripple(x, y, mx, a) { if (S.ripples.length < 70) S.ripples.push({ x, y, r: 1, max: mx, a }); }
+function addWater() {
+  const { W, H, u } = S, n = S.water < 4 ? 18 : 6, list = []; S.water++;
+  if (S.water === 1) run(seep(cx.far, makeRidge(W * rand(.3, .7), W * .55, S.horizon + 2, H * rand(.045, .075), { sharp: 1.1, peaks: 3 }), { base: S.horizon + 5, alpha: .22, color: PALE, layers: 16, clip: true }));
+  for (let i = 0; i < n; i++) {
+    const t = pow(rand(), 1.25), y = lerp(S.horizon + 10, S.floor, t), len = lerp(46, 230, t) * u * rand(.6, 1.4), x = rand(-40, W - len * .5);
+    if (onBank(x + len / 2, y)) continue;
+    list.push(brush(cx.mid, [[x, y], [x + len * .25, y - 1.6], [x + len * .5, y + 1.4], [x + len * .75, y - 1.2], [x + len, y + .6]],
+      { w: lerp(1, 2.5, t) * u, ink: lerp(.16, .36, t), dry: .4, speed: 14, tin: .2, tout: .4 }));
+  }
+  run(pool(list, 4));
+  if (S.shimmer.length < 30) for (let i = 0; i < 10; i++) {
+    const y = lerp(S.horizon + 14, S.floor, pow(rand(), 1.2)), x = rand(W);
+    if (!onBank(x, y)) S.shimmer.push({ x, y, len: rand(40, 150) * u, ph: rand(TAU), v: rand(.05, .22) * (chance(.5) ? 1 : -1) });
+  }
+  const ax = W * rand(.48, .62), ay = H * .83;
+  for (let i = 0; i < 3; i++) setTimeout(() => ripple(ax, ay, (50 + i * 30) * u, .4), i * 260);
+  return [ax, ay];
+}
+
+/* ───────────── 坡岸与落脚点 ───────────── */
+function bankRidge(side) {
+  const { W } = S, pts = [];
+  if (side === 'L') for (let x = -12; x <= W * .46; x += 6) pts.push([x, bankTop('L', x)]);
+  else for (let x = W * .68; x <= W + 12; x += 6) pts.push([x, bankTop('R', x)]);
+  return pts;
+}
+function* paintBank(side) {
+  const g = cx.near, u = S.u, r = bankRidge(side);
+  yield* par(seep(g, r, { depth: S.H * .13, alpha: .4, layers: 22 }),
+    seq(wait(4), brush(g, r, { w: 3.6 * u, ink: .66, dry: .45, speed: 14, step: 3, tin: .05, tout: .3 })));
+  yield* dots(g, r, 12);
+  for (let i = 0; i < 30; i++) {
+    const p = pick(r); g.strokeStyle = rgba(INK, rand(.35, .6)); g.lineWidth = rand(.7, 1.2) * u; g.beginPath();
+    for (let k = 0; k < 3; k++) { const x = p[0] + rand(-5, 5) * u; g.moveTo(x, p[1] + 2); g.lineTo(x + rand(-4, 4) * u, p[1] - rand(4, 10) * u); }
+    g.stroke(); if (i % 5 === 4) yield;
+  }
+}
+function groundSpot() {
+  const L = S.bank.L, R = S.bank.R;
+  const side = L.used < 4 ? 'L' : R.used < 3 ? 'R' : (L.used + R.used) % 2 ? 'L' : 'R', b = S.bank[side];
+  if (!b.painted) { b.painted = true; run(paintBank(side)); }
+  const slots = side === 'L' ? [.11, .23, .05, .31, .17, .27, .36] : [.9, .82, .96, .86, .77];
+  const f = slots[b.used % slots.length] + (b.used >= slots.length ? rand(-.03, .03) : 0); b.used++; S.ground++;
+  const x = S.W * f + rand(-8, 8);
+  return { x, y: bankTop(side, x) + 2, side };
+}
+const groundFull = () => S.ground >= 18;
+
+/* ───────────── 草木 ───────────── */
+function treePlan(x, y, s, maxD) {
+  const st = [], tips = [];
+  (function grow(x, y, ang, len, w, d) {
+    const bend = rand(-.3, .3), mx = x + cos(ang - bend) * len * .5, my = y + sin(ang - bend) * len * .5, ex = x + cos(ang) * len, ey = y + sin(ang) * len;
+    st.push({ pts: [[x, y], [mx, my], [ex, ey]], w, d });
+    if (d >= maxD) { tips.push([ex, ey]); return; }
+    if (d >= 2) tips.push([ex, ey]);
+    for (let i = 0, n = randi(2, 3); i < n; i++) {
+      const t = i === 0 ? 1 : rand(0, .9), bx = lerp(mx, ex, t), by = lerp(my, ey, t);
+      let a = ang + (i === 0 ? rand(-.35, .35) : (i % 2 ? 1 : -1) * rand(.5, 1));
+      if (sin(a) > -.2) a = lerp(a, -PI / 2, .5);
+      grow(bx, by, a, len * rand(.58, .76), max(1, w * .58), d + 1);
+    }
+  })(x, y, -PI / 2 + rand(-.18, .18), rand(62, 84) * s, 8.5 * s, 0);
+  return { st, tips };
+}
+function* paintTree(x, y, s, o = {}) {
+  const g = cx.near, { st, tips } = treePlan(x, y, s, o.bare ? 4 : 3);
+  yield* brush(g, st[0].pts, { w: st[0].w, ink: .8, dry: .3, tin: 0, tout: .25, speed: 5 });
+  yield* pool(st.slice(1).sort((a, b) => a.d - b.d).map(b => brush(g, b.pts, { w: b.w, ink: .78, dry: .35, tin: 0, tout: .5, speed: 6 })), 4);
+  if (o.bare) return;
+  let c = 0;
+  for (const t of tips) for (let i = 0, n = randi(7, 12); i < n; i++) {
+    const big = i < 3, col = o.colors ? pick(o.colors) : chance(.3) ? GREEN : INK;
+    g.fillStyle = rgba(col, big ? rand(.1, .22) : rand(.4, .78)); g.beginPath();
+    g.ellipse(t[0] + rand(-20, 20) * s, t[1] + rand(-13, 13) * s - 4 * s, (big ? rand(8, 13) : rand(2.6, 5)) * s, (big ? rand(5, 8) : rand(1.6, 3)) * s, rand(-.5, .5), 0, TAU);
+    g.fill(); if (++c % 8 === 0) yield;
+  }
+  if (o.emit) for (const t of tips) if (chance(.5)) S.emitters.push({ x: t[0], y: t[1], color: pick(o.colors), kind: 'leaf' });
+}
+function* paintPine(x, y, s) {
+  const g = cx.near, h = rand(150, 200) * s, lean = rand(-.25, .25);
+  const pts = [[x, y], [x + lean * h * .3 + rand(-8, 8) * s, y - h * .35], [x + lean * h * .2 + rand(-10, 10) * s, y - h * .7], [x + lean * h * .5, y - h]];
+  yield* brush(g, pts, { w: 11 * s, ink: .8, dry: .3, tin: 0, tout: .5, speed: 6 });
+  const P = smooth(pts, 4), nb = randi(4, 6), list = [], cl = [P[P.length - 1]];
+  for (let i = 0; i < nb; i++) {
+    const t = lerp(.35, .96, i / (nb - 1)), p = P[floor(t * (P.length - 1))], dir = (i % 2 ? 1 : -1), len = lerp(84, 36, t) * s * rand(.8, 1.2);
+    const mid = [p[0] + dir * len * .5, p[1] - len * rand(.1, .28)], e = [p[0] + dir * len, p[1] - len * rand(-.05, .3)];
+    list.push(brush(g, [p, mid, e], { w: 4 * s * (1 - t * .4), ink: .75, dry: .35, tin: 0, tout: .6, speed: 6 }));
+    for (let c = 0; c < 3; c++) { const f = rand(); cl.push([lerp(mid[0], e[0], f) + rand(-8, 8) * s, lerp(mid[1], e[1], f) - rand(2, 10) * s]); }
+    cl.push(e);
+  }
+  yield* pool(list, 3);
+  for (let i = 0; i < cl.length; i++) {
+    const q = cl[i], r = rand(13, 19) * s;
+    g.fillStyle = rgba(GREEN, .11); g.beginPath(); g.ellipse(q[0], q[1] - r * .25, r * 1.25, r * .75, 0, 0, TAU); g.fill();
+    for (let j = 0, nn = randi(11, 16); j < nn; j++) {
+      const a = -PI / 2 + (j / (nn - 1) - .5) * PI * .95 + rand(-.06, .06), l = r * rand(.8, 1.1);
+      g.strokeStyle = rgba(INK, rand(.5, .88)); g.lineWidth = rand(.7, 1.3) * s; g.beginPath(); g.moveTo(q[0], q[1]); g.lineTo(q[0] + cos(a) * l, q[1] + sin(a) * l); g.stroke();
+    }
+    if (i % 2) yield;
+  }
+}
+function* bambooStalk(g, x, y, lean, hgt, segs, s, pale) {
+  let px = x, py = y; const w = rand(5, 7.5) * s * (pale ? .8 : 1), ink = pale ? .26 : .55, nodes = [];
+  for (let i = 0; i < segs; i++) {
+    const L = hgt / segs * rand(.85, 1.15), ang = -PI / 2 + lean + i * lean * .25, ex = px + cos(ang) * L, ey = py + sin(ang) * L;
+    yield* brush(g, [[px, py], [ex, ey]], { w: w * (1 - i * .07), ink, dry: .22, tin: .05, tout: .06, speed: 9, color: GREEN, linear: true,
+      press: t => 1 + .3 * pow(abs(t - .5) * 2, 4) });
+    yield* brush(g, [[ex - w * .75, ey + 1.2], [ex, ey - 1.6], [ex + w * .75, ey + 1.2]], { w: 1.5 * s, ink: pale ? .4 : .85, dry: .1, tin: 0, tout: 0 });
+    nodes.push([ex, ey, ang]); px = ex + cos(ang) * 2.5 * s; py = ey + sin(ang) * 2.5 * s;
+  }
+  for (let i = 2; i < nodes.length; i++) {
+    if (!chance(.85)) continue;
+    const [nx, ny, ang] = nodes[i], dir = chance(.5) ? 1 : -1, ta = ang + dir * rand(.6, 1.1), tl = rand(28, 58) * s;
+    const ex = nx + cos(ta) * tl, ey = ny + sin(ta) * tl;
+    yield* brush(g, [[nx, ny], [ex, ey]], { w: 1.3 * s, ink: ink + .15, dry: .2, tin: 0, tout: .3, linear: true });
+    for (const [lx, ly] of [[ex, ey], [lerp(nx, ex, .55), lerp(ny, ey, .55)]]) {
+      for (let k = 0, n = randi(3, 5); k < n; k++)
+        leaf(g, lx, ly, PI / 2 + rand(-.95, .95) + dir * .3, rand(30, 52) * s, rand(4.5, 7) * s, pale ? GREEN : INK, pale ? rand(.22, .34) : rand(.68, .92));
+      yield;
+    }
+  }
+}
+function* paintBamboo(x, y, s) {
+  const n = randi(2, 4), st = [];
+  for (let i = 0; i < n; i++) {
+    const o = i - (n - 1) / 2;
+    st.push(bambooStalk(cx.near, x + o * rand(14, 24) * s + rand(-4, 4) * s, y, rand(-.14, .14) + o * .04, rand(170, 250) * s, randi(5, 7), s, i > 0 && chance(.4)));
+  }
+  yield* pool(st, 2);
+}
+function* paintPlum(x, y, s, color, side) {
+  const g = cx.near, plan = [], spots = [];
+  (function limb(x, y, ang, len, w, d) {
+    const pts = [[x, y]]; let a = ang, px = x, py = y; const segs = randi(3, 4);
+    for (let i = 0; i < segs; i++) {
+      a += rand(-.55, .55); if (sin(a) > .1) a = -a;
+      const l = len / segs * rand(.8, 1.2); px += cos(a) * l; py += sin(a) * l; pts.push([px, py]);
+      if (d > 0 || i > 0) spots.push([px + rand(-4, 4) * s, py + rand(-4, 4) * s]);
+      if (d < 2 && chance(d === 0 ? .9 : .5)) limb(px, py, a + rand(.5, 1.1) * (chance(.5) ? 1 : -1), len * rand(.5, .7), w * .55, d + 1);
+    }
+    plan.push({ pts, w, d });
+    if (d >= 1) {
+      const sa = -PI / 2 + rand(-.45, .45), sl = len * rand(.4, .6), ex = px + cos(sa) * sl, ey = py + sin(sa) * sl;
+      plan.push({ pts: [[px, py], [ex, ey]], w: max(1.2, w * .35), d: d + 1 });
+      spots.push([lerp(px, ex, .4), lerp(py, ey, .4)], [lerp(px, ex, .8), lerp(py, ey, .8)]);
+    }
+  })(x, y, -PI / 2 + (side === 'L' ? 1 : -1) * rand(.15, .6), rand(130, 180) * s, 8 * s, 0);
+  plan.sort((a, b) => a.d - b.d);
+  yield* pool(plan.map(b => brush(g, b.pts, { w: b.w, ink: .86, dry: .38, tin: 0, tout: .35, speed: 5, linear: true, step: 2 })), 3);
+  for (let i = 0; i < spots.length; i++) {
+    const [bx, by] = spots[i];
+    if (chance(.3)) { g.fillStyle = rgba(color, rand(.7, .9)); g.beginPath(); g.arc(bx, by, rand(2, 3) * s, 0, TAU); g.fill(); }
+    else {
+      const r = rand(2.7, 3.7) * s, a0 = rand(TAU);
+      for (let k = 0; k < 5; k++) { const a = a0 + k / 5 * TAU; g.fillStyle = rgba(color, rand(.6, .85)); g.beginPath(); g.arc(bx + cos(a) * r * .95, by + sin(a) * r * .95, r, 0, TAU); g.fill(); }
+      g.fillStyle = rgba(INK, .75); for (let k = 0; k < 3; k++) { g.beginPath(); g.arc(bx + rand(-1.3, 1.3) * s, by + rand(-1.3, 1.3) * s, .7 * s, 0, TAU); g.fill(); }
+      if (S.emitters.length < 40) S.emitters.push({ x: bx, y: by, color, kind: 'petal' });
+    }
+    if (i % 2) yield;
+  }
+}
+function* paintWillow(x, y, s, side) {
+  const g = cx.near, d = side === 'L' ? 1 : -1, lean = d * rand(.15, .35), h = rand(150, 200) * s;
+  const top = [x + lean * h * .6, y - h * .75];
+  yield* brush(g, [[x, y], [x + lean * h * .2, y - h * .4], top], { w: 11 * s, ink: .78, dry: .3, tin: 0, tout: .4, speed: 6 });
+  const limbs = [], roots = [];
+  for (let i = 0, n = randi(3, 4); i < n; i++) {
+    const dx = lerp(-.55, .75, i / (n - 1)) * h * d * rand(.8, 1.2), pts = [top, [top[0] + dx * .5, top[1] - h * rand(.2, .32)], [top[0] + dx, top[1] - h * rand(.02, .16)]];
+    limbs.push(brush(g, pts, { w: 4 * s, ink: .72, dry: .35, tin: 0, tout: .6, speed: 6 }));
+    const P = smooth(pts, 6);
+    for (let k = 0, m = randi(7, 9); k < m; k++) { const p = P[floor(lerp(.3, 1, k / (m - 1)) * (P.length - 1))]; roots.push(p); }
+  }
+  yield* pool(limbs, 4);
+  const now = performance.now();
+  roots.forEach((p, i) => S.strands.push({ x: p[0], y: p[1], len: rand(.5, .95) * h, ph: rand(TAU), t0: now + i * 30, w: rand(.9, 1.4) * s, a: rand(.4, .62), d: rand(-.04, .1) * d }));
+}
+function* paintGrass(x, y, s, kind) {
+  const g = cx.near, list = [], reed = kind === 'reed', tipsR = [];
+  for (let i = 0, n = reed ? randi(5, 8) : randi(7, 11); i < n; i++) {
+    const dir = reed ? rand(-.35, .35) : rand(-1, 1), len = rand(45, 105) * s * (reed ? 1.6 : 1), x0 = x + rand(-5, 5) * s * (reed ? 3 : 1);
+    const pts = reed ? [[x0, y], [x0 + dir * len * .3, y - len * .55], [x0 + dir * len * .8, y - len]]
+      : [[x0, y], [x0 + dir * len * .25, y - len * .6], [x0 + dir * len * .7, y - len * .78], [x0 + dir * len, y - len * .6]];
+    list.push(brush(g, pts, { w: (reed ? 1.6 : rand(2.5, 4.5)) * s, ink: rand(.55, .85), color: GREEN, dry: .15, tin: 0, tout: .4, speed: 7,
+      press: reed ? null : t => .2 + pow(sin(PI * t), .7) }));
+    if (reed) tipsR.push([pts[2], dir]);
+  }
+  yield* pool(list, 3);
+  if (reed) for (const [p, dir] of tipsR) {
+    for (let k = 0; k < 6; k++) {
+      const a = -PI / 2 + (dir >= 0 ? 1 : -1) * rand(.3, 1.3), l = rand(10, 20) * s;
+      g.strokeStyle = rgba([150, 122, 84], rand(.3, .6)); g.lineWidth = rand(1.4, 2.8) * s; g.lineCap = 'round'; g.beginPath(); g.moveTo(p[0], p[1]);
+      g.quadraticCurveTo(p[0] + cos(a) * l * .6, p[1] + sin(a) * l * .6 - 2, p[0] + cos(a) * l, p[1] + sin(a) * l + 3 * s); g.stroke();
+    }
+    yield;
+  }
+  if (kind === 'orchid') for (let i = 0, n = randi(2, 3); i < n; i++) {
+    const fx = x + rand(-26, 26) * s, fy = y - rand(46, 78) * s;
+    yield* brush(g, [[x + rand(-3, 3), y], [lerp(x, fx, .4), lerp(y, fy, .6)], [fx, fy]], { w: 1.3 * s, ink: .5, color: GREEN, dry: .1, tin: 0, tout: .2 });
+    for (let k = 0; k < 5; k++) leaf(g, fx, fy, rand(TAU), rand(9, 14) * s, 3.4 * s, [126, 96, 150], rand(.5, .75));
+    g.fillStyle = rgba(RED, .8); g.beginPath(); g.arc(fx, fy, 1.3 * s, 0, TAU); g.fill();
+  }
+}
+function* paintChrys(x, y, s) {
+  const g = cx.near;
+  for (let i = 0, n = randi(2, 3); i < n; i++) {
+    const fx = x + (i - (n - 1) / 2) * rand(22, 34) * s, fy = y - rand(48, 84) * s;
+    yield* brush(g, [[x + rand(-4, 4) * s, y], [lerp(x, fx, .3), lerp(y, fy, .55)], [fx, fy]], { w: 2 * s, ink: .7, color: GREEN, dry: .2, tin: 0, tout: .2 });
+    for (let k = 0; k < 4; k++) { const t = rand(.25, .8); leaf(g, lerp(x, fx, t * .6), lerp(y, fy, t), rand(TAU), rand(12, 19) * s, rand(5, 8) * s, k % 2 ? GREEN : INK, rand(.4, .7)); }
+    yield;
+    const r = rand(11, 16) * s; g.lineCap = 'round';
+    for (let k = 0, m = randi(18, 26); k < m; k++) {
+      const a = rand(TAU), l = r * rand(.6, 1.1);
+      g.strokeStyle = rgba(OCHRE, rand(.55, .9)); g.lineWidth = rand(1.4, 2.4) * s; g.beginPath(); g.moveTo(fx, fy);
+      g.quadraticCurveTo(fx + cos(a) * l * .7, fy + sin(a) * l * .7, fx + cos(a + .5) * l, fy + sin(a + .5) * l - 2 * s); g.stroke();
+      if (k % 6 === 5) yield;
+    }
+    g.fillStyle = rgba([150, 90, 30], .7); g.beginPath(); g.arc(fx, fy, 2 * s, 0, TAU); g.fill();
+  }
+}
+function* paintLotus(x0, y0, s) {
+  const g = cx.near, LG = [38, 58, 52];
+  for (let i = 0, n = randi(2, 4); i < n; i++) {
+    const lx = x0 + rand(-110, 110) * s, ly = y0 + rand(-14, 14) * s - rand(0, 24) * s, rx = rand(34, 62) * s, ry = rx * rand(.28, .42);
+    yield* brush(g, [[lx, ly], [lx + rand(-6, 6) * s, ly + rand(18, 38) * s]], { w: 1.7 * s, ink: .5, color: LG, dry: .2, tin: 0, tout: .5 });
+    yield* wash(g, blob(lx, ly, rx, ry, 16, .14), { alpha: .56, color: LG, layers: 12, jit: 2.5 * s, grow: .3 });
+    g.strokeStyle = rgba(INK, .3); g.lineWidth = .9 * s; g.beginPath();
+    for (let k = 0; k < 9; k++) { const a = k / 9 * TAU + rand(-.1, .1); g.moveTo(lx, ly); g.lineTo(lx + cos(a) * rx * .88, ly + sin(a) * ry * .88); }
+    g.stroke();
+    g.fillStyle = rgba(INK, .55); g.beginPath(); g.ellipse(lx, ly, 3 * s, 1.6 * s, 0, 0, TAU); g.fill();
+  }
+  for (let i = 0, n = randi(1, 2); i < n; i++) {
+    const fx = x0 + rand(-70, 70) * s, fy = y0 - rand(48, 84) * s, bud = i > 0 || chance(.25);
+    yield* brush(g, [[fx + rand(-8, 8) * s, y0 + 8 * s], [fx + rand(-5, 5) * s, lerp(y0, fy, .5)], [fx, fy]], { w: 1.9 * s, ink: .55, color: LG, dry: .2, tin: 0, tout: .1 });
+    for (let k = 0, m = bud ? 3 : 7; k < m; k++) {
+      const a = -PI / 2 + (k / (m - 1) - .5) * (bud ? .5 : 2.5) + rand(-.06, .06), len = rand(20, 28) * s * (bud ? .9 : 1);
+      leaf(g, fx, fy, a, len, 8 * s, PINK, rand(.5, .72));
+      leaf(g, fx + cos(a) * len * .55, fy + sin(a) * len * .55, a, len * .46, 4.4 * s, [204, 70, 96], .5);
+      if (k % 2) yield;
+    }
+    if (!bud) { g.fillStyle = rgba(OCHRE, .9); for (let k = 0; k < 5; k++) { g.beginPath(); g.arc(fx + rand(-4, 4) * s, fy - rand(1, 5) * s, 1.1 * s, 0, TAU); g.fill(); } }
+    if (S.emitters.length < 40) S.emitters.push({ x: fx, y: fy - 10 * s, color: PINK, kind: 'petal' });
+  }
+}
+
+/* ───────────── 亭台、人家、人、桥、石 ───────────── */
+function* paintPavilion(x, y, s, tiers, hw0 = 44, colH0 = 30) {
+  const g = cx.near; let top = y, hw = hw0 * s, colH = colH0 * s; const roofH = 24 * s * (hw0 / 44);
+  yield* brush(g, [[x - hw * .85, y], [x + hw * .85, y]], { w: 2.2 * s, ink: .7, dry: .3, tin: 0, tout: .1 });
+  for (let t = 0; t < tiers; t++) {
+    const ey = top - colH;
+    for (const f of [-.62, -.22, .22, .62]) yield* brush(g, [[x + f * hw, top], [x + f * hw, ey]], { w: 1.8 * s, ink: .78, dry: .15, speed: 9, tin: 0, tout: 0, linear: true });
+    if (t === 0) yield* brush(g, [[x - hw * .62, top - colH * .3], [x + hw * .62, top - colH * .3]], { w: 1.1 * s, ink: .6, dry: .2, tin: 0, tout: 0 });
+    for (let L = 0; L < 8; L++) {
+      const j = () => rand(-1.2, 1.2) * s; g.beginPath(); g.moveTo(x - hw * 1.24 + j(), ey - 7 * s + j());
+      g.quadraticCurveTo(x - hw * .45 + j(), ey - roofH * .3 + j(), x + j(), ey - roofH + j());
+      g.quadraticCurveTo(x + hw * .45 + j(), ey - roofH * .3 + j(), x + hw * 1.24 + j(), ey - 7 * s + j());
+      g.quadraticCurveTo(x + j(), ey + 4 * s + j(), x - hw * 1.24 + j(), ey - 7 * s + j());
+      g.closePath(); g.fillStyle = rgba(INK, .16); g.fill(); yield;
+    }
+    top = ey - roofH * .5; hw *= .74; colH *= .82;
+  }
+  g.fillStyle = rgba(INK, .85); g.beginPath(); g.ellipse(x, top - roofH * .5 - 3 * s, 2.4 * s, 4.5 * s, 0, 0, TAU); g.fill();
+}
+function* paintHut(x, y, s, own) {
+  const g = cx.near;
+  for (let i = 0, n = randi(1, 2); i < n; i++) {
+    const hx = x + i * rand(40, 52) * s * (chance(.5) ? 1 : -1), hy = y - i * rand(2, 8) * s, w = rand(44, 58) * s * (i ? .8 : 1), h = rand(20, 26) * s, rh = rand(20, 26) * s, wy = hy - h;
+    if (!i) S.chims.push({ x: hx + w * .16, y: wy - rh * .9, used: own === true });   // 屋脊：日后炊烟由此升起
+    yield* pool([[[hx - w * .45, hy], [hx - w * .45, wy]], [[hx + w * .45, hy], [hx + w * .45, wy]], [[hx - w * .5, hy], [hx + w * .5, hy]]]
+      .map(p => brush(g, p, { w: 1.6 * s, ink: .7, dry: .25, tin: 0, tout: 0, linear: true })), 3);
+    const roof = [[hx - w * .66, wy + 2 * s], [hx - w * .3, wy - rh], [hx + w * .34, wy - rh], [hx + w * .66, wy + 2 * s]];
+    for (let L = 0; L < 6; L++) {
+      g.beginPath(); roof.forEach((p, k) => g[k ? 'lineTo' : 'moveTo'](p[0] + rand(-1.5, 1.5) * s, p[1] + rand(-1.5, 1.5) * s)); g.closePath();
+      g.fillStyle = rgba(INK, .1); g.fill(); yield;
+    }
+    yield* pool(Array.from({ length: 12 }, () => { const t = rand(), tx = lerp(hx - w * .3, hx + w * .34, t), bx = lerp(hx - w * .66, hx + w * .66, t);
+      return brush(g, [[tx, wy - rh], [lerp(tx, bx, .6) + rand(-2, 2), wy - rh * .3], [bx, wy + 3 * s]], { w: 1.6 * s, ink: .5, dry: .5, tin: 0, tout: .4 }); }), 4);
+    yield* brush(g, [roof[1], roof[2]], { w: 2.4 * s, ink: .8, dry: .3, tin: 0, tout: 0 });
+    g.fillStyle = rgba(INK, .6); g.fillRect(hx - 4 * s + rand(-8, 8) * s, hy - h * .7, 8 * s, h * .7);
+  }
+}
+function drawFigure(g, x, y, s, o = {}) {
+  g.save(); g.translate(x, y); g.scale((o.dir || 1) * s, s);
+  const hh = o.sit ? 15.5 : 25;
+  for (let i = 0; i < 3; i++) {
+    g.beginPath(); g.moveTo(-6.5 + rand(-.6, .6), 0); g.quadraticCurveTo(-5.5, -hh * .7, -1.5 + rand(-.5, .5), -hh);
+    g.lineTo(2.5, -hh); g.quadraticCurveTo(6, -hh * .6, 7.5 + rand(-.6, .6), 0); g.closePath(); g.fillStyle = rgba(INK, .26); g.fill();
+  }
+  g.beginPath(); g.arc(.6, -hh - 3.2, 3.3, 0, TAU); g.fillStyle = rgba(INK, o.hat ? .5 : .28); g.fill();
+  g.lineWidth = .9; g.strokeStyle = rgba(INK, .7); g.stroke();
+  g.fillStyle = rgba(INK, .85); g.beginPath();
+  if (o.hat) { g.moveTo(-9.5, -hh - 3.6); g.lineTo(.6, -hh - 10.5); g.lineTo(10.5, -hh - 3.6); g.quadraticCurveTo(.6, -hh - 5.6, -9.5, -hh - 3.6); }
+  else g.arc(.6, -hh - 7, 1.6, 0, TAU);
+  g.fill();
+  g.strokeStyle = rgba(INK, .78);
+  if (o.staff) { g.lineWidth = 1.1; g.beginPath(); g.moveTo(9.5, 0); g.lineTo(8, -hh - 7); g.stroke(); }
+  if (o.rod) {
+    g.lineWidth = .9; g.beginPath(); g.moveTo(3, -hh * .62); g.quadraticCurveTo(22, -hh - 13, 40, -hh - 10); g.stroke();
+    g.lineWidth = .5; g.strokeStyle = rgba(INK, .45); g.beginPath(); g.moveTo(40, -hh - 10); g.lineTo(41, o.lineLen ?? 16); g.stroke();
+  }
+  if (o.umbrella) {   // 油纸伞
+    g.strokeStyle = rgba(INK, .8); g.lineWidth = 1; g.beginPath(); g.moveTo(5.5, -hh * .5); g.lineTo(5.5, -hh - 21); g.stroke();
+    g.beginPath(); g.moveTo(-11, -hh - 11.5); g.quadraticCurveTo(5.5, -hh - 30, 22, -hh - 11.5); g.quadraticCurveTo(5.5, -hh - 16, -11, -hh - 11.5); g.closePath();
+    g.fillStyle = rgba(o.umbrella, .82); g.fill(); g.lineWidth = .7; g.strokeStyle = rgba(INK, .55); g.stroke();
+    g.beginPath(); for (const ex of [-4, 5.5, 15]) { g.moveTo(5.5, -hh - 20.5); g.lineTo(ex, -hh - 13.2); } g.stroke();
+  }
+  if (o.sword) {      // 负剑
+    g.strokeStyle = rgba(INK, .85); g.lineWidth = 1.3; g.beginPath(); g.moveTo(-10, -hh * .22); g.lineTo(-4.5, -hh - 8); g.moveTo(-7.8, -hh + 2.4); g.lineTo(-3, -hh + 1); g.stroke();
+  }
+  if (o.qin) {        // 膝前横琴
+    g.fillStyle = rgba(INK, .82); g.beginPath(); g.moveTo(7, -7.6); g.lineTo(31, -8.6); g.lineTo(31, -6.2); g.lineTo(7, -4.6); g.closePath(); g.fill();
+    g.strokeStyle = rgba(INK, .7); g.lineWidth = 1; g.beginPath(); g.moveTo(11, -5); g.lineTo(10, 0); g.moveTo(28, -6); g.lineTo(29, 0); g.stroke();
+  }
+  g.restore();
+}
+function* paintBridge(xc, y, half) {
+  const g = cx.mid, u = S.u, rise = half * .42;
+  const deck = [[xc - half * 1.25, y + 2], [xc - half * .6, y - rise * .75], [xc, y - rise], [xc + half * .6, y - rise * .75], [xc + half * 1.25, y + 2]];
+  const arch = [[xc - half * .55, y + 4], [xc - half * .4, y - rise * .35], [xc, y - rise * .62], [xc + half * .4, y - rise * .35], [xc + half * .55, y + 4]];
+  yield* par(brush(g, deck, { w: 3.2 * u, ink: .76, dry: .3, tin: .1, tout: .15, speed: 6 }),
+    wash(g, [...smooth(deck, 12), ...smooth(arch, 12).reverse()], { alpha: .2, layers: 10, jit: 1.5, grow: 1 }));
+  yield* brush(g, arch, { w: 2.2 * u, ink: .62, dry: .3, tin: .1, tout: .1, speed: 6 });
+  yield* brush(g, deck.map(p => [p[0], p[1] - 6 * u]), { w: 1 * u, ink: .6, dry: .2, tin: .2, tout: .2, speed: 8 });
+  const P = smooth(deck, 10); g.strokeStyle = rgba(INK, .6); g.lineWidth = .9 * u; g.beginPath();
+  for (let i = 2; i < P.length - 2; i += 2) { g.moveTo(P[i][0], P[i][1]); g.lineTo(P[i][0], P[i][1] - 6 * u); } g.stroke();
+  for (let i = 0; i < 5; i++) yield* brush(g, [[xc - half * rand(.2, .7), y + (8 + i * 4) * u], [xc + half * rand(.2, .7), y + (8 + i * 4) * u]], { w: 1.2 * u, ink: .16, dry: .5, speed: 12 });
+}
+function* paintRock(x, y, s) {
+  const g = cx.near, w = rand(36, 60) * s, h = rand(26, 46) * s, j = () => rand(-3, 3) * s;
+  const pts = [[x - w * .55, y], [x - w * .5 + j(), y - h * .5 + j()], [x - w * .2 + j(), y - h + j()], [x + w * .15 + j(), y - h * .85 + j()], [x + w * .5 + j(), y - h * .45 + j()], [x + w * .6, y]];
+  yield* par(wash(g, pts, { alpha: .3, layers: 10, jit: 2, grow: .8 }), brush(g, pts, { w: 3 * s, ink: .82, dry: .45, linear: true, tin: 0, tout: .2, speed: 5 }));
+  yield* wash(g, [pts[3], pts[4], pts[5], [x + w * .2, y]], { alpha: .3, layers: 8, jit: 2, grow: .7 });
+  yield* brush(g, [pts[2], [x - w * .05, y - h * .5], [x + w * .1, y - h * .1]], { w: 2 * s, ink: .6, dry: .55, linear: true, tin: 0, tout: .5 });
+  yield* dots(g, pts, 4);
+}
+
+/* ───────────── 日月云霞星 ───────────── */
+function celestialSpot(r, low, other) {
+  const { W, H } = S, xs = (low ? [.58, .5, .66, .42] : [.26, .38, .15, .56, .47]).map(f => W * (f + rand(-.03, .03)));
+  for (const x of xs) {
+    if (other && abs(x - other.x) < r * 5) continue;
+    if (low) { const sk = skyAt(x); return { x, y: max(r + 12, sk < H ? sk - r * .15 : S.horizon - r * 1.25) }; }
+    const y = H * rand(.13, .2); if (skyAt(x) > y + r * 1.1) return { x, y };
+  }
+  return { x: xs[0], y: max(r + 14, min(H * .16, skyAt(xs[0]) - r * 1.4)) };
+}
+function addSun(low) {
+  const u = S.u;
+  if (S.sun) { run(bloom(cx.far, S.sun.x, S.sun.y, S.sun.r * 2.6, { alpha: .06, color: [214, 110, 60], frames: 40, clip: true })); return [S.sun.x, S.sun.y]; }
+  const r = clamp(34 * u, 20, 46), { x, y } = celestialSpot(r, low, S.moon); S.sun = { x, y, r };
+  run(par(bloom(cx.far, x, y, r * 3, { alpha: .09, color: [214, 116, 66], frames: 54, clip: true }),
+    wash(cx.far, blob(x, y, r, r, 20, .02), { alpha: .84, color: RED, layers: 26, jit: 1.2, grow: .15, per: 1, clip: true })));
+  if (low && S.water) run(seq(wait(30), pool(Array.from({ length: 6 }, (_, i) => { const yy = S.horizon + (10 + i * 9) * u, hw = rand(14, 40) * u;
+    return brush(cx.mid, [[x - hw, yy], [x + hw, yy]], { w: 1.5 * u, ink: .2, color: RED, dry: .45, speed: 10 }); }), 2)));
+  return [x, y];
+}
+function addMoon() {
+  if (S.moon) return [S.moon.x, S.moon.y];
+  const r = clamp(36 * S.u, 22, 48), { x, y } = celestialSpot(r, false, S.sun); S.moon = { x, y, r };
+  run(function* () {
+    const g = cx.far, R = r * 3.6;
+    g.save(); skyClip(g); g.globalCompositeOperation = 'destination-out'; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); g.restore();
+    for (let i = 0; i < 5; i++) {
+      g.save(); skyClip(g);
+      const Ri = R * rand(.8, 1.15), gr = g.createRadialGradient(x, y, r * .98, x, y, Ri);
+      gr.addColorStop(0, rgba(PALE, .078)); gr.addColorStop(rand(.24, .36), rgba(PALE, .04)); gr.addColorStop(1, rgba(PALE, 0));
+      g.fillStyle = gr; g.beginPath(); g.arc(x, y, Ri, 0, TAU); g.arc(x, y, r * (1 + rand(-.012, .012)), 0, TAU, true); g.fill('evenodd');
+      g.restore(); yield* wait(8);
+    }
+  }());
+  return [x, y];
+}
+function addStars() {
+  const { W, H, u } = S;
+  if (S.stars.length < 70) for (let i = 0; i < 24; i++) {
+    const x = rand(W * .03, W * .82), y = rand(H * .04, min(H * .44, skyAt(x) - 14));
+    if (y > H * .04) S.stars.push({ x, y, r: rand(.8, 2) * u, ph: rand(TAU), t0: performance.now() + i * 60 });
+  }
+  return [W * rand(.3, .6), H * .16];
+}
+function addCloud() {
+  const { W, H, u } = S, x = W * rand(.16, .66), y = H * rand(.1, .26), n = randi(4, 6), lobes = []; let px = x - n * 22 * u;
+  for (let i = 0; i < n; i++) { const r = rand(24, 44) * u * (1 - abs(i - (n - 1) / 2) / n * .9); lobes.push([px, y + rand(-8, 8) * u - r * .2, r]); px += r * rand(.9, 1.3); }
+  run(function* () {
+    yield* par(...lobes.map(l => wash(cx.far, blob(l[0] + 3 * u, l[1] + 7 * u, l[2] * 1.25, l[2] * .62, 12, .12), { alpha: .22, color: PALE, layers: 12, jit: 3 * u, grow: .6, clip: true })));
+    yield* par(...lobes.map(l => wash(cx.far, blob(l[0], l[1] - 2 * u, l[2] * 1.05, l[2] * .52, 12, .1), { alpha: .93, erase: true, layers: 10, jit: 2 * u, grow: .7 })));
+    for (const l of lobes) {
+      const pts = []; for (let k = 0; k <= 6; k++) { const a = PI * (1.08 + .84 * k / 6); pts.push([l[0] + cos(a) * l[2] * 1.05, l[1] - 2 * u + sin(a) * l[2] * .52]); }
+      yield* brush(cx.far, pts, { w: 1.5 * u, ink: .36, color: PALE, dry: .25, tin: .2, tout: .4, speed: 8, clip: true });
+    }
+  }());
+  addPuff(x, y, W * .12, H * .04);
+  return [x, y];
+}
+function addPuff(x, y, rx, ry) {
+  if (S.puffs.length >= 10) S.puffs.shift();
+  S.puffs.push({ x, y, rx, ry, vx: rand(.05, .15) * (chance(.5) ? 1 : -1), a: rand(.5, .8), t0: performance.now() });
+}
+function addMist() {
+  const { W, H, u } = S;
+  for (let i = 0; i < 3; i++) {
+    const x = W * rand(.15, .85), y = H * rand(.46, .64), rx = W * rand(.14, .26), ry = H * rand(.02, .04);
+    run(wash(cx.mid, blob(x, y, rx, ry, 16, .12), { alpha: .8, erase: true, layers: 18, jit: 6 * u, grow: .35, per: 1 }));
+    run(wash(cx.far, blob(x, y, rx, ry, 16, .12), { alpha: .6, erase: true, layers: 18, jit: 6 * u, grow: .35, per: 1 }));
+    run(seq(wait(10), wash(cx.far, blob(x + rand(-30, 30), y + ry * 1.2, rx * 1.1, ry * .5, 14, .15), { alpha: .1, color: PALE, layers: 12, jit: 5 * u, grow: .4 })));
+    addPuff(x, y + rand(-10, 10), rx * rand(.8, 1.2), ry * rand(2, 3));
+  }
+  return [W * rand(.35, .6), H * .55];
+}
+function addGlow() {
+  const { W, H, u } = S, ys = [];
+  for (let i = 0; i < 4; i++) {
+    const x = W * rand(.12, .7), y = H * rand(.2, .42); ys.push(y);
+    run(seq(wait(i * 8), wash(cx.far, blob(x, y, W * rand(.1, .22), H * rand(.008, .02), 14, .2), { alpha: .26, color: [208, 104, 66], layers: 16, jit: 3 * u, grow: .25, per: 1, clip: true })));
+  }
+  return [W * rand(.3, .5), ys[0]];
+}
+
+/* ───────────── 活物与天气 ───────────── */
+function addBirds(o) {
+  const { W, H, u } = S, dir = chance(.5) ? 1 : -1, x0 = dir > 0 ? W * rand(.06, .3) : W * rand(.62, .9), y0 = H * rand(.1, .3), now = performance.now();
+  if (S.birds.length > 30) S.birds.splice(0, o.n);
+  for (let i = 0; i < o.n; i++) {
+    const row = ceil(i / 2), side = i % 2 ? 1 : -1;
+    const dx = o.v ? -dir * row * 26 * u : -dir * rand(0, 110) * u, dy = o.v ? side * row * 12 * u : rand(-36, 36) * u;
+    S.birds.push({ x: x0 + dx, y: y0 + dy, by: y0 + dy, vx: dir * o.speed * (o.v ? 1 : rand(.85, 1.15)), ph: rand(TAU), wob: o.v ? 0 : rand(TAU),
+      size: o.size * u * rand(.88, 1.12), fl: o.flap, big: o.big, t0: now + i * 90 });
+  }
+  return [x0, y0];
+}
+function addFish(red) {
+  const { W, H, u } = S, x = W * rand(.48, .66), y = min(H * rand(.79, .86), S.floor - 14), now = performance.now();
+  if (S.fish.length < 14) for (let i = 0, n = randi(2, 3); i < n; i++) {
+    const koi = red || chance(.3);
+    S.fish.push({ x: x + rand(-40, 40) * u, y: y + rand(-16, 16) * u, a: rand(TAU), turn: 0, sp: rand(.5, 1.05), ph: rand(TAU), size: rand(30, 46) * u,
+      color: koi ? [198, 62, 38] : [30, 28, 26], t0: now + i * 200 });
+  }
+  ripple(x, y, 40 * u, .4);
+  return [x, y];
+}
+function boatSprite(o) {
+  const s = S.u, cw = 240 * s, ch = 200 * s, d = S.dpr, c = document.createElement('canvas');
+  c.width = ceil(cw * d); c.height = ceil(ch * d);
+  const g = c.getContext('2d'); g.scale(d, d); const x = cw / 2, y = ch * .8;
+  for (let i = 0; i < 3; i++) {
+    const j = () => rand(-.8, .8) * s; g.beginPath(); g.moveTo(x - 50 * s + j(), y - 10 * s + j());
+    g.quadraticCurveTo(x - 10 * s, y - 1 * s + j(), x + 46 * s + j(), y - 8 * s + j());
+    g.quadraticCurveTo(x + 30 * s, y + 6 * s + j(), x, y + 6.5 * s + j());
+    g.quadraticCurveTo(x - 34 * s, y + 5.5 * s, x - 50 * s + j(), y - 10 * s + j()); g.fillStyle = rgba(INK, .42); g.fill();
+  }
+  if (o.sail) {
+    g.strokeStyle = rgba(INK, .8); g.lineWidth = 1.6 * s; g.beginPath(); g.moveTo(x + 2 * s, y - 4 * s); g.lineTo(x + 2 * s, y - 94 * s); g.stroke();
+    g.beginPath(); g.moveTo(x + 4 * s, y - 90 * s); g.quadraticCurveTo(x + 30 * s, y - 82 * s, x + 34 * s, y - 56 * s);
+    g.quadraticCurveTo(x + 38 * s, y - 34 * s, x + 30 * s, y - 14 * s); g.lineTo(x + 4 * s, y - 12 * s); g.closePath();
+    g.fillStyle = rgba(INK, .13); g.fill(); g.lineWidth = 1.1 * s; g.strokeStyle = rgba(INK, .6); g.stroke();
+    g.lineWidth = .7 * s; g.strokeStyle = rgba(INK, .35); g.beginPath();
+    for (let i = 1; i < 6; i++) { const yy = lerp(y - 90 * s, y - 12 * s, i / 6); g.moveTo(x + 4 * s, yy); g.lineTo(x + (30 + 5 * sin(i / 6 * PI)) * s, yy + 3 * s); }
+    g.stroke();
+  } else {
+    g.beginPath(); g.moveTo(x - 12 * s, y - 3 * s); g.bezierCurveTo(x - 10 * s, y - 23 * s, x + 18 * s, y - 23 * s, x + 22 * s, y - 4 * s); g.closePath();
+    g.fillStyle = rgba(INK, .3); g.fill(); g.lineWidth = 1.4 * s; g.strokeStyle = rgba(INK, .75); g.stroke();
+    g.lineWidth = .7 * s; g.strokeStyle = rgba(INK, .4); g.beginPath();
+    for (let i = 1; i < 5; i++) { const xx = lerp(x - 10 * s, x + 20 * s, i / 5); g.moveTo(xx, y - 4 * s); g.lineTo(xx + 1 * s, y - 17 * s + abs(i - 2.5) * 2.4 * s); }
+    g.stroke();
+  }
+  if (o.rider) drawFigure(g, x - 28 * s, y - 5 * s, s * .82, { dir: -1, hat: true, rod: o.rod, sit: true, lineLen: 12 });
+  return c;
+}
+function addBoat(o = {}) {
+  const { W, H, u } = S;
+  if (S.boats.length >= 3) { const b = S.boats[0]; return [b.x, b.y - 20 * u]; }
+  const b = { x: W * rand(.36, .66), y: H * rand(.74, .775), vx: rand(.05, .11) * (chance(.5) ? 1 : -1), ph: rand(TAU), t0: performance.now(), o };
+  b.sprite = boatSprite(o); S.boats.push(b);
+  if (o.rider) { S.lastFig = S.idx; S.lastFigBoat = b; S.lastFigPos = [b.x, b.y - 24 * u]; }
+  ripple(b.x, b.y + 4 * u, 70 * u, .35);
+  return [b.x, b.y - 24 * u];
+}
+const HAT = '翁渔笠蓑钓樵叟', ROD = '钓渔';
+function addFigure(ch) {
+  const u = S.u, hat = HAT.includes(ch), rod = ROD.includes(ch);
+  const upgrade = b => { b.o.rod = b.o.rod || rod; b.sprite = boatSprite(b.o); return [b.x, b.y - 24 * u]; };
+  if (S.idx - S.lastFig <= 3 && S.lastFigPos) {
+    S.lastFig = S.idx; const b = S.lastFigBoat;
+    if (b && rod && !b.o.rod) return upgrade(b);
+    return S.lastFigPos;
+  }
+  const rodless = rod && S.boats.find(b => b.o.rider && !b.o.rod);
+  if (rodless) return upgrade(rodless);
+  S.lastFig = S.idx;
+  const empty = S.boats.find(b => !b.o.rider);
+  if (empty) { empty.o.rider = true; empty.o.rod = rod; empty.sprite = boatSprite(empty.o); S.lastFigBoat = empty; return S.lastFigPos = [empty.x, empty.y - 24 * u]; }
+  if (groundFull()) return null;
+  const sp = groundSpot(), s = u * rand(.95, 1.15);
+  drawFigure(cx.near, sp.x, sp.y, s, { hat, staff: !hat && chance(.6), rod, dir: sp.side === 'L' ? 1 : -1 });
+  S.lastFigBoat = null;
+  return S.lastFigPos = [sp.x, sp.y - 20 * u];
+}
+function addRain() {
+  const now = performance.now(), { W, H, u } = S; S.rainEnd = now + 16000;
+  if (!S.rainSky) { S.rainSky = true; for (let i = 0; i < 6; i++) run(seq(wait(i * 5), bloom(cx.far, W * (i + rand(.2, .8)) / 6, H * rand(0, .1), rand(150, 250) * u, { alpha: .1, color: PALE, frames: 46, clip: true }))); }
+  return [W * rand(.3, .6), H * .3];
+}
+function addSnow() {
+  const now = performance.now(), { W, H, u } = S; S.snowEnd = now + 28000;
+  if (!S.snowSky) { S.snowSky = true; for (let i = 0; i < 8; i++) run(seq(wait(i * 4), bloom(cx.far, W * (i + rand(.2, .8)) / 8, H * rand(.04, .34), rand(190, 300) * u, { alpha: .17, color: PALE, frames: 50, clip: true }))); }
+  run(function* () {
+    for (const m of S.mounts) if (m.kind !== 'far' && !m.snow) {
+      m.snow = true;
+      yield* brush(cx.mid, m.ridge.map(p => [p[0], p[1] + 7 * u]), { w: (m.kind === 'fold' ? 10 : 15) * u, ink: .85, dry: .3, erase: true, speed: 26, step: 3, tin: .1, tout: .1 });
+    }
+    for (const sd of ['L', 'R']) if (S.bank[sd].painted) yield* brush(cx.near, bankRidge(sd).map(p => [p[0], p[1] + 5 * u]), { w: 8 * u, ink: .8, dry: .35, erase: true, speed: 26, step: 3 });
+  }());
+  return [W * rand(.3, .6), H * .3];
+}
+function addWind() {
+  const now = performance.now(), { W, H, u } = S; S.windStart = now; S.windEnd = now + 5200; S.windDir = chance(.75) ? 1 : -1;
+  for (let i = 0; i < 7; i++) S.gusts.push({ y: H * rand(.1, .7), amp: rand(10, 34) * u, fq: rand(4, 9), ph: rand(TAU), t0: now + i * rand(120, 260), dur: rand(1300, 2000), w: rand(1, 2.4) * u, dir: S.windDir });
+  for (let i = 0; i < 16; i++) setTimeout(() => spawnPetal(S.windDir > 0 ? rand(-60, W * .5) : rand(W * .5, W + 60), rand(H * .1, H * .7), pick([[176, 84, 40], [190, 130, 50], INK]), 'leaf'), i * 120);
+  return [W * rand(.3, .6), H * .35];
+}
+function spawnPetal(x, y, color, kind) {
+  if (S.petals.length > 170) return;
+  S.petals.push({ x, y, vx: rand(-.3, .3), vy: rand(.35, .8), rot: rand(TAU), vr: rand(-.04, .04), size: rand(3, 5.5) * S.u * (kind === 'leaf' ? 1.5 : 1), color, ph: rand(TAU), life: 1 });
+}
+function addLeaves() { S.leafEnd = performance.now() + 14000; return [S.W * rand(.3, .6), S.H * .3]; }
+function addFlies() {
+  const { W, H, u } = S, e = S.emitters.length ? pick(S.emitters) : { x: W * rand(.1, .3), y: H * .74 }, now = performance.now();
+  if (S.flies.length < 9) for (let i = 0; i < randi(2, 3); i++)
+    S.flies.push({ x: e.x + rand(-30, 30), y: e.y - rand(10, 60), hx: e.x, hy: e.y - 40 * u, ph: rand(TAU), sd: rand(1000), size: rand(7, 10) * u, color: pick([OCHRE, [60, 56, 70], [200, 110, 60]]), t0: now + i * 200 });
+  return [e.x, e.y - 40 * u];
+}
+function addLight() {
+  const b = S.boats.find(b => !b.light);
+  if (b) { b.light = true; S.lights.push({ boat: b, ph: rand(TAU) }); return [b.x, b.y - 20 * S.u]; }
+  if (S.lights.length > 6 || groundFull()) return null;
+  const sp = groundSpot(); S.lights.push({ x: sp.x, y: sp.y - 16 * S.u, ph: rand(TAU) });
+  cx.near.strokeStyle = rgba(INK, .7); cx.near.lineWidth = 1.2 * S.u; cx.near.beginPath(); cx.near.moveTo(sp.x, sp.y); cx.near.lineTo(sp.x, sp.y - 12 * S.u); cx.near.stroke();
+  return [sp.x, sp.y - 16 * S.u];
+}
+function addSplash() {
+  const { W, H, u } = S, x = W * rand(.2, .7), y = H * rand(.25, .7), R = rand(46, 84) * u;
+  run(bloom(cx.near, x, y, R, { alpha: .5, frames: 60, rim: true })); run(splatter(cx.near, x, y, R * 2.2, 26));
+  return [x, y];
+}
+function inkDots() {
+  const x = S.W * rand(.1, .8), y = S.H * rand(.15, .8);
+  run(splatter(cx.near, x, y, 30 * S.u, 7)); run(bloom(cx.near, x, y, rand(5, 10) * S.u, { alpha: .5, frames: 24 }));
+}
+const planted = (fn, ...a) => { if (groundFull()) return null; const sp = groundSpot(); run(fn(sp.x, sp.y, S.u * rand(.9, 1.15), ...a, sp.side)); return [sp.x, sp.y - 70 * S.u]; };
+
+/* ───────────── 新增意象 · 天象 ───────────── */
+function addRainbow() {
+  const { W, H } = S;
+  if (S.bow) return S.bow;
+  const x = W * rand(.34, .52), R = min(W * .36, H * .5), y = S.horizon + R * .06, bw = max(3, R * .024);
+  const cols = [[190, 66, 52], [208, 130, 56], [200, 172, 72], [92, 136, 98], [72, 116, 156], [116, 96, 158]];
+  run(pool(cols.map((c, i) => {
+    const r = R - i * bw, pts = [];
+    for (let k = 0; k <= 36; k++) { const a = PI * (1.03 + .94 * k / 36); pts.push([x + cos(a) * r, y + sin(a) * r]); }
+    return brush(cx.far, pts, { w: bw * 1.7, ink: .2, color: c, dry: .1, speed: 9, step: 4, tin: .25, tout: .25, clip: true });
+  }), 2));
+  return S.bow = [x, y - R * .86];
+}
+function addThunder() {
+  const { W, H, u } = S, now = performance.now(); let first;
+  for (let i = 0; i < 4; i++) run(seq(wait(i * 5), bloom(cx.far, W * rand(.1, .9), H * rand(0, .1), rand(150, 240) * u, { alpha: .13, color: PALE, frames: 40, clip: true })));
+  for (let i = 0; i < 2; i++) {
+    let x = W * rand(.16, .72), y = -10; const pts = [[x, y]], end = min(H * rand(.36, .5), skyAt(x) - 10), br = [];
+    while (y < end) {
+      y += rand(16, 40) * u; x += rand(-26, 26) * u; pts.push([x, y]);
+      if (chance(.3) && br.length < 3) br.push([[x, y], [x + rand(-40, 40) * u, y + rand(20, 44) * u], [x + rand(-60, 60) * u, y + rand(50, 80) * u]]);
+    }
+    S.bolts.push({ pts, br, t0: now + 250 + i * rand(700, 1300), dur: 620 });
+    run(seq(wait(18 + i * 50), brush(cx.far, pts, { w: 1.5 * u, ink: .34, color: PALE, dry: .3, linear: true, speed: 30, tin: 0, tout: .4, clip: true })));   // 电光过后，纸上留一道淡痕
+    if (!i) first = pts[floor(pts.length / 2)];
+  }
+  return first;
+}
+function addGalaxy() {
+  const { W, H, u } = S, g = cx.far, x0 = W * rand(.04, .14), y0 = H * rand(.3, .38), x1 = W * rand(.66, .8), y1 = H * rand(.03, .08);
+  run(function* () {
+    for (let i = 0; i < 9; i++) {
+      const t = (i + .5) / 9;
+      yield* bloom(g, lerp(x0, x1, t) + rand(-20, 20) * u, lerp(y0, y1, t) + rand(-14, 14) * u, rand(60, 110) * u * (.6 + sin(t * PI) * .6), { alpha: .07, color: PALE, frames: 10, clip: true });
+    }
+    for (let i = 0; i < 280; i++) {
+      const t = rand(), sp = (rand() + rand() + rand() - 1.5) * H * .085 * (.5 + sin(t * PI) * .7), x = lerp(x0, x1, t) - sp * .45, y = lerp(y0, y1, t) + sp;
+      if (y > 4 && y < skyAt(x) - 6) { g.fillStyle = rgba(chance(.7) ? INK : PALE, rand(.25, .7)); g.beginPath(); g.arc(x, y, rand(.4, 1.5) * u * (chance(.06) ? 1.8 : 1), 0, TAU); g.fill(); }
+      if (i % 10 === 9) yield;
+    }
+  }());
+  addStars();
+  return [lerp(x0, x1, .5), lerp(y0, y1, .5)];
+}
+function addMeteor() {
+  const { W, H, u } = S, now = performance.now(); let first;
+  for (let i = 0; i < 3; i++) {
+    const x = W * rand(.25, .8), y = H * rand(.04, .2), an = PI * rand(.72, .82); let len = rand(150, 260) * u;
+    while (len > 60 && y + sin(an) * len > skyAt(x + cos(an) * len) - 8) len *= .8;
+    S.meteors.push({ x, y, dx: cos(an) * len, dy: sin(an) * len, t0: now + i * rand(500, 900), dur: rand(700, 1000) });
+    if (!i) first = [x + cos(an) * len * .5, y + sin(an) * len * .5];
+  }
+  return first;
+}
+function addFireworks() {
+  const { W, H, u } = S, now = performance.now(); let first;
+  for (let i = 0; i < 4; i++) {
+    const R = rand(60, 110) * u, x = W * rand(.14, .72), y = max(R * .7 + 10, min(H * rand(.12, .32), skyAt(x) - R * .6)), n = randi(18, 28);
+    S.sparks.push({ x, y, R, color: pick([RED, OCHRE, PINK, [70, 120, 110], [120, 90, 160]]), t0: now + 300 + i * rand(450, 800), dur: rand(1300, 1700),
+      rays: Array.from({ length: n }, (_, j) => [j / n * TAU + rand(-.1, .1), rand(.6, 1)]) });
+    if (!i) first = [x, y];
+  }
+  return first;
+}
+function addLanterns() {
+  const { W, H, u } = S, now = performance.now(), x = W * rand(.25, .6), y = H * rand(.4, .56);
+  if (S.lanterns.length < 10) for (let i = 0, n = randi(3, 4); i < n; i++)
+    S.lanterns.push({ x: x + rand(-120, 120) * u, y: y + rand(-40, 90) * u, vy: rand(.12, .26), ph: rand(TAU), size: rand(9, 14) * u, t0: now + i * 260 });
+  return [x, y];
+}
+function addKite() {
+  const { W, H, u } = S;
+  if (S.kites.length >= 3) { const q = S.kites[0]; return [q.x, q.y]; }
+  let hx = W * .2, hy = H * .8;
+  if (!groundFull()) {   // 牵线的孩童
+    const sp = groundSpot(), s = u * rand(.72, .8), d = sp.side === 'L' ? 1 : -1;
+    drawFigure(cx.near, sp.x, sp.y, s, { dir: d }); hx = sp.x + d * 5 * s; hy = sp.y - 18 * s;
+  }
+  const x = clamp(hx + (hx < W / 2 ? 1 : -1) * rand(120, 220) * u, W * .1, W * .75), y = H * rand(.14, .26);
+  S.kites.push({ hx, hy, x, y, ph: rand(TAU), color: pick([RED, [200, 110, 40], [60, 90, 120]]), size: rand(18, 23) * u, t0: performance.now() });
+  return [x, y];
+}
+function addDragon() {
+  const { W, H, u } = S;
+  if (S.dragons.length) { const d = S.dragons[0]; return [d.x, d.y]; }
+  const dir = chance(.5) ? 1 : -1, x = W * (dir > 0 ? .3 : .6), y = H * rand(.16, .24), ds = 8.5 * u, tr = [];
+  for (let i = 0; i < 60; i++) tr.push([x - dir * i * ds, y + sin(i * .22) * 30 * u]);
+  S.dragons.push({ x, y, a: dir > 0 ? 0 : PI, goal: dir > 0 ? 0 : PI, tr, ds, w: 18 * u, ph: rand(TAU), t0: performance.now() });
+  for (let i = 0; i < 3; i++) addPuff(W * rand(.1, .8), H * rand(.12, .3), W * rand(.08, .13), H * rand(.035, .05));   // 神龙见首不见尾
+  return [x, y];
+}
+
+/* ───────────── 新增意象 · 山川 ───────────── */
+function solidMount(flag) {
+  const solid = m => m.kind === 'main' || m.kind === 'near' || m.kind === 'mid', ok = m => solid(m) && !m[flag];
+  let m = S.mounts.find(ok);
+  for (let i = 0; !m && i < 3 && S.nMount < 9; i++) { addMountain(); m = S.mounts.find(ok); }
+  return m || S.mounts.find(solid);
+}
+function addFall() {
+  const { u } = S, m = solidMount('fall'); if (!m) return null;
+  if (m.fall) return m.fall;
+  const L = m.ridge.length; let p = m.ridge[floor(L * .62)];
+  for (const f of [.64, .36, .7, .3, .56, .44]) { const q = m.ridge[floor(L * f)], e = (m.base - q[1]) / m.h; if (e > .4 && e < .85) { p = q; break; } }
+  const x = p[0], y0 = p[1] + m.h * .07, y1 = m.base - 2 * u, wd = clamp((y1 - y0) * .085, 7 * u, 16 * u);
+  m.fall = [x, lerp(y0, y1, .45)];
+  run(function* () {
+    yield* wait(max(0, m.born + 150 - TK));   // 等山墨干透，再留白成瀑
+    const g = cx.mid, pts = [[x, y0], [x + rand(-4, 4) * u, lerp(y0, y1, .3)], [x + rand(-6, 6) * u, lerp(y0, y1, .66)], [x + rand(-4, 4) * u, y1]];
+    const off = d => pts.map((q, i) => [q[0] + d * wd * (.42 + .16 * i / 3), q[1]]);
+    yield* brush(g, pts, { w: wd, ink: .95, dry: .05, erase: true, speed: 4, tin: .12, tout: 0, press: t => .6 + .4 * t });
+    S.falls.push({ x, y: y0, by: y1, w: wd, ph: rand(), t0: performance.now() });
+    yield* par(brush(g, off(-1), { w: 1.7 * u, ink: .6, dry: .5, speed: 5, tin: .1, tout: .3 }), brush(g, off(1), { w: 1.7 * u, ink: .6, dry: .5, speed: 5, tin: .1, tout: .3 }),
+      ...[-.4, 0, .4].map(d => brush(g, off(d), { w: u, ink: .2, color: PALE, dry: .55, speed: 5, tin: .2, tout: .3 })));
+    yield* wash(g, blob(x, y1 + 2 * u, wd * 3.2, wd * 1.2, 12, .16), { alpha: .75, erase: true, layers: 10, jit: 3 * u, grow: .4 });   // 潭上水雾
+  }());
+  return m.fall;
+}
+function addWall() {
+  const u = S.u, m = solidMount('wall'); if (!m) return null;
+  if (m.wall) return m.wall;
+  const L = m.ridge.length, raw = [], tw = [];
+  for (let i = floor(L * .1); i < L * .9; i += 3) raw.push(m.ridge[i]);
+  const pts = raw.map((p, i) => { const a = raw[max(0, i - 1)], b = raw[min(raw.length - 1, i + 1)]; return [p[0], (a[1] + p[1] * 2 + b[1]) / 4 + 2 * u]; });
+  for (let i = 2; i < pts.length - 2 && tw.length < 4; i++)
+    if (pts[i][1] <= pts[i - 1][1] && pts[i][1] <= pts[i + 1][1] && pts[i][1] < pts[i - 2][1] && pts[i][1] < pts[i + 2][1] && (!tw.length || pts[i][0] - tw[tw.length - 1][0] > 70 * u)) tw.push(pts[i]);
+  if (!tw.length) tw.push(pts[floor(pts.length / 2)]);
+  let hi = tw[0]; for (const t of tw) if (t[1] < hi[1]) hi = t;
+  m.wall = [hi[0], hi[1] - 11 * u];
+  run(function* () {
+    yield* wait(max(0, m.born + 150 - TK));
+    const g = cx.mid, up = d => pts.map(p => [p[0], p[1] + d * u]);
+    yield* brush(g, pts, { w: 6.5 * u, ink: .95, dry: .04, erase: true, speed: 12, step: 3, tin: .06, tout: .06 });   // 墙身留白
+    yield* par(brush(g, up(-3.2), { w: 1.3 * u, ink: .8, dry: .2, speed: 12, step: 3, tin: .05, tout: .05 }), brush(g, up(3.4), { w: 1.1 * u, ink: .55, dry: .35, speed: 12, step: 3, tin: .05, tout: .05 }));
+    const P = smooth(up(-3.2), 5 * u); g.fillStyle = rgba(INK, .78);
+    for (let i = 1; i < P.length - 1; i += 2) g.fillRect(P[i][0] - 1.2 * u, P[i][1] - 3.4 * u, 2.6 * u, 3 * u);   // 垛口
+    yield;
+    for (const [tx, ty] of tw) {   // 敌楼
+      const hw = 7.5 * u, th = 15 * u, y0 = ty + 4 * u;
+      g.save(); g.globalCompositeOperation = 'destination-out'; g.fillRect(tx - hw, y0 - th, hw * 2, th); g.restore();
+      g.fillStyle = rgba(INK, .12); g.fillRect(tx - hw, y0 - th, hw * 2, th);
+      g.strokeStyle = rgba(INK, .8); g.lineWidth = 1.2 * u; g.strokeRect(tx - hw, y0 - th, hw * 2, th);
+      g.fillStyle = rgba(INK, .8); for (let k = 0; k < 4; k++) g.fillRect(tx - hw + k * hw * .6 - .5 * u, y0 - th - 3 * u, hw * .36, 3 * u);
+      g.beginPath(); g.arc(tx, y0 - th * .45, 2.2 * u, PI, 0); g.lineTo(tx + 2.2 * u, y0 - th * .2); g.lineTo(tx - 2.2 * u, y0 - th * .2); g.closePath(); g.fill();
+      yield* wait(4);
+    }
+  }());
+  return m.wall;
+}
+function addDunes() {
+  const { W, H, u } = S;
+  if (S.dunes >= 2) return [W * rand(.35, .6), H * .62];
+  S.dunes++;
+  for (let i = 0; i < 3; i++) {
+    const base = H * (.655 + i * .03), h = H * rand(.05, .085), f = rand(.004, .007) / u, ph = rand(TAU), r = [];
+    for (let x = -20; x <= W + 20; x += 8) r.push([x, base - h * pow(.5 + .5 * sin(x * f + ph), 1.6) * (.6 + .4 * sin(x * f * .37 + ph * 2))]);
+    S.mounts.push({ kind: 'fold', ridge: r, base }); lowerSky(r); run(eraseBelow(cx.far, r));
+    run(seq(wait(i * 16), par(seep(cx.mid, r, { base: base + H * .06, alpha: .34, color: [176, 134, 76], layers: 20 }),
+      seq(wait(4), brush(cx.mid, r, { w: 1.5 * u, ink: .42, color: [128, 92, 50], dry: .3, speed: 18, step: 4, tin: .1, tout: .1 })))));
+  }
+  return [W * rand(.35, .6), H * .6];
+}
+function addSmoke(wild, at) {
+  const { W, u } = S, now = performance.now(); let x, y;
+  if (S.smokes.length >= 5) { const s = S.smokes[0]; return [s.x, s.y - s.h * .5]; }
+  const open = () => { x = W * rand(.34, .66); y = min(skyAt(x) + 4, S.horizon); wild = true; };
+  if (at) [x, y] = at;
+  else if (wild) open();
+  else {
+    const c = S.chims.find(c => !c.used);
+    if (c) { c.used = true; x = c.x; y = c.y; }
+    else if (!groundFull()) { const sp = groundSpot(); run(paintHut(sp.x, sp.y, u, true)); x = sp.x + 8 * u; y = sp.y - 42 * u; }   // 无人家，先起一间茅舍
+    else open();
+  }
+  S.smokes.push({ x, y, h: (wild ? rand(190, 250) : rand(110, 150)) * u, r0: (wild ? 5 : 4) * u, sway: (wild ? 16 : 54) * u, v: wild ? 1 : 1.3, sd: rand(1000), t0: now + (wild ? 0 : 900) });
+  return [x, y - 50 * u];
+}
+const addBeacon = () => {   // 烽火：已有长城就在敌楼上举烟，否则先筑一段
+  const m = S.mounts.find(m => m.wall && !m.beacon), a = m ? m.wall : addWall(), own = m || S.mounts.find(q => q.wall === a);
+  if (own) own.beacon = true;
+  return a ? addSmoke(true, [a[0], a[1]]) : addSmoke(true);
+};
+
+/* ───────────── 新增意象 · 草木 ───────────── */
+function addVine(kind) {
+  const { W, H, u } = S, slot = S.vines % 3, x0 = W * (.06 + .1 * slot) + rand(-10, 10) * u;
+  if (S.vines++ < 4) run(paintVine(kind, x0));
+  return [x0 + 30 * u, H * .2];
+}
+function* paintVine(kind, x0) {   // 自纸顶垂下的藤：紫藤、葡萄、葫芦
+  const g = cx.near, { H, u } = S, hang = [], stems = [], lf = [];
+  for (let i = 0, n = randi(2, 3); i < n; i++) {
+    let x = x0 + i * rand(26, 54) * u, y = -10; const pts = [[x, y]], dx = rand(-14, 30) * u, dy = H * rand(.045, .075);
+    for (let k = 1; k <= 4; k++) {
+      x += dx + rand(-18, 18) * u; y += dy * rand(.7, 1.3); pts.push([x, y]);
+      if (k > 1 || i === 0) hang.push([x, y]);
+      lf.push([x + rand(-16, 16) * u, y - rand(4, 20) * u]);
+    }
+    stems.push(brush(g, pts, { w: rand(2.4, 3.8) * u, ink: .8, dry: .45, tin: 0, tout: .5, speed: 5 }));
+  }
+  yield* pool(stems, 2);
+  yield* pool(lf.map(([x, y]) => par(...[-1, 0, 1].map(d => wash(g, blob(x + d * 9 * u, y + abs(d) * 4 * u, rand(9, 13) * u, rand(7, 10) * u, 9, .18),
+    { alpha: rand(.3, .46), color: chance(.5) ? GREEN : INK, layers: 6, jit: 1.6 * u, grow: .5 })))), 3);   // 湿墨阔叶
+  g.strokeStyle = rgba(INK, .4); g.lineWidth = .8 * u; g.beginPath();
+  for (const [x, y] of lf) for (const d of [-1, 0, 1]) { g.moveTo(x, y - 5 * u); g.lineTo(x + d * 10 * u, y + (6 - abs(d) * 2) * u); }
+  g.stroke();
+  g.strokeStyle = rgba(INK, .6); g.lineWidth = .9 * u;
+  for (const [x, y] of hang) if (chance(.5)) {   // 卷须
+    const d = chance(.5) ? 1 : -1; g.beginPath();
+    for (let k = 0; k <= 20; k++) { const t = k / 20, r = (1 - t) * 7 * u, px = x + d * (10 * t * u + cos(t * 5) * r - r), py = y + 12 * t * u + sin(t * 5) * r; k ? g.lineTo(px, py) : g.moveTo(px, py); }
+    g.stroke();
+  }
+  for (const [x, y] of hang) {
+    if (kind === 'wisteria') {
+      const len = rand(54, 96) * u, n = round(len / (1.6 * u)), sw = rand(-10, 10) * u;
+      g.strokeStyle = rgba(GREEN, .5); g.lineWidth = u; g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + sw * .3, y + len * .5, x + sw, y + len); g.stroke();
+      for (let k = 0; k < n; k++) {
+        const t = k / n, wd = (1 - t * .8) * 10 * u;
+        g.fillStyle = rgba(chance(.5) ? [118, 92, 160] : [164, 136, 196], rand(.4, .78)); g.beginPath();
+        g.ellipse(x + sw * t * t + rand(-1, 1) * wd, y + 6 * u + len * t + rand(-2, 2) * u, rand(2.4, 4) * u, rand(1.8, 2.8) * u, rand(TAU), 0, TAU); g.fill();
+      }
+      if (S.emitters.length < 40) S.emitters.push({ x: x + sw * .5, y: y + len * .6, color: [150, 120, 190], kind: 'petal' });
+    } else if (kind === 'grape') {
+      const r = rand(4.2, 5.2) * u;
+      [2, 3, 4, 4, 3, 3, 2, 1].forEach((c, j) => {
+        for (let k = 0; k < c; k++) {
+          const px = x + (k - (c - 1) / 2) * r * 1.7 + rand(-1, 1) * u, py = y + 8 * u + j * r * 1.55 + rand(-1, 1) * u;
+          g.fillStyle = rgba(chance(.3) ? [92, 60, 120] : [58, 44, 92], rand(.5, .8)); g.beginPath(); g.arc(px, py, r * rand(.9, 1.1), 0, TAU); g.fill();
+          g.fillStyle = rgba(PAPER, .5); g.beginPath(); g.arc(px - r * .3, py - r * .35, r * .22, 0, TAU); g.fill();
+        }
+      });
+    } else if (chance(.7)) {
+      const sl = rand(12, 26) * u, gy = y + sl, r1 = rand(6, 8) * u, r2 = r1 * 1.6, col = chance(.5) ? [176, 140, 60] : [90, 120, 70];
+      g.strokeStyle = rgba(INK, .6); g.lineWidth = u; g.beginPath(); g.moveTo(x, y); g.lineTo(x, gy); g.stroke();
+      yield* par(wash(g, blob(x, gy + r1, r1, r1 * 1.05, 10, .08), { alpha: .55, color: col, layers: 8, jit: u, grow: .5 }),
+        wash(g, blob(x, gy + r1 * 1.9 + r2 * .8, r2, r2 * .95, 12, .08), { alpha: .55, color: col, layers: 8, jit: u, grow: .5 }));
+      g.strokeStyle = rgba(INK, .45); g.lineWidth = .9 * u; g.beginPath(); g.arc(x, gy + r1 * 1.9 + r2 * .8, r2, .1 * PI, .9 * PI); g.stroke();
+    }
+    yield* wait(2);
+  }
+}
+function* paintBanana(x, y, s) {
+  const g = cx.near, n = randi(4, 6), BG = [44, 78, 56];
+  yield* brush(g, [[x, y], [x + rand(-4, 4) * s, y - 40 * s], [x + rand(-5, 5) * s, y - 70 * s]], { w: 9 * s, ink: .5, color: BG, dry: .25, tin: 0, tout: .3, speed: 6 });
+  for (let i = 0; i < n; i++) {
+    const d = (i / (n - 1) - .5) * 2, len = rand(88, 128) * s * (1 - abs(d) * .15), sg = d >= 0 ? 1 : -1, mid = [[x + d * 3 * s, y - rand(52, 70) * s]];
+    let a = -PI / 2 + d * rand(.75, 1.05), px = mid[0][0], py = mid[0][1];
+    for (let k = 1; k <= 5; k++) { a += d * .16 + sg * .05 * k; px += cos(a) * len / 5; py += sin(a) * len / 5; mid.push([px, py]); }   // 中脉先扬后垂
+    const P = smooth(mid, 6 * s), m = P.length, wl = rand(15, 21) * s, Lp = [], Rp = [];
+    for (let k = 0; k < m; k++) {
+      const A = P[max(0, k - 1)], B = P[min(m - 1, k + 1)], l = hypot(B[0] - A[0], B[1] - A[1]) || 1, nx = -(B[1] - A[1]) / l, ny = (B[0] - A[0]) / l;
+      const w = wl * pow(sin(PI * min(1, k / (m - 1) * .92 + .06)), .55);
+      Lp.push([P[k][0] + nx * w, P[k][1] + ny * w]); Rp.push([P[k][0] - nx * w * .8, P[k][1] - ny * w * .8]);
+    }
+    yield* wash(g, [...Lp, ...[...Rp].reverse()], { alpha: rand(.34, .5), color: i % 2 ? BG : [36, 56, 48], layers: 8, jit: 2 * s, grow: .75 });
+    g.strokeStyle = rgba(INK, .22); g.lineWidth = .8 * s; g.beginPath();
+    for (let k = 1; k < m - 2; k += 2) { g.moveTo(P[k][0], P[k][1]); g.lineTo(Lp[k + 1][0], Lp[k + 1][1]); g.moveTo(P[k][0], P[k][1]); g.lineTo(Rp[k + 1][0], Rp[k + 1][1]); }
+    g.stroke();
+    yield* brush(g, mid, { w: 1.8 * s, ink: .6, dry: .2, tin: 0, tout: .4, speed: 8 });
+  }
+}
+function* paintPeony(x, y, s) {
+  const g = cx.near, col = pick([[206, 70, 96], [222, 124, 136], [150, 70, 130]]), deep = [col[0] * .8, col[1] * .7, col[2] * .8].map(round);
+  for (let i = 0, n = randi(2, 3); i < n; i++) {
+    const fx = x + (i - (n - 1) / 2) * rand(34, 48) * s + rand(-6, 6) * s, fy = y - rand(58, 104) * s, R = rand(15, 21) * s;
+    yield* brush(g, [[x + rand(-4, 4) * s, y], [lerp(x, fx, .35), lerp(y, fy, .55)], [fx, fy]], { w: 2.6 * s, ink: .72, dry: .3, tin: 0, tout: .2 });
+    for (let k = 0; k < 5; k++) {   // 三出复叶
+      const t = rand(.2, .85), lx = lerp(x, fx, t * .7), ly = lerp(y, fy, t), a0 = rand(TAU);
+      for (const d of [-.55, 0, .55]) leaf(g, lx, ly, a0 + d, rand(16, 24) * s, rand(5, 8) * s, k % 2 ? GREEN : INK, rand(.45, .72));
+    }
+    yield;
+    for (let k = 0; k < 9; k++) { const a = k / 9 * TAU + rand(-.2, .2); closed(g, blob(fx + cos(a) * R * .55, fy + sin(a) * R * .42, R * .52, R * .42, 8, .2)); g.fillStyle = rgba(col, .32); g.fill(); }
+    yield;
+    for (let k = 0; k < 6; k++) { const a = k / 6 * TAU + rand(-.3, .3); closed(g, blob(fx + cos(a) * R * .26, fy + sin(a) * R * .2, R * .36, R * .3, 8, .2)); g.fillStyle = rgba(col, .46); g.fill(); }
+    closed(g, blob(fx, fy, R * .26, R * .2, 8, .2)); g.fillStyle = rgba(deep, .6); g.fill();
+    g.fillStyle = rgba(OCHRE, .9); for (let k = 0; k < 6; k++) { g.beginPath(); g.arc(fx + rand(-4, 4) * s, fy + rand(-3, 3) * s, 1.1 * s, 0, TAU); g.fill(); }
+    if (S.emitters.length < 40) S.emitters.push({ x: fx, y: fy, color: col, kind: 'petal' });
+    yield;
+  }
+}
+function* paintGrain(x, y, s) {
+  const g = cx.near, list = [], tips = [];
+  for (let i = 0, n = randi(9, 13); i < n; i++) {
+    const dir = rand(-.5, .5), len = rand(50, 80) * s, x0 = x + rand(-22, 22) * s;
+    const pts = [[x0, y], [x0 + dir * len * .25, y - len * .6], [x0 + dir * len * .7, y - len * .95], [x0 + dir * len * 1.1 + (dir > 0 ? 1 : -1) * len * .12, y - len * .8]];
+    list.push(brush(g, pts, { w: 1.4 * s, ink: .6, color: [150, 128, 60], dry: .15, tin: 0, tout: .1, speed: 7 })); tips.push([pts[2], pts[3]]);
+  }
+  yield* pool(list, 4);
+  for (const [a, b] of tips) {   // 沉甸甸的穗
+    for (let k = 0; k < 7; k++) for (const d of [-1, 1]) {
+      g.fillStyle = rgba(OCHRE, rand(.6, .9)); g.beginPath();
+      g.ellipse(lerp(a[0], b[0], k / 6) + d * 1.6 * s, lerp(a[1], b[1], k / 6) + rand(-1, 1) * s, 2.3 * s, 1.2 * s, rand(-.6, .6), 0, TAU); g.fill();
+    }
+    yield;
+  }
+}
+
+/* ───────────── 新增意象 · 走兽水族 ───────────── */
+/* 走兽：先在小画布上以浓墨写形，再淡淡叠几遍到纸上，边缘自然发毛 */
+function beastSprite(kind) {
+  const c = document.createElement('canvas'), d = S.dpr * S.u * 1.05; c.width = ceil(150 * d); c.height = ceil(110 * d);
+  const g = c.getContext('2d'); g.scale(d, d); g.translate(70, 98);   // 原点在足下，面朝 +x
+  g.fillStyle = g.strokeStyle = rgba(INK, 1); g.lineCap = g.lineJoin = 'round';
+  const el = (x, y, rx, ry, r = 0) => { g.beginPath(); g.ellipse(x, y, rx, ry, r, 0, TAU); g.fill(); };
+  const sh = (...p) => { closed(g, p); g.fill(); };
+  const ln = (w, ...p) => {
+    g.lineWidth = w; g.beginPath(); g.moveTo(p[0][0], p[0][1]);
+    for (let i = 1; i < p.length - 1; i++) g.quadraticCurveTo(p[i][0], p[i][1], (p[i][0] + p[i + 1][0]) / 2, (p[i][1] + p[i + 1][1]) / 2);
+    g.lineTo(p[p.length - 1][0], p[p.length - 1][1]); g.stroke();
+  };
+  const legs = (fr, re, top, knee, wf, wr, ws, gap = 4) => {   // 前腿直、后腿曲；远侧两腿错开半步，四足分明
+    ln(wf, [fr - gap * .3, top], [fr - gap * .3, knee]); ln(ws, [fr - gap * .3, knee], [fr - gap * .55, -1.5]);
+    ln(wf * .9, [fr + gap * .5, top], [fr + gap * .9, knee]); ln(ws, [fr + gap * .9, knee], [fr + gap * 1.2, -1.5]);
+    ln(wr, [re - gap * .2, top - 1], [re - gap * .2 - 2.6, knee]); ln(ws, [re - gap * .2 - 2.6, knee], [re - gap * .5, -1.5]);
+    ln(wr * .9, [re + gap * .6, top - 1], [re + gap * .6 - 1.4, knee]); ln(ws, [re + gap * .6 - 1.4, knee], [re + gap * 1.15, -1.5]);
+  };
+  if (kind === 'horse' || kind === 'donkey') {
+    const dk = kind === 'donkey';
+    el(0, -30, 20, 8.5); el(13, -31, 9, 10); el(-14, -31, 10, 10);
+    sh([8, -38], [22, -58], [30, -57], [27, -44], [22, -27]);
+    sh([22, -59], [29, -61], [42, -49], [43, -45], [39, -44], [29, -50]);
+    if (dk) { ln(2.4, [24, -59], [21.5, -69]); ln(2.2, [27, -60], [26, -70]); } else { ln(2.6, [24.5, -59.5], [25, -64]); ln(2.2, [27.5, -60], [28.5, -64]); }
+    legs(13, -17, -26, -13, 3.6, 4.8, 2.2, 7);
+    if (dk) { ln(1.4, [-23, -34], [-27, -24], [-26, -14]); el(-26, -12, 1.8, 3.4); }
+    else {
+      for (let i = 0; i < 7; i++) ln(rand(.9, 1.7), [-22, -36], [-30 - i * .8 + rand(-2, 2), -30 + rand(-2, 2)], [-31 + rand(-4, 3), -10 + rand(-5, 5)]);
+      for (let i = 0; i < 8; i++) { const x = lerp(9, 23, i / 7), y = lerp(-39, -59, i / 7); ln(rand(1, 1.8), [x, y], [x - 5 + rand(-1, 1), y + 3 + rand(-1, 3)]); }
+    }
+  } else if (kind === 'ox') {
+    el(0, -23, 21, 10); el(13, -25, 10, 11); el(-14, -23, 10, 10.5);
+    sh([18, -33], [30, -27], [36, -18], [33, -13], [26, -15], [19, -18]);
+    ln(2.2, [24, -30], [21, -39], [13, -40]); ln(1.8, [27, -29], [28, -38], [22, -42]);
+    legs(12, -16, -16, -8, 4.4, 5, 3, 6);
+    ln(1.3, [-23, -27], [-27, -18], [-25, -9]); el(-25, -7, 1.8, 3.2);
+  } else if (kind === 'deer') {
+    el(0, -29, 15, 6.5); el(9, -30, 7, 8); el(-9, -30, 8, 8);
+    sh([6, -35], [15, -52], [21, -51], [19, -40], [16, -27]);
+    sh([14, -54], [20, -56], [30, -49], [29, -46], [21, -47]);
+    ln(1.8, [15, -55], [9, -60]);
+    for (const sx of [0, 3]) { ln(1.2, [17 + sx, -56], [13 + sx, -66], [15 + sx * 1.5, -75]); ln(1, [14.5 + sx, -63], [20 + sx, -67]); ln(1, [14 + sx, -69], [9 + sx, -74]); }
+    legs(9, -11, -25, -13, 2.6, 3.6, 1.5, 5);
+    el(-16, -33, 2.4, 3.4, -.5);
+    g.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 10; i++) el(rand(-12, 10), rand(-33, -27), rand(.8, 1.3), rand(.8, 1.3));   // 梅花斑
+    g.globalCompositeOperation = 'source-over';
+  } else if (kind === 'sheep') {
+    el(0, -17, 14, 8.5); for (let i = 0; i < 9; i++) { const a = i / 9 * TAU; el(cos(a) * 12, -17 + sin(a) * 7, 4, 3.6); }
+    sh([13, -24], [20, -27], [25, -22], [23, -18], [16, -18]);
+    ln(1.5, [16, -26], [11, -28], [10, -22]);
+    for (const x of [8, 11, -9, -6]) ln(2.2, [x, -10], [x, -1]);
+    el(-14.5, -19, 2.4, 2.4);
+  } else if (kind === 'dog') {
+    el(0, -15, 12, 5.2); el(8, -16, 6, 6.6); el(-8, -15.5, 6, 6);
+    sh([7, -20], [12, -29], [18, -30], [25, -25], [24, -22], [17, -21], [13, -14]);
+    ln(1.8, [13, -29], [13, -34]);
+    legs(8, -9, -12, -6, 2.8, 3.4, 1.9);
+    ln(2.2, [-12, -18], [-18, -24], [-15, -31], [-11, -29]);
+  } else if (kind === 'camel') {
+    el(0, -31, 19, 8); el(-7, -40, 7, 8); el(7, -40, 7, 8); el(13, -31, 8, 9); el(-13, -30, 8, 9);
+    sh([14, -37], [24, -33], [30, -46], [33, -60], [28, -61], [25, -50], [20, -40], [17, -27]);
+    sh([27, -63], [38, -61], [40, -57], [31, -55]);
+    legs(12, -14, -25, -13, 3, 3.8, 2, 7);
+    ln(1.2, [-19, -33], [-23, -26], [-22, -19]);
+  } else if (kind === 'cat') {
+    sh([-8, 0], [-9, -9], [-3, -19], [4, -18], [7, -8], [8, 0]);
+    el(3, -22, 5.6, 5); ln(2.4, [-.5, -25], [0, -30]); ln(2.4, [6, -25.5], [7, -30]);
+    ln(2, [-7, -2], [-15, -3], [-17, -11], [-13, -14]);
+  } else if (kind === 'rabbit') {
+    el(0, -7, 9, 6.5); el(-4, -6.5, 6, 6.5); el(8, -12.5, 4.6, 4.2);
+    ln(2.6, [6, -15], [2.5, -26]); ln(2.6, [9, -16], [8, -27]);
+    el(-9.5, -7, 2.6, 2.6); ln(2, [5, -3], [8, -1]);
+  }
+  return c;
+}
+function addBeast(kind, o = {}) {
+  if (groundFull()) return null;
+  const sp = groundSpot(), u = S.u, k = u * 1.05, dir = sp.side === 'L' ? 1 : -1, g = cx.near, c = beastSprite(kind), sc = rand(.94, 1.08) * (o.sc || 1);
+  run(function* () {
+    for (let j = 0; j < (o.n || 1); j++) {
+      const x = sp.x - dir * j * rand(26, 34) * u, s2 = sc * (j ? .8 : 1), y = bankTop(sp.side, x) + 2;
+      for (let i = 0; i < 4; i++) {
+        g.save(); g.translate(x + rand(-.7, .7), y + 1 + rand(-.6, .6)); g.scale(dir * s2, s2); g.globalAlpha = .3;
+        g.drawImage(c, -70 * k, -98 * k, 150 * k, 110 * k); g.restore(); yield* wait(4);
+      }
+    }
+    if (o.rider) {
+      const ry = sp.y - o.rider * k * sc, fs = k * .66;
+      drawFigure(g, sp.x - dir * 2 * k, ry, fs, { dir, sit: true, hat: o.hat });
+      if (o.flute) { g.strokeStyle = rgba(INK, .8); g.lineWidth = 1.1 * u; g.beginPath(); g.moveTo(sp.x - dir * k, ry - 17 * fs); g.lineTo(sp.x + dir * 13 * k, ry - 20 * fs); g.stroke(); }
+    }
+  }());
+  return [sp.x, sp.y - 32 * u * sc];
+}
+function addCritter(kind) {   // 虾、蟹、龟：与鱼同游一池
+  const { W, H, u } = S, x = W * rand(.48, .66), y = min(H * rand(.79, .86), S.floor - 14), now = performance.now();
+  const [n, s0, s1, v0, v1] = { shrimp: [3, 30, 40, .22, .5], crab: [2, 20, 26, .12, .3], turtle: [1, 32, 40, .16, .3] }[kind];
+  if (S.fish.filter(f => f.kind === kind).length < 5) for (let i = 0; i < n; i++)
+    S.fish.push({ kind, x: x + rand(-40, 40) * u, y: y + rand(-16, 16) * u, a: rand(TAU), turn: 0, sp: rand(v0, v1), ph: rand(TAU), size: rand(s0, s1) * u, t0: now + i * 200 });
+  ripple(x, y, 40 * u, .4);
+  return [x, y];
+}
+function addFrog() {
+  const { W, H, u } = S, x = W * rand(.47, .66), y = min(H * rand(.82, .875), S.floor - 12), g = cx.near, d = chance(.5) ? 1 : -1, FG = [58, 92, 56];
+  if (S.frogs.length >= 4) { const f = S.frogs[0]; return [f.x, f.y - 30 * u]; }
+  run(function* () {
+    yield* wash(g, blob(x, y, 30 * u, 10 * u, 14, .1), { alpha: .5, color: [38, 58, 52], layers: 10, jit: 2 * u, grow: .3 });   // 一片莲叶
+    g.save(); g.translate(x, y - 1.5 * u); g.scale(d * u * 1.25, u * 1.25); g.lineCap = g.lineJoin = 'round';
+    g.strokeStyle = rgba(FG, .9); g.lineWidth = 2.1; g.beginPath(); g.moveTo(-4, -4); g.lineTo(-9.5, -7.5); g.lineTo(-9, -.5); g.lineTo(-3, -.5); g.stroke();
+    g.lineWidth = 1.5; g.beginPath(); g.moveTo(4, -5); g.lineTo(5.5, -.5); g.lineTo(7.5, -.5); g.stroke();
+    g.fillStyle = rgba(FG, .88); g.beginPath(); g.ellipse(0, -6, 7.6, 4.6, -.36, 0, TAU); g.fill(); g.beginPath(); g.ellipse(6, -9.6, 4.3, 3.1, -.2, 0, TAU); g.fill();
+    g.fillStyle = rgba(INK, .9); g.beginPath(); g.arc(6, -12.6, 1.7, 0, TAU); g.fill();
+    g.fillStyle = rgba(PAPER, .9); g.beginPath(); g.arc(6.4, -13, .55, 0, TAU); g.fill();
+    g.fillStyle = rgba(PAPER, .5); g.beginPath(); g.ellipse(2.5, -4.6, 4.2, 1.5, -.3, 0, TAU); g.fill();
+    g.restore();
+  }());
+  S.frogs.push({ x, y }); ripple(x, y + 3 * u, 50 * u, .35);
+  return [x, y - 30 * u];
+}
+function addDragonfly() {
+  const { W, H, u } = S, e = S.emitters.length ? pick(S.emitters) : { x: W * rand(.45, .65), y: H * .8 }, now = performance.now();
+  if (S.dflies.length < 6) for (let i = 0; i < 2; i++)
+    S.dflies.push({ x: e.x + rand(-40, 40) * u, y: e.y - rand(20, 60) * u, tx: e.x, ty: e.y - 40 * u, hx: e.x, hy: e.y - 36 * u, next: 0, a: rand(TAU), ph: rand(TAU),
+      size: rand(13, 17) * u, color: pick([RED, [40, 60, 70]]), t0: now + i * 300 });
+  return [e.x, e.y - 40 * u];
+}
+
+/* ───────────── 新增意象 · 器物与人 ───────────── */
+function addPerson(o) {
+  if (groundFull()) return null;
+  const sp = groundSpot(), u = S.u;
+  drawFigure(cx.near, sp.x, sp.y, u * rand(.98, 1.14), { ...o, dir: sp.side === 'L' ? 1 : -1 });
+  S.lastFig = S.idx; S.lastFigBoat = null;
+  return S.lastFigPos = [sp.x, sp.y - (o.umbrella ? 34 : 20) * u];
+}
+function addFlag(ch) {
+  if (groundFull()) return null;
+  const sp = groundSpot(), u = S.u, h = rand(78, 100) * u, tx = sp.x + rand(-3, 3) * u, d = sp.side === 'L' ? 1 : -1;
+  run(brush(cx.near, [[sp.x, sp.y], [tx, sp.y - h]], { w: 2.2 * u, ink: .8, dry: .2, tin: 0, tout: .05, speed: 8, linear: true }));
+  S.flags.push({ x: tx, y: sp.y - h + 3 * u, w: rand(32, 40) * u, h: rand(22, 27) * u, color: ch ? [206, 168, 86] : RED, dir: d, ph: rand(TAU), ch, t0: performance.now() + 500 });
+  return [tx + d * 18 * u, sp.y - h + 14 * u];
+}
+function addWine() {
+  if (groundFull()) return null;
+  const sp = groundSpot(), u = S.u, g = cx.near, x = sp.x, y = sp.y, d = sp.side === 'L' ? 1 : -1;
+  run(function* () {
+    yield* wash(g, blob(x, y - 12 * u, 11 * u, 12 * u, 12, .06), { alpha: .62, layers: 10, jit: 1.2 * u, grow: .5 });   // 坛身
+    g.fillStyle = rgba(INK, .75); g.fillRect(x - 5.5 * u, y - 27 * u, 11 * u, 4 * u);
+    closed(g, blob(x, y - 29 * u, 7 * u, 3.6 * u, 8, .12)); g.fillStyle = rgba(RED, .85); g.fill();                         // 红布封口
+    g.save(); g.translate(x, y - 12 * u); g.rotate(PI / 4); g.fillStyle = rgba(RED, .85); g.fillRect(-5.4 * u, -5.4 * u, 10.8 * u, 10.8 * u); g.restore();
+    g.fillStyle = rgba(PAPER, .95); g.font = `${9.5 * u}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('酒', x, y - 11.6 * u);
+    const cxp = x + d * 21 * u; g.fillStyle = rgba(INK, .7); g.beginPath();
+    g.moveTo(cxp - 4.5 * u, y - 7 * u); g.lineTo(cxp + 4.5 * u, y - 7 * u); g.lineTo(cxp + 2.6 * u, y); g.lineTo(cxp - 2.6 * u, y); g.closePath(); g.fill();   // 一只酒盏
+  }());
+  return [x, y - 34 * u];
+}
+function addTea() {
+  if (groundFull()) return null;
+  const sp = groundSpot(), u = S.u, g = cx.near, x = sp.x, y = sp.y, d = sp.side === 'L' ? 1 : -1;
+  g.fillStyle = rgba(INK, .6); g.beginPath(); g.moveTo(x - 8 * u, y); g.lineTo(x - 6 * u, y - 9 * u); g.lineTo(x + 6 * u, y - 9 * u); g.lineTo(x + 8 * u, y); g.closePath(); g.fill();   // 小炉
+  g.fillStyle = rgba(INK, .8); g.beginPath(); g.ellipse(x, y - 15 * u, 8 * u, 6.5 * u, 0, 0, TAU); g.fill();                                                                      // 壶
+  g.strokeStyle = rgba(INK, .8); g.lineCap = 'round'; g.lineWidth = 2 * u; g.beginPath(); g.moveTo(x + d * 7 * u, y - 15 * u); g.lineTo(x + d * 13.5 * u, y - 21 * u); g.stroke();
+  g.lineWidth = 1.3 * u; g.beginPath(); g.arc(x, y - 20 * u, 7 * u, PI, 0); g.stroke();
+  g.beginPath(); g.arc(x, y - 22 * u, 1.4 * u, 0, TAU); g.fill();
+  if (S.lights.length < 8) S.lights.push({ x, y: y - 4 * u, ph: rand(TAU) });
+  if (S.smokes.length < 8) S.smokes.push({ x: x + d * 14 * u, y: y - 23 * u, h: 52 * u, r0: 2 * u, sway: 12 * u, v: 1.7, sd: rand(1000), t0: performance.now() });
+  return [x, y - 40 * u];
+}
+
+/* ───────────── 字 → 景 ───────────── */
+const M = {}, def = (chars, fn) => { for (const c of chars) M[c] = fn; };
+def('山峰岭岳峦嶂丘岗崖巅', addMountain);
+def('水江河湖海波溪流泉川潭池浪涛洲渚汀津浦湾澜漪', addWater);
+def('日阳旭曦晖晴', () => addSun(false)); def('夕暮昏晚', () => addSun(true));
+def('月蟾夜宵', addMoon); def('星辰斗', addStars);
+def('云', addCloud); def('雾烟霭岚霏', addMist); def('霞', addGlow);
+def('鸟雀莺鹂鹊禽飞翔', () => addBirds({ n: 3, size: 9, speed: .9, flap: 1.25 }));
+def('雁鸿鹜', () => addBirds({ n: 7, size: 9, speed: .75, flap: .85, v: true }));
+def('燕', () => addBirds({ n: 2, size: 8, speed: 1.5, flap: 1.6 }));
+def('鸦', () => addBirds({ n: 5, size: 8, speed: 1, flap: 1.3 }));
+def('鹤鹭鸥', () => addBirds({ n: 2, size: 17, speed: .6, flap: .55, big: true }));
+def('雨霖', addRain); def('雪霜冰寒', addSnow); def('风', addWind);
+def('冬', () => { addSnow(); return planted(paintTree, { bare: true }); });
+def('树木林森杨槐桐榆桑', () => planted(paintTree, {}));
+def('枫秋', () => { addLeaves(); return planted(paintTree, { colors: [[176, 60, 36], [196, 96, 40], [150, 50, 34]], emit: true }); });
+def('枯藤', () => planted(paintTree, { bare: true }));
+def('叶落', addLeaves);
+def('松柏', () => planted(paintPine)); def('竹篁', () => planted(paintBamboo));
+def('梅', () => planted(paintPlum, [190, 44, 40])); def('花桃杏樱春棠', () => planted(paintPlum, PINK));
+def('柳', () => planted(paintWillow));
+def('草芳', () => planted(paintGrass, 'grass')); def('兰', () => planted(paintGrass, 'orchid')); def('菊', () => planted(paintChrys));
+def('芦苇荻蒹葭蒲', () => { const sd = chance(.6) ? 'L' : 'R', x = sd === 'L' ? S.W * rand(.33, .43) : S.W * rand(.7, .76), y = bankTop(sd, x) + 3;
+  if (!S.bank[sd].painted) { S.bank[sd].painted = true; run(paintBank(sd)); } run(paintGrass(x, y, S.u, 'reed')); return [x, y - 60 * S.u]; });
+def('荷莲藕芙蓉蕖菡萏夏', () => { const x = S.W * rand(.47, .66), y = min(S.H * rand(.845, .88), S.floor - 12); run(paintLotus(x, y, S.u)); return [x, y - 40 * S.u]; });
+def('亭榭轩', () => planted(paintPavilion, 1, 44, 30)); def('楼阁台宫殿城', () => planted(paintPavilion, 2, 44, 30));
+def('塔寺庙', () => planted(paintPavilion, 5, 22, 15));
+def('家屋舍庐村宅居庄房', () => planted(paintHut));
+def('人翁客僧士我君谁友童叟仙侠渔樵笠蓑钓', addFigure);
+def('舟船舫艇棹桨渡泊航', () => addBoat({})); def('帆', () => addBoat({ sail: true }));
+def('鱼鳞鲈', () => addFish(false)); def('鲤', () => addFish(true)); def('蝶', addFlies);
+def('桥', () => { const x = S.W * (chance(.5) ? rand(.2, .32) : rand(.6, .74)), y = S.H * .715, half = rand(44, 60) * S.u; run(paintBridge(x, y, half)); return [x, y - half * .4]; });
+def('石岩矶', () => planted(paintRock));
+def('火灯烛', addLight); def('墨画书诗笔砚', addSplash);
+
+/* 扩充字库 */
+def('峻嵩峪峡坡峭嵋', addMountain);
+def('渊沧瀑涧漾澄港渠湍沼溟淼', addWater);
+def('朝晨曙昼暖', () => addSun(false)); def('曛暝', () => addSun(true));
+def('婵娟', addMoon); def('霄天穹', addCloud); def('蒙濛氲', addMist); def('虹', addGlow);
+def('鸽鸠雏鹃', () => addBirds({ n: 3, size: 9, speed: .9, flap: 1.25 }));
+def('鹰隼鹞', () => addBirds({ n: 1, size: 16, speed: .7, flap: .5, big: true }));
+def('鹏凤鸾鹄鹅鸭鸳鸯', () => addBirds({ n: 2, size: 17, speed: .6, flap: .55, big: true }));
+def('霪淋滴', addRain); def('凛冻凇', addSnow); def('飘飒吹', addWind);
+def('樟椿檀楠枝株', () => planted(paintTree, {}));
+def('凋', () => planted(paintTree, { bare: true })); def('萧', addLeaves);
+def('杉桧', () => planted(paintPine)); def('笋', () => planted(paintBamboo));
+def('李梨蕊卉苞', () => planted(paintPlum, PINK)); def('絮', () => planted(paintWillow));
+def('苔莎茵萋薇蔓', () => planted(paintGrass, 'grass')); def('蕙', () => planted(paintGrass, 'orchid')); def('篱', () => planted(paintChrys));
+def('菰', M['芦']); def('萍菱藻', M['荷']);
+def('廊', () => planted(paintPavilion, 1, 44, 30)); def('堂', () => planted(paintPavilion, 2, 44, 30));
+def('庵刹禅钟', () => planted(paintPavilion, 5, 22, 15));
+def('院园茅门户窗', () => planted(paintHut));
+def('隐侣伴吾余汝尔他她', addFigure);
+def('楫篙舸', () => addBoat({}));
+def('鳜鲫鲂', () => addFish(false)); def('蜂', addFlies);
+def('礁磐', () => planted(paintRock));
+def('炬焰萤光', addLight); def('纸词字', addSplash);
+
+/* 新增意象 */
+def('虹霓', addRainbow); def('雷霆', () => { addRain(); return addThunder(); }); def('电闪', addThunder); def('彗陨', addMeteor);
+def('龙蛟', addDragon); def('鸢', addKite);
+def('瀑', addFall); def('关塞隘垣', addWall); def('沙漠', addDunes);
+def('藤萝', () => addVine('wisteria')); def('萄', () => addVine('grape')); def('葫瓜瓠', () => addVine('gourd'));
+def('蕉', () => planted(paintBanana)); def('稻麦禾黍粟穗', () => planted(paintGrain));
+const addPeony = () => planted(paintPeony), GOLD = [[206, 160, 44], [190, 140, 40], [214, 178, 70]],
+  addGinkgo = () => { for (let i = 0; i < 14; i++) setTimeout(() => spawnPetal(rand(S.W), -10, pick(GOLD), 'leaf'), i * 180); return planted(paintTree, { colors: GOLD, emit: true }); };
+def('马驹骏骥', () => addBeast('horse', { sc: .85 })); def('骑', () => addBeast('horse', { sc: .85, rider: 37, hat: true }));
+def('驴', () => addBeast('donkey', { sc: .74, rider: 37, hat: true }));
+def('牛犊', () => addBeast('ox', { sc: .85 })); def('牧笛', () => addBeast('ox', { sc: .85, rider: 31, flute: true }));
+def('鹿麋', () => addBeast('deer', { sc: .75 })); def('羊', () => addBeast('sheep', { sc: .78, n: 2 })); def('犬狗', () => addBeast('dog', { sc: .72 }));
+def('驼', () => addBeast('camel', { sc: .9 })); def('猫', () => addBeast('cat', { sc: .85 })); def('兔', () => addBeast('rabbit', { sc: .85 }));
+def('虾', () => addCritter('shrimp')); def('蟹', () => addCritter('crab')); def('龟鳖', () => addCritter('turtle'));
+def('蛙', addFrog); def('蜓蜻', addDragonfly);
+def('旗旌幡帜', () => addFlag('')); def('酒醉酌樽', addWine); def('茶茗', addTea);
+def('伞', () => addPerson({ umbrella: pick([RED, [196, 150, 60], [70, 100, 120]]) })); def('琴瑟', () => addPerson({ sit: true, qin: true })); def('剑', () => addPerson({ sword: true }));
+
+const COMP = {
+  '芙蓉': '荷', '菡萏': '荷', '荷花': '荷', '莲花': '莲', '莲叶': '荷', '荷叶': '荷', '莲蓬': '荷', '夕阳': '夕', '太阳': '日', '落日': '夕', '月亮': '月', '明月': '月', '蝴蝶': '蝶',
+  '蒹葭': '芦', '芦苇': '芦', '梅花': '梅', '桃花': '桃', '菊花': '菊', '兰花': '兰', '杨柳': '柳', '柳树': '柳', '松树': '松', '竹子': '竹',
+  '竹林': '竹', '树木': '树', '树林': '林', '森林': '林', '山峰': '山', '山峦': '山', '青山': '山', '江水': '江', '河水': '河', '湖水': '湖',
+  '流水': '水', '小舟': '舟', '孤舟': '舟', '扁舟': '舟', '小船': '船', '渔舟': () => addBoat({ rider: true }), '飞鸟': '鸟', '雪花': '雪',
+  '白雪': '雪', '云雾': '雾', '烟雾': '雾', '渔翁': '翁', '渔火': '火', '人家': '家', '房屋': '屋', '大雁': '雁', '鸿雁': '雁', '星辰': '星',
+  '星星': '星', '春风': '风', '秋风': '风', '下雨': '雨', '下雪': '雪', '风雨': '雨', '白鹭': '鹭', '夜晚': '夜', '晚霞': '霞', '落霞': '霞',
+  '落叶': '叶', '红叶': '枫', '枫叶': '枫', '枫树': '枫', '小桥': '桥', '石头': '石', '孤鹜': '鹜',
+  // 四时
+  '春天': '春', '初春': '春', '春光': '春', '夏天': '夏', '盛夏': '夏', '秋天': '秋', '深秋': '秋', '秋色': '秋', '冬天': '冬', '寒冬': '冬',
+  // 天光
+  '朝阳': '日', '旭日': '日', '红日': '日', '白日': '日', '斜阳': '夕', '残阳': '夕', '黄昏': '夕', '傍晚': '夕',
+  '月光': '月', '月色': '月', '残月': '月', '新月': '月', '玉盘': '月', '星空': '星',
+  '白云': '云', '浮云': '云', '彩云': '云', '青云': '云', '云海': '云', '天空': '云', '苍穹': '云',
+  '朝霞': '霞', '彩霞': '霞', '云霞': '霞', '烟霞': '霞', '朦胧': '雾', '雾气': '雾', '晨雾': '雾', '氤氲': '雾',
+  // 风雨雪
+  '清风': '风', '微风': '风', '狂风': '风', '东风': '风', '西风': '风', '北风': '风',
+  '细雨': '雨', '春雨': '雨', '夜雨': '雨', '大雨': '雨', '暴雨': '雨', '烟雨': () => { addMist(); return addRain(); },
+  '大雪': '雪', '飞雪': '雪', '暮雪': '雪', '冰雪': '雪', '霜雪': '雪', '风雪': () => { addWind(); return addSnow(); },
+  // 山水
+  '山水': () => { addMountain(); return addWater(); }, '寒江': () => { addSnow(); return addWater(); },
+  '高山': '山', '远山': '山', '群山': '山', '大山': '山', '山川': '山', '峰峦': '山', '悬崖': '崖',
+  '瀑布': '瀑', '溪水': '溪', '小溪': '溪', '清泉': '泉', '山泉': '泉', '大海': '海', '海浪': '浪', '波浪': '波',
+  '长江': '江', '黄河': '河', '江河': '江', '湖泊': '湖', '池塘': '池', '春水': '水', '秋水': '水',
+  // 草木
+  '大树': '树', '古树': '树', '老树': '枯', '枯树': '枯', '枯枝': '枯', '秋叶': '枫', '黄叶': '叶', '落木': '叶',
+  '青松': '松', '苍松': '松', '翠竹': '竹', '修竹': '竹', '红梅': '梅', '腊梅': '梅', '寒梅': '梅',
+  '樱花': '樱', '杏花': '杏', '梨花': '梨', '牡丹': '花', '鲜花': '花', '花朵': '花', '桃李': '桃', '海棠': '棠',
+  '垂柳': '柳', '柳絮': '柳', '芳草': '草', '青草': '草', '小草': '草', '野草': '草', '青苔': '苔', '兰草': '兰',
+  '睡莲': '莲', '浮萍': '萍', '菊篱': '菊',
+  // 楼台人家
+  '凉亭': '亭', '亭子': '亭', '楼阁': '楼', '高楼': '楼', '城楼': '楼', '宫殿': '宫', '寺庙': '寺', '古寺': '寺', '禅寺': '寺',
+  '宝塔': '塔', '钟声': '钟', '房子': '房', '茅屋': '屋', '茅庐': '庐', '草堂': '屋', '村庄': '村', '山村': '村', '柴门': '家', '庭院': '院',
+  // 人物
+  '老人': '翁', '诗人': '人', '隐士': '士', '僧人': '僧', '和尚': '僧', '行人': '人', '游子': '客', '故人': '友', '仙人': '仙',
+  '樵夫': '樵', '儿童': '童', '渔夫': '渔', '钓鱼': '钓', '垂钓': '钓',
+  // 舟船
+  '帆船': '帆', '白帆': '帆', '孤帆': '帆', '渔船': () => addBoat({ rider: true }), '客船': '船', '画舫': '舫', '乌篷': '舟',
+  // 鸟虫鱼
+  '鸟儿': '鸟', '黄鹂': '鹂', '喜鹊': '鹊', '乌鸦': '鸦', '昏鸦': '鸦', '燕子': '燕', '仙鹤': '鹤', '白鹤': '鹤', '海鸥': '鸥',
+  '鸳鸯': '鸳', '老鹰': '鹰', '雄鹰': '鹰', '凤凰': '凤', '天鹅': '鹄', '鸭子': '鸭',
+  '鲤鱼': '鲤', '锦鲤': '鲤', '金鱼': '鲤', '游鱼': '鱼', '蜜蜂': '蜂', '萤火': '萤', '萤火虫': '萤',
+  // 桥石灯墨
+  '石桥': '桥', '断桥': '桥', '拱桥': '桥', '岩石': '岩', '巨石': '石', '礁石': '礁',
+  '灯火': '灯', '灯笼': '灯', '烛光': '烛', '篝火': '火', '火光': '火', '水墨': '墨', '书画': '画', '笔墨': '墨', '诗词': '诗',
+  // 新增意象 · 天象
+  '彩虹': '虹', '虹霓': '虹', '长虹': '虹', '闪电': '电', '霹雳': '电', '雷电': '雷', '雷雨': '雷', '雷声': '雷', '打雷': '雷',
+  '流星': '彗', '彗星': '彗', '银河': addGalaxy, '星河': addGalaxy, '天河': addGalaxy, '银汉': addGalaxy, '星汉': addGalaxy, '河汉': addGalaxy,
+  '烟花': addFireworks, '焰火': addFireworks, '烟火': addFireworks, '礼花': addFireworks, '爆竹': addFireworks,
+  '天灯': addLanterns, '孔明灯': addLanterns, '花灯': addLanterns, '风筝': '鸢', '纸鸢': '鸢', '飞龙': '龙', '蛟龙': '龙', '神龙': '龙',
+  // 新增意象 · 山川
+  '飞流': '瀑', '飞瀑': '瀑', '长城': addWall, '城墙': addWall, '边关': '关', '关山': '关', '关塞': '关', '边塞': '塞',
+  '烽火': addBeacon, '烽烟': addBeacon, '狼烟': addBeacon, '炊烟': () => addSmoke(false), '孤烟': () => addSmoke(true),
+  '沙漠': '沙', '大漠': '沙', '沙丘': '沙', '戈壁': '沙',
+  // 新增意象 · 草木
+  '紫藤': '藤', '藤萝': '藤', '枯藤': '枯', '葡萄': '萄', '葫芦': '葫', '芭蕉': '蕉',
+  '牡丹': addPeony, '芍药': addPeony, '玫瑰': addPeony, '月季': addPeony, '蔷薇': addPeony, '银杏': addGinkgo, '梧桐': '桐',
+  '稻花': '稻', '稻田': '稻', '稻谷': '稻', '麦田': '麦', '麦浪': '麦', '麦子': '麦',
+  // 新增意象 · 走兽水族
+  '骏马': '马', '白马': '马', '战马': '马', '马儿': '马', '骑马': '骑', '骑驴': '驴', '毛驴': '驴',
+  '黄牛': '牛', '水牛': '牛', '老牛': '牛', '骑牛': '牧', '牧童': '牧', '牧笛': '牧', '牧牛': '牧', '放牛': '牧',
+  '小鹿': '鹿', '麋鹿': '鹿', '鹿鸣': '鹿', '山羊': '羊', '绵羊': '羊', '牛羊': () => { addBeast('ox', { sc: .85 }); return addBeast('sheep', { sc: .78, n: 2 }); },
+  '小狗': '狗', '黄犬': '犬', '猫咪': '猫', '小猫': '猫', '兔子': '兔', '玉兔': '兔', '白兔': '兔', '骆驼': '驼',
+  '河虾': '虾', '大虾': '虾', '螃蟹': '蟹', '乌龟': '龟', '青蛙': '蛙', '蛙声': '蛙', '蜻蜓': '蜓',
+  // 新增意象 · 器物与人
+  '酒旗': () => addFlag('酒'), '旗帜': '旗', '美酒': '酒', '饮酒': '酒', '把酒': '酒', '茶壶': '茶', '煮茶': '茶', '品茶': '茶', '清茶': '茶',
+  '雨伞': '伞', '纸伞': '伞', '油纸伞': '伞', '古琴': '琴', '抚琴': '琴', '弹琴': '琴', '宝剑': '剑', '长剑': '剑', '剑客': '剑',
+};
+const EN = {};
+for (const [c, ws] of Object.entries({
+  山: 'mountain mountains hill peak', 水: 'water river lake sea ocean stream', 月: 'moon', 夜: 'night', 日: 'sun', 夕: 'sunset dusk', 云: 'cloud clouds',
+  雾: 'mist fog', 鸟: 'bird birds', 雁: 'goose geese', 鹤: 'crane', 鸦: 'crow', 燕: 'swallow', 雨: 'rain', 雪: 'snow', 冬: 'winter', 风: 'wind',
+  树: 'tree trees forest wood', 松: 'pine', 竹: 'bamboo', 梅: 'plum', 花: 'flower flowers blossom peach spring', 柳: 'willow', 兰: 'orchid', 草: 'grass',
+  芦: 'reed reeds', 菊: 'chrysanthemum', 荷: 'lotus summer', 亭: 'pavilion', 塔: 'tower pagoda temple', 家: 'house home hut village',
+  人: 'man person people poet monk i you', 翁: 'fisherman', 舟: 'boat ship', 帆: 'sail', 鱼: 'fish', 鲤: 'koi carp', 蝶: 'butterfly', 桥: 'bridge',
+  石: 'rock stone', 灯: 'fire lamp lantern candle', 墨: 'ink poem paint', 星: 'star stars', 枫: 'autumn fall maple', 叶: 'leaf leaves',
+  崖: 'cliff cliffs', 峡: 'valley canyon gorge', 瀑: 'waterfall', 溪: 'brook creek', 池: 'pond pool', 浪: 'wave waves', 海: 'sea seas',
+  朝: 'dawn morning sunrise', 暮: 'evening twilight', 天: 'sky heaven', 霞: 'glow afterglow', 虹: 'rainbow', 斗: 'galaxy',
+  霜: 'frost ice cold', 霖: 'storm drizzle', 飘: 'breeze gust', 柏: 'cypress', 樱: 'cherry sakura', 梨: 'pear',
+  苔: 'moss', 莲: 'waterlily', 寺: 'temple monastery', 宫: 'palace', 城: 'castle city', 屋: 'cottage cabin', 院: 'garden yard courtyard',
+  隐: 'hermit', 僧: 'monk', 童: 'child boy', 仙: 'immortal fairy', 樵: 'woodcutter', 渔: 'fishing', 船: 'canoe raft',
+  鹰: 'eagle hawk falcon', 鹄: 'swan', 鸭: 'duck ducks', 鹭: 'egret heron', 鸥: 'gull seagull', 鸽: 'dove pigeon', 凤: 'phoenix',
+  蜂: 'bee bees', 萤: 'firefly fireflies', 礁: 'reef', 笔: 'brush calligraphy', 纸: 'paper',
+  雷: 'thunder thunderstorm', 电: 'lightning', 流星: 'meteor comet', 银河: 'galaxy', 烟花: 'firework fireworks', 天灯: 'lanterns', 鸢: 'kite', 龙: 'dragon',
+  长城: 'wall', 炊烟: 'smoke', 沙: 'desert dune dunes sand', 藤: 'vine wisteria', 萄: 'grape grapes', 葫: 'gourd', 蕉: 'banana', 牡丹: 'peony rose',
+  银杏: 'ginkgo', 稻: 'rice wheat', 马: 'horse', 牛: 'ox cow buffalo cattle', 鹿: 'deer', 羊: 'sheep goat', 狗: 'dog', 猫: 'cat', 兔: 'rabbit hare',
+  驼: 'camel', 驴: 'donkey', 虾: 'shrimp prawn', 蟹: 'crab', 龟: 'turtle tortoise', 蛙: 'frog', 蜓: 'dragonfly',
+  旗: 'flag', 酒: 'wine', 茶: 'tea', 伞: 'umbrella', 琴: 'zither qin guqin', 剑: 'sword',
+})) for (const w of ws.split(' ')) EN[w] = c;
+const PUNCT = /^[\s，。、；：！？,.;:!?…—·“”‘’"'《》〈〉（）()\[\]【】\-~～]$/u;
+const tokRe = new RegExp(Object.keys(COMP).sort((a, b) => b.length - a.length).join('|') + "|[A-Za-z']+|[\\s\\S]", 'gu');
+
+/* ───────────── 题跋 ───────────── */
+function TL() {
+  const { W, H } = S, fs = clamp(min(H * .038, W * .062), 18, 34), lh = fs * 1.12, gap = fs * 1.55;
+  return { fs, lh, gap, top: max(H * .075, 36), rows: max(4, floor(H * .5 / lh)), right: W - max(W * .05, 30) - fs / 2, maxCols: max(2, floor(W * .4 / gap)) };
+}
+function addInsc(ch) {
+  const L = TL(); let col = S.insc[S.insc.length - 1];
+  if (!col || col.length >= L.rows) { col = []; S.insc.push(col); }
+  col.push({ ch, t0: performance.now(), rot: rand(-.05, .05), dx: rand(-.04, .04), sc: rand(.94, 1.06) });
+  while (S.insc.length > L.maxCols) S.insc.shift();
+  S.textUntil = performance.now() + 700; S.textFinal = false;
+}
+function breakCol() { const c = S.insc[S.insc.length - 1]; if (c && c.length) S.insc.push([]); }
+const SPECK = Array.from({ length: 16 }, () => [rand(-.5, .5), rand(-.5, .5), rand(.015, .05)]);
+function drawText(now) {
+  const g = cx.text, { W, H } = S, L = TL();
+  g.clearRect(0, 0, W, H); g.textAlign = 'center'; g.textBaseline = 'middle';
+  S.insc.forEach((col, ci) => col.forEach((c, ri) => {
+    const e = ease(clamp((now - c.t0) / 520, 0, 1)), sc = c.sc * (1.35 - .35 * e);
+    g.save(); g.translate(L.right - ci * L.gap + c.dx * L.fs, L.top + ri * L.lh + L.fs / 2); g.rotate(c.rot); g.scale(sc, sc);
+    g.font = `${L.fs}px ${FONT}`; g.shadowColor = rgba(INK, .55 * e); g.shadowBlur = (1.2 + 7 * (1 - e)) * S.dpr;
+    g.fillStyle = rgba(INK, .9 * e); g.fillText(c.ch, 0, 0); g.restore();
+  }));
+  if (!S.sealOn) return;
+  let li = S.insc.length - 1; while (li >= 0 && !S.insc[li].length) li--;
+  if (li < 0) return;
+  const n = S.insc[li].length, sz = L.fs * 1.3, fits = n + 1.5 <= L.rows + .6;
+  const x = L.right - (fits ? li : li + 1) * L.gap, y = fits ? L.top + n * L.lh + sz * .62 : L.top + sz * .5;
+  const p = clamp((now - S.sealT) / 380, 0, 1), sc = 1 + .5 * (1 - ease(p));
+  g.save(); g.translate(x, y); g.rotate(-.03); g.scale(sc, sc); g.globalAlpha = p * .92;
+  g.fillStyle = 'rgb(178,44,34)'; const r = sz * .1, h = sz / 2;
+  g.beginPath(); g.moveTo(-h + r, -h); g.arcTo(h, -h, h, h, r); g.arcTo(h, h, -h, h, r); g.arcTo(-h, h, -h, -h, r); g.arcTo(-h, -h, h, -h, r); g.closePath(); g.fill();
+  g.fillStyle = rgba(PAPER, 1); g.font = `${sz * .43}px ${FONT}`;
+  [['落', .23, -.22], ['笔', .23, .24], ['成', -.23, -.22], ['画', -.23, .24]].forEach(([c, dx, dy]) => g.fillText(c, dx * sz, dy * sz));
+  g.globalCompositeOperation = 'destination-out';
+  for (const [sx, sy, sr] of SPECK) { g.beginPath(); g.arc(sx * sz, sy * sz, sr * sz, 0, TAU); g.fill(); }
+  g.restore();
+}
+
+/* ───────────── 落字：字先浮现，再化入画中 ───────────── */
+function flourish(ch, x, y, size, ghost) {
+  S.flour.push({ ch, x: clamp(x, size * .6, S.W - size * .6), y: clamp(y, size * .6, S.H - size * .6), size, rot: rand(-.12, .12), t0: performance.now(), dur: FAST ? 200 : CALM ? 500 : 1700, ghost });
+}
+function drawGlyph(g, f, a, blur, sc) {
+  g.save(); g.translate(f.x, f.y); g.rotate(f.rot); g.scale(sc, sc);
+  g.font = `${f.size}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.shadowColor = rgba(INK, min(1, a * 1.5)); g.shadowBlur = blur * S.dpr; g.fillStyle = rgba(INK, a); g.fillText(f.ch, 0, 0); g.restore();
+}
+function paint(text, key) {
+  intro.classList.add('gone');
+  const fn = typeof key === 'function' ? key : M[key], anchor = fn ? fn(key) : null;
+  for (const c of text) addInsc(c);
+  const glyph = typeof key === 'string' ? key : text[text.length - 1];
+  if (anchor) flourish(glyph, anchor[0], anchor[1], clamp(130 * S.u, 72, 170), 0);
+  else {
+    const x = S.W * rand(.08, .72), y = S.H * rand(.14, .6), sz = rand(80, 170) * S.u;
+    flourish(glyph, x, y, sz, 0);
+    run(seq(wait(40), bloom(cx.far, x, y, sz * rand(.5, .8), { alpha: .05, color: PALE, frames: 50, clip: true })));
+  }
+  S.idx++;
+}
+function handle(t) {
+  S.lastType = performance.now();
+  if (COMP[t] !== undefined) return paint(t, COMP[t]);
+  if (/^[A-Za-z']+$/.test(t)) { const c = EN[t.toLowerCase()]; return c ? paint(c, COMP[c] ?? c) : inkDots(); }
+  if (t.trim() === '') return;
+  if (PUNCT.test(t)) { breakCol(); inkDots(); return; }
+  paint(t, t);
+}
+let queue = [], pumping = false;
+function typeText(str) {
+  for (const t of str.match(tokRe) || []) queue.push(t);
+  if (pumping) return; pumping = true;
+  (function step() {
+    const t = queue.shift(); if (t === undefined) { pumping = false; return; }
+    handle(t);
+    if (queue.length) setTimeout(step, FAST ? 30 : queue.length > 12 ? 300 : 400); else pumping = false;
+  })();
+}
+
+/* ───────────── 活动层 ───────────── */
+const puffSprite = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, rgba(PAPER, .92)); gr.addColorStop(.5, rgba(PAPER, .45)); gr.addColorStop(1, rgba(PAPER, 0)); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return c;
+})();
+const fadeIn = (now, t0, d = 900) => clamp((now - t0) / d, 0, 1);
+const smokeSprite = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 96; const g = c.getContext('2d'), gr = g.createRadialGradient(48, 48, 0, 48, 48, 48);
+  gr.addColorStop(0, 'rgba(70,74,80,.5)'); gr.addColorStop(.5, 'rgba(70,74,80,.22)'); gr.addColorStop(1, 'rgba(70,74,80,0)'); g.fillStyle = gr; g.fillRect(0, 0, 96, 96); return c;
+})();
+/* 游龙：龙首游走，身躯沿首之旧迹而行 */
+function drawDragons(g, now, k) {
+  const { W, H, u } = S;
+  for (const d of S.dragons) {
+    // 横贯长空，到边则从容回身（朝天空中线一侧兜转），不打死结
+    const right = cos(d.goal) > 0, cy = H * .2;
+    if (right ? d.x > W * .78 : d.x < W * .12) d.goal += ((d.y < cy) === right ? 1 : -1) * PI;
+    const want = d.goal + cos(d.goal) * clamp((cy - d.y) / (H * .12), -1, 1) * .35;
+    d.a += clamp(want - d.a, -.011 * k, .011 * k);
+    const ha = d.a + sin(now * .0017 + d.ph) * .5, sp = 1.05 * u * k;
+    d.x += cos(ha) * sp; d.y += sin(ha) * sp * .7;
+    for (let guard = 0; guard < 80 && hypot(d.x - d.tr[0][0], d.y - d.tr[0][1]) >= d.ds; guard++) {
+      const p = d.tr[0], l = hypot(d.x - p[0], d.y - p[1]); d.tr.unshift([p[0] + (d.x - p[0]) / l * d.ds, p[1] + (d.y - p[1]) / l * d.ds]); d.tr.pop();
+    }
+    const f = 1 - min(1, hypot(d.x - d.tr[0][0], d.y - d.tr[0][1]) / d.ds), n = d.tr.length, P = [[d.x, d.y]], Lp = [], Rp = [], nr = [];
+    for (let i = 1; i < n; i++) P.push([lerp(d.tr[i - 1][0], d.tr[i][0], f), lerp(d.tr[i - 1][1], d.tr[i][1], f)]);
+    for (let i = 0; i < n; i++) {
+      const a = P[max(0, i - 1)], b = P[min(n - 1, i + 1)], dx = a[0] - b[0], dy = a[1] - b[1], l = hypot(dx, dy) || 1, t = i / (n - 1);
+      const wd = d.w * min(lerp(.62, 1, min(1, t / .14)), pow(1.02 - t, .5) * 1.25) * .5, nx = -dy / l, ny = dx / l, s = ny < 0 ? 1 : -1;   // s：指向脊背（朝上）一侧
+      nr.push([nx * s, ny * s, wd, dx / l, dy / l]); Lp.push([P[i][0] + nx * wd, P[i][1] + ny * wd]); Rp.push([P[i][0] - nx * wd, P[i][1] - ny * wd]);
+    }
+    const fade = fadeIn(now, d.t0, 2200), ink = a => rgba(INK, a * fade);
+    g.lineCap = g.lineJoin = 'round';
+    // 四爪：近侧浓、远侧淡
+    for (const [fi, off, al] of [[.2, 0, .78], [.23, 5, .4], [.56, 0, .78], [.59, 5, .4]]) {
+      const i = round(n * fi), [nx, ny, wd, tx, ty] = nr[i], bx = P[i][0] - nx * wd * .6, by = P[i][1] - ny * wd * .6, sw = sin(now * .004 + fi * 40) * 3 * u;
+      const kx = bx - nx * 13 * u - tx * (6 + off) * u, ky = by - ny * 13 * u - ty * (6 + off) * u, fx = kx + tx * (14 * u + sw) - nx * 5 * u, fy = ky + ty * (14 * u + sw) - ny * 5 * u;
+      g.strokeStyle = ink(al); g.lineWidth = 3.6 * u; g.beginPath(); g.moveTo(bx, by); g.lineTo(kx, ky); g.lineTo(fx, fy); g.stroke();
+      g.lineWidth = 1.3 * u; const an = atan2(fy - ky, fx - kx);
+      for (const q of [-.7, -.2, .3, .8]) { g.beginPath(); g.moveTo(fx, fy); g.quadraticCurveTo(fx + cos(an + q) * 5 * u, fy + sin(an + q) * 5 * u, fx + cos(an + q + .5) * 8 * u, fy + sin(an + q + .5) * 8 * u); g.stroke(); }
+    }
+    // 背鳍：一簇簇向后掠的焰
+    for (let i = 2; i < n - 2; i++) {
+      const [nx, ny, wd, tx, ty] = nr[i], t = i / n;
+      leaf(g, P[i][0] + nx * wd * .7, P[i][1] + ny * wd * .7, atan2(ny - ty * .9, nx - tx * .9) + sin(now * .003 + i) * .1, (wd * 1.1 + 5 * u) * (1 - t * .5), 2.6 * u, INK, .62 * fade);
+    }
+    // 身：淡墨铺底，背脊浓墨勾线，腹侧一笔轻描
+    g.beginPath(); Lp.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); for (let i = n - 1; i >= 0; i--) g.lineTo(Rp[i][0], Rp[i][1]); g.closePath();
+    g.fillStyle = ink(.5); g.fill();
+    g.beginPath(); for (let i = 0; i < n; i++) { const [nx, ny, wd] = nr[i], x = P[i][0] + nx * wd * .82, y = P[i][1] + ny * wd * .82; i ? g.lineTo(x, y) : g.moveTo(x, y); }
+    g.strokeStyle = ink(.55); g.lineWidth = d.w * .2; g.stroke();
+    g.beginPath(); for (let i = 0; i < n; i++) { const [nx, ny, wd] = nr[i], x = P[i][0] - nx * wd, y = P[i][1] - ny * wd; i ? g.lineTo(x, y) : g.moveTo(x, y); }
+    g.strokeStyle = ink(.5); g.lineWidth = u; g.stroke();
+    // 鳞与腹甲
+    g.strokeStyle = ink(.34); g.lineWidth = u; g.beginPath();
+    for (let i = 2; i < n - 5; i++) {
+      const [nx, ny, wd, tx, ty] = nr[i];
+      for (const q of i % 2 ? [.45, -.1] : [.18]) { const x = P[i][0] + nx * wd * q, y = P[i][1] + ny * wd * q, r = wd * .3; g.moveTo(x + nx * r, y + ny * r); g.quadraticCurveTo(x - tx * r * 1.5, y - ty * r * 1.5, x - nx * r, y - ny * r); }
+    }
+    g.stroke();
+    g.strokeStyle = rgba(PAPER, .5 * fade); g.lineWidth = 1.2 * u; g.beginPath();
+    for (let i = 2; i < n - 4; i++) { const [nx, ny, wd] = nr[i]; g.moveTo(P[i][0] - nx * wd * .92, P[i][1] - ny * wd * .92); g.lineTo(P[i][0] - nx * wd * .45, P[i][1] - ny * wd * .45); }
+    g.stroke();
+    // 尾
+    const te = P[n - 1], ta = atan2(te[1] - P[n - 3][1], te[0] - P[n - 3][0]);
+    for (const q of [-.8, -.45, -.15, .15, .45, .8]) leaf(g, te[0], te[1], ta + q + sin(now * .003 + q * 3) * .14, (30 - abs(q) * 12) * u, 4 * u, INK, .62 * fade);
+    // 首
+    const hd = atan2(P[0][1] - P[2][1], P[0][0] - P[2][0]), hs = d.w / 8.5;
+    g.save(); g.translate(d.x - cos(hd) * 6 * hs, d.y - sin(hd) * 6 * hs); g.rotate(hd); g.scale(hs, cos(hd) < 0 ? -hs : hs);
+    for (let j = 0; j < 8; j++) leaf(g, 0, -7 + j * 2, PI + (j - 3.5) * .17 + sin(now * .003 + j) * .1, 22 - abs(j - 3.5) * 2, 3.2, INK, .66 * fade);   // 鬣
+    g.strokeStyle = ink(.9); g.lineWidth = 2.3;   // 鹿角
+    for (const [ox, oy, k] of [[0, 0, 1], [4.5, -.5, .82]]) {
+      g.beginPath(); g.moveTo(4 + ox, -8 + oy); g.quadraticCurveTo(-3 + ox, -17 * k + oy, -17 * k + ox, -22 * k + oy);
+      g.moveTo(-2 + ox, -14 * k + oy); g.lineTo(-3 + ox, -24 * k + oy); g.moveTo(-9 * k + ox, -19.5 * k + oy); g.lineTo(-13 * k + ox, -28 * k + oy); g.stroke();
+    }
+    closed(g, [[-5, -8], [4, -10], [12, -8.5], [20, -6], [27, -7], [31, -3.5], [28, .5], [16, 1.5], [7, 7.5], [-5, 7]]); g.fillStyle = ink(.86); g.fill();
+    closed(g, [[6, 4.5], [15, 5], [25, 6.5], [23, 9.5], [11, 9.5]]); g.fillStyle = ink(.8); g.fill();
+    g.fillStyle = rgba(RED, .8 * fade); g.beginPath(); g.ellipse(19, 3.6, 4.5, 1, .12, 0, TAU); g.fill();   // 舌
+    g.fillStyle = ink(.86); g.beginPath(); g.ellipse(28.5, -7, 3, 2.3, 0, 0, TAU); g.fill();
+    const sw = sin(now * .0026 + d.ph) * 3;
+    g.lineWidth = 1.1; g.strokeStyle = ink(.8); g.beginPath(); g.moveTo(28, -4); g.bezierCurveTo(44, -10 + sw, 46, -22 + sw, 34, -32 + sw * 2);
+    g.moveTo(28, -1); g.bezierCurveTo(46, 4 - sw, 50, 16 - sw, 40, 27 - sw * 2); g.stroke();   // 须
+    for (let j = 0; j < 4; j++) leaf(g, 9 + j * 3.2, 9, PI * .6 + j * .1 + sw * .02, 11, 2, INK, .66 * fade);   // 髯
+    g.fillStyle = rgba(PAPER, .96 * fade); g.beginPath(); g.ellipse(13, -4.4, 2.9, 2.3, -.2, 0, TAU); g.fill();
+    g.fillStyle = rgba(RED, .95 * fade); g.beginPath(); g.arc(13.6, -4.3, 1.25, 0, TAU); g.fill();
+    g.strokeStyle = ink(.9); g.lineWidth = 1.5; g.beginPath(); g.moveTo(8.5, -7.6); g.quadraticCurveTo(13, -9.6, 17.5, -6.6); g.stroke();   // 眉
+    g.restore();
+  }
+}
+/* 水族：虾分节、蟹横行、龟负甲 */
+const CRITTER = {
+  shrimp(g, f, now, a) {
+    const L = f.size, curl = .16 + .1 * sin(f.ph);
+    g.save(); g.translate(f.x, f.y); g.rotate(f.a); g.lineCap = 'round';
+    g.strokeStyle = rgba(INK, .5 * a); g.lineWidth = max(.5, L * .014); g.beginPath();
+    for (let i = 0; i < 4; i++) for (const d of [-1, 1]) { const lx = L * (.08 - i * .06); g.moveTo(lx, d * L * .07); g.lineTo(lx - L * .05, d * L * .19); }
+    g.stroke();
+    g.fillStyle = rgba(INK, .34 * a); g.beginPath(); g.ellipse(0, 0, L * .2, L * .1, 0, 0, TAU); g.fill();
+    g.fillStyle = rgba(INK, .7 * a); g.beginPath(); g.ellipse(-L * .02, 0, L * .11, L * .028, 0, 0, TAU); g.fill();
+    let x = -L * .16, y = 0, an = PI;
+    for (let i = 0; i < 6; i++) {
+      const r = L * (.105 - i * .012); an += curl; x += cos(an) * L * .1; y += sin(an) * L * .1;
+      g.fillStyle = rgba(INK, .3 * a); g.beginPath(); g.ellipse(x, y, r * .95, r, an, 0, TAU); g.fill();
+    }
+    for (const d of [-.5, 0, .5]) leaf(g, x, y, an + d, L * .14, L * .035, INK, .42 * a);
+    g.strokeStyle = rgba(INK, .75 * a); g.lineWidth = max(.7, L * .022); g.beginPath(); g.moveTo(L * .14, 0); g.lineTo(L * .34, -L * .01); g.stroke();
+    g.fillStyle = rgba(INK, .9 * a); for (const d of [-1, 1]) { g.beginPath(); g.arc(L * .17, d * L * .075, L * .024, 0, TAU); g.fill(); }
+    g.lineWidth = max(.5, L * .014); g.strokeStyle = rgba(INK, .55 * a);
+    for (const d of [-1, 1]) for (const m of [1, .62]) {
+      const sw = sin(now * .002 + f.ph + d) * .12;
+      g.beginPath(); g.moveTo(L * .18, d * L * .03); g.quadraticCurveTo(L * (.5 * m + .1), d * L * (.12 + sw) * m, L * (.1 - .5 * m), d * L * (.42 + sw) * m); g.stroke();
+    }
+    g.lineWidth = max(.7, L * .024); g.strokeStyle = rgba(INK, .6 * a);
+    for (const d of [-1, 1]) {
+      const sw = sin(now * .003 + f.ph * 2 + d) * .05, ex = L * .52, ey = d * L * (.16 + sw);
+      g.beginPath(); g.moveTo(L * .08, d * L * .08); g.lineTo(L * .3, d * L * (.24 + sw)); g.lineTo(ex, ey); g.stroke();
+      leaf(g, ex, ey, -d * .5, L * .1, L * .022, INK, .7 * a); leaf(g, ex, ey, d * .1, L * .1, L * .022, INK, .7 * a);
+    }
+    g.restore();
+  },
+  crab(g, f, now, a) {
+    const L = f.size, wk = now * .012 * (.4 + f.sp * 2) + f.ph;
+    g.save(); g.translate(f.x, f.y); g.rotate(f.a); g.lineCap = g.lineJoin = 'round';   // 侧身朝向行进方向
+    g.strokeStyle = rgba(INK, .75 * a); g.lineWidth = max(.9, L * .07);
+    for (const d of [-1, 1]) for (let i = 0; i < 4; i++) {
+      const b = (i - 1.5) * .42 + sin(wk + i * 1.6 + (d > 0 ? PI : 0)) * .14, x0 = d * L * .38, y0 = (i - 1.5) * L * .13;
+      const x1 = x0 + d * cos(b) * L * .36, y1 = y0 + sin(b) * L * .36;
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.lineTo(x1 + d * cos(b + .8) * L * .3, y1 + sin(b + .8) * L * .3); g.stroke();
+    }
+    g.lineWidth = max(1.2, L * .1);
+    for (const d of [-1, 1]) {
+      const ex = d * L * .52, ey = -L * .56 + sin(wk * .5 + d) * L * .03;
+      g.beginPath(); g.moveTo(d * L * .3, -L * .22); g.lineTo(d * L * .62, -L * .34); g.lineTo(ex, ey); g.stroke();
+      leaf(g, ex, ey, -PI / 2 - d * .75, L * .26, L * .07, INK, .8 * a); leaf(g, ex, ey, -PI / 2 - d * .2, L * .22, L * .05, INK, .8 * a);
+    }
+    closed(g, [[-L * .46, -L * .1], [-L * .3, -L * .3], [L * .3, -L * .3], [L * .46, -L * .1], [L * .4, L * .2], [0, L * .3], [-L * .4, L * .2]]);
+    g.fillStyle = rgba(INK, .66 * a); g.fill();
+    g.fillStyle = rgba(INK, .3 * a); g.beginPath(); g.ellipse(0, 0, L * .26, L * .15, 0, 0, TAU); g.fill();
+    g.fillStyle = rgba(INK, .9 * a); for (const d of [-1, 1]) { g.beginPath(); g.arc(d * L * .13, -L * .3, L * .04, 0, TAU); g.fill(); }
+    g.restore();
+  },
+  turtle(g, f, now, a) {
+    const L = f.size, pd = sin(now * .004 + f.ph);
+    g.save(); g.translate(f.x, f.y); g.rotate(f.a);
+    for (const [fx, d] of [[.24, 1], [.24, -1], [-.26, 1], [-.26, -1]]) leaf(g, L * fx, d * L * .2, d * (fx > 0 ? .9 + pd * .35 : 2.2 - pd * .3), L * .32, L * .085, INK, .5 * a);
+    g.fillStyle = rgba(INK, .55 * a); g.beginPath(); g.ellipse(L * .5, 0, L * .12, L * .085, 0, 0, TAU); g.fill();
+    leaf(g, -L * .38, 0, PI + pd * .2, L * .18, L * .03, INK, .5 * a);
+    g.fillStyle = rgba(INK, .5 * a); g.beginPath(); g.ellipse(0, 0, L * .42, L * .31, 0, 0, TAU); g.fill();
+    g.strokeStyle = rgba(INK, .8 * a); g.lineWidth = max(.8, L * .035); g.stroke();
+    g.lineWidth = max(.6, L * .02); g.strokeStyle = rgba(INK, .6 * a); g.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const p = j => [cos(j / 6 * TAU), sin(j / 6 * TAU)], [c0, s0] = p(i), [c1, s1] = p(i + 1);
+      g.moveTo(c0 * L * .17, s0 * L * .13); g.lineTo(c1 * L * .17, s1 * L * .13); g.moveTo(c0 * L * .17, s0 * L * .13); g.lineTo(c0 * L * .4, s0 * L * .29);
+    }
+    g.stroke(); g.restore();
+  },
+};
+/* 新增意象的活动部分 */
+function drawLive2(g, now, k, wind) {
+  const { W, H, u } = S;
+  g.lineCap = 'round';
+  // 瀑：水丝下坠
+  for (const f of S.falls) {
+    const fade = fadeIn(now, f.t0, 1500); g.lineWidth = 1;
+    for (let j = 0; j < 7; j++) {
+      const t = (now * .0004 + j / 7 + f.ph) % 1, yy = lerp(f.y, f.by, t), xx = f.x + (j % 3 - 1) * f.w * .22 + sin(j * 2.1) * f.w * .08;
+      g.strokeStyle = rgba(PALE, .36 * fade * sin(PI * t)); g.beginPath(); g.moveTo(xx, yy); g.lineTo(xx, min(f.by, yy + (10 + 18 * t) * u)); g.stroke();
+    }
+    if (S.water && chance(.02 * k)) ripple(f.x + rand(-1, 1) * f.w, f.by + 8 * u, 18 * u, .25);
+  }
+  // 烟
+  for (const s of S.smokes) {
+    const fade = fadeIn(now, s.t0, 2000); if (fade <= 0) continue;
+    for (let i = 0; i < 18; i++) {
+      const t = (i / 18 + now * .00005 * s.v) % 1, r = s.r0 + s.h * .16 * t;
+      const x = s.x + (n1(s.sd + t * 2.5 + 900 - now * .00025) - .5) * s.sway * t + wind * 120 * u * t * t, y = s.y - s.h * t;
+      g.globalAlpha = .55 * fade * pow(1 - t, 1.3) * min(1, t * 10); g.drawImage(smokeSprite, x - r, y - r * .8, r * 2, r * 1.6);
+    }
+  }
+  g.globalAlpha = 1;
+  // 旗
+  for (const f of S.flags) {
+    const fade = fadeIn(now, f.t0, 900); if (fade <= 0) continue;
+    const N = 8, amp = f.h * (.1 + abs(wind) * .25), wv = i => sin(now * .005 - i * .85 + f.ph) * amp * i / N;
+    g.beginPath();
+    for (let i = 0; i <= N; i++) g[i ? 'lineTo' : 'moveTo'](f.x + f.dir * f.w * i / N, f.y + wv(i) + i / N * f.h * .08);
+    for (let i = N; i >= 0; i--) g.lineTo(f.x + f.dir * f.w * i / N, f.y + f.h * (1 - i / N * .12) + wv(i));
+    g.closePath(); g.fillStyle = rgba(f.color, .8 * fade); g.fill(); g.strokeStyle = rgba(INK, .5 * fade); g.lineWidth = .8; g.stroke();
+    if (f.ch) {
+      g.font = `${f.h * .72}px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = rgba(INK, .88 * fade);
+      g.fillText(f.ch, f.x + f.dir * f.w * .5, f.y + f.h * .5 + wv(4));
+    }
+  }
+  // 蛙：偶一鼓腮，水面生纹
+  for (const f of S.frogs) if (chance(.004 * k)) ripple(f.x + rand(-10, 10) * u, f.y + 3 * u, 46 * u, .3);
+  // 蜻蜓：悬停、倏忽而去
+  for (const f of S.dflies) {
+    if (now > f.next) { f.tx = f.hx + rand(-90, 90) * u; f.ty = f.hy + rand(-46, 26) * u; f.next = now + rand(700, 2600); }
+    const dx = f.tx - f.x, dy = f.ty - f.y;
+    if (hypot(dx, dy) > 4) { let q = atan2(dy, dx) - f.a; q = atan2(sin(q), cos(q)); f.a += q * min(1, .2 * k); }
+    f.x += dx * min(1, .07 * k); f.y += dy * min(1, .07 * k);
+    const a = fadeIn(now, f.t0), s = f.size, fl = .5 + .5 * sin(now * .07 + f.ph);
+    g.save(); g.translate(f.x, f.y + sin(now * .004 + f.ph) * 1.5 * u); g.rotate(f.a);
+    g.fillStyle = rgba(INK, (.16 + .12 * fl) * a);
+    for (const d of [-1, 1]) for (const [wx, wr, wl] of [[.12, .3, .62], [-.08, -.25, .54]]) {
+      const an = d * (PI / 2 - wr); g.beginPath(); g.ellipse(s * wx + cos(an) * s * wl / 2, sin(an) * s * wl / 2, s * wl / 2, s * .085, an, 0, TAU); g.fill();
+    }
+    g.strokeStyle = rgba(f.color, .85 * a); g.lineWidth = max(1.1, s * .09); g.beginPath(); g.moveTo(s * .22, 0); g.lineTo(-s * .85, 0); g.stroke();
+    g.fillStyle = rgba(INK, .85 * a); g.beginPath(); g.arc(s * .3, 0, s * .1, 0, TAU); g.fill(); g.restore();
+  }
+  // 风筝
+  for (const q of S.kites) {
+    const a = fadeIn(now, q.t0, 1200), kx = q.x + sin(now * .0008 + q.ph) * 16 * u + wind * 46 * u, ky = q.y + sin(now * .0013 + q.ph * 1.7) * 9 * u - abs(wind) * 10 * u, s = q.size;
+    g.strokeStyle = rgba(INK, .35 * a); g.lineWidth = .7; g.beginPath(); g.moveTo(q.hx, q.hy); g.quadraticCurveTo(lerp(q.hx, kx, .55), lerp(q.hy, ky, .5) + 40 * u, kx, ky); g.stroke();
+    g.save(); g.translate(kx, ky); g.rotate((kx > q.hx ? 1 : -1) * .35 + sin(now * .0011 + q.ph) * .12);
+    for (const d of [-.25, .25]) {
+      g.beginPath(); g.moveTo(d * s, s * .9);
+      for (let i = 1; i <= 8; i++) g.lineTo(d * s + sin(now * .004 + q.ph + i * .8) * s * .22 * i / 8, s * .9 + i * s * .3);
+      g.strokeStyle = rgba(q.color, .6 * a); g.lineWidth = 1.4 * u; g.stroke();
+    }
+    g.beginPath(); g.moveTo(0, -s); g.lineTo(s * .72, -s * .15); g.lineTo(0, s * 1.05); g.lineTo(-s * .72, -s * .15); g.closePath();
+    g.fillStyle = rgba(q.color, .74 * a); g.fill(); g.strokeStyle = rgba(INK, .7 * a); g.lineWidth = 1; g.stroke();
+    g.beginPath(); g.moveTo(0, -s); g.lineTo(0, s * 1.05); g.moveTo(-s * .72, -s * .15); g.lineTo(s * .72, -s * .15); g.lineWidth = .7; g.stroke();
+    g.restore();
+  }
+  // 天灯
+  for (const l of S.lanterns) {
+    l.y -= l.vy * k * u; l.x += (sin(now * .0007 + l.ph) * .12 + wind * .8) * k;
+    if (l.y < -40) { l.y = S.horizon - rand(0, 60) * u; l.x = W * rand(.1, .8); l.t0 = now; }
+    const a = fadeIn(now, l.t0, 1200), s = l.size, fl = .8 + .2 * sin(now * .009 + l.ph), gr = g.createRadialGradient(l.x, l.y, 0, l.x, l.y, s * 3.2);
+    gr.addColorStop(0, `rgba(232,120,40,${.42 * fl * a})`); gr.addColorStop(1, 'rgba(232,120,40,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(l.x, l.y, s * 3.2, 0, TAU); g.fill();
+    g.beginPath(); g.moveTo(l.x - s * .5, l.y - s * .7); g.quadraticCurveTo(l.x, l.y - s * .95, l.x + s * .5, l.y - s * .7); g.lineTo(l.x + s * .34, l.y + s * .6); g.lineTo(l.x - s * .34, l.y + s * .6); g.closePath();
+    g.fillStyle = `rgba(214,84,36,${.84 * a})`; g.fill();
+    g.strokeStyle = rgba(INK, .7 * a); g.lineWidth = 1; g.beginPath(); g.moveTo(l.x - s * .36, l.y + s * .6); g.lineTo(l.x + s * .36, l.y + s * .6); g.stroke();
+    g.fillStyle = `rgba(250,206,96,${.9 * a * fl})`; g.beginPath(); g.arc(l.x, l.y + s * .3, s * .16, 0, TAU); g.fill();
+  }
+  // 烟花
+  S.sparks = S.sparks.filter(s => {
+    const p = (now - s.t0) / s.dur;
+    if (p < -.25) return true;
+    if (p < 0) { const yy = lerp(S.horizon, s.y, ease(1 + p / .25)); g.strokeStyle = rgba(INK, .4); g.lineWidth = 1.2 * u; g.beginPath(); g.moveTo(s.x, yy + 26 * u); g.lineTo(s.x, yy); g.stroke(); return true; }
+    if (!s.mark) { s.mark = true; run(bloom(cx.far, s.x, s.y, s.R * .8, { alpha: .07, color: s.color, frames: 30, clip: true })); run(splatter(cx.far, s.x, s.y, s.R * .9, 10, s.color)); }   // 纸上留几点残彩
+    if (p >= 1) return false;
+    const e = ease(min(1, p * 1.6)), a = pow(1 - p, 1.2), droop = p * p * s.R * .35;
+    g.strokeStyle = g.fillStyle = rgba(s.color, .85 * a); g.lineWidth = 1.6 * u;
+    for (const [an, rr] of s.rays) {
+      const r1 = s.R * e * rr, r0 = r1 * (.35 + .5 * p), x1 = s.x + cos(an) * r1, y1 = s.y + sin(an) * r1 + droop;
+      g.beginPath(); g.moveTo(s.x + cos(an) * r0, s.y + sin(an) * r0 + droop * r0 / r1); g.lineTo(x1, y1); g.stroke();
+      g.beginPath(); g.arc(x1, y1, 1.6 * u, 0, TAU); g.fill();
+    }
+    return true;
+  });
+  // 流星
+  S.meteors = S.meteors.filter(m => {
+    const p = (now - m.t0) / m.dur; if (p < 0) return true;
+    if (p >= 1) {   // 划过之后，纸上留一道淡痕
+      const gf = cx.far, gr = gf.createLinearGradient(m.x, m.y, m.x + m.dx, m.y + m.dy); gr.addColorStop(0, rgba(PALE, 0)); gr.addColorStop(1, rgba(PALE, .45));
+      gf.save(); skyClip(gf); gf.strokeStyle = gr; gf.lineWidth = 1.3 * u; gf.lineCap = 'round'; gf.beginPath(); gf.moveTo(m.x, m.y); gf.lineTo(m.x + m.dx, m.y + m.dy); gf.stroke();
+      gf.fillStyle = rgba(INK, .6); gf.beginPath(); gf.arc(m.x + m.dx, m.y + m.dy, 1.8 * u, 0, TAU); gf.fill(); gf.restore(); return false;
+    }
+    const e = ease(p), t0 = max(0, e - .4), ax = m.x + m.dx * t0, ay = m.y + m.dy * t0, bx = m.x + m.dx * e, by = m.y + m.dy * e, gr = g.createLinearGradient(ax, ay, bx, by);
+    gr.addColorStop(0, rgba(INK, 0)); gr.addColorStop(1, rgba(INK, .8)); g.strokeStyle = gr; g.lineWidth = 1.8 * u; g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke();
+    g.fillStyle = rgba(INK, .9); g.beginPath(); g.arc(bx, by, 2.2 * u, 0, TAU); g.fill(); return true;
+  });
+  // 雷电
+  S.bolts = S.bolts.filter(b => {
+    const p = (now - b.t0) / b.dur; if (p < 0) return true; if (p >= 1) return false;
+    const a = (1 - p) * (sin(p * 34) > -.2 ? 1 : .25);
+    if (!CALM) { g.fillStyle = `rgba(255,255,255,${.2 * a})`; g.fillRect(0, 0, W, H); }
+    g.strokeStyle = rgba(INK, .9 * a); g.lineJoin = 'miter';
+    for (const [q, lw] of [[b.pts, 2.4], ...b.br.map(r => [r, 1.2])]) { g.lineWidth = lw * u; g.beginPath(); q.forEach((pt, i) => i ? g.lineTo(pt[0], pt[1]) : g.moveTo(pt[0], pt[1])); g.stroke(); }
+    return true;
+  });
+}
+function drawLive(now, dt) {
+  const g = cx.live, { W, H, u } = S, k = dt / 16.6;
+  g.clearRect(0, 0, W, H);
+  const wind = now < S.windEnd ? pow(sin(PI * (now - S.windStart) / (S.windEnd - S.windStart)), .6) * S.windDir : 0;
+
+  drawDragons(g, now, k);   // 龙在云下，云气自会遮去半身
+  for (const p of S.puffs) {
+    p.x += (p.vx + wind * .8) * k; if (p.x > W + p.rx) p.x = -p.rx; if (p.x < -p.rx) p.x = W + p.rx;
+    g.globalAlpha = p.a * fadeIn(now, p.t0, 2500); g.drawImage(puffSprite, p.x - p.rx, p.y - p.ry, p.rx * 2, p.ry * 2);
+  }
+  g.globalAlpha = 1;
+
+  for (const s of S.stars) {
+    const a = fadeIn(now, s.t0) * (.25 + .4 * (.5 + .5 * sin(now * .002 + s.ph)));
+    g.strokeStyle = g.fillStyle = rgba(INK, a); g.lineWidth = .7; g.beginPath(); g.arc(s.x, s.y, s.r, 0, TAU); g.fill();
+    g.beginPath(); g.moveTo(s.x - s.r * 2.6, s.y); g.lineTo(s.x + s.r * 2.6, s.y); g.moveTo(s.x, s.y - s.r * 2.6); g.lineTo(s.x, s.y + s.r * 2.6); g.stroke();
+  }
+
+  g.lineCap = 'round';
+  for (const s of S.shimmer) {
+    s.x += s.v * k; if (s.x > W + 20) s.x = -s.len; if (s.x < -s.len - 20) s.x = W;
+    g.strokeStyle = rgba(INK, .06 + .14 * (.5 + .5 * sin(now * .0012 + s.ph))); g.lineWidth = 1; g.beginPath();
+    for (let i = 0; i <= 6; i++) { const x = s.x + s.len * i / 6, y = s.y + sin(now * .002 + s.ph + i * 1.1) * 1.5; i ? g.lineTo(x, y) : g.moveTo(x, y); }
+    g.stroke();
+  }
+  S.ripples = S.ripples.filter(r => {
+    r.r += .38 * k * u; const a = r.a * (1 - r.r / r.max); if (a <= 0) return false;
+    g.strokeStyle = rgba(INK, a); g.lineWidth = 1; g.beginPath(); g.ellipse(r.x, r.y, r.r, r.r * .3, 0, 0, TAU); g.stroke(); return true;
+  });
+
+  // 鱼
+  const fx0 = W * .43, fx1 = W * .7, fy0 = H * .775, fy1 = max(fy0 + 20, S.floor - 8);
+  for (const f of S.fish) {
+    f.ph += dt * .011 * (.6 + f.sp); f.turn = (f.turn + rand(-1, 1) * .02) * .96; f.a += f.turn * k;
+    if (f.x < fx0 || f.x > fx1 || f.y < fy0 || f.y > fy1) {
+      let d = atan2((fy0 + fy1) / 2 - f.y, (fx0 + fx1) / 2 - f.x) - f.a; d = atan2(sin(d), cos(d)); f.a += d * .04 * k;
+    } else f.a -= sin(f.a) * cos(f.a) * .01 * k;
+    f.x += cos(f.a) * f.sp * k; f.y += sin(f.a) * f.sp * k * .8;
+    if (chance(.0015 * k)) ripple(f.x, f.y, 24 * u, .3);
+    if (f.kind) { CRITTER[f.kind](g, f, now, fadeIn(now, f.t0, 1200)); continue; }
+    const fade = fadeIn(now, f.t0, 1200), L = f.size, ca = cos(f.a), sa = sin(f.a), n = 9, sp = [], wp = [.03, .13, .17, .165, .14, .105, .07, .04, .02];
+    for (let i = 0; i < n; i++) { const t = i / (n - 1), lat = sin(f.ph - t * 3.2) * L * .11 * t * (.5 + f.sp); sp.push([f.x - ca * t * L - sa * lat, f.y - sa * t * L + ca * lat]); }
+    const poly = []; for (let i = 0; i < n; i++) poly.push([sp[i][0] - sa * wp[i] * L, sp[i][1] + ca * wp[i] * L]);
+    for (let i = n - 1; i >= 0; i--) poly.push([sp[i][0] + sa * wp[i] * L, sp[i][1] - ca * wp[i] * L]);
+    closed(g, poly); g.fillStyle = rgba(f.color, .74 * fade); g.fill();
+    const ta = atan2(sp[n - 1][1] - sp[n - 2][1], sp[n - 1][0] - sp[n - 2][0]);
+    leaf(g, sp[n - 1][0], sp[n - 1][1], ta + .45, L * .3, L * .08, f.color, .5 * fade); leaf(g, sp[n - 1][0], sp[n - 1][1], ta - .45, L * .3, L * .08, f.color, .5 * fade);
+    leaf(g, sp[2][0], sp[2][1], f.a + PI - 1, L * .2, L * .06, f.color, .35 * fade); leaf(g, sp[2][0], sp[2][1], f.a + PI + 1, L * .2, L * .06, f.color, .35 * fade);
+  }
+
+  // 舟
+  for (const b of S.boats) {
+    b.x += b.vx * k; if (b.x > W + 130 * u) b.x = -130 * u; if (b.x < -130 * u) b.x = W + 130 * u;
+    const bob = sin(now * .0015 + b.ph) * 1.6 * u, fade = fadeIn(now, b.t0, 1600), cw = 240 * u, ch = 200 * u, flip = b.vx > 0 ? -1 : 1;
+    if (chance(.006 * k)) ripple(b.x + rand(-30, 30) * u, b.y + 5 * u, 40 * u, .22);
+    g.save(); g.translate(b.x, b.y + bob); g.scale(flip, 1);
+    g.globalAlpha = fade; g.drawImage(b.sprite, -cw / 2, -ch * .8, cw, ch);
+    g.translate(0, 5 * u); g.scale(1, -.42); g.globalAlpha = fade * .13; g.drawImage(b.sprite, -cw / 2, -ch * .8, cw, ch);
+    g.restore();
+  }
+  g.globalAlpha = 1;
+
+  // 柳丝
+  for (const s of S.strands) {
+    const gr = ease(fadeIn(now, s.t0, 1600)); if (gr <= 0) continue;
+    const pts = []; for (let i = 0; i <= 14; i++) { const t = i / 14; pts.push([s.x + (sin(now * .0012 + s.ph + t * 2.2) * .05 * (1 + abs(wind) * 2.5) + wind * .28 + s.d) * s.len * t * t, s.y + s.len * t * gr]); }
+    g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]));
+    g.strokeStyle = rgba(GREEN, s.a * .75); g.lineWidth = s.w * .8; g.stroke();
+    g.beginPath();
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i], q = pts[i - 1], mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2;
+      g.moveTo(mx, my); g.lineTo(mx + (i % 2 ? 1 : -1) * 3.4 * u, my + 6.5 * u * gr);
+    }
+    g.strokeStyle = rgba(GREEN, s.a); g.lineWidth = s.w * 1.5; g.stroke();
+  }
+
+  // 鸟
+  for (const b of S.birds) {
+    b.x += b.vx * k * u; b.ph += dt * .012 * b.fl; b.y = b.by + sin(now * .0006 + b.wob) * 8 * u;
+    if (b.x > W + 60) { b.x = -50; if (!b.wob) b.x -= 0; else b.by = H * rand(.08, .32); }
+    if (b.x < -60) { b.x = W + 50; if (b.wob) b.by = H * rand(.08, .32); }
+    const s = b.size, fl = sin(b.ph), a = .82 * fadeIn(now, b.t0, 700);
+    g.save(); g.translate(b.x, b.y); g.scale(b.vx > 0 ? 1 : -1, 1); g.strokeStyle = g.fillStyle = rgba(INK, a);
+    g.lineWidth = max(1, s * .17); g.beginPath(); g.moveTo(-s, -s * .55 * fl); g.quadraticCurveTo(-s * .45, -s * .5 * fl - s * .28, 0, 0);
+    g.quadraticCurveTo(s * .45, -s * .5 * fl - s * .28, s, -s * .55 * fl); g.stroke();
+    g.beginPath(); g.ellipse(0, s * .05, s * .3, s * .12, 0, 0, TAU); g.fill();
+    if (b.big) { g.lineWidth = max(.8, s * .07); g.beginPath(); g.moveTo(s * .2, 0); g.lineTo(s * .95, -s * .1); g.moveTo(-s * .2, s * .05); g.lineTo(-s * .9, s * .14); g.stroke(); }
+    g.restore();
+  }
+
+  // 蝶
+  for (const f of S.flies) {
+    const tx = f.hx + (n1(f.sd + now * .0004) - .5) * 220 * u, ty = f.hy + (n1(f.sd + 50 + now * .0005) - .5) * 120 * u;
+    f.x += (tx - f.x) * .02 * k; f.y += (ty - f.y) * .02 * k;
+    const fl = abs(sin(now * .018 + f.ph)), a = .75 * fadeIn(now, f.t0), s = f.size;
+    g.save(); g.translate(f.x, f.y); g.rotate((tx - f.x) * .01); g.fillStyle = rgba(f.color, a);
+    for (const d of [-1, 1]) { g.beginPath(); g.ellipse(d * s * .5 * fl, -s * .25, s * .55 * fl + .3, s * .5, d * .5, 0, TAU); g.fill(); g.beginPath(); g.ellipse(d * s * .35 * fl, s * .3, s * .35 * fl + .3, s * .32, -d * .4, 0, TAU); g.fill(); }
+    g.strokeStyle = rgba(INK, a); g.lineWidth = 1; g.beginPath(); g.moveTo(0, -s * .5); g.lineTo(0, s * .45); g.stroke(); g.restore();
+  }
+
+  // 花瓣、落叶
+  if (S.emitters.length && chance(.022 * k)) { const e = pick(S.emitters); spawnPetal(e.x, e.y, e.color, e.kind); }
+  if (now < S.leafEnd && chance(.22 * k)) spawnPetal(rand(W), -10, pick([[176, 84, 40], [190, 130, 50], [150, 60, 36]]), 'leaf');
+  S.petals = S.petals.filter(p => {
+    p.x += (p.vx + sin(now * .002 + p.ph) * .5 + wind * 3.4) * k; p.y += p.vy * k * (1 - abs(wind) * .5); p.rot += p.vr * k;
+    if (p.y > H * .97 || p.x < -80 || p.x > W + 80) p.life -= .03 * k;
+    if (p.life <= 0) { if (S.water && p.y > S.horizon) ripple(p.x, p.y, 14 * u, .25); return false; }
+    leaf(g, p.x, p.y, p.rot, p.size * 1.7, p.size * .7, p.color, .78 * p.life); return true;
+  });
+
+  // 雨
+  const rainI = now < S.rainEnd ? min(1, (S.rainEnd - now) / 3000) : 0, slant = .12 + wind * .5;
+  const rT = rainI * 170 * clamp(W / 1440, .4, 1.4);
+  for (let i = 0; i < 7 && S.drops.length < rT; i++) S.drops.push({ x: rand(-W * .1, W * 1.1), y: rand(-H * .4, 0), v: rand(13, 19), len: rand(14, 30) * u, gy: rand(S.horizon, H) });
+  if (S.drops.length) {
+    g.strokeStyle = rgba(INK, .22); g.lineWidth = 1; g.beginPath();
+    S.drops = S.drops.filter(d => {
+      d.y += d.v * k; d.x += d.v * k * slant;
+      if (d.y > d.gy) { if (chance(.5)) ripple(d.x, d.gy, rand(7, 15) * u, .3); if (S.drops.length > rT) return false; d.x = rand(-W * .1, W * 1.1); d.y = rand(-60, 0); d.gy = rand(S.horizon, H); }
+      g.moveTo(d.x, d.y); g.lineTo(d.x - d.len * slant, d.y - d.len); return true;
+    });
+    g.stroke();
+  }
+  // 雪
+  const snowI = now < S.snowEnd ? min(1, (S.snowEnd - now) / 6000) : 0, sT = snowI * 230 * clamp(W / 1440, .4, 1.4);
+  for (let i = 0; i < 3 && S.flakes.length < sT; i++) S.flakes.push({ x: rand(W), y: S.flakes.length < 40 ? rand(-H * .6, 0) : -6, r: rand(1, 3.2) * u, v: rand(.6, 1.6), ph: rand(TAU) });
+  if (S.flakes.length) {
+    S.flakes = S.flakes.filter(f => {
+      f.y += f.v * k; f.x += (sin(now * .0011 + f.ph) * .35 + wind * 2.4) * k;
+      if (f.y > H + 6) { if (S.flakes.length > sT) return false; f.y = -6; f.x = rand(W); } return true;
+    });
+    g.fillStyle = 'rgba(84,96,112,.24)'; g.beginPath(); for (const f of S.flakes) { g.moveTo(f.x + f.r + 1.1, f.y + .6); g.arc(f.x, f.y + .6, f.r + 1.1, 0, TAU); } g.fill();
+    g.fillStyle = 'rgba(255,255,255,.96)'; g.beginPath(); for (const f of S.flakes) { g.moveTo(f.x + f.r, f.y); g.arc(f.x, f.y, f.r, 0, TAU); } g.fill();
+  }
+
+  // 风痕
+  S.gusts = S.gusts.filter(q => {
+    const p = (now - q.t0) / q.dur; if (p < 0) return true; if (p > 1.35) return false;
+    const pt = v => [q.dir > 0 ? -80 + v * (W + 160) : W + 80 - v * (W + 160), q.y + sin(v * q.fq + q.ph) * q.amp + v * q.amp * .5];
+    g.lineWidth = q.w;
+    for (let i = 0; i < 26; i++) {
+      const v0 = p - .35 * (i + 1) / 26, v1 = p - .35 * i / 26; if (v0 < 0 || v1 > 1) continue;
+      const a = pt(v0), b = pt(v1); g.strokeStyle = rgba(INK, .2 * (i / 26) * (1 - i / 26) * 4 * .6); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+    }
+    return true;
+  });
+
+  // 灯火
+  for (const l of S.lights) {
+    const x = l.boat ? l.boat.x : l.x, y = l.boat ? l.boat.y - 13 * u : l.y, fl = .75 + .25 * sin(now * .011 + l.ph) * sin(now * .0037 + l.ph), r = 20 * u * fl;
+    const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(226,104,36,${.55 * fl})`); gr.addColorStop(1, 'rgba(226,104,36,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); g.fillStyle = 'rgba(196,48,28,.9)'; g.beginPath(); g.arc(x, y, 1.8 * u, 0, TAU); g.fill();
+  }
+
+  drawLive2(g, now, k, wind);
+
+  // 落字
+  S.flour = S.flour.filter(f => {
+    const p = (now - f.t0) / f.dur;
+    if (p >= 1) { if (f.ghost) drawGlyph(cx.far, f, f.ghost, 28, 1.02); return false; }
+    const a = p < .14 ? p / .14 * .8 : lerp(.8, f.ghost, ease((p - .14) / .86));
+    drawGlyph(g, f, a, 2 + 26 * p, .92 + .1 * ease(p)); return true;
+  });
+}
+
+/* ───────────── 主循环 ───────────── */
+let last = performance.now(), acc = 0;
+function frame(now) {
+  const dt = min(100, now - last); last = now; acc += dt;
+  let n = 0; const quick = CALM || FAST, cap = quick ? 40 : 3;
+  while ((acc >= 16.6 || quick) && n < cap) { tick(); acc -= 16.6; n++; }
+  if (acc > 50 || quick) acc = 0;
+  drawLive(now, dt);
+  const want = S.insc.some(c => c.length) && now - S.lastType > 1700 && !queue.length;
+  if (want !== S.sealOn) { S.sealOn = want; S.sealT = now; S.textUntil = now + 500; S.textFinal = false; }
+  if (now < S.textUntil) drawText(now); else if (!S.textFinal) { drawText(now); S.textFinal = true; }
+  requestAnimationFrame(frame);
+}
+
+/* ───────────── 交互 ───────────── */
+/* 输入框已去（2026-11-23 站长改）：入画只靠点字（chips 全集），Esc 保留「换纸」快捷 */
+addEventListener('keydown', e => { if (e.key === 'Escape' && !e.ctrlKey && !e.metaKey && !e.altKey) newPaper(); });
+
+let clearing = false;
+function newPaper(then) {
+  if (clearing) return; clearing = true; queue = []; stage.classList.add('fade');
+  setTimeout(() => {
+    for (const k of ['far', 'mid', 'near', 'live', 'text']) cx[k].clearRect(0, 0, S.W, S.H);
+    tasks = []; resetState(); stage.classList.remove('fade'); clearing = false;
+    if (then) setTimeout(then, 500);
+  }, 880);
+}
+const POEMS = ['孤舟蓑笠翁，独钓寒江雪', '明月松间照，清泉石上流', '枯藤老树昏鸦，小桥流水人家', '两个黄鹂鸣翠柳，一行白鹭上青天',
+  '落霞与孤鹜齐飞，秋水共长天一色', '竹外桃花三两枝，春江水暖鸭先知', '山气日夕佳，飞鸟相与还', '接天莲叶无穷碧，映日荷花别样红',
+  '大漠孤烟直，长河落日圆', '飞流直下三千尺，疑是银河落九天', '小荷才露尖尖角，早有蜻蜓立上头', '儿童散学归来早，忙趁东风放纸鸢',
+  '稻花香里说丰年，听取蛙声一片', '千里莺啼绿映红，水村山郭酒旗风'];
+let poemI = floor(rand(POEMS.length));
+$('#btn-new').onclick = () => newPaper();
+$('#btn-poem').onclick = () => { const p = POEMS[poemI++ % POEMS.length]; intro.classList.add('gone'); newPaper(() => typeText(p)); };
+/* 合成当前画面（存画与设壁纸共用）：纸 + 远中近 + 笔迹 + 题字，乘法叠出成片 */
+function composite() {
+  const c = document.createElement('canvas'); c.width = cv.paper.width; c.height = cv.paper.height; const g = c.getContext('2d');
+  g.drawImage(cv.paper, 0, 0); g.globalCompositeOperation = 'multiply'; for (const k of ['far', 'mid', 'near']) g.drawImage(cv[k], 0, 0);
+  g.globalCompositeOperation = 'source-over'; g.drawImage(cv.live, 0, 0); g.globalCompositeOperation = 'multiply'; g.drawImage(cv.text, 0, 0);
+  return c;
+}
+$('#btn-save').onclick = () => {
+  const c = composite();
+  // 同步导出：toBlob 依赖空闲时间，动画进行中会被拖延数秒
+  const bin = atob(c.toDataURL('image/png').split(',')[1]), buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([buf], { type: 'image/png' }));
+  a.download = '落笔成画.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+};
+/* 设为壁纸（2026-11-23 站长加）：按钮不在本页——在父页纸面右上角（app.js），这里只听指令做合成回传。
+   画合成后缩到 ≤1600 宽、转 JPEG（画没有透明像素），postMessage 交给父页存 localStorage 铺背景。 */
+if (window.parent !== window) addEventListener('message', e => {
+  if (e.source !== window.parent || !e.data || e.data.type !== 'dm-paint-wall-req') return;
+  const c = composite(), MAXW = 1600;
+  const w = c.width > MAXW ? MAXW : c.width, h = round(c.height * w / c.width);
+  const s = document.createElement('canvas'); s.width = w; s.height = h;
+  s.getContext('2d').drawImage(c, 0, 0, w, h);
+  parent.postMessage({ type: 'dm-paint-wallpaper', data: s.toDataURL('image/jpeg', .86) }, e.origin);
+});
+const chips = $('#chips');
+/* 全字 chips（2026-11-23）：M 是 def 注册的「一字一景」映射，引擎认得多少字就列多少；
+   Set 去重（虹/瀑 这类二次注册的只留一处），顺序 = def 注册顺序；
+   换景函数变化处（山水→日月→云雾→鸟兽→草木→建筑→人物…）留一点间距，找字不用瞪 */
+{
+  let prevFn;
+  for (const c of new Set(Object.keys(M))) {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = c;
+    if (prevFn && M[c] !== prevFn) b.style.marginLeft = '12px';
+    prevFn = M[c];
+    b.onclick = () => typeText(c); chips.appendChild(b);
+  }
+}
+
+/* 以指为笔：拖动成干笔，点按落墨 */
+let stroke = null;
+stage.addEventListener('pointerdown', e => {
+  stroke = { x: e.clientX, y: e.clientY, w: 4 * S.u, moved: 0, nx: 0, ny: 0, seeds: Array.from({ length: 12 }, () => rand(1000)), al: Array.from({ length: 12 }, () => rand(.4, .85)) };
+  try { stage.setPointerCapture(e.pointerId); } catch (_) {}
+  if (e.pointerType === 'mouse') e.preventDefault();
+});
+stage.addEventListener('pointermove', e => {
+  if (!stroke) return;
+  const dx = e.clientX - stroke.x, dy = e.clientY - stroke.y, d = hypot(dx, dy); if (d < 2.5) return;
+  if (stroke.moved < 6 && stroke.moved + d >= 6) intro.classList.add('gone');
+  const g = cx.near, w0 = stroke.w, w1 = lerp(w0, clamp(17 - d * .45, 3, 17) * S.u, .25), nx = -dy / d, ny = dx / d, K = 12;
+  const px = stroke.moved ? stroke.nx : nx, py = stroke.moved ? stroke.ny : ny;
+  g.save(); g.lineCap = 'round'; g.lineWidth = 1.7;
+  for (let j = 0; j < K; j++) {
+    if (n1(stroke.seeds[j] + stroke.moved * .03) < .26 + abs(j / (K - 1) - .5) * .3) continue;
+    const o = j / (K - 1) - .5; g.strokeStyle = rgba(INK, stroke.al[j]); g.beginPath();
+    g.moveTo(stroke.x + px * o * w0, stroke.y + py * o * w0); g.lineTo(e.clientX + nx * o * w1, e.clientY + ny * o * w1); g.stroke();
+  }
+  g.restore();
+  Object.assign(stroke, { x: e.clientX, y: e.clientY, w: w1, nx, ny, moved: stroke.moved + d });
+});
+const endStroke = e => {
+  if (!stroke) return;
+  if (stroke.moved < 5) {
+    const x = e.clientX, y = e.clientY, R = rand(14, 30) * S.u; intro.classList.add('gone');
+    run(bloom(cx.near, x, y, R, { alpha: .36, frames: 46, rim: true })); run(splatter(cx.near, x, y, R * 2.4, 9));
+    if (y > S.horizon) ripple(x, y, 60 * S.u, .4);
+  }
+  stroke = null;
+};
+stage.addEventListener('pointerup', endStroke); stage.addEventListener('pointercancel', endStroke);
+
+let rz = 0;
+addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => resize(false), 180); });
+
+/* ───────────── 启动 ───────────── */
+resize(true); resetState();
+if (FAST) intro.style.display = 'none';
+requestAnimationFrame(frame);
+const ready = document.fonts && document.fonts.load ? Promise.race([document.fonts.load('40px "Mo Brush"', '落笔成画'), new Promise(r => setTimeout(r, 2500))]) : Promise.resolve();
+ready.catch(() => {}).then(() => {
+  S.textUntil = performance.now() + 200; S.textFinal = false;
+  const t = Q.get('t'); if (t) typeText(t);
+});
+})();
+</script>
+</body>
+</html>
