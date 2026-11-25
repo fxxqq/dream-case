@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <title>试水包 starter</title>
+  <path d="M100 30 C100 30 50 100 50 130 C50 160 72 180 100 180 C128 180 150 160 150 130 C150 100 100 30 100 30 Z" fill="#FAEEDA" stroke="#BA7517" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M100 100 C100 100 82 120 82 134 C82 146 90 154 100 154 C110 154 118 146 118 134 C118 120 100 100 100 100 Z" fill="#EF9F27"/>
+  <path d="M100 122 C100 122 93 132 93 140 C93 146 96 150 100 150 C104 150 107 146 107 140 C107 132 100 122 100 122 Z" fill="#FFF6E5"/>
+</svg>

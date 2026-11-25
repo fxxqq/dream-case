@@ -234,8 +234,9 @@ const state = {
   blockedUsers: [], // 当前登录用户拉黑的作者用户名（TA 的所有作品都不再展示给我）
   myClaims: [], // 我的作品认领申请 [{ workId, status }]
   pendingClaim: '', // 匿名投稿者点「存到我名下」带来的投稿凭据，登录/注册成功后自动认领
-  // 作品链接带 ?claim=<认领暗号>：{ code, workId }，作者打开→确认→登录/注册后当场认领。
-  // 与 pendingClaim 分开存：那是投稿凭据走 /api/claim/by-token，这是暗号走作品详情的 /claim（能整批认领同作者同暗号的件）。
+  // 链接带 ?c=<认领暗号>（兼容 ?claim=）：{ code, workId }，作者打开→确认→登录/注册后当场认领。
+  // workId 空 = 主链 ?c= 进来（走 /api/claim/by-code 全站找）；有值 = 详情页带锚点（走 /api/works/:id/claim）。
+  // 与 pendingClaim 分开存：那是投稿凭据走 /api/claim/by-token，这是暗号（两条入口都能整批认领同作者同暗号的件）。
   pendingCodeClaim: null,
   myFeedback: [], // 我提过的意见反馈（含与站长的往来），来自 /api/me/feedback 与 /api/feedback/mine
   // 展示方式：card 卡片网格 / list 一行一个的紧凑列表 / compact 无图模式（行式去缩略图）
@@ -248,7 +249,7 @@ const state = {
     return window.matchMedia('(max-width: 640px)').matches ? 'list' : 'card';
   })(),
   // 卡片网格每行几个：4 / 5 / 6（记住用户的选择，窄屏自动回落到响应式列数）
-  cols: [4, 5, 6].includes(Number(localStorage.getItem('dm_cols'))) ? Number(localStorage.getItem('dm_cols')) : 5
+  cols: [4, 5, 6].includes(Number(localStorage.getItem('dm_cols'))) ? Number(localStorage.getItem('dm_cols')) : 4
 };
 
 // app.js 在 body 末尾同步加载，这里 DOM 已经齐了：先按记忆的排序点亮排序按钮，
@@ -1135,6 +1136,7 @@ function renderAuthBox() {
           <button class="ud-item" id="pointsBtn">${ic('lamp', 15)} 灯光明细<span class="ud-pts">${pts}</span></button>
           <button class="ud-item" id="promoBtn">${ic('promo', 15)} 推荐自己的作品</button>
           <div class="ud-sep"></div>
+          <button class="ud-item" id="themeBtn">${ic('palette', 15)} 外观主题</button>
           <a class="ud-item" href="/settings" data-nav>${ic('gear', 15)} 账号设置</a>
           ${state.user.isAdmin ? `<a class="ud-item" href="/admin" target="_blank" rel="noopener" title="管理后台（新标签页打开）">${ic('shield', 15)} 管理后台</a>` : ''}
           <button class="ud-item ud-logout" id="logoutBtn">${ic('logout', 15)} 退出登录</button>
@@ -1166,6 +1168,7 @@ function renderAuthBox() {
     $('pointsBtn').onclick = () => openStats('points');
     // 推荐直达：点「推荐」直接弹兑换弹窗，不再先进推荐面板绕一层
     $('promoBtn').onclick = () => openRedeem();
+    if ($('themeBtn')) $('themeBtn').onclick = () => openThemeModal();
     // 签到独立成弹窗：签到卡 + 签到累计榜，不再和推荐混在一个弹窗里
     $('checkinBtn').onclick = () => openStats('checkin');
     $('noticeBtn').onclick = openNotices;
@@ -1203,14 +1206,17 @@ async function doCheckin(after) {
     if (typeof d.points === 'number') state.user.points = d.points;
     renderAuthBox();
     const nextReward = Array.isArray(d.schedule) ? d.schedule[d.dayInCycle % (d.cycle || 7)] : 0;
+    // 梦蝶加成由服务端报 double / boostRate；前端只照着念，不自己按形象猜
+    // （当前形象是本机偏好，不参与发灯火）。倍率写死会和服务端对不上，所以一律读后端。
+    const perk = d.double ? `（梦蝶 ×${d.boostRate || 1.6}）` : '';
     // 断签这一下必须当场说清楚：用户最容易以为「断签后从第 5 天（20 盏）接着算」，
     // 实际是回到第 1 天、又是起步档。所以 reset 时单独给一句话，不和普通签到共用。
     if (d.reset) {
-      showToast(`签到成功 +${d.reward} 盏 · 中间断了一天，从第 1 天重新开始（之前拿到的不倒扣）${nextReward ? `，明天 +${nextReward} 盏` : ''}`, undefined, 'ok');
+      showToast(`签到成功 +${d.reward} 盏${perk} · 中间断了一天，从第 1 天重新开始（之前拿到的不倒扣）${nextReward ? `，明天 +${nextReward} 盏` : ''}`, undefined, 'ok');
     } else {
       showToast(d.dayInCycle === d.cycle
-        ? `签到成功 +${d.reward} 盏灯火 · 连续 ${d.streak} 天，${d.cycle || 7} 天一轮拿满 ${Array.isArray(d.schedule) ? d.schedule.reduce((a, b) => a + b, 0) : ''} 盏`
-        : `签到成功 +${d.reward} 盏灯火 · 连续 ${d.streak} 天${nextReward ? `，明天 +${nextReward} 盏` : ''}`, undefined, 'ok');
+        ? `签到成功 +${d.reward} 盏灯火${perk} · 连续 ${d.streak} 天，${d.cycle || 7} 天一轮拿满 ${Array.isArray(d.schedule) ? d.schedule.reduce((a, b) => a + b, 0) : ''} 盏`
+        : `签到成功 +${d.reward} 盏灯火${perk} · 连续 ${d.streak} 天${nextReward ? `，明天 +${nextReward} 盏` : ''}`, undefined, 'ok');
     }
     if (typeof after === 'function') after(d);
   } catch (err) {
@@ -1238,7 +1244,7 @@ function checkinCardHtml(ck) {
   return `
     <div class="checkin-card${done ? ' is-done' : ''}">
       <div class="ck-head">
-        <div class="ck-title"><span class="ico">${ic('checkin')}</span> 每日签到${ck.streak ? `<span class="ck-streak">连续 ${ck.streak} 天</span>` : ''}</div>
+        <div class="ck-title"><span class="ico">${ic('checkin')}</span> 每日签到${ck.double ? `<span class="ck-double" title="领到梦蝶：手动签到和看视频补签都按 ×${ck.boostRate || 1.6} 发，连签档位不变">梦蝶 ×${ck.boostRate || 1.6}</span>` : ''}${ck.streak ? `<span class="ck-streak">连续 ${ck.streak} 天</span>` : ''}</div>
         <button type="button" class="checkin-go" id="checkinGo"${done ? ' disabled' : ''}>${done ? '今日已签 ✓' : `签到 +${ck.todayPoints || 5}`}</button>
       </div>
       ${ckWeekHtml(ck, schedule)}
@@ -3584,6 +3590,18 @@ function paidBadgeHtml(w, cls = '') {
   return `<span class="os-badge paid ${cls}" title="${tip}"><span class="ico">${ic('coin')}</span> ${escapeHtml(label)}</span>`;
 }
 
+// 限时体验任务奖励角标（2026-11-24）：作品在当前任务名单里才下发 limitedReward（盏数）。
+// 卡片/列表放左下角或标题前（付费价签也在这，但两者互斥），点角标跳任务页；
+// 详情弹窗用 detail 版：角标行直接说清「注册账号 · 回传截图」，并带 ?lt=<作品id> 直达对应任务。
+function limitedRewardHtml(w, cls = '', detail = false) {
+  const pts = Number(w && w.limitedReward) || 0;
+  if (!pts) return '';
+  const tip = `限时体验任务：注册这个产品、回传注册截图，审核通过送 ${pts} 盏灯火，每人每任务一次`;
+  const href = detail ? `/tasks?lt=${encodeURIComponent(w.id)}` : '/tasks';
+  const label = detail ? `注册账号 · 回传截图 +${pts}盏` : `体验送 ${pts} 盏`;
+  return `<a class="lt-reward ${cls}" href="${href}" data-nav title="${escapeHtml(tip)}"><span class="ico">${ic('lamp')}</span>${label}</a>`;
+}
+
 // 作品阶段：live 已上线 / reviewing 等平台上架审核 / wip 还在做（预告）
 // 与服务端 stageOf 保持一致；老数据没有这个字段一律当 live
 function stageOf(w) {
@@ -3799,7 +3817,7 @@ function cardHtml(w, opts = {}) {
              alt="${escapeHtml(w.title)}"${opts.eager ? ' fetchpriority="high"' : ' loading="lazy"'} />
         <span class="type-badge" title="${escapeHtml(types.join(' / '))}">${typeTextHtml(w)}</span>
         ${statusBadge}
-        ${opts.compare ? `<label class="cmp-pick" title="加入对比（最多 3 件）"><input type="checkbox" data-cmp-pick="${w.id}"${compareIds.has(w.id) ? ' checked' : ''} /><span>对比</span></label>` : ''}
+        ${limitedRewardHtml(w, 'card-lt')}
         ${cardActionsHtml(w)}
       </div>
       <div class="card-body">
@@ -3812,6 +3830,7 @@ function cardHtml(w, opts = {}) {
         </div>
         ${opts.metricLabel ? `<div class="card-rank-metric"><span class="card-rank-metric-label">${escapeHtml(opts.metricLabel)}</span><b class="card-rank-metric-val">${opts.metricValue}</b></div>` : ''}
         ${comingMetaHtml(w)}
+        ${opts.compare ? `<label class="cmp-pick" title="加入对比（最多 3 件）"><input type="checkbox" data-cmp-pick="${w.id}"${compareIds.has(w.id) ? ' checked' : ''} /><span>加入对比</span></label>` : ''}
         <div class="card-meta card-foot">
           <span class="stat-line">${cardStatsHtml(w)}</span>
           <span>${formatDate(w.createdAt)}</span>
@@ -3833,7 +3852,7 @@ function listHtml(w, opts = {}) {
       <a class="card-link" href="/w/${w.id}" aria-label="查看《${escapeHtml(w.title)}》完整页面"></a>
       <img class="row-thumb" src="${imgUrl(w.thumb, 400)}" alt="${escapeHtml(w.title)}" loading="lazy" />
       <div class="row-main">
-        <div class="row-title">${w.pinned ? '<span class="pin-badge row-pin">置顶</span>' : ''}<span class="row-name">${escapeHtml(ctName)}</span></div>
+        <div class="row-title">${w.pinned ? '<span class="pin-badge row-pin">置顶</span>' : ''}${limitedRewardHtml(w, 'row-lt')}<span class="row-name">${escapeHtml(ctName)}</span></div>
         ${ctIntro ? `<div class="row-intro">${escapeHtml(ctIntro)}</div>` : ''}
         <div class="row-meta">${juryChip ? `${juryChip} · ` : ''}${escapeHtml(typeText(w))}${w.crypto ? ` · ${cryptoChipHtml('is-inline')}` : ''} · ${ghMedalHtml(w.authorTags)}${escapeHtml(aname(w))}${certMiniHtml(w.authorCert)} · ${escapeHtml(w.category)}${w.openSource === true ? ` · <span class="ico">${ic('lock-open')}</span> 开源` : ''}${w.paidModel === 'lamp' && w.lampPrice ? ` · <span class="ico">${ic('lock')}</span> ${w.lampPrice} 盏解锁` : ''}${w.paid ? ` · <span class="ico">${ic('coin')}</span> ${escapeHtml(PAID_MODELS[w.paidModel] || '付费')}` : ''}</div>
       </div>
@@ -3920,6 +3939,8 @@ function bindCardNode(el) {
         || e.target.closest('[data-coll-pick]')) return;   // 收藏页「整理进合集」入口：只弹浮层，不开详情
     // 对比勾选框是独立控件：点它不能顺手打开作品详情
     if (e.target.closest('.cmp-pick')) { e.stopPropagation(); return; }
+    // 限时体验奖励角标是去任务中心的真实链接：放行给全局 data-nav，别顺手弹作品详情
+    if (e.target.closest('.lt-reward')) return;
     // 扇面里的每颗按钮（含触发器）都归 .card-actions 管，不能再让卡片顺手把详情打开
     if (e.target.closest('.card-actions')) return;
     // 卡片里有一层真实链接（卡片底部 <a class="card-link">）：
@@ -3928,9 +3949,12 @@ function bindCardNode(el) {
     e.preventDefault();
     openWork(el.dataset.id);
   });
-  // 对比勾选：change 在 checkbox 上触发，卡片本身的 click 监听已被上面的 .cmp-pick 守卫挡掉
+  // 对比勾选：change 在 checkbox 上触发；标签整行都要吃掉点击，
+  // 不能让封面的整卡链接/操作扇面顺手把作品详情弹出来（2026-11-24 站长反馈）
   const cmp = el.querySelector('[data-cmp-pick]');
   if (cmp) {
+    const cmpLabel = cmp.closest('.cmp-pick');
+    if (cmpLabel) cmpLabel.addEventListener('click', e => e.stopPropagation());
     cmp.addEventListener('click', e => e.stopPropagation());
     cmp.addEventListener('change', () => {
       const id = cmp.dataset.cmpPick;
@@ -5651,6 +5675,8 @@ function featAuthorHtml(w) {
 // 角标按「独立标签 > 增补默认标签 > 自动角标」三级回落（见 featReasonHtml）。
 // 卡上的数据是累计口径（打开次数 / 看过人数都是全历史），近 7 天数据只用于选谁进来；
 // 精选卡版式：首页「本周精选」和发现页共用（点击开详情由调用方绑定）
+// 灰字用服务端按句读切好的 featLine（约 56 字、收在标点），不再用 160 字 introText 被 CSS 切成半句；
+// 老数据没带 featLine 时回落 introText，SSR 直出也用同一套口径。
 function featCardHtml(w, i) {
   return `
       <div class="featured-card" data-id="${w.id}" role="button" tabindex="0" aria-label="打开作品：${escapeHtml(w.title)}">
@@ -5659,7 +5685,7 @@ function featCardHtml(w, i) {
         <div class="featured-body">
           <div class="featured-title" title="${escapeHtml(w.title)}">${escapeHtml(w.title)}</div>
           <div class="feat-sub">${featReasonHtml(w)}${featAuthorHtml(w)}</div>
-          ${w.introText ? `<div class="featured-intro">${escapeHtml(w.introText)}</div>` : ''}
+          ${(w.featLine || w.introText) ? `<div class="featured-intro">${escapeHtml(w.featLine || w.introText)}</div>` : ''}
           <div class="featured-meta" title="累计：详情页被打开 ${w.pvAll || 0} 次，共 ${w.uvAll || 0} 位访客打开过（同一人只算 1 个，作者本人打开不计）"><span class="fm-i" title="累计被打开的次数：同一个人反复打开也会累加"><span class="ico s-ico">${ic('eye')}</span>${w.pvAll || 0} 次打开</span><span class="fm-i" title="累计有多少人打开过：同一个人只算 1 个，作者本人打开不计"><span class="ico s-ico">${ic('person')}</span>${w.uvAll || 0} 人看过</span>${(w.favs || 0) > 0 ? `<span class="fm-i" title="被收藏次数"><span class="ico s-ico">${ic('star')}</span>${w.favs}</span>` : ''}</div>
         </div>
         <span class="feat-arrow"><span class="ico">${ic('arrowout')}</span></span>
@@ -7668,7 +7694,7 @@ function discCardHtml(w, col) {
              sizes="(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 260px"
              alt="${escapeHtml(w.title)}" loading="lazy" />
         ${col.key === '小程序' && scan ? '<span class="disc-scan-badge">可扫码</span>' : ''}
-        <label class="cmp-pick" title="加入对比（最多 3 件）"><input type="checkbox" data-cmp-pick="${w.id}"${compareIds.has(w.id) ? ' checked' : ''} /><span>对比</span></label>
+        ${limitedRewardHtml(w, 'card-lt')}
       </div>
       <div class="card-body">
         <div class="card-title">${escapeHtml(ctName)}</div>
@@ -7678,6 +7704,7 @@ function discCardHtml(w, col) {
           <span class="disc-favs"><span class="ico s-ico">${ic('fav')}</span>${w.favs || 0}</span>
         </div>
         <button type="button" class="disc-btn" data-disc-open="${w.id}" data-disc-qr="${scan ? 1 : 0}">${col.btn}</button>
+        <label class="cmp-pick" title="加入对比（最多 3 件）"><input type="checkbox" data-cmp-pick="${w.id}"${compareIds.has(w.id) ? ' checked' : ''} /><span>加入对比</span></label>
       </div>
     </div>`;
 }
@@ -7791,6 +7818,7 @@ const DISC_PC_CAT_ICO = {
 };
 const discPcState = { cat: '', type: '', q: '', sort: 'fair' };
 let discPcLoadTip = 0;        // 「加载太久」换文案的定时器（见 renderDiscoverPc）
+let discPcSkelTimer = 0;      // 骨架延迟出现的定时器：秒回时不闪，真慢了才摆出来
 // ---------- 发现页「记住我的选择」（dm_disc_remember / dm_disc_sel） ----------
 // 记的是这一页的三项「逛的口味」：平台胶囊、左侧分类、排序。侧栏搜索词不记——那是一次性的快筛，
 // 记下来下次进来就只剩一两条，用户会以为整站没了。
@@ -7955,19 +7983,39 @@ if (window.matchMedia) {
   else if (discPcMq.addListener) discPcMq.addListener(onDiscPcMq);
 }
 
-// 侧栏（平台专区 / 分类）在数据回来前放几行灰条：
-// 只占住「这里会有几组入口」的形状，不写假名字、不假装有序号数字。
-// 2026-11-19：原来 9+7 行在矮窗口里会顶出侧栏滚动条，加载态看着像坏了一半；
-// 减到 6+5 行、行高也压瘦，一屏装得下。真数据回来照旧按实际数量滚动。
+// 侧栏（平台专区 / 分类）在数据回来前放几行占位：
+// 2026-11-25 站长嫌整列灰条太丑，改成与真入口同构的「小图标 + 文字 + 计数」行——
+// 不写假名字、不假装有序号数字，只站住真实行的高度和节奏。
+// 6+5 行的数量不变：矮窗口一屏装得下，真数据回来照旧按实际数量滚动。
 function discPcSideLoading(on) {
   $('discPc')?.querySelector('.cat-side')?.classList.toggle('is-loading', !!on);
 }
 function discPcSkeletonSide() {
   const z = $('discPcZones'), c = $('discPcCats');
-  const rows = n => new Array(n).fill('<span class="cat-skel"></span>').join('');
+  const widths = [68, 82, 56, 74, 62, 78];
+  const rows = n => Array.from({ length: n }, (_, i) =>
+    '<span class="cat-skel"><i class="sk-ico"></i><i class="sk-txt" style="width:' + widths[i % widths.length] + '%"></i><i class="sk-num"></i></span>'
+  ).join('');
   if (z) z.innerHTML = rows(6);
   if (c) c.innerHTML = rows(5);
   discPcSideLoading(true);   // CSS 据此暂时关掉侧栏滚动，别露出半截滚动条
+}
+
+// 内容区骨架卡（2026-11-25）：原来居中一块 560×350 的「开橱窗」面板，
+// 每次进来都像空了一屏、跟真卡一点不像，站长说难看。改成与真卡同构的 4:3 封面 +
+// 标题/简介/meta 灰条，按首屏两排出 8 张；数据回来直接整块替换，列数和高度都不跳。
+function discPcSkeletonCards() {
+  const one = i => `<div class="card card-sk disc-card-sk" aria-hidden="true">
+    <div class="card-img-wrap"><div class="sk-img sk-cover"></div></div>
+    <div class="card-body">
+      <span class="sk-line" style="width:${[82, 68, 76, 88][i % 4]}%"></span>
+      <span class="sk-line sk-line-sm" style="width:${[94, 86, 92, 78][i % 4]}%"></span>
+      <span class="sk-line sk-line-meta" style="width:${[58, 64, 52, 60][i % 4]}%"></span>
+      <div class="sk-foot"><span class="sk-line" style="width:42%"></span><span class="sk-line" style="width:24%"></span></div>
+    </div>
+  </div>`;
+  return '<div class="disc-sk-note" role="status" aria-live="polite"><i></i>正在把作品摆上橱窗…</div>'
+    + Array.from({ length: 8 }, (_, i) => one(i)).join('');
 }
 
 // 服务端首屏直出（2026-11-22）：直接访问 /discover 时，server.js 把作品池和分类写进了 #dm-boot
@@ -8323,18 +8371,32 @@ function maybeShowDiscEditTip(pc) {
 function renderDiscoverPc() {
   const gallery = $('discPcGallery');
   if (!gallery) return;
-  // 加载态用全站同一枚「点灯」动画（见 dmLoadHtml），别再写裸文字「加载中…」：
-  // 侧栏同时给几行灰条占位——数据回来前整页不空着一大块
-  gallery.innerHTML = dmLoadHtml('正在点亮橱窗…', '马上就好，先给你留个位置');
-  discPcSkeletonSide();
+  // 2026-11-25：切走再回来别再闪一次加载态。池子和分类都还在内存里，
+  // 原来 route() 每次进 /discover 都无条件重画骨架，明明一瞬间就能出内容，用户却「每次都看到加载」。
+  if (discPcLoaded && discPcPool && discPcCats) {
+    discPcSideLoading(false);
+    syncDiscPcScrollHints();
+    syncDiscPcChips();
+    syncDiscRemember();
+    return;
+  }
   $('discPcEmpty').style.display = 'none';
-  // 慢网兜底：灯亮超过 2.6 秒还没回来，副文案换成一句解释——不然一盏灯挂着像卡死了
-  clearTimeout(discPcLoadTip);
-  discPcLoadTip = setTimeout(() => {
-    const sub = gallery.querySelector('.dm-load-sub');
-    if (sub) sub.textContent = '作品有点多，正在一件件摆上橱窗…';
-  }, 2600);
+  // 侧栏 + 内容区都换成与真内容同构的骨架（2026-11-25）：不再铺一块大面板占着半屏。
+  // 120ms 后才落骨架：本地/缓存秒回的那一次整块不出现；真等网络了才摆出来。
+  clearTimeout(discPcSkelTimer);
+  discPcSkelTimer = setTimeout(() => {
+    if (!$('discPcGallery')) return;
+    gallery.innerHTML = discPcSkeletonCards();
+    discPcSkeletonSide();
+    // 慢网兜底：超过 2.6 秒还没回来，提示语换成一句解释——不然一行小字挂着像卡死了
+    clearTimeout(discPcLoadTip);
+    discPcLoadTip = setTimeout(() => {
+      const note = gallery.querySelector('.disc-sk-note');
+      if (note) note.lastChild.textContent = '作品有点多，正在一件件摆上橱窗…';
+    }, 2600);
+  }, 120);
   discPcEnsureData().then(() => {
+    clearTimeout(discPcSkelTimer);
     clearTimeout(discPcLoadTip);
     discPcSideLoading(false);
     if (!document.getElementById('discPcGallery')) return;   // 等待期间已切走
@@ -8357,6 +8419,7 @@ function renderDiscoverPc() {
     syncDiscPcChips();     // 恢复出来的平台要亮在胶囊上，别让筛选生效了、高亮还停在「全部平台」
     syncDiscRemember();    // 勾选态 + 说明文字（静态骨架里写的是默认文案）
   }).catch(() => {
+    clearTimeout(discPcSkelTimer);
     clearTimeout(discPcLoadTip);
     discPcSideLoading(false);
     gallery.innerHTML = '<div class="comment-empty">加载失败，稍后再来～</div>';
@@ -8706,7 +8769,7 @@ function renderMePage() {
       </div>
       <span class="me-ck-lamp">${ic('lamp')}</span>
       <button type="button" class="me-ck-btn me-checkin${ckDone ? ' is-done' : ''}" id="meCheckin"${ckDone ? ' disabled' : ''}>${ckDone ? '今日已签 ✓' : `签到 +${ck.todayPoints || 5} 灯火`}</button>
-      <p class="me-ck-tip">${ar.points ? `每天打开站点自动 +${ar.points} 盏${ar.done ? '（今天已到账）' : ''} · ` : ''}灯火可兑换推荐位曝光 · <button type="button" class="me-ck-adlink" id="meCkAd">小程序看广告 +${ckAdOnce(ck)} 盏 ›</button>${Number(mk.gap) > 0 && mk.can ? `<br /><button type="button" class="me-ck-adlink" id="meCkMakeup">断签 ${Number(mk.gap)} 天，看视频补签 ›</button>` : ''}</p>
+      <p class="me-ck-tip">${ck.double ? `梦蝶加成：签到与补签 ×${ck.boostRate || 1.6} · ` : ''}${ar.points ? `每天打开站点自动 +${ar.points} 盏${ar.done ? '（今天已到账）' : ''} · ` : ''}灯火可兑换推荐位曝光 · <button type="button" class="me-ck-adlink" id="meCkAd">小程序看广告 +${ckAdOnce(ck)} 盏 ›</button>${Number(mk.gap) > 0 && mk.can ? `<br /><button type="button" class="me-ck-adlink" id="meCkMakeup">断签 ${Number(mk.gap)} 天，看视频补签 ›</button>` : ''}</p>
     </div>
     ${!state.user.hasPhone ? `
     <button type="button" class="me-task-bar me-keep-bar" id="mePhoneKeep">
@@ -8724,7 +8787,7 @@ function renderMePage() {
       <button type="button" class="me-quick-card" id="meStar" title="同步我名下所有开源作品的 GitHub star，按 1:1 换灯火"><span class="me-quick-ico">${ic('github', 20)}</span>更新<br />star 奖励</button>
       <button type="button" class="me-quick-card" id="meGift"><span class="me-quick-ico">${ic('gift', 20)}</span>兑换码<br />领灯火</button>
       <button type="button" class="me-quick-card" id="mePromo" title="用灯火给自己的作品换个推荐位"><span class="me-quick-ico">${ic('promo', 20)}</span>推荐<br />自己的作品</button>
-      <a class="me-quick-card" href="/medals.html" title="看看攒了几枚、还差什么"><span class="me-quick-ico">${ic('medal', 20)}</span>我的勋章</a>
+      <a class="me-quick-card" href="/medals" title="看看攒了几枚、还差什么"><span class="me-quick-ico">${ic('medal', 20)}</span>我的勋章</a>
       <a class="me-quick-card" href="/bar" data-nav><span class="me-quick-ico">${ic('wish', 20)}</span>造梦酒馆</a>
       <a class="me-quick-card" href="/invite"><span class="me-quick-ico">${ic('share', 20)}</span>邀请收录</a>
       ${meFabTilesHtml()}
@@ -8896,13 +8959,16 @@ function captureClaimToken() {
   history.replaceState(null, '', url.pathname + (url.search || '') + (url.hash || ''));
 }
 
-// ---------- 认领暗号随作品链接带来：/w/<id>?claim=<暗号> ----------
-// 站长把暗号拼在作品链接上直接发给作者：打开 → 确认 → 登录/注册 → 当场归属，不用交证据、不用等审核。
-// 与 ?claimToken= 分开：那是投稿凭据走 /api/claim/by-token，这是暗号走作品详情的 /api/works/:id/claim
-// （同一暗号若覆盖同作者的多件作品，服务端会整批认领，见 codeClaimTargets）。
+// ---------- 认领暗号随链接带来：https://zm94.com?c=<暗号> / /w/<id>?c=<暗号> ----------
+// 站长把 c=<暗号> 拼在链接上直接发给作者（主链最好记，连作品 id 都不用带）：
+// 打开 → 确认 → 登录/注册 → 当场归属，不用先找到作品、不用交证据、不用等审核。
+// 参数名用 c（好记：c = 认领暗号）；claim / xx / claimCode 仍认，兼容此前已发出去的老链接。
+// 详情页带作品 id 当锚点走 /api/works/:id/claim；主链没锚点走 /api/claim/by-code（服务端全站按暗号找）。
+// 两条落账口径同一套（finishCodeClaim / codeClaimTargets）：当场认领、同作者整批、暗号用完即废。
+// 与 ?claimToken= 分开：那是投稿凭据走 /api/claim/by-token。
 // 暗号在地址栏只露一次，捕获后立刻摘掉（防截图/转发二次泄露）；再存 sessionStorage 兜住刷新和整页 OAuth 跳转。
 const CODE_CLAIM_KEY = 'dm_code_claim';
-const CODE_CLAIM_PARAMS = ['claim', 'xx', 'claimCode'];  // claim 为正式名，xx / claimCode 兼容口述写法
+const CODE_CLAIM_PARAMS = ['c', 'claim', 'xx', 'claimCode'];  // c 为正式名（好记），后三个兼容老链接/口述写法
 function captureCodeClaim() {
   let url;
   try { url = new URL(location.href); } catch { return; }
@@ -8912,23 +8978,26 @@ function captureCodeClaim() {
     if (v) { code = v; break; }
   }
   if (code) {
-    // 只认作品详情页：别的页面捡到暗号没有锚点作品，服务端按暗号找也行，但这里统一从详情页走
+    // 详情页带作品 id 当锚点（同暗号多件时优先认这件）；主链/其它页没有锚点就留空，
+    // 交服务端按暗号全站找（/api/claim/by-code），同样按作者名匹配、整批认领。
+    let workId = '';
     const m = location.pathname.match(/^\/w\/([^/]+)\/?$/);
     if (m) {
-      let workId = m[1];
+      workId = m[1];
       try { workId = decodeURIComponent(workId); } catch {}
-      state.pendingCodeClaim = { code: code.slice(0, 40), workId };
-      try { sessionStorage.setItem(CODE_CLAIM_KEY, JSON.stringify(state.pendingCodeClaim)); } catch {}
     }
-    // 不管在不在详情页，都把明文从地址栏摘掉
+    state.pendingCodeClaim = { code: code.slice(0, 40), workId };
+    try { sessionStorage.setItem(CODE_CLAIM_KEY, JSON.stringify(state.pendingCodeClaim)); } catch {}
+    // 把明文从地址栏摘掉（不管在哪个页面）
     let changed = false;
     for (const k of CODE_CLAIM_PARAMS) if (url.searchParams.has(k)) { url.searchParams.delete(k); changed = true; }
     if (changed) history.replaceState(null, '', url.pathname + (url.search || '') + (url.hash || ''));
   } else {
     // 刷新 / OAuth 整页跳回来：地址栏已无参数，从 sessionStorage 接着
+    // workId 可空（主链 ?c= 进来没有锚点作品），旧存档有 workId 也照常认
     try {
       const saved = JSON.parse(sessionStorage.getItem(CODE_CLAIM_KEY) || 'null');
-      if (saved && saved.code && saved.workId) state.pendingCodeClaim = saved;
+      if (saved && saved.code && typeof saved.workId === 'string') state.pendingCodeClaim = saved;
     } catch {}
   }
 }
@@ -8941,18 +9010,27 @@ function showCodeClaimPrompt() {
   const el = $('codeClaimModal');
   if (!el || !state.pendingCodeClaim) return;
   const p = state.pendingCodeClaim;
-  // 作品名：详情已打开就直接用，否则拉一次公开接口（明文暗号不下发，只拿标题）
-  const workEl = $('codeClaimWork');
-  if (workEl) {
+  // 有锚点作品（详情页进来）：显示具体作品名——详情已打开就直接用，否则拉一次公开接口
+  // （明文暗号不下发，只拿标题）。主链 ?c= 没有锚点：服务端按暗号找，这里不写死作品名，
+  // 整句换成通用说法，免得显示「这件作品」却认领了同作者的好几件。
+  const descEl = $('codeClaimDesc');
+  const introEl = $('codeClaimIntro');
+  const workNameEl = $('codeClaimWorkName');
+  if (p.workId && descEl && workNameEl) {
+    descEl.style.display = '';
+    if (introEl) introEl.style.display = 'none';
+    workNameEl.textContent = '这件作品';
     const cur = state.currentWork;
     if (cur && cur.id === p.workId && cur.title) {
-      workEl.textContent = cur.title;
+      workNameEl.textContent = cur.title;
     } else {
-      workEl.textContent = '这件作品';
       fetch('/api/works/' + encodeURIComponent(p.workId)).then(r => r.json()).then(d => {
-        if (d && d.title && state.pendingCodeClaim && state.pendingCodeClaim.workId === p.workId) workEl.textContent = d.title;
+        if (d && d.title && state.pendingCodeClaim && state.pendingCodeClaim.workId === p.workId) workNameEl.textContent = d.title;
       }).catch(() => {});
     }
+  } else {
+    if (descEl) descEl.style.display = 'none';
+    if (introEl) introEl.style.display = '';
   }
   const go = $('codeClaimGo');
   go.textContent = state.user ? '确认认领' : '登录 / 注册后认领';
@@ -8973,13 +9051,15 @@ async function runCodeClaim() {
   if (!p || !state.user) return;
   clearCodeClaim();
   try {
-    const res = await fetch('/api/works/' + encodeURIComponent(p.workId) + '/claim', {
+    // 有锚点走详情页接口；主链 ?c= 没锚点走 /api/claim/by-code（服务端全站按暗号找作品）
+    const url = p.workId ? '/api/works/' + encodeURIComponent(p.workId) + '/claim' : '/api/claim/by-code';
+    const res = await fetch(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: p.code })
     });
     const d = await res.json().catch(() => ({}));
     if (!res.ok) { showToast(d.error || '认领失败，请核对暗号', 6000, 'err'); return; }
-    state.myClaims.push({ workId: p.workId, status: 'approved', createdAt: new Date().toISOString() });
+    state.myClaims.push({ workId: p.workId || (d.workId || ''), status: 'approved', createdAt: new Date().toISOString() });
     const titles = Array.isArray(d.titles) && d.titles.length ? d.titles : (d.title ? [d.title] : []);
     const label = titles.length ? `「${titles.join('」「')}」` : '作品';
     const bonus = Number(d.bonusPoints || 0);
@@ -8988,7 +9068,8 @@ async function runCodeClaim() {
     await loadMe();
     loadMyClaims();
     await refreshMeViewIfActive();
-    if (location.pathname === '/w/' + p.workId || (state.currentWork && state.currentWork.id === p.workId)) {
+    // 主链没锚点，没有可原地刷新的作品详情；用户点「我的作品」即可看到
+    if (p.workId && (location.pathname === '/w/' + p.workId || (state.currentWork && state.currentWork.id === p.workId))) {
       openWork(p.workId, false);
     }
   } catch {
@@ -9521,7 +9602,8 @@ function route() {
   const isColumn = path === '/column' || path.startsWith('/column/');
   // 品牌橱窗页：企业合作内容的落地页，标题由服务端按品牌写好，SPA 不覆盖
   const isBrandPage = path.startsWith('/brand/');
-  const isStaticPage = isChronicle || isColumn || isBrandPage || path === '/rules' || path === '/install' || path === '/invite' || path === '/ads' || path === '/enterprise' || path === '/open' || path === '/app';
+  const isStaticPage = isChronicle || isColumn || isBrandPage || path === '/rules' || path === '/install' || path === '/invite' || path === '/ads' || path === '/enterprise' || path === '/open' || path === '/app'
+    || path === '/alipay/pay' || path === '/alipay/return';   // 支付宝网页支付：付款页与同步回跳结果页，整页 SSR，别被 SPA 当垃圾删掉
   document.body.classList.toggle('on-work', isWorkPage);
   if (!isWorkPage && !isStaticPage) removeSeoBlock();
   document.documentElement.removeAttribute('data-page');
@@ -9540,6 +9622,8 @@ function route() {
         : path === '/enterprise' ? '企业产品入驻'
         : path === '/open' ? '开源好物'
         : path === '/app' ? '造梦橱窗 App'
+        : path === '/alipay/pay' ? '灯火包 · 支付宝支付'
+        : path === '/alipay/return' ? '支付结果确认'
         : (path === '/invite' ? '邀请你来收录作品' : '作品规范')));
       updateNavActive();
       return;
@@ -9777,7 +9861,7 @@ function authorBadgesHtml(badges) {
     `<button type="button" class="author-badge" data-badge="${escapeHtml(b.key)}"
         title="${escapeHtml(b.name)} · ${b.t === 'L3' ? '站长授予' : '已点亮'}"
         style="--badge-c:${AUTHOR_BADGE_TIER_COLOR[b.t] || '#5b5bd6'}"
-        onclick="location.href='/medals.html'">
+        onclick="location.href='/medals'">
       <span class="ab-dot" aria-hidden="true"></span>${escapeHtml(b.name)}
     </button>`
   ).join('');
@@ -10317,6 +10401,72 @@ async function saveBandSkin(key) {
   }
 }
 
+// ---- 外观主题（2026-11-24）----
+// 这是「我看站的方式」：存浏览器本地，不进账号；作者主页那套 heroSkin 是「别人看到的我」，两码事。
+// 换色只动 <html data-theme>：style.css 末尾的 html[data-theme] 块接管整站色板，默认（无属性）就是原来的紫。
+const SITE_THEMES = [
+  { key: '', name: '星梦紫', note: '默认', sw: ['#5b5bd6', '#eeeefc'] },
+  { key: 'ink', name: '墨蓝', note: '沉静一些', sw: ['#5b8ad6', '#eaf1fc'] },
+  { key: 'amber', name: '暖橙', note: '暖一些', sw: ['#d68a5b', '#fcf1e8'] },
+  { key: 'jade', name: '青绿', note: '清爽一些', sw: ['#5bd6a0', '#e8f8f0'] }
+];
+const SITE_THEME_KEY = 'dm_theme';
+function currentSiteTheme() {
+  return document.documentElement.getAttribute('data-theme') || '';
+}
+function applySiteTheme(key, quiet) {
+  const k = SITE_THEMES.some(t => t.key === key) ? key : '';
+  if (k) document.documentElement.setAttribute('data-theme', k);
+  else document.documentElement.removeAttribute('data-theme');
+  try { k ? localStorage.setItem(SITE_THEME_KEY, k) : localStorage.removeItem(SITE_THEME_KEY); } catch (e) {}
+  syncThemePick();
+  if (!quiet) showToast('已换成「' + (SITE_THEMES.find(t => t.key === k) || SITE_THEMES[0]).name + '」', 1600, 'ok');
+}
+let themeModalEl = null;
+function syncThemePick() {
+  if (!themeModalEl) return;
+  themeModalEl.querySelectorAll('[data-theme-pick]').forEach(b => {
+    const on = (b.dataset.themePick || '') === currentSiteTheme();
+    b.classList.toggle('is-on', on);
+    const nm = b.querySelector('.th-name');
+    if (nm) nm.textContent = (on ? '✓ ' : '') + b.dataset.themeName;
+  });
+}
+function openThemeModal() {
+  if (!themeModalEl) {
+    themeModalEl = document.createElement('div');
+    themeModalEl.className = 'modal-mask';
+    document.body.appendChild(themeModalEl);
+    bindMaskClose(themeModalEl, () => hideModal(themeModalEl));
+  }
+  themeModalEl.innerHTML = `
+    <div class="modal theme-modal">
+      <button type="button" class="close-btn" aria-label="关闭">×</button>
+      <h3 class="links-title">外观主题</h3>
+      <p class="skin-modal-hint">只在这台设备上生效，不影响别人看到的作者主页。随时能换回来。</p>
+      <div class="theme-grid">
+        ${SITE_THEMES.map(t => `
+          <button type="button" class="theme-item" data-theme-pick="${t.key}" data-theme-name="${t.name}">
+            <span class="theme-swatch" style="--sw-a:${t.sw[0]};--sw-b:${t.sw[1]}"><i></i><i></i><i></i></span>
+            <span class="th-name">${t.name}</span>
+            <span class="th-note">${t.note}</span>
+          </button>`).join('')}
+      </div>
+    </div>`;
+  themeModalEl.querySelector('.close-btn').onclick = () => hideModal(themeModalEl);
+  themeModalEl.querySelectorAll('[data-theme-pick]').forEach(b => {
+    b.onclick = () => applySiteTheme(b.dataset.themePick);
+  });
+  syncThemePick();
+  showModal(themeModalEl);
+}
+// 页脚那颗用 data 属性：openSiteInfo() 会克隆 .footer-inner，clone 不复制 onclick，
+// 跟公众号入口一样走 document 委托，弹窗里克隆的那份也点得开。
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-theme-open]');
+  if (b) openThemeModal();
+});
+
 // 「我的链接」：三个输入框，贴链接就行，展示文案由服务端按域名算（GitHub / 知乎 / 掘金 / V2EX / 微博）。
 // 为什么不是「每个平台一个框」：68 个账号里资料区目前只有入驻时间和分类，一次摆五个空框，
 // 大多数人只会填一个，剩下四个空着反而让弹层变长、显得没填完。三个通用槽位够用也收得住。
@@ -10461,10 +10611,11 @@ function openAuthorMoreSheet() {
     { icon: 'bell', label: '站内消息', sub: unread ? `${unread} 条未读` : '审核、评论、灯火通知都在这', badge: unread ? (unread > 99 ? '99+' : String(unread)) : '', on: openNotices },
     { icon: 'chat', label: '私信', sub: '和作者一对一聊，不用留联系方式', on: () => openInbox() },
     { icon: 'gift', label: '兑换码领灯火', sub: '有兑换码就填在这里', on: openGiftCode },
-    { icon: 'medal', label: '我的勋章', sub: '看看攒了几枚、还差什么', on: () => { location.href = '/medals.html'; } },
+    { icon: 'medal', label: '我的勋章', sub: '看看攒了几枚、还差什么', on: () => { location.href = '/medals'; } },
     { icon: 'share', label: '邀请收录', sub: '拉朋友来投稿，双方都有灯火', on: () => { location.href = '/invite'; } },
     { icon: 'chat', label: '造梦酒馆', sub: '闲聊、安利、找工具', on: () => navigate('/bar') },
     { icon: 'block', label: '屏蔽管理', sub: (nb || ub) ? `已隐藏 ${nb} 件作品${ub ? ` · 拉黑 ${ub} 位作者` : ''}` : '还没有屏蔽任何作品', on: () => openBlockedList(nb ? 'works' : (ub ? 'users' : 'works')) },
+    { icon: 'palette', label: '外观主题', sub: '只在这台设备上生效，不影响作者主页', on: () => openThemeModal() },
     { icon: 'gear', label: '账号设置', sub: '密码、绑定、消息提醒', on: () => navigate('/settings') },
     { icon: 'logout', label: '退出登录', sub: '本机登录状态会清掉', on: doLogout }
   ];
@@ -11805,7 +11956,10 @@ async function openWork(id, push = true, opts = {}) {
       `<span class="badge-cat">${escapeHtml(w.category)}</span>` +
       osBadgeHtml(w) +
       paidBadgeHtml(w) +
-      (w.featured ? `<span class="badge-featured"><span class="ico">${ic('sparkle')}</span> 精选</span>` : '');
+      (w.featured ? `<span class="badge-featured"><span class="ico">${ic('sparkle')}</span> 精选</span>` : '') +
+      // 限时任务直达口（2026-11-24）：卡片角标只写「体验送 N 盏」，详情里说全动作，
+      // 点它去 /tasks?lt=<id> 自动开这件作品的注册截图弹窗，链路不用自己翻任务列表
+      limitedRewardHtml(w, 'detail-lt', true);
     // 勋章默认只露一枚，其余折成「+N」（2026-11-13）：三枚金胶囊并排会把作者名挤成配角。
     // 完整名单放 title，悬停可看；不另做展开交互——这行里已经有太多可点目标了。
     const aTags = w.authorTags || [];
@@ -13209,8 +13363,8 @@ function setupUploadForm() {
   }
 
   // ---- 让 AI 替我投稿：一键复制「说明书 + 密钥 + 提示词」，贴给自己的 AI 助手 ----
-  // 完整密钥只在生成那一刻出现过，这里拿不到旧密钥：作者要么把手上那把贴进输入框，
-  // 要么就地换新（POST 会作废旧钥匙，按钮语义随查询结果变）。
+  // 登录后 GET /api/me/publish-key 会把完整钥匙回给本人（只认会话 Cookie），这里直接带出，
+  // 不用作者去别处翻备份；还没生成就就地生成（POST 会作废旧钥匙，按钮语义随查询结果变）。
   const aiFeedBox = $('aiFeedBox');
   const aiFeedToggle = $('aiFeedToggle');
   const aiFeedBody = $('aiFeedBody');
@@ -13237,14 +13391,20 @@ function setupUploadForm() {
       aiFeedToggle.setAttribute('aria-expanded', String(open));
       if (!open || aiFeedOpened) return;
       aiFeedOpened = true;
-      // 首次展开探一下密钥状态：没有密钥就藏起输入框，主按钮直接走「生成并复制」
+      // 首次展开探一下密钥状态：有就自动带出完整密钥，没有就藏起输入框、按钮走「生成并复制」
       try {
         const r = await fetch('/api/me/publish-key', { cache: 'no-store' });
         if (r.status === 401) { aiFeedBody.hidden = true; aiFeedBox.classList.remove('is-open'); openAuth('login'); return; }
         const d = await r.json().catch(() => ({}));
         aiFeedRotate.hidden = false;   // 探测成功就亮出换新/生成按钮（HTML 里默认藏着）
         if (d && d.enabled) {
-          feedStatus('已有密钥在生效（' + (d.masked || 'pk…') + '）。完整密钥只有生成那一次——贴在输入框里，或者换一把新的。');
+          const key = /^pk[0-9a-f]{48}$/i.test(d.key || '') ? d.key : '';
+          if (key) {
+            aiFeedKey.value = key;
+            feedStatus('已带出你的投稿密钥（' + (d.masked || 'pk…') + '），点「复制喂给 AI 的话」就能用。不放心就换一把。', 'ok');
+          } else {
+            feedStatus('已有密钥在生效（' + (d.masked || 'pk…') + '）。这里暂时没取到完整密钥，贴在输入框里或换一把新的。');
+          }
         } else {
           aiFeedKey.style.display = 'none';
           aiFeedRotate.textContent = '还没有密钥？生成一把并复制';
@@ -13281,7 +13441,7 @@ function setupUploadForm() {
         aiFeedKey.value = key;
         await navigator.clipboard.writeText(feedText(key)).catch(() => {});
         aiFeedRotate.textContent = '忘了密钥？换一把新的并复制';
-        feedStatus('新密钥已生成、喂 AI 的话已复制进剪贴板！这把完整密钥只显示这一次，输入框里这份也是最后的机会，先存进你的密码管理器。', 'ok');
+        feedStatus('新密钥已生成、喂 AI 的话已复制进剪贴板！以后登录后在投稿表单展开这里就会自动带出，不用再翻备份。', 'ok');
       } catch { feedStatus('网络异常，稍后再试', 'err'); }
       finally { aiFeedRotate.disabled = false; }
     });
@@ -16456,8 +16616,8 @@ function wishStatusHtml(i) {
 // 三处刻意的取舍：
 //   1) 只取站内搜得到的词——zero 词（搜过但站内没结果）点进去是空结果页，首页不摆；
 //   2) 不带人数：人数是服务端给种子词随机抽的，摆在首屏反而露怯；
-//   3) 12 条全出（9 热 + 3 新），种子词贴「热」、近期真被搜过的贴「新」——
-//      两批词来源不同，角标一眼分清（2026-11-14 站长定，桌面折两行、手机只留前 4 个）。
+//   3) 首屏 12 条全出（9 热 + 3 新），种子词贴「热」、近期真被搜过的贴「新」——
+//      两批词来源不同，角标一眼分清（2026-11-25 站长看过后要回多词汇：热词铺满一行信息更足）。
 //   4) 2026-11-15 站长：热的排新的前面（服务端已排，这里再稳定排一次兜底，
 //      手机只露前 4 个，得保证露出来的是热的）。
 const HERO_HOT_MAX = 12;
@@ -18860,10 +19020,10 @@ const REDEEM_STATUS = {
 // 后面所有互斥都由「步骤顺序 + normalizeRedeemSel() 单点归一化」保证，事件处理只改自己那一个字段。
 let redeemSel = { workId: '', mode: 'view', views: 0, clicks: 0, slot: 'detail', ext: false, link: '', days: 0 };
 let redeemData = null;
-// 现金直购（内测）：/api/xpay/goods 的结果，白名单账号才拿到 enabled:true
+// 现金直购：/api/xpay/goods 的结果，放开范围内账号拿到 enabled:true
 let xpayData = null;
-// 爱猹收网页端现金曝光包：/api/watchapay/state 的结果（余额 + 购买入口），白名单账号才有 enabled:true
-let watchaState = null;
+// 支付宝网页支付：/api/alipay/goods 的结果，只用来决定灯火包区要不要露入口（服务端未配好时整块不出现）
+let alipayData = null;
 // 投放效果榜数据：loadRedeemPanel 并行拉好存这里，renderRedeem 每次重绘都带上（选择操作会整版重绘）
 let promoBoardData = null;
 // 「为什么这个推荐位值」折叠卡的展开状态：切作品/位置/套餐都会整版重绘，别让人展开一次就被打回
@@ -19076,7 +19236,7 @@ function redeemFootHtml() {
       </button>`;
 }
 
-// 现金直购（内测）：微信虚拟支付只能在小程序内拉起，网页这端只展示同一批套餐与价格，
+// 现金直购：微信虚拟支付只能在小程序内拉起，网页这端只展示同一批套餐与价格，
 // 不放假的「付款」按钮；点「看小程序码」打开站内那张码，扫码进小程序「推荐」页付款。
 function xpaySectionHtml() {
   const d = xpayData;
@@ -19090,7 +19250,7 @@ function xpaySectionHtml() {
   if (!packs) return '';
   return `
     <div class="redeem-sec xp-sec">
-      <div class="redeem-sec-head">现金直购 <span class="xp-badge">内测</span><span>与小程序同一批套餐 · 支付在小程序里完成</span></div>
+      <div class="redeem-sec-head">现金直购 <span>与小程序同一批套餐 · 支付在小程序里完成</span></div>
       <div class="xp-packs">${packs}</div>
       <p class="xp-tip">微信的虚拟支付只能在小程序内拉起，网页这边不收钱。用微信扫小程序码，进「我的 → 推荐」就能看到同样的四档，选一件自己的作品付款后立刻开始展示。</p>
       <button type="button" class="btn-primary xp-go" id="xpayGoMini">看小程序码 ›</button>
@@ -19099,29 +19259,38 @@ function xpaySectionHtml() {
 
 // 灯火包（2026-11-23）：小程序道具直购站内灯火。微信虚拟支付没有网页下单口，
 // 网页这端只做三档展示 + 出一张带参数的小程序码，付款在手机里完成、这边轮询到账。
-// 与爱猹收（支付宝买灯火）完全两码事：两套渠道、两套 UI，互不引用。
 function lampPackSectionHtml() {
   const lamps = ((xpayData && xpayData.goods) || []).filter(g => g.kind === 'lamp');
   if (!lamps.length) return '';
-  // 「标准包 · 2000 灯火」里后半截不许从中间断：断成「2000 灯 / 火」很难看，
+  // 「标准包 · 1000 灯火」里后半截不许从中间断：断成「1000 灯 / 火」很难看，
   // 数字连同「灯火」两个字绑在一块，整体换行只发生在「·」后面。
   const nameHtml = (n) => {
     const s = escapeHtml(String(n || ''));
     const m = s.match(/^(.*?)(\d[\d,]*\s*灯火)$/);
     return m ? `${m[1]}<b class="lp-num">${m[2]}</b>` : s;
   };
-  const cards = lamps.map(g => `
+  const aliOn = !!(alipayData && alipayData.enabled);
+  const cards = lamps.map(g => {
+    const pid = encodeURIComponent(g.id);
+    return `
     <div class="lp-card">
-      <img class="lp-icon" src="/lamp-packs/${encodeURIComponent(g.id)}.png" alt="" loading="lazy" />
-      <span class="lp-name">${nameHtml(g.name)}</span>
-      <span class="lp-price">¥${((g.priceFen || 0) / 100).toFixed(2)}</span>
-      <button type="button" class="btn-primary lp-buy" data-product="${encodeURIComponent(g.id)}">扫码买</button>
-    </div>`).join('');
+      <img class="lp-icon" src="/lamp-packs/${pid}.png" alt="" loading="lazy" />
+      <div class="lp-main">
+        <div class="lp-line"><span class="lp-name">${nameHtml(g.name)}</span><span class="lp-price">¥${((g.priceFen || 0) / 100).toFixed(2)}</span></div>
+        <div class="lp-acts">
+          <button type="button" class="btn-primary lp-buy" data-product="${pid}">微信扫码</button>
+          ${aliOn ? `<a class="lp-ali" href="/alipay/pay?product=${pid}" target="_blank" rel="noopener noreferrer">支付宝付款</a>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
   return `
     <div class="redeem-sec lp-sec">
-      <div class="redeem-sec-head">灯火包 <span class="xp-badge">内测</span><span>手机扫码进小程序付款 · 到账这里自动刷新</span></div>
+      <div class="redeem-sec-head">灯火包 <span>${aliOn ? '微信扫码 / 支付宝网页付款 · 到账这里自动刷新' : '手机扫码进小程序付款 · 到账这里自动刷新'}</span></div>
       <div class="lp-cards">${cards}</div>
-      <p class="lp-tip">微信的虚拟支付只能在手机里拉起：点「扫码买」出一张带参数的小程序码，微信扫码后自动选中这个包付款，灯火直接进站内余额——电脑这页别关，到账自动提示。</p>
+      <p class="lp-tip">${aliOn
+        ? '微信支付请在手机上扫码付款；支付宝付款会新开窗口直接打开这个档位的收银台。两边都是同一个价、同一批灯火，付款后这页会自动提示到账。'
+        : '微信的虚拟支付只能在手机里拉起：点「微信扫码」出一张带参数的小程序码，微信扫码后自动选中这个包付款，灯火直接进站内余额——电脑这页别关，到账自动提示。'}</p>
     </div>`;
 }
 
@@ -19198,40 +19367,6 @@ async function openLampScanBuy(productId) {
   }, 2500);
 }
 
-// 爱猹收网页端现金买灯火（内测）：白名单账号才渲染。与小程序 XPAY 错开。
-// 爱猹收那头的「额度」只当已付款凭证；点「兑换到账」才原子核销 + 入站内灯火账，
-// 之后投放 / 送礼 / 解锁跟签到挣来的灯火完全一样，没有第二套余额。
-function watchapaySectionHtml() {
-  const d = watchaState;
-  if (!d || !d.enabled) return '';
-  const pending = d.remaining || 0;                       // 爱猹收侧已付款、尚未兑换的盏数
-  const lamp = (redeemData && Number.isFinite(redeemData.points)) ? redeemData.points : 0;
-  const purchase = d.purchase || null;
-  let actionHtml;
-  if (pending > 0) {
-    // 付款后可能要等一会儿才到账，按钮文案带数目，点了才动账
-    actionHtml = `<button type="button" class="btn-primary wpay-go" id="watchaClaim">把 ${pending} 盏兑换到账</button>`;
-  } else {
-    actionHtml = '<p class="wpay-tip">支付宝付完款，灯火会先记在付款这边，稍等一会儿回来点「兑换到账」就能用。</p>';
-  }
-  // 购买入口始终展示，不拿「有没有待兑换」当门槛：想加购的人随时能买。
-  const buyHtml = purchase && purchase.url
-    ? `<div class="wpay-recharge">
-         <span class="wpay-recharge-label">支付宝买灯火</span>
-         <a class="wpay-buy-link" href="${escapeHtml(purchase.url)}" target="_blank" rel="noopener noreferrer">去支付宝购买 →</a>
-         ${purchase.qrCodeUrl ? `<button type="button" class="wpay-qr-btn" id="watchaQrZoom" title="点开放大二维码"><img class="wpay-qr" src="${escapeHtml(purchase.qrCodeUrl)}" alt="支付宝购买二维码，点开放大" /><span>点码放大</span></button>` : ''}
-       </div>`
-    : '';
-  return `
-    <div class="redeem-sec wpay-sec">
-      <div class="redeem-sec-head">支付宝买灯火 <span class="xp-badge">内测</span><span>付款后兑换到账 · 与签到灯火同一个余额</span></div>
-      <p class="wpay-bal">站内灯火 <b>${lamp}</b> 盏${pending > 0 ? ` · 支付宝待兑换 <b>${pending}</b> 盏` : ''}</p>
-      ${actionHtml}
-      ${buyHtml}
-      <p class="wpay-note">支付宝付的是灯火，付完在这里点「兑换到账」才进站内余额；到账后怎么花、能不能退，跟其它灯火一模一样。</p>
-    </div>`;
-}
-
 // 推荐面板入口：各处按钮统一跳独立页面 /promote。
 // 未登录也直接进：/promote 未登录态自带「登录后才能投放 + 先登录」引导和投放效果榜，
 // 让游客先看得到推荐效果再决定要不要登录；弹窗拦在前面反而把效果榜挡住了。
@@ -19268,11 +19403,12 @@ async function loadRedeemPanel() {
       .then(r => r.json())
       .then(d => { xpayData = d; return d; })
       .catch(() => { xpayData = null; return null; });
-    const watchaP = fetch('/api/watchapay/state', { cache: 'no-store' })
+    // 支付宝入口：服务端没配好会回 enabled:false，灯火包区就不露这一颗按钮
+    const aliP = fetch('/api/alipay/goods', { cache: 'no-store' })
       .then(r => r.json())
-      .then(d => { watchaState = d; return d; })
-      .catch(() => { watchaState = null; return null; });
-    const [res] = await Promise.all([fetch('/api/redeem/options', { cache: 'no-store' }), boardP, xpayP, watchaP]);
+      .catch(() => null);
+    const [res, , , ali] = await Promise.all([fetch('/api/redeem/options', { cache: 'no-store' }), boardP, xpayP, aliP]);
+    alipayData = ali;
     redeemData = await res.json();
   } catch {
     body.innerHTML = '<div class="stats-loading">加载失败，请稍后重试</div>';
@@ -19855,7 +19991,6 @@ function renderRedeem() {
     </div>
     ${xpaySectionHtml()}
     ${lampPackSectionHtml()}
-    ${watchapaySectionHtml()}
     <details class="redeem-value" id="redeemValue"${redeemValueOpen ? ' open' : ''}>
       <summary>
         <span class="rv-tag">为什么值</span>
@@ -19900,41 +20035,6 @@ function renderRedeem() {
   body.querySelectorAll('.lp-buy').forEach(btn => {
     btn.onclick = () => openLampScanBuy(btn.dataset.product);
   });
-  // 支付宝灯火：点「兑换到账」把爱猹收侧已付款的额度换进站内灯火账。
-  // 一次操作固定一个幂等键：网络重试、同键重放都不会二次核销 / 二次加灯。
-  const wcl = $('watchaClaim');
-  if (wcl) wcl.onclick = async () => {
-    const amount = (watchaState && watchaState.remaining) || 0;
-    if (!(amount > 0)) { showToast('支付宝那边还没有待兑换的灯火', undefined, 'err'); return; }
-    const idem = 'wc' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
-    wcl.disabled = true; wcl.textContent = '正在兑换…';
-    try {
-      const r = await fetch('/api/watchapay/claim', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idempotencyKey: idem, amount })
-      });
-      const d = await r.json().catch(() => ({}));
-      if (d.error) { showToast(d.error, undefined, 'err'); return; }
-      showToast(`到账 ${d.amount || amount} 盏灯火，可以去投放了`);
-      if (typeof d.points === 'number') {
-        refreshPointsUI(d.points);   // 顶部灯火徽章 + 面板余额一起刷新
-        if (redeemData) redeemData.points = d.points;
-      }
-      try { watchaState = await fetch('/api/watchapay/state', { cache: 'no-store' }).then(r => r.json()); } catch (e) { /* 刷新失败不影响已入账的灯火 */ }
-      loadRedeemPanel();
-      return;
-    } catch (e) {
-      showToast('网络出错，请重试', undefined, 'err');
-    } finally {
-      if (wcl.isConnected) { wcl.disabled = false; wcl.textContent = `把 ${amount} 盏兑换到账`; }
-    }
-  };
-  // 点购买二维码放大：复用站内现成的二维码放大层（Esc / 点空白关闭、手机长按保存）。
-  const wqr = $('watchaQrZoom');
-  if (wqr) wqr.onclick = () => {
-    const src = watchaState && watchaState.purchase && watchaState.purchase.qrCodeUrl;
-    if (src) openQrZoom(src, '支付宝扫码买灯火 · 手机可长按保存');
-  };
   body.querySelectorAll('[data-rwork]').forEach(el => {
     el.onclick = () => {
       redeemSel.workId = el.dataset.rwork;
@@ -20656,7 +20756,7 @@ async function cancelRedeem(id) {
   const usedTxt = r && !r.comp && (r.views || 0) === 0 && (r.clicks || 0) > 0
     ? `已点击 ${r.clickUsed || 0} 次`
     : `已曝光 ${r ? r.used || 0 : 0} 次${r && r.clicks ? ` · 已点击 ${r.clickUsed || 0} 次` : (r && r.clicksReal ? ` · 被点开 ${r.clicksReal} 次` : '')}`;
-  // 站长代投单没有灯火往来；现金单次数已核销、爱猹收没有退款接口，确认话术各自单独一套
+  // 站长代投单没有灯火往来；现金单次数已核销，确认话术各自单独一套
   let msg;
   if (r && r.comp) {
     msg = queued ? '取消排队？\n\n这是站长代投的推荐，不涉及灯火，取消后轮到别人。'
@@ -22056,12 +22156,8 @@ function setupSearchSuggest() {
   const panel = $('searchSuggest');
   if (!input || !panel) return;
 
-  // placeholder 两档：平时框太窄只显示「搜索」，聚焦/展开时才给完整提示（失焦还原）
-  const PH_SHORT = '搜索';
-  const PH_FULL = '搜索作品、作者、关键词…';
-  input.placeholder = PH_SHORT;
-  input.addEventListener('focus', () => { input.placeholder = PH_FULL; });
-  input.addEventListener('blur', () => { input.placeholder = PH_SHORT; });
+  // 2026-11-25 站长拍板：输入框搬回 hero 后够长，完整提示常驻默认，不再聚焦才换文案。
+  // HTML 里 placeholder 已写全，这里不再改它；下拉建议仍只在聚焦时展开。
 
   const chip = (word, hot) => {
     const b = document.createElement('button');
@@ -22194,6 +22290,7 @@ const FIND_FALLBACK_CHIPS = ['效率工具', '小程序', '开源'];
 // 都是具体场景——「找工具」这种抽象话跟上面的搜索框没区别，看不出这是「说人话找作品」。
 const FIND_SAMPLES = ['想把录音转成文字', '整理电脑里的重复文件', '手机上记账'];
 // 2026-11-22 站长要求：上面三句下面再加一组企业产品场景；当晚又补了「办公效率」「ai生成短剧」。
+// 11-25 这组也同步到了小程序 pages/find 的 PRODUCT_SAMPLES，改词两边一起改。
 // 走的是同一个 /api/find，不另开入口；分别落 AI 办公、AI 短剧、学术写作，
 // 都是站里真有的关键词，点了就能翻出东西，不是摆着好看的例句。
 const FIND_PRODUCT_SAMPLES = ['AI办公提效', '办公效率', 'AI短剧制作', 'ai生成短剧', '论文降AI率'];
@@ -22622,7 +22719,9 @@ function setupHeader() {
       // 首页卡片、酒馆作品链早已直接调 openWork；这里补齐其余所有 data-nav 的 /w/ 链接。
       const m = (a.pathname || '').match(/^\/w\/([A-Za-z0-9_-]+)\/?$/);
       if (m) { openWork(decodeURIComponent(m[1])); return; }
-      navigate(a.pathname);
+      // 详情里的限时任务入口带 ?lt=<作品id>：路由得把 query 一起带过去，
+      // 否则 navigate 只 push pathname，任务中心收不到深链参数（2026-11-24）
+      navigate(a.pathname + (a.search || ''));
     }
   });
 
@@ -22840,8 +22939,8 @@ async function submitSlug(clear) {
 
 
 // ---------- AI 发布密钥 ----------
-// 一把只管投稿的钥匙：生成后完整密钥只在眼前出现这一次（服务端之后只回打码版），
-// 泄露了就换一把（旧的立刻作废）。按钮语义随状态变：没钥匙时是「生成」，有钥匙时是「换一把」。
+// 一把只管投稿的钥匙：登录后查询接口会把完整密钥回给本人，这里和投稿表单都能直接带出，
+// 不用再翻生成那一刻的备份；泄露了就换一把（旧的立刻作废）。按钮语义随状态变：没钥匙时是「生成」，有钥匙时是「换一把」。
 function setPubKeyMsg(text, kind) {
   const el = $('pubkeyMsg');
   if (!el) return;
@@ -22869,13 +22968,17 @@ async function openPubKeyModal() {
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { setPubKeyMsg(d.error || '查询失败，稍后再试', 'err'); return; }
     if (d.enabled) {
-      $('pubkeyInput').value = d.masked || '';
+      PUBKEY_CURRENT = /^pk[0-9a-f]{48}$/i.test(d.key || '') ? d.key : '';
+      $('pubkeyInput').value = PUBKEY_CURRENT || d.masked || '';
       $('pubkeyInput').placeholder = '';
+      $('pubkeyCopy').style.display = PUBKEY_CURRENT ? '' : 'none';
       $('pubkeyRevoke').style.display = '';
       $('pubkeyGen').textContent = '换一把新钥匙';
-      setPubKeyMsg('已有密钥在生效（上面是打码后的样子）。完整密钥只在生成那一刻出现过——忘了就换一把新的，旧的立刻作废。');
+      setPubKeyMsg(PUBKEY_CURRENT
+        ? '已带出你现有的密钥（' + (d.masked || 'pk…') + '），直接复制就能用；泄露了就换一把，旧的立刻作废。'
+        : '已有密钥在生效（上面是打码版）。没取到完整密钥就换一把新的，旧的立刻作废。');
     } else {
-      setPubKeyMsg('还没有密钥。生成后只有这一刻能看到完整密钥，马上复制交给你的 AI 助手。');
+      setPubKeyMsg('还没有密钥。生成后点「复制」交给你的 AI 助手，以后登录了随时能在这里或投稿表单带出。');
     }
   } catch { setPubKeyMsg('网络异常，稍后再试', 'err'); }
 }
@@ -22896,7 +22999,7 @@ async function savePubKey() {
     $('pubkeyCopy').style.display = '';
     $('pubkeyRevoke').style.display = '';
     $('pubkeyGen').textContent = '换一把新钥匙';
-    setPubKeyMsg('已生成！先点「复制」存好——关掉弹窗后就再也看不到完整密钥了。', 'ok');
+    setPubKeyMsg('已生成！点「复制」交给 AI 助手；以后登录了在这里或投稿表单都会自动带出。', 'ok');
   } catch { setPubKeyMsg('网络异常，稍后再试', 'err'); }
   finally { btn.disabled = false; }
 }
@@ -23764,7 +23867,7 @@ function setupInstall() {
     // 壁纸（2026-11-23）：「设为壁纸」在纸面右上角——点一下发指令进纸面（paint.html 合成回传），
     // 收到 dataURL 存 localStorage 铺 #paintWp。
     // 那层 z-index:-1 + pointer-events:none，纯背景不挡任何点击；卡片白底自动盖住，
-    // aurora 光斑由 body.paint-wp 淡出，画就在首屏露出来。摘壁纸 = 清存储回到原来的底。
+    // aurora 光斑由 body.paint-wp 淡出，画就在首屏露出来。取消壁纸 = 清存储回到原来的底。
     const WP_KEY = 'dm_paint_wp';
     const paintWp = $('paintWp'), paintUnwall = $('paintUnwall'), paintWall = $('paintWall');
     const applyWp = data => {
@@ -23787,7 +23890,7 @@ function setupInstall() {
     if (paintUnwall) paintUnwall.onclick = () => {
       try { localStorage.removeItem(WP_KEY); } catch { /* 同上 */ }
       applyWp(null);
-      showToast('壁纸摘下来了，换回原来的底', undefined, 'ok');
+      showToast('壁纸取消了，换回原来的底', undefined, 'ok');
     };
     window.addEventListener('message', e => {
       if (e.origin !== location.origin || e.source !== paintFrame.contentWindow) return;
@@ -23872,7 +23975,8 @@ async function init() {
     location.pathname === '/app' ||          // App 下载页：整页 SSR，漏了会被当垃圾删掉
     location.pathname.startsWith('/brand/') ||   // 品牌橱窗页：整页 SSR，删了这块就只剩空首页
     location.pathname === '/open' ||
-    location.pathname === '/column' || location.pathname.startsWith('/column/');
+    location.pathname === '/column' || location.pathname.startsWith('/column/') ||
+    location.pathname === '/alipay/pay' || location.pathname === '/alipay/return';   // 支付宝付款页 / 回跳页：整页 SSR，漏了会被当垃圾删掉
   if (!keepSeo) removeSeoBlock();
   // 先按上次的登录态快照把右上角画出来（此刻首绘还没发生，视觉上零跳变），
   // 再等 /api/me 校准；顺手把「登录 / 注册」按钮的点击绑成事件委托（预置按钮也要能点）
@@ -23883,7 +23987,7 @@ async function init() {
   captureFr();    // 再处理 ?fr=：只记渠道来源，不加分
   captureRef();   // 先处理 ?ref=：记下分享者并上报，再把参数从地址栏摘掉
   captureClaimToken();   // 匿名投稿进度页带来的 ?claimToken=：投稿人本人才能认领那个作品
-  captureCodeClaim();    // 作品链接带来的 ?claim=<暗号>：作者打开→确认→登录/注册后当场认领
+  captureCodeClaim();    // 链接带来的 ?c=<暗号>（主链或详情页都行，兼容 ?claim=）：打开→确认→登录/注册后当场认领
   loadFooterFriends();  // 页脚友情链接（后台可配，空则不展示）
   loadLd246Ai();        // 站外灵感：链滴 AI 精选（未配 Token 时接口返回 enabled:false，函数直接退出）
   loadFooterStats();    // 页脚站点 PV/UV + 提交作品引导
@@ -24693,6 +24797,27 @@ function openLimitedTask(id) {
   bindLimitedTaskModal();
   showModal(m);
 }
+// 详情弹窗「注册账号 · 回传截图」深链（2026-11-24）：/tasks?lt=<作品id> 拿到任务板后
+// 直接开对应作品的任务弹窗，不用用户在长列表里找。游客先落在游客版，登录成功后
+// refreshTaskState() 会重画任务页并在这里接上；参数开过一次就从地址栏摘掉，防刷新再弹。
+function openLimitedDeepLink(d) {
+  if (location.pathname !== '/tasks' || !state.user) return;
+  const id = new URLSearchParams(location.search).get('lt');
+  if (!id) return;
+  history.replaceState(history.state, '', '/tasks');
+  const lim = (d && d.limited) || {};
+  const it = (lim.items || []).find(x => String(x.id) === String(id));
+  if (!it) {
+    showToast('这件作品暂时不在限时任务里，可以在任务中心看看别的', undefined, 'err');
+    return;
+  }
+  if (it.state === 'pending' || it.state === 'done') {
+    showToast('这件作品已经提交过了，去任务中心看进度');
+    return;
+  }
+  openLimitedTask(String(id));
+}
+
 function bindLimitedTaskModal() {
   const m = $('limitedTaskModal');
   if (!m || m.dataset.bound) return;
@@ -24818,6 +24943,7 @@ async function renderTasksPage() {
     if (d.wxBindBonus) state.user.wxBindBonus = d.wxBindBonus;
     if (d.points != null) state.user.points = d.points;
     renderAuthBox();
+    openLimitedDeepLink(d);
   } catch (e) {
     if (tasksBoard) { box.innerHTML = tasksPageHtml(tasksBoard); bindTasksPage(box); }
     else box.innerHTML = '<div class="task-loading">任务加载失败，刷新页面再试一次</div>';

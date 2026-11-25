@@ -1,0 +1,28 @@
+<!--
+  全站导航唯一数据源（2026-11-25）
+  ------------------------------------------------------------------
+  server.js 读这份文件，做两件事：
+  1) 抽出 NAV_START 与 NAV_END 两个注释标记之间的链接，注入首页 index.html 的 .nav-tabs；
+  2) 整段 header 注入 medals/mascots/musicbox/appeal 等独立页，替换各页原先手写的那份轻量站头。
+  所以以后改导航的链接、文案、图标、提示气泡，只改这里一处，首页和独立页一起变。
+  MINI_ITEM 注释是小程序入口占位：首页渲染成弹码按钮（app.js 认 .hero-mini-open），
+  独立页渲染成 /mini 链接（那些页不引 app.js，按钮点了没反应）。
+  登录态不在这里写：由 /site-shell.js 统一拉无副作用的 /api/me/brief 渲染。
+-->
+<header class="site-header">
+  <div class="sh-inner">
+    <a class="logo" href="/" title="回造梦橱窗首页"><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
+    <nav class="sh-nav" aria-label="主导航">
+      <div class="nav-tabs">
+<!--NAV_START-->
+        <a class="nav-btn" href="/discover" data-nav data-tip="按平台和分类逛作品——iOS、安卓、小程序、游戏、效率工具都在这儿" aria-label="发现：按平台和分类逛作品，iOS、安卓、小程序、游戏、效率工具都在这儿"><i class="ico" data-ico="globe"></i> 发现</a>
+        <a class="nav-btn" href="/rank" data-nav data-tip="作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届" aria-label="榜单：作品的热度排行，访客、收藏、评论、灯火加权计分，每周换一届"><i class="ico" data-ico="rank"></i> 榜单</a>
+        <a class="nav-btn" href="/creators" data-nav data-tip="认识认真造梦的创作者，看他们的作品与访客" aria-label="创作者：认识认真造梦的创作者，看他们的作品与访客"><i class="ico" data-ico="shelf"></i> 创作者</a>
+        <a class="nav-btn" href="/bar" data-nav data-tip="说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现，也能闲聊、安利、分享"><i class="ico" data-ico="wish"></i> 酒馆</a>
+<!--MINI_ITEM-->
+<!--NAV_END-->
+      </div>
+    </nav>
+    <div class="sh-auth" id="authBox"></div>
+  </div>
+</header>

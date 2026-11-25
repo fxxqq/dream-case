@@ -148,7 +148,6 @@ function head(opts) {
     keywords ? `<meta name="keywords" content="${esc(keywords)}" />` : '',
     `<meta name="robots" content="${robots}" />`,
     `<meta name="theme-color" content="#5b5bd6" />`,
-    `<meta name="google-adsense-account" content="ca-pub-5526491839331555" />`,
     canonical ? `<link rel="canonical" href="${esc(canonical)}" />` : '',
     `<link rel="icon" href="/favicon.svg" type="image/svg+xml" />`,
     `<link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" />`,
@@ -600,7 +599,7 @@ function listPage(base, { title, description, h1, activeName, kind = 'c', subtit
       <a class="logo" href="/">✦ ${SITE_NAME}</a>
       <nav class="main-nav">
         <a class="nav-btn" href="/">首页</a>
-        <a class="nav-btn" href="/rank">星梦榜</a>
+        <a class="nav-btn" href="/rank">榜单</a>
         <a class="btn-primary" href="/">＋ 提交作品</a>
       </nav>
     </div>
@@ -642,7 +641,7 @@ function listPage(base, { title, description, h1, activeName, kind = 'c', subtit
     </div>
     <div class="container footer-base">
       <span class="fb-text">© 2026 ${SITE_NAME}</span>
-      <a class="footer-icp" href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
+      <a class="footer-icp" href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号-4</a>
     </div>
   </footer>
 </body>

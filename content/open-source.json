@@ -1,6 +1,6 @@
 {
   "intro": "GitHub 上那些「装上就能用、想改也能自己搭」的东西。这里只收外链，不放代码、不搬截图——觉得好用就自己去仓库看一眼。",
-  "updatedAt": "2026-11-12",
+  "updatedAt": "2026-11-25",
   "items": [
     {
       "repo": "localsend/localsend",
@@ -289,6 +289,86 @@
       "lang": "",
       "license": "",
       "desc": "按「刚上线 / 已上线 / 已关闭」分组的项目清单，谁在做什么一眼扫完。想知道同行最近在折腾什么，来这儿翻比刷时间线有效。"
+    },
+    {
+      "repo": "GyulyVGC/sniffnet",
+      "name": "Sniffnet",
+      "cat": "app",
+      "lang": "Rust",
+      "license": "Apache-2.0",
+      "desc": "实时监控电脑的网络流量：哪个程序在传数据、用了多少带宽，都画成清楚的图表。查后台偷跑流量、看网速去向，比任务管理器直观。"
+    },
+    {
+      "repo": "sxyazi/yazi",
+      "name": "Yazi",
+      "cat": "app",
+      "lang": "Rust",
+      "license": "MIT",
+      "desc": "终端里的文件管理器：键盘翻目录、预览图片和代码，快得几乎没延迟。在命令行里整理文件的人，换它之后就回不去了。"
+    },
+    {
+      "repo": "ShareX/ShareX",
+      "name": "ShareX",
+      "cat": "app",
+      "lang": "C#",
+      "license": "GPL-3.0",
+      "desc": "Windows 上的截图录屏全能工具：截哪块、加箭头马赛克、自动传图床一条龙。写文档配图省掉一半来回导图的工夫。"
+    },
+    {
+      "repo": "claudiodangelis/qrcp",
+      "name": "qrcp",
+      "cat": "app",
+      "lang": "Go",
+      "license": "MIT",
+      "desc": "手机和电脑传文件：命令行里敲一句，终端显示二维码，手机扫一下就收到，同一个 Wi-Fi 下不用账号也不用数据线。"
+    },
+    {
+      "repo": "coollabsio/coolify",
+      "name": "Coolify",
+      "cat": "self",
+      "lang": "PHP",
+      "license": "Apache-2.0",
+      "desc": "自己搭的 Vercel：一台服务器装上它，网站、数据库、各种服务点几下就部署好，还自带 SSL 和备份。想摆脱平台托管费，从这儿起步。"
+    },
+    {
+      "repo": "netdata/netdata",
+      "name": "Netdata",
+      "cat": "self",
+      "lang": "Go",
+      "license": "GPL-3.0",
+      "desc": "服务器实时监控：CPU、内存、磁盘、网络全画成活的图表，浏览器打开就能看。和 Uptime Kuma 一个管「挂没挂」、一个管「为什么卡」。"
+    },
+    {
+      "repo": "QuantumNous/new-api",
+      "name": "New API",
+      "cat": "self",
+      "lang": "Go",
+      "license": "AGPL-3.0",
+      "desc": "AI 接口中转：把各家大模型收进一个统一地址，按密钥分流、统计用量、设额度。自己搭一份，多个项目共用一套接口。"
+    },
+    {
+      "repo": "PDFMathTranslate/PDFMathTranslate",
+      "name": "PDFMathTranslate",
+      "cat": "web",
+      "lang": "Python",
+      "license": "AGPL-3.0",
+      "desc": "PDF 全文翻译，公式、图表、排版原样留住，还出双语对照版。读外文论文最烦的「翻译完没法看」，它专门解这个。"
+    },
+    {
+      "repo": "reactive-resume/reactive-resume",
+      "name": "Reactive Resume",
+      "cat": "web",
+      "lang": "TypeScript",
+      "license": "MIT",
+      "desc": "在线做简历：填完导出 PDF，模板干净、数据自己掌握，也能整个搬回自己服务器。找工作那份简历可以做得体面点。"
+    },
+    {
+      "repo": "mengxi-ream/read-frog",
+      "name": "陪读蛙 Read Frog",
+      "cat": "web",
+      "lang": "TypeScript",
+      "license": "GPL-3.0",
+      "desc": "浏览器里的沉浸式翻译：划词就译、生词自动收进卡片，边读外文边背单词。中文作者做的插件，读长文比逐段复制舒服。"
     }
   ]
 }

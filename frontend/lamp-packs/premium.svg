@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <title>畅玩包 premium</title>
+  <g stroke="#BA7517" stroke-width="4" stroke-linecap="round">
+    <line x1="100" y1="16" x2="100" y2="28"/>
+    <line x1="56" y1="30" x2="64" y2="38"/>
+    <line x1="144" y1="30" x2="136" y2="38"/>
+    <line x1="34" y1="72" x2="46" y2="76"/>
+    <line x1="166" y1="72" x2="154" y2="76"/>
+  </g>
+  <path d="M100 34 C100 34 74 66 74 98 C74 122 85 138 100 138 C115 138 126 122 126 98 C126 66 100 34 100 34 Z" fill="#EF9F27" stroke="#BA7517" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M100 62 C100 62 84 82 84 102 C84 116 91 126 100 126 C109 126 116 116 116 102 C116 82 100 62 100 62 Z" fill="#FAC775"/>
+  <path d="M100 90 C100 90 92 102 92 112 C92 120 95 124 100 124 C105 124 108 120 108 112 C108 102 100 90 100 90 Z" fill="#FFF6E5"/>
+  <path d="M92 136 L108 136 L106 172 Q100 178 94 172 Z" fill="#854F0B" stroke="#633806" stroke-width="3" stroke-linejoin="round"/>
+</svg>

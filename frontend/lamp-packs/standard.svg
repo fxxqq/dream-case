@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <title>标准包 standard</title>
+  <path d="M100 32 C100 32 84 52 84 70 C84 84 91 92 100 92 C109 92 116 84 116 70 C116 52 100 32 100 32 Z" fill="#EF9F27" stroke="#BA7517" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M100 50 C100 50 92 62 92 72 C92 79 95 83 100 83 C105 83 108 79 108 72 C108 62 100 50 100 50 Z" fill="#FFF6E5"/>
+  <path d="M60 98 Q100 120 140 98 L135 116 Q100 134 65 116 Z" fill="#FAC775" stroke="#BA7517" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M72 122 L128 122 L132 138 Q100 150 68 138 Z" fill="#EF9F27" stroke="#BA7517" stroke-width="4" stroke-linejoin="round"/>
+</svg>

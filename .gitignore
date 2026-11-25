@@ -67,3 +67,9 @@ _iconpreview/
 # 移动端打包工程（Capacitor 本地环境：node_modules + android/ios 构建产物，几 MB 到几十 MB，不入库）
 # 说明文档已单独存到 docs/mobile-打包说明.txt
 mobile/
+/.alipay-sandbox.json
+# 支付宝生产配置（含应用私钥，仅部署方本地/服务器持有，绝不入库）
+/.alipay-prod.json
+
+# deploy-patch 临时目录（对比截图，每次发版生成，不入库）
+.deploy-tmp/

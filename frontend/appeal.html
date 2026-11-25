@@ -10,7 +10,8 @@
 <!--
   账号申诉页（/appeal，2026-11-20）
   - 独立文件：不接入 app.js / SPA 路由，服务端 app.get('/appeal') 直接回本文件。
-  - 站头 / 站脚照 /mascots 的做法手写一份轻量版（同高 60px、同底色、同链接分组）。
+  - 站头不再手写：由服务端从 /site-shell.html 注入（全站唯一一份，与首页共用同一套导航），
+    样式走 /site-shell.css，登录态由 /site-shell.js 统一渲染。
   - 只做一件事：把申诉交给站长人工判。没有自动判定、没有自动解封。
   - 信号口径（和站长对齐过的）：IP / 设备 / 浏览器只是提交时的参考快照（服务端自动记），
     匹配上了是加分、匹配不上不扣分；真正扛冒领的是站内私密操作记忆——
@@ -32,36 +33,6 @@ body{
 }
 /* 容器宽度与主站 style.css 的 --page-max 同值（1260px）：头、内容、脚三条线对齐首页 */
 .wrap{max-width:760px;margin:0 auto;padding:28px 20px 60px}
-
-/* ---------- 站头：与主站 .site-header 同款（/mascots /medals 已有一份，这里设成一样）
-   本页不引 app.js，导航是普通链接整页跳转；登录态由 /api/me 顺带拿到后填入 #authBox。 ---------- */
-.site-header{background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
-.sh-inner{max-width:1260px;margin:0 auto;padding:0 20px;height:60px;display:flex;align-items:center;gap:24px}
-.logo{
-  display:inline-flex;align-items:center;gap:8px;flex:none;
-  font-size:18px;font-weight:700;color:var(--primary);text-decoration:none;letter-spacing:.2px;
-}
-.logo-mark{display:block;flex:none}
-.sh-nav{display:flex;align-items:center;gap:4px;flex:1;min-width:0}
-.sh-nav .nav-btn{
-  display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;
-  font-size:14px;color:var(--muted);text-decoration:none;white-space:nowrap;transition:.16s;
-}
-.sh-nav .nav-btn:hover{color:var(--text);background:#f2f3f9}
-.sh-nav .nav-btn.active{color:var(--primary);background:#eeeefc;font-weight:600}
-.sh-nav .nav-btn .ico{display:inline-flex;width:15px;height:15px}
-.sh-nav .nav-btn .ico svg{width:15px;height:15px;display:block}
-.sh-auth{flex:none;display:flex;align-items:center;gap:10px;margin-left:auto}
-.sh-login{
-  border:1px solid var(--border);background:#fff;color:var(--text);text-decoration:none;
-  font-size:13.5px;padding:7px 15px;border-radius:10px;transition:.16s;white-space:nowrap;
-}
-.sh-login:hover{border-color:#cdd0e0;color:var(--primary)}
-.sh-user{
-  display:inline-flex;align-items:center;gap:6px;max-width:160px;text-decoration:none;
-  font-size:13.5px;color:var(--text);padding:5px 12px 5px 6px;border-radius:999px;background:#f2f3f9;
-}
-.sh-user b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* ---------- 页面标题 ---------- */
 .hd{padding:6px 0 20px}
@@ -170,12 +141,6 @@ body{
 
 @media(max-width:640px){
   .wrap{padding:22px 16px 48px}
-  /* 站头 / 页脚的手机端：跟主站一样不摆顶级导航 */
-  .sh-inner{height:52px;gap:12px;padding:0 16px}
-  .sh-nav{display:none}
-  .sh-auth{margin-left:auto}
-  .logo{font-size:16px}
-  .logo-mark{width:23px;height:23px}
   .ft-inner{padding:0 16px}
   /* 手机上分层栏自然折行：品牌栏独占一排，链接组横向流 */
   .ft-grid{gap:20px 28px}
@@ -193,18 +158,9 @@ body{
 <script src="/icons.js"></script>
 </head>
 <body>
-<!-- 站头：与主站同款（logo / 导航 / 登录态）。本页不引 app.js，导航是普通链接整页跳转。 -->
-<header class="site-header">
-  <div class="sh-inner">
-    <a class="logo" href="/" title="回造梦橱窗首页"><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
-    <nav class="sh-nav" aria-label="主导航">
-      <a class="nav-btn" href="/rank" aria-label="星梦榜：作品的热度排行"><i class="ico" data-ico="rank"></i>星梦榜</a>
-      <a class="nav-btn" href="/bar" aria-label="造梦酒馆"><i class="ico" data-ico="wish"></i>酒馆</a>
-      <a class="nav-btn" href="/medals" aria-label="造梦勋章"><i class="ico" data-ico="medal"></i>造梦勋章</a>
-    </nav>
-    <div class="sh-auth" id="authBox"></div>
-  </div>
-</header>
+<!-- 站头由服务端从 /site-shell.html 注入（全站唯一一份，含导航/登录态），本页不再手写。
+     直开本文件（不经服务端）这里会是空的，属正常。 -->
+<!--SITE_HEADER-->
 
 <div class="wrap">
   <header class="hd">
@@ -292,7 +248,7 @@ body{
     </div>
     <div class="ft-base">
       <span class="fb-text">© 2026 造梦橱窗</span>
-      <a href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号-4</a>
     </div>
   </div>
 </footer>
@@ -365,17 +321,7 @@ body{
     });
   });
 
-  // 站头登录态（照 /mascots 的轻量做法）：有 /api/me 的结果就画，没有就放登录按钮
-  (function paintAuth(){
-    fetch('/api/me', { credentials: 'same-origin' }).then(function(r){ return r.ok ? r.json() : null; }).then(function(me){
-      var box = $('authBox');
-      if (me && me.username) {
-        box.innerHTML = '<a class="sh-user" href="/me"><b>' + esc(me.displayName || me.username) + '</b></a>';
-      } else {
-        box.innerHTML = '<a class="sh-login" href="/">登录</a>';
-      }
-    }).catch(function(){ /* 站头空着也无妨 */ });
-  })();
+  // 站头登录态由公共脚本 /site-shell.js 统一渲染（拉无副作用的 /api/me/brief），本页不再自己画。
 })();
 </script>
 </body>

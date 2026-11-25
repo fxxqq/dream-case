@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="google-adsense-account" content="ca-pub-5526491839331555" />
 <meta name="robots" content="noindex,follow" />
 <title>换个形象 - 造梦橱窗</title>
 <link rel="icon" href="/favicon.svg" />
@@ -11,13 +10,15 @@
 <!--
   换形象页（/mascots）
   - 独立文件：不接入 app.js / SPA 路由，服务端 app.get('/mascots') 直接回本文件。
-  - 站头 / 站脚照 /medals 的做法手写一份轻量版（同高 60px、同底色、同链接分组）：
-    本页不引 app.js，导航都是整页跳转，登录态由 /api/mascots/state 顺带给出。
+  - 站头 / 站脚不再手写：站头由服务端从 /site-shell.html 注入（全站唯一一份，与首页共用同一套导航），
+    样式走 /site-shell.css，登录态由 /site-shell.js 统一拉 /api/me/brief 渲染。
+    本页不引 app.js，导航都是整页跳转。
   - 形象库只有一份：mascots.js（window.MASCOTS），与首页右下角小住客同一套数据。
   - 动效只有一份：mascots.css（首页 style.css 里的形象动效已抽到这里，两边共用）。
   - 领取口径（2026-11-17）：只有 free 的「机器人」白送，其余每个看一支激励视频才领得到。
     广告不新造通道——POST /api/ad/ticket 出票 → 扫码进小程序 pages/adview 看完 → 票变成 done
     → 这里调 POST /api/mascots/claim 把形象记到账号上。网页侧不认「用户说看完了」。
+    另有一条并行的买断路（2026-11-24）：POST /api/mascots/buy 直接扣 500 灯火发放，账本 kind='mascot_buy'。
   - 两个本地键：dm_mascot（当前用哪个，只记本机）、dm_mascot_owned（领到哪几个的缓存，
     真账在服务端 share.json 的 mascots 字段，接口回来会覆盖）。
   - 页面不参与收录（私人偏好页），noindex。
@@ -40,60 +41,6 @@ body{
    宽度只改这三处的 1260。2026-11-17 统一——原来这里写死 1000，比首页窄 260，
    从首页点进来整页内容往中间一缩，像是另一个站。 */
 .wrap{max-width:1260px;margin:0 auto;padding:28px 20px 60px}
-
-/* ---------- 站头：与主站 .site-header 同款（/medals 已有一份，这里设成一样）
-   本页不引 app.js，导航是普通链接整页跳转；容器 1260px 与 .wrap 对齐，logo 和内容左边缘同一条线。
-   ≤640px 跟随主站策略：顶级导航不摆，只留 logo 和登录/我的。 ---------- */
-.site-header{background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
-.sh-inner{max-width:1260px;margin:0 auto;padding:0 20px;height:60px;display:flex;align-items:center;gap:24px}
-.logo{
-  display:inline-flex;align-items:center;gap:8px;flex:none;
-  font-size:18px;font-weight:700;color:var(--primary);text-decoration:none;letter-spacing:.2px;
-}
-.logo-mark{display:block;flex:none}
-.sh-nav{display:flex;align-items:center;gap:4px;flex:1;min-width:0}
-.sh-nav .nav-btn{
-  display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;
-  font-size:14px;color:var(--muted);text-decoration:none;white-space:nowrap;transition:.16s;
-}
-.sh-nav .nav-btn:hover{color:var(--text);background:#f2f3f9}
-.sh-nav .nav-btn.active{color:var(--primary);background:#eeeefc;font-weight:600}
-.sh-nav .nav-btn .ico{display:inline-flex;width:15px;height:15px}
-.sh-nav .nav-btn .ico svg{width:15px;height:15px;display:block}
-/* 导航黑话提示：与 style.css 里 .main-nav .nav-btn[data-tip] 同一份视觉（本页不引 style.css，故复制一份） */
-.sh-nav .nav-btn[data-tip]{position:relative}
-.sh-nav .nav-btn[data-tip]::after{
-  content:attr(data-tip);position:absolute;top:calc(100% + 10px);left:0;
-  width:max-content;max-width:262px;padding:8px 11px 9px;border-radius:9px;
-  background:#22253a;color:#fff;font-size:12.5px;font-weight:400;line-height:1.65;
-  letter-spacing:0;text-align:left;white-space:normal;box-shadow:0 10px 28px rgba(24,24,48,.2);
-  opacity:0;visibility:hidden;pointer-events:none;z-index:30;
-  transform:translateY(-4px);transition:opacity .14s ease,transform .14s ease,visibility .14s;
-}
-.sh-nav .nav-btn[data-tip]::before{
-  content:"";position:absolute;top:calc(100% - 4px);left:16px;
-  border:5px solid transparent;border-bottom-color:#22253a;
-  opacity:0;visibility:hidden;pointer-events:none;z-index:30;
-  transform:translateY(-4px);transition:opacity .14s ease,transform .14s ease,visibility .14s;
-}
-.sh-nav .nav-btn[data-tip]:hover::before,.sh-nav .nav-btn[data-tip]:hover::after,
-.sh-nav .nav-btn[data-tip]:focus-visible::before,.sh-nav .nav-btn[data-tip]:focus-visible::after{
-  opacity:1;visibility:visible;transform:translateY(0)
-}
-.sh-auth{flex:none;display:flex;align-items:center;gap:10px;margin-left:auto}
-.sh-login{
-  border:1px solid var(--border);background:#fff;color:var(--text);text-decoration:none;
-  font-size:13.5px;padding:7px 15px;border-radius:10px;transition:.16s;white-space:nowrap;
-}
-.sh-login:hover{border-color:#cdd0e0;color:var(--primary)}
-.sh-user{
-  display:inline-flex;align-items:center;gap:6px;max-width:160px;text-decoration:none;
-  font-size:13.5px;color:var(--text);padding:5px 12px 5px 6px;border-radius:999px;background:#f2f3f9;
-}
-.sh-user:hover{background:#eaecf5}
-.sh-user b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sh-user .ico{display:inline-flex;flex:none}
-.sh-user .ico svg{width:22px;height:22px;display:block}
 
 /* ---------- 页面标题（站头之下，本页自己的） ---------- */
 .hd{padding:6px 0 20px}
@@ -272,6 +219,10 @@ body{
   color:#a0a5b6;font-size:20px;line-height:1;cursor:pointer;font-family:inherit;
 }
 .claim-x:hover{color:var(--text)}
+/* 触屏上把领取弹窗右上角 ✕ 的热区从 30px 扩到 44px（视觉不变），安卓手指不再点空 */
+@media (pointer:coarse){
+  .claim-x::after{content:'';position:absolute;inset:-7px;border-radius:inherit}
+}
 .claim-art{width:96px;margin:0 auto 6px}
 .claim-art .site-bot{width:96px;margin:0 auto}
 .claim-art .site-bot *{animation-play-state:running}
@@ -292,6 +243,17 @@ body{
 .claim-btn:hover{background:#4f4fc4}
 .claim-btn[hidden]{display:none}
 .claim-btn[disabled]{background:#c7c9d9;cursor:default}
+/* 2026-11-24：看广告之外再给一条「500 灯火买断」的路。次级按钮用灯火色，别抢主按钮；
+   「或者」小字把两条路分开，别让人以为按钮是同一个动作点两遍。 */
+.claim-or{font-size:11.5px;color:#b0b4c4;margin-top:9px;letter-spacing:.4px}
+.claim-or[hidden],.claim-buy[hidden]{display:none}
+.claim-buy{
+  display:block;width:100%;margin-top:8px;border:1px solid #f0dfb5;border-radius:11px;
+  padding:10px 0;font-size:13.5px;font-weight:600;background:#fffaf0;color:#a8761c;
+  cursor:pointer;font-family:inherit;transition:.16s;
+}
+.claim-buy:hover{background:#fff3d8;border-color:#e6cf94}
+.claim-buy[disabled]{opacity:.5;cursor:default}
 .claim-btn2{
   display:block;width:100%;border:0;background:none;color:#9aa0b8;font-size:12.5px;
   padding:11px 0 3px;cursor:pointer;font-family:inherit;
@@ -308,12 +270,6 @@ body{
 
 @media(max-width:640px){
   .wrap{padding:22px 16px 48px}
-  /* 站头 / 页脚的手机端：跟主站一样不摆顶级导航 */
-  .sh-inner{height:52px;gap:12px;padding:0 16px}
-  .sh-nav{display:none}
-  .sh-auth{margin-left:auto}
-  .logo{font-size:16px}
-  .logo-mark{width:23px;height:23px}
   .ft-inner{padding:0 16px}
   /* 手机上分层栏自然折行：品牌栏独占一排，链接组横向流 */
   .ft-grid{gap:20px 28px}
@@ -337,24 +293,14 @@ body{
 <script src="/icons.js"></script>
 </head>
 <body>
-<!-- 站头：与主站同款（logo / 导航 / 登录态）。本页不引 app.js，导航是普通链接整页跳转，
-     登录态由页面底部的 /api/mascots/state 顺带拿到后填入 #authBox。 -->
-<header class="site-header">
-  <div class="sh-inner">
-    <a class="logo" href="/" title="回造梦橱窗首页"><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
-    <nav class="sh-nav" aria-label="主导航">
-      <a class="nav-btn" href="/rank" data-tip="作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届" aria-label="星梦榜：作品的热度排行，访客、收藏、评论、灯火加权计分，每周换一届"><i class="ico" data-ico="rank"></i>星梦榜</a>
-      <a class="nav-btn" href="/bar" data-tip="说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现"><i class="ico" data-ico="wish"></i>酒馆</a>
-      <a class="nav-btn" href="/medals" data-tip="完成指定事情拿勋章，永久挂在你的主页和作品页" aria-label="造梦勋章：完成指定事情拿勋章，永久挂在你的主页和作品页"><i class="ico" data-ico="medal"></i>造梦勋章</a>
-    </nav>
-    <div class="sh-auth" id="authBox"></div>
-  </div>
-</header>
+<!-- 站头由服务端从 /site-shell.html 注入（全站唯一一份，含导航/登录态），本页不再手写。
+     直开本文件（不经服务端）这里会是空的，属正常。 -->
+<!--SITE_HEADER-->
 
 <div class="wrap">
   <header class="hd">
     <h1>换个形象</h1>
-    <p class="sub">橱窗里住着十二位小住客，各有一件拿手事 · 默认只有机器人白送 · 其他每个可先试 3 天 · 看一支广告就能领到手</p>
+    <p class="sub">橱窗里住着一群小住客，各有一件拿手事 · 默认只有机器人白送 · 其他每个可先试 3 天 · 看广告或花 500 灯火就能领到手</p>
   </header>
 
   <section class="hero">
@@ -371,7 +317,8 @@ body{
       <p class="hact" id="heroAct">拿手事 · <b>找件工具</b></p>
       <p class="owned-cnt" id="ownedCnt"></p>
       <div class="hero-acts">
-        <button type="button" class="btn-ghost" id="keepBtn" hidden>看一支广告留住它</button>
+        <button type="button" class="btn-ghost" id="keepBtn" hidden>看广告留住它</button>
+        <button type="button" class="btn-ghost" id="buyBtn" hidden>用 500 灯火买下它</button>
         <button type="button" class="btn-ghost" id="randBtn">随机换一个</button>
         <a class="btn-ghost" href="/">回首页看效果</a>
       </div>
@@ -414,7 +361,7 @@ body{
     </div>
     <div class="ft-base">
       <span class="fb-text">© 2026 造梦橱窗</span>
-      <a href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号-4</a>
     </div>
   </div>
 </footer>
@@ -427,7 +374,9 @@ body{
     <div class="claim-done" aria-hidden="true">✓</div>
     <div class="claim-qrwrap" id="claimQrWrap"><img id="claimQr" alt="小程序码" /></div>
     <p class="claim-msg" id="claimMsg"></p>
-    <button class="claim-btn" type="button" id="claimOk">我已经看完了</button>
+    <button class="claim-btn" type="button" id="claimOk">看广告领取</button>
+    <div class="claim-or" id="claimOr">或者</div>
+    <button class="claim-buy" type="button" id="claimBuy">用 500 灯火购买</button>
     <button class="claim-btn2" type="button" id="claimCancel">先不要</button>
   </div>
 </div>
@@ -440,18 +389,26 @@ body{
   var KEY = 'dm_mascot';              // 当前形象：只记本机（换设备跟着账号重新领的走）
   var OWNED_KEY = 'dm_mascot_owned';  // 领到的形象：服务端 share.json 为准，这里只是首屏缓存
   var DEFAULT = 'robot';              // 唯一白送的默认形象（2026-11-17 从「灯火」改成机器人）
+  // 2026-11-24 站长拍板：除看广告外，500 灯火也能买断一个形象（价格以服务端为准）
+  var BUY_PRICE = 500;
+  var points = 0;                     // 自己的灯火余额：/api/mascots/state 顺带给，不用另拉 /api/me
   var ids = Object.keys(M);
   if (!ids.length) return;
   // 机器人排第一（2026-11-18）：它是免费默认形象，放在第一格最顺理成章；其余保持 mascots.js 的原顺序。
   // 只排本页展示顺序，mascots.js 的键顺序不动（首页面板和领取名单都还照原顺序走）。
   ids.sort(function(a, b){ return (a === DEFAULT ? -1 : b === DEFAULT ? 1 : 0); });
+  // 前端隐藏（2026-11-23 站长口径）：mascots.js 里 hidden:true 的形象不进列表、不进随机池、不进计数；
+  // 已领取/试用中的账号记录都还在（服务端不动），正用着的形象顶部照常显示，只是不在这页摆出来。
+  function isHidden(id){ return !!(M[id] && M[id].hidden); }
+  var visIds = ids.filter(function(id){ return !isHidden(id); });
   var counts = {};                    // 每个形象多少人领过：服务端 share.json 实时数出来的（机器人恒 0）
   var countsReady = false;            // 人数拿到没有：接口没回之前不画这一行，免得先闪一个错数
+  var tryCounts = {};                 // 每个形象多少人试用过（2026-11-23）：试用中 + 已到期都算，来自同一个接口
 
   // 站长标识由服务端注入（后台口令 cookie 换来的，前端读不到也不需要读）
   var ADMIN = document.documentElement.getAttribute('data-admin') === '1';
-  // 领取口径：free:true 的白送；其余每个看一支广告才领得到，领到就记在账号上。
-  // 站长那边服务端直接回全量，所以下面 canUse 一律放行。
+  // 领取口径（2026-11-24）：free:true 的白送；其余看广告或者 500 灯火买断，二选一，
+  // 领到就记在账号上。站长那边服务端直接回全量，所以下面 canUse 一律放行。
   function isFree(id){ return !!(M[id] && M[id].free) || id === DEFAULT; }
   var cachedOwned = null;
   try { var cv = JSON.parse(localStorage.getItem(OWNED_KEY) || 'null'); if (Array.isArray(cv)) cachedOwned = cv; } catch(e){}
@@ -461,7 +418,7 @@ body{
 
   /* ---------------- 3 天试用（2026-11-18） ----------------
      口径：11 个付费形象各给 3 天，第一次换上桌开始算，一人一个形象只给一次；
-     到期退回机器人，想一直留着还是看一支广告领到手。
+     到期退回机器人，想一直留着看广告或花 500 灯火买断。
      登录了以服务端 rec.mascotTrial 为准（换设备也接着算）；游客只能记本机，
      登录后按本机那个开始时间补录一次（见 migrateGuestTrials）。 */
   var TRIAL_KEY = 'dm_mascot_trial';   // { 形象id: 到期时间戳 }，游客的账本，也是登录后的缓存
@@ -511,6 +468,7 @@ body{
   var listTip = document.getElementById('listTip');
   var randBtn = document.getElementById('randBtn');
   var keepBtn = document.getElementById('keepBtn');
+  var buyBtn = document.getElementById('buyBtn');
   var footNote = document.getElementById('footNote');
   var toastEl = document.getElementById('toast');
   var cells = [];
@@ -554,8 +512,14 @@ body{
         : st === 'ended' ? '试用已结束'
         : (ADMIN ? '站长可选' : '已领取');
     }
-    // 「看一支广告留住它」只在试用中的形象上出现；其余状态不用这条（已领取不需要，没试过的先点卡片开试用）
-    if (keepBtn) keepBtn.hidden = trialState(id) !== 'trial';
+    // 试用中 / 试用结束的：hero 上直接给「看广告留住」和「灯火买下」两条路；
+    // 没碰过的卡片点了先开试用，不用在 hero 上提前摆按钮（但买了也随时能选）。
+    var st = trialState(id);
+    if (keepBtn) keepBtn.hidden = st !== 'trial' && st !== 'ended';
+    if (buyBtn){
+      buyBtn.hidden = ADMIN || st === 'free' || st === 'owned';
+      buyBtn.textContent = '用 ' + BUY_PRICE + ' 灯火买下它';
+    }
     cells.forEach(function(c){
       var on = c.getAttribute('data-id') === id;
       c.classList.toggle('on', on);
@@ -579,18 +543,30 @@ body{
     var st = trialState(id);
     // 试用中的：这行留给「还剩多久」——比「几个人领过」更该让人看见（到期就回机器人）
     if (st === 'trial') return '<span class="pc tr-left">还剩 ' + trialLeftText(id) + '</span>';
-    if (st === 'ended') return '<span class="pc tr-left">看一支广告就能留住</span>';
+    if (st === 'ended') return '<span class="pc tr-left">看广告或 ' + BUY_PRICE + ' 灯火就能留住</span>';
     if (isFree(id) || !countsReady) return '';
     var n = counts[id] || 0;
     if (n > 0) return '<span class=pc>' + n + ' 人已领取</span>';
     return ADMIN ? '<span class=pc>还没人领</span>' : '';
   }
 
+  /* 「N 人尝试过」（2026-11-23）：跟在领取人数下面的一行小字，口径是「开过试用就算」——
+     试用中 + 试用已到期的都数进去（服务端过期条目永远留着，实时数不心疼）。
+     为什么要单独一行：试用中的卡片那行被「还剩 X」占着，领过 0 人的形象又没有
+     「N 人已领取」可画，试用人数是这些卡片唯一的社会证明。
+     口径沿用领取人数那行：0 人时普通访客不画（满屏 0 很劝退），站长照常露一行好核数。 */
+  function tryLine(id){
+    if (isFree(id) || !countsReady) return '';
+    var n = tryCounts[id] || 0;
+    if (n > 0) return '<span class=pc>' + n + ' 人尝试过</span>';
+    return ADMIN ? '<span class=pc>还没人试过</span>' : '';
+  }
+
   // 列表：一项一个按钮，键盘也能选（aria-pressed 表示当前选中）
   function renderGrid(){
     grid.innerHTML = '';
     cells = [];
-    ids.forEach(function(id){
+    visIds.forEach(function(id){
       var skin = M[id];
       var st = trialState(id);
       var locked = !ADMIN && (st === 'locked' || st === 'ended');
@@ -601,7 +577,7 @@ body{
       b.setAttribute('aria-pressed', 'false');
       b.setAttribute('aria-label',
         st === 'locked' ? skin.name + '：还没试过，点开先免费试用 3 天'
-        : st === 'ended' ? skin.name + '：3 天试用已结束，点开看一支广告就能留住'
+        : st === 'ended' ? skin.name + '：3 天试用已结束，点开看广告或花 ' + BUY_PRICE + ' 灯火买下'
         : '换成' + skin.name + '：' + skin.bubble);
       b.innerHTML =
         (st === 'free' ? '<span class=fr>默认</span>'
@@ -613,7 +589,7 @@ body{
         '<span class=nm>' + skin.name + '</span>' +
         '<span class=qt>' + skin.bubble + '</span>' +
         (skin.act && skin.act.label ? '<span class=hk>拿手事 · <b>' + skin.act.label + '</b></span>' : '') +
-        claimLine(id);
+        claimLine(id) + tryLine(id);
       b.addEventListener('click', function(){
         if (st === 'ended'){ openClaim(id); return; }   // 试用用完了：直接给领取的路
         if (st === 'locked'){ startTrial(id); return; } // 没试过：点了就开始计 3 天，并换上
@@ -624,31 +600,33 @@ body{
     });
   }
 
-  var paidCount = ids.filter(function(id){ return !isFree(id); }).length;
+  var paidCount = visIds.filter(function(id){ return !isFree(id); }).length;
 
   function updateMeta(){
-    var got = ADMIN ? paidCount : owned.filter(function(x){ return M[x] && !isFree(x); }).length;
-    var trying = ADMIN ? 0 : ids.filter(function(id){ return trialState(id) === 'trial'; }).length;
-    cntEl.textContent = ids.length + ' 个 · 已领 ' + got + ' / ' + paidCount + (trying ? ' · 试用中 ' + trying : '');
+    // 计数口径（2026-11-23）：只数页面上摆出来的形象（visIds），隐藏的不算，
+    // 免得「12 个 · 已领 0 / 11」配着 5 张卡显得莫名其妙。
+    var got = ADMIN ? paidCount : owned.filter(function(x){ return M[x] && !isFree(x) && !isHidden(x); }).length;
+    var trying = ADMIN ? 0 : visIds.filter(function(id){ return trialState(id) === 'trial'; }).length;
+    cntEl.textContent = visIds.length + ' 个 · 已领 ' + got + ' / ' + paidCount + (trying ? ' · 试用中 ' + trying : '');
     if (ownedCnt){
       var st = trialState(cur);
       ownedCnt.innerHTML = st === 'free'
         ? '默认形象免费 · 其余 ' + paidCount + ' 个都能先试 3 天'
-        : st === 'trial' ? '试用中 · 还剩 ' + trialLeftText(cur) + ' · 看一支广告就能一直留着'
-        : st === 'ended' ? '这个形象的 3 天试用结束了 · 看一支广告就能留住'
+        : st === 'trial' ? '试用中 · 还剩 ' + trialLeftText(cur) + ' · 看广告或 ' + BUY_PRICE + ' 灯火就能一直留着'
+        : st === 'ended' ? '这个形象的 3 天试用结束了 · 看广告或 ' + BUY_PRICE + ' 灯火就能留住'
         : '已领 <b>' + got + '</b> / ' + paidCount + ' 个 · 换下的形象还在，随时换回来';
     }
     if (listTip){
       listTip.textContent = ADMIN ? '站长：全部可选'
         : (loggedIn === false ? '点一个就开始 3 天试用 · 试完再登录也行' : '点没领的，先免费试 3 天');
     }
-    var pool = ids.filter(canUse);
+    var pool = visIds.filter(canUse);
     randBtn.disabled = pool.length < 2;
     randBtn.textContent = pool.length < 2 ? '先试一个才能随机' : '随机换一个';
     randBtn.title = pool.length < 2 ? '现在只有默认的机器人，试用或领到第二个才能随机换' : '';
     footNote.textContent = loggedIn === false
-      ? '默认的「机器人」免费，其余 ' + paidCount + ' 个各给 3 天试用（点了就开始算，一个形象只给一次）；到期回机器人，看一支广告就能领到手——领到的记在账号上，所以最后要登录。'
-      : '默认的「机器人」免费，其余 ' + paidCount + ' 个各给 3 天试用（一个形象只给一次）；到期回机器人，看一支广告就能领到手，领到的记在账号上（换设备也在），此刻选中的那个只记在这台设备。';
+      ? '默认的「机器人」免费，其余 ' + paidCount + ' 个各给 3 天试用（点了就开始算，一个形象只给一次）；想一直留着，看一支广告或用 ' + BUY_PRICE + ' 灯火买断，领到的记在账号上，所以最后要登录。'
+      : '默认的「机器人」免费，其余 ' + paidCount + ' 个各给 3 天试用（一个形象只给一次）；想一直留着，看一支广告或用 ' + BUY_PRICE + ' 灯火买断，领到的记在账号上（换设备也在），此刻选中的那个只记在这台设备。';
   }
 
   /* ---------------- 开试用：点了就开始计 3 天 ----------------
@@ -686,6 +664,10 @@ body{
           return;
         }
         if (res.status >= 400) throw new Error(d.error || '试用没开成，稍后再试');
+        // 真开了一个新试用（不是幂等回原到期时间、也不是已领取/免费）：试用人数当场 +1，不用等刷新
+        if (!d.again && !d.owned && !d.free){
+          tryCounts[id] = (tryCounts[id] || 0) + 1;
+        }
         renderGrid(); updateMeta();
         if (quiet){
           // 补录成功：把本机存着、刚被判无效落到机器人的那个形象再换回来
@@ -725,6 +707,8 @@ body{
   var claimQr = document.getElementById('claimQr');
   var claimMsg = document.getElementById('claimMsg');
   var claimOk = document.getElementById('claimOk');
+  var claimBuy = document.getElementById('claimBuy');
+  var claimOr = document.getElementById('claimOr');
   var pending = '', ticket = '', pollTimer = null, claimMode = 'watch';
 
   /* 出过的票记在 localStorage（形象 id → 票号）：弹层关了、页面刷新了都还能续上。
@@ -751,6 +735,14 @@ body{
     claimMsg.textContent = text || '';
     claimMsg.className = 'claim-msg' + (warn ? ' is-warn' : '');
   }
+  function buyLabel(){
+    return '用 ' + BUY_PRICE + ' 灯火购买' + (loggedIn ? ' · 我有 ' + points + ' 盏' : ' · 登录后可用');
+  }
+  function showBuy(on){
+    if (claimBuy) claimBuy.hidden = !on;
+    if (claimOr) claimOr.hidden = !on;
+    if (on && claimBuy) claimBuy.textContent = buyLabel();
+  }
   function stopPoll(){ if (pollTimer){ clearTimeout(pollTimer); pollTimer = null; } }
   function closeClaim(){
     stopPoll();
@@ -759,17 +751,25 @@ body{
     pending = ''; ticket = '';
   }
 
-  function openClaim(id){
+  // preferBuy=true：从「500 灯火买下它」进来，先不白出一张广告票；两条路都摆在弹层里让人选。
+  function openClaim(id, preferBuy){
+    stopPoll();
+    claimMode = 'watch';
     pending = id; ticket = '';
     claimCard.classList.remove('is-done');
     claimFigure.innerHTML = M[id].svg;
     claimTitle.textContent = '领取「' + M[id].name + '」';
-    claimOk.hidden = false; claimOk.disabled = false; claimOk.textContent = '我已经看完了';
-    claimQrWrap.hidden = false;
+    claimOk.hidden = false; claimOk.disabled = false; claimOk.textContent = '看广告领取';
+    claimQrWrap.hidden = !!preferBuy;
     claimQr.removeAttribute('src');
+    showBuy(true);
     cmsg('');
     mask.hidden = false;
     if (loggedIn === false){ guestState(); return; }   // 没登录：先给一条去登录的路，别白出一张码
+    if (preferBuy){
+      claimSub.textContent = '用 ' + BUY_PRICE + ' 灯火买下「' + M[id].name + '」，买完就一直归你；也可以选看广告免费领。';
+      return;
+    }
     if (tryResume(id)) return;                          // 上次出过还没过期的票：接着用，别另出一张
     startTicket();
   }
@@ -791,6 +791,7 @@ body{
     claimQrWrap.hidden = true;
     claimSub.textContent = '领到的形象记在账号上，得先登录一下。不登录只能用默认的机器人。';
     claimOk.textContent = '去登录';
+    showBuy(true);   // 买也要登录；按钮文案里写清楚，点了同样送去登录
   }
 
   function startTicket(){
@@ -798,7 +799,7 @@ body{
     claimMode = 'watch';
     claimOk.hidden = false; claimOk.disabled = false; claimOk.textContent = '我已经看完了';
     claimQrWrap.hidden = false;
-    claimSub.textContent = '用微信扫一扫（手机上可长按二维码识别），在小程序里看完这支广告，这个形象就归你了。';
+    claimSub.textContent = '用微信扫一扫（手机上可长按二维码识别），在小程序里看完这支广告，这个形象就归你了；不想看也可以花 ' + BUY_PRICE + ' 灯火买。';
     cmsg('正在出码…');
     fetch('/api/ad/ticket', {
       method: 'POST',
@@ -886,6 +887,7 @@ body{
         paint(id, true);          // 领到就换上，不用再点一次
         updateMeta();
         claimCard.classList.add('is-done');
+        showBuy(false);
         claimSub.textContent = '「' + M[id].name + '」领到了，已经给你换上。';
         cmsg('');
         setTimeout(closeClaim, 1100);
@@ -898,11 +900,52 @@ body{
       });
   }
 
+  // 「500 灯火购买」：直接扣余额买断，不走广告票。服务端同步扣款 + 发放，前端只做展示。
+  function doBuy(){
+    if (!pending) return;
+    if (loggedIn === false){ location.href = '/?login=1'; return; }
+    if (ADMIN){ toast('站长本来就全开，不用买'); return; }
+    stopPoll();                       // 别让广告票的轮询在扣款途中插进来
+    var id = pending;
+    claimBuy.disabled = true;
+    cmsg('正在扣除 ' + BUY_PRICE + ' 盏灯火…');
+    fetch('/api/mascots/buy', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id })
+    })
+      .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(d){ return { status: r.status, d: d || {} }; }); })
+      .then(function(res){
+        var d = res.d;
+        claimBuy.disabled = false;
+        if (typeof d.points === 'number'){ points = d.points; claimBuy.textContent = buyLabel(); }
+        if (res.status === 401){ loggedIn = false; guestState(); return; }
+        if (res.status >= 400) throw new Error(d.error || '购买没成功，稍后再试');
+        if (Array.isArray(d.owned)){ owned = d.owned; cacheOwned(); }
+        if (counts[id] !== undefined) counts[id]++;
+        claimRecDrop(id);             // 买到了就不再需要之前那张广告票
+        renderGrid();
+        paint(id, true);
+        updateMeta();
+        claimCard.classList.add('is-done');
+        showBuy(false);
+        claimOk.hidden = true;
+        claimQrWrap.hidden = true;
+        claimSub.textContent = '「' + M[id].name + '」买下了，已经给你换上。';
+        cmsg('');
+        setTimeout(closeClaim, 1100);
+      })
+      .catch(function(err){ cmsg((err && err.message) || '购买没成功，稍后再试', true); });
+  }
+
   claimOk.addEventListener('click', function(){
     if (claimMode === 'login'){ location.href = '/?login=1'; return; }
     if (claimMode === 'retry'){ ticket = ''; startTicket(); return; }
+    if (!ticket){ startTicket(); return; }   // 从「灯火购买」进来又改主意看广告：这时才出票
     checkOnce();
   });
+  if (claimBuy) claimBuy.addEventListener('click', doBuy);
   document.getElementById('claimX').addEventListener('click', closeClaim);
   document.getElementById('claimCancel').addEventListener('click', closeClaim);
   mask.addEventListener('click', function(e){ if (e.target === mask) closeClaim(); });
@@ -912,7 +955,7 @@ body{
   // 开屏查一次存着的票，看完没领的就当场把弹层打开领掉——不用用户再点一遍那个形象。
   function resumePending(){
     var m = claimMapRead();
-    var keys = Object.keys(m).filter(function(k){ return M[k] && !canUse(k); });
+    var keys = Object.keys(m).filter(function(k){ return M[k] && !isHidden(k) && !canUse(k); });
     if (!keys.length) return;
     keys.sort(function(a,b){ return (Number(m[b].at) || 0) - (Number(m[a].at) || 0); });
     var id = keys[0], rec = m[id];
@@ -928,6 +971,7 @@ body{
           claimFigure.innerHTML = M[id].svg;
           claimTitle.textContent = '领取「' + M[id].name + '」';
           claimOk.hidden = true; claimOk.disabled = false;
+          showBuy(false);
           claimQrWrap.hidden = false;
           claimQr.src = '/api/qr/ad?t=' + encodeURIComponent(ticket) + '&raw=1';
           cmsg('广告看完啦，正在领取…');
@@ -941,7 +985,7 @@ body{
 
   // 随机：只在「我的那几个」里抽，避开当前这个才像真的「换」
   randBtn.addEventListener('click', function(){
-    var pool = ids.filter(canUse);
+    var pool = visIds.filter(canUse);
     if (pool.length < 2){ toast('先试一个别的形象，再来随机'); return; }
     var next = cur;
     while (next === cur) next = pool[Math.floor(Math.random() * pool.length)];
@@ -949,38 +993,26 @@ body{
     updateMeta();
   });
 
-  // 试用中的形象：hero 区那颗按钮，直接开领取弹层（看一支广告就归你，不用等 3 天到期）
+  // 试用中 / 已到期：hero 区两颗按钮分别进「看广告」和「灯火购买」两条路，不用等 3 天到期
   if (keepBtn) keepBtn.addEventListener('click', function(){ if (cur) openClaim(cur); });
+  if (buyBtn) buyBtn.addEventListener('click', function(){ if (cur) openClaim(cur, true); });
 
-  /* —— 站头登录区：跟 /medals 同一套说法 ——
-     已登录：胶囊头像 + 昵称 → /me；未登录：「登录 / 注册」→ 首页带 login=1 回来直接弹登录框。
-     登录态和「我领了哪几个」同一次请求拿回来（/api/mascots/state），不额外拉 /api/me，
-     免得在一个纯偏好页上触发到访/签到那套逻辑。 */
-  var authBox = document.getElementById('authBox');
-  function esc(t){
-    return String(t == null ? '' : t).replace(/[&<>"']/g, function(c){
-      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
-    });
-  }
-  function renderAuth(ok, name){
-    if (!authBox) return;
-    authBox.innerHTML = ok
-      ? '<a class="sh-user" href="/me" title="我的主页"><span class="ico" data-ico="user"></span><b>' + esc(name || '我') + '</b></a>'
-      : '<a class="sh-login" href="/?login=1">登录 / 注册</a>';
-    if (window.Icons) Icons.hydrate(authBox);   // 后插的节点要手动水合
-  }
+  /* —— 站头登录区交给公共脚本（/site-shell.js 拉无副作用的 /api/me/brief）——
+     本页的 /api/mascots/state 顺带也能带出登录态，但那是形象页专用数据，
+     不拿它画站头，免得公共站头的渲染逻辑在两个地方各有一份。 */
 
   // 首屏：先按本地缓存放着画，接口回来再校正（缓存里那个已经不归我了就退回机器人）
   var bootSkin = readStored();
   paint(bootSkin && (canUse(bootSkin) || !ownReady) ? bootSkin : DEFAULT, false);
   renderGrid();
   updateMeta();
-  renderAuth(false, '');   // 先画登录入口，接口慢了也不留空位
 
   fetch('/api/mascots/state', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
     .then(function(r){ return r.json(); })
     .then(function(d){
       loggedIn = !!d.loggedIn;
+      BUY_PRICE = Number(d.price) > 0 ? Number(d.price) : BUY_PRICE;
+      points = Number(d.points) || 0;
       owned = Array.isArray(d.owned) ? d.owned : [];
       /* 试用账本：登录了以服务端为准（换设备接着算）；游客/接口没给就用本机那份。
          本机那份先留一份下来——游客试了两天再登录的，得按原开始时间补录到账号上。 */
@@ -988,10 +1020,10 @@ body{
       trials = (loggedIn && d.trials && typeof d.trials === 'object') ? d.trials : localT;
       writeLocalTrials(trials);
       counts = d.counts && typeof d.counts === 'object' ? d.counts : {};
+      tryCounts = d.tryCounts && typeof d.tryCounts === 'object' ? d.tryCounts : {};
       countsReady = true;
       ownReady = true;
       cacheOwned();
-      renderAuth(loggedIn, d.name || '');
       renderGrid();
       paint(canUse(cur) ? cur : DEFAULT, false);   // 先重建列表再上色，不然「选中」勾会落空
       updateMeta();

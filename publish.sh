@@ -12,8 +12,25 @@ SELF="./deploy-patch.sh"
 SITE="zm94.com"
 INTERACTIVE=0; [ -t 0 ] && INTERACTIVE=1
 
-FILES=(server.js frontend/app.js frontend/style.css frontend/index.html frontend/admin.html)
-LABELS=("server.js（后端 / 接口 / 口径）" "frontend/app.js（前端交互）" "frontend/style.css（样式）" "frontend/index.html（页面骨架）" "frontend/admin.html（后台）")
+# 唯一权威清单在 deploy-patch.sh 的 DEFAULT_FILES：菜单从这里读，不再维护第二份
+# （2026-11-24 漏发根因：这里曾只有 5 个文件，核心清单却有 10 个，且 seo.js / mascots.* 根本没被跟踪）
+FILES=(); LABELS=()
+_dfl=$(sed -n 's/^DEFAULT_FILES=(\(.*\))$/\1/p' "$SELF" | head -1)
+for _f in $_dfl; do
+  FILES+=("$_f")
+  case "$_f" in
+    server.js)              LABELS+=("server.js（后端 / 接口 / 口径）");;
+    seo.js)                 LABELS+=("seo.js（SEO / head，需重启）");;
+    frontend/app.js)        LABELS+=("frontend/app.js（前端交互）");;
+    frontend/style.css)     LABELS+=("frontend/style.css（样式）");;
+    frontend/index.html)    LABELS+=("frontend/index.html（页面骨架）");;
+    frontend/admin.html)    LABELS+=("frontend/admin.html（后台）");;
+    frontend/mascots.html)  LABELS+=("frontend/mascots.html（小住客独立页）");;
+    frontend/mascots.js)    LABELS+=("frontend/mascots.js（小住客数据）");;
+    frontend/paint.html)    LABELS+=("frontend/paint.html（落笔成画）");;
+    *)                      LABELS+=("$_f");;
+  esac
+done
 
 c_ok()   { printf '\033[32m%s\033[0m\n' "$*"; }
 c_warn() { printf '\033[33m%s\033[0m\n' "$*"; }
@@ -146,6 +163,7 @@ render_plan() {
         "$((i+1))" "${P_FILE[$i]#frontend/}" "${P_ADD[$i]}" "${P_DEL[$i]}" "${P_FIRST[$i]:0:40}"
     done
   fi
+  printf '\n  \033[2m注：这里只列补丁跟踪的文本文件；data/、uploads/、docs/ 和新增图片/字体/独立页不会被带上。整包发版在仓库目录跑 bash deploy.sh（docs/ 仍要单独 scp）。\033[0m\n'
   printf '\n'
 }
 
@@ -183,7 +201,7 @@ pick_file_ship() {
   IFS=',' read -ra nums <<< "$pick"
   for n in "${nums[@]}"; do
     n="${n// /}"
-    [[ "$n" =~ ^[1-5]$ ]] || { c_warn "  跳过无效序号：$n"; continue; }
+    [[ "$n" =~ ^[0-9]+$ ]] && (( n >= 1 && n <= ${#FILES[@]} )) || { c_warn "  跳过无效序号：$n"; continue; }
     args+=("${FILES[$((n-1))]}")
   done
   ((${#args[@]})) || { pause; return; }
@@ -198,7 +216,7 @@ do_rollback_menu() {
   for i in "${!FILES[@]}"; do printf '   \033[36m%d\033[0m  %s\n' "$((i+1))" "${FILES[$i]}"; done
   printf '   \033[36m0\033[0m  返回\n\n  序号: '
   read -r pick || return
-  [[ "$pick" =~ ^[1-5]$ ]] || return
+  [[ "$pick" =~ ^[0-9]+$ ]] && (( pick >= 1 && pick <= ${#FILES[@]} )) || return
   printf '\n\033[33m  即将把线上 %s 还原成最近一份备份\033[0m\n' "${FILES[$((pick-1))]}"
   read -r -p "  确认? [y/N] " ok
   [[ "$ok" == "y" || "$ok" == "Y" ]] || { pause; return; }
@@ -274,6 +292,12 @@ flow() {
 
   printf '\n  要发：\033[1m%s\033[0m\n' "${sel[*]}"
   (( ${#P_FILE[@]} >= 3 )) && c_dim "  （改动文件多，只想发一部分就 0 退出重来，或 s1 逐个挑）"
+  if ((MISSING > 0)); then
+    c_err "  ⚠ 有 ${MISSING} 个文件没对比上，这次不会发出去（上面已列出）"
+    printf '  确认只发清单里的文件？请输 yes（其它键取消）: '
+    local force; read -r force || return 1
+    [[ "$force" == "yes" ]] || { c_warn "已取消，线上没动"; return 1; }
+  fi
   printf '  确认上传线上？[Y/n] '
   local ok; read -r ok || return 1
   case "$ok" in n|N) c_warn "  已取消，线上没动"; return 1;; esac

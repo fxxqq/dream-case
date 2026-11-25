@@ -32,18 +32,26 @@
 set -uo pipefail
 
 # 冒烟探针：走 ssh 在服务器本机 curl 127.0.0.1，不走公网域名。
-# 原因（2026-11-20 踩）：旧域名 idea.v5pc.com 加了 301 到主域，curl 默认不跟随 → 拿到 301 被误判成失败回滚；
-# 而本机 curl 对 zm94.com 的证书握手本就会失败。绕开域名最稳 —— 探针只关心「同一套应用还活着」。
+# 原因（2026-11-20 踩）：旧域名曾加了 301 到主域，curl 默认不跟随 → 拿到 301 被误判成失败回滚；
+# 而本机 curl 对公网域名的证书握手本就会失败。绕开域名最稳 —— 探针只关心「同一套应用还活着」。
 # 远端应用端口：脚本里默认 3000（SERVER_PORT 可覆盖），与 pm2 的 ai-works 监听口一致。
 SERVER_PORT="${SERVER_PORT:-3000}"
 SITE_URL="${SITE_URL:-}"   # 保留给需要自定义探针的场合；留空即走本机 ssh 探针
 PM2_APP="${PM2_APP:-ai-works}"
 KEEP_BAK="${KEEP_BAK:-10}"
 
-DEFAULT_FILES=(server.js sms-auth.js captcha.js frontend/app.js frontend/style.css frontend/index.html frontend/admin.html frontend/icons.js frontend/captcha.js frontend/paint.html)
+DEFAULT_FILES=(server.js seo.js sms-auth.js captcha.js frontend/app.js frontend/app.min.js frontend/style.css frontend/index.html frontend/admin.html frontend/icons.js frontend/captcha.js frontend/mascots.html frontend/mascots.js frontend/paint.html frontend/medals.html frontend/musicbox.html frontend/appeal.html frontend/creators.html frontend/site-shell.html frontend/site-shell.css frontend/site-shell.js)
+# 2026-11-24 补：seo.js（被 server.js require，改了要重启）、mascots.html / mascots.js
+# 之前不在清单里 —— 桌面「回车全发」看不见它们，站长以为发了其实漏了。
+# 这份清单是桌面发版与补丁发版的唯一权威；publish.sh 的菜单序号直接从这里读，别再另存一份。
 # paint.html（2026-11-23 追加）：落笔成画独立页。曾是 scp 单传的新文件，桌面发版带不上，
 # 站长连发几轮都「感觉少东西」——现在线上已有同路径文件，patch 机制能正常逐 hunk 跟踪，收编进清单。
 # fonts/MaShanZheng-Regular.ttf 仍不收：5.86MB 二进制基本不变，改动时按老规矩单独 scp。
+# 2026-11-25 补：medals/musicbox/appeal 三个独立页（站头统一后都改了）+ site-shell 三件套。
+# site-shell.* 是全站公共站头的新文件：首发要先 scp 一次到线上（补丁机制只跟已有文件），
+# 之后就能像别的文件一样逐 hunk 跟踪了。
+# app.min.js 也收进清单：线上不一定装了 terser，改了 app.js 之后这个压缩产物得跟着走，
+# 否则线上跑的还是旧压缩版（链接指向 /medals.html 那种改动就丢了）。
 
 cd "$(dirname "$0")" || exit 1
 
@@ -433,7 +441,8 @@ cmd_ship() {
     fi
     # frontend/icons.js 是被 server.js require 的（SSR 直接读 ICONS），只上传不重启的话
     # 线上 h1/服务端渲染还是旧图标，静态请求拿到的却是新的 —— 两边不一致，所以一并重启
-    [[ "$f" == *server.js || "$f" == *frontend/icons.js ]] && need_restart=1
+    # seo.js 和 icons.js 一样被 server.js require：只上传不重启，SSR 的 head 还是旧的
+    [[ "$f" == *server.js || "$f" == *frontend/icons.js || "$f" == */seo.js ]] && need_restart=1
   done
 
   ((${#do_files[@]})) || { c_warn "没有要发的改动"; return 0; }
@@ -478,8 +487,8 @@ cmd_ship() {
   fi
 
   if ((need_restart)); then
-    $SSH "pm2 restart $PM2_APP --update-env >/dev/null 2>&1" || { c_err "✗ 重启失败，回滚"; do_rollback "$stamp" "${do_files[@]}"; return 1; }
-    c_ok "✓ pm2 已重启"
+    $SSH "pm2 restart $PM2_APP >/dev/null 2>&1" || { c_err "✗ 重启失败，回滚"; do_rollback "$stamp" "${do_files[@]}"; return 1; }
+    c_ok "✓ pm2 已重启（不带 --update-env：避免冲掉 SITE_URL / DISCOVER_ENABLED）"
     sleep 2
   fi
 
@@ -528,7 +537,7 @@ do_rollback() { # $1=stamp $2..=文件
       c_err "还原 $f 失败，请手工处理：$REMOTE_DIR/$f.bak-$stamp"
     fi
   done
-  $SSH "pm2 restart $PM2_APP --update-env >/dev/null 2>&1" || c_err "重启失败，请手工 pm2 restart $PM2_APP"
+  $SSH "pm2 restart $PM2_APP >/dev/null 2>&1" || c_err "重启失败，请手工 pm2 restart $PM2_APP"
   c_warn "已回滚到发版前状态"
 }
 

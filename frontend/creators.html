@@ -3,14 +3,17 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="google-adsense-account" content="ca-pub-5526491839331555" />
 <meta name="robots" content="noindex,nofollow" />
 <title>造梦者书架 · 造梦橱窗</title>
 <meta name="description" content="造梦橱窗的创作者书架：认识那些认真造梦的人，看他们的作品、访客与获赞。" />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <script defer src="https://analytics.umami.is/script.js" data-website-id="96b6aaa5-bc4f-4f33-8af4-fc294f577e0b"></script>
 <!--
-  造梦者书架页（/creators）
+  造梦者书架页（/creators）—— 已废弃，保留仅作历史留档（2026-11-25）。
+  造梦者书架早已并入主站 SPA：/creators 现在由服务端返回 index.html，由 app.js 渲染 #creatorsView。
+  本文件不再被路由到（/creators.html 会 301 到 /creators），里面手写的站头/样式也早已过时，
+  别再拿它当模板抄——公共站头统一放在 /site-shell.html + /site-shell.css + /site-shell.js。
+  下面的说明是它当年独立时的样子，留着方便查旧账。
   - 独立文件，不接入 app.js / SPA 路由；服务端 app.get('/creators') 直接回本文件。
   - 数据来自公开 GET /api/creators：服务端按创作者聚合上线作品的去重访客（人次口径），
     纯访客降序，剔除匿名无主作品与站长，保留无站点账号的作者。5 分钟缓存。
@@ -114,9 +117,9 @@ body{
   <div class="sh-inner">
     <a class="logo" href="/" title="回造梦橱窗首页"><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
     <nav class="sh-nav" aria-label="主导航">
-      <a class="nav-btn" href="/rank" data-tip="作品热度排行：访客、收藏、评论、灯火加权计分" aria-label="星梦榜"><i class="ico" data-ico="rank"></i>星梦榜</a>
+      <a class="nav-btn" href="/rank" data-tip="作品热度排行：访客、收藏、评论、灯火加权计分" aria-label="榜单"><i class="ico" data-ico="rank"></i>榜单</a>
       <a class="nav-btn" href="/bar" data-tip="说出你想要的作品，等创作者认领实现" aria-label="造梦酒馆"><i class="ico" data-ico="wish"></i>酒馆</a>
-      <a class="nav-btn active" href="/creators" data-tip="认识认真造梦的创作者，看他们的作品与访客" aria-label="造梦者书架：创作者展示" aria-current="page"><i class="ico" data-ico="shelf"></i>造梦者</a>
+      <a class="nav-btn active" href="/creators" data-tip="认识认真造梦的创作者，看他们的作品与访客" aria-label="创作者：认识认真造梦的创作者" aria-current="page"><i class="ico" data-ico="shelf"></i>创作者</a>
       <a class="nav-btn" href="/discover" data-tip="按平台和分类逛作品" aria-label="发现"><i class="ico" data-ico="globe"></i>发现</a>
     </nav>
     <div class="sh-auth" id="authBox"></div>
@@ -154,7 +157,7 @@ body{
     </div>
     <div class="ft-base">
       <span class="fb-text">© 2026 造梦橱窗</span>
-      <a href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号-4</a>
     </div>
   </div>
 </footer>

@@ -37,6 +37,12 @@
         document.documentElement.classList.add('no-hero-anim');
       }
     } catch (e) {}
+    // 外观主题（2026-11-24）：必须在 style.css 之前定好 data-theme，避免先紫后切闪一下。
+    // 存 localStorage 不进账号——这是「我看站的方式」，跟作者主页那套「别人看到的我」是两回事。
+    try {
+      var t = localStorage.getItem('dm_theme');
+      if (t && /^(ink|amber|jade)$/.test(t)) document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
   })();
   </script>
   <!--SEO_HEAD-->
@@ -47,18 +53,20 @@
   <!-- 小住客动效：与 /mascots 换形象页共用同一份，必须在 style.css 之后 -->
   <link rel="stylesheet" href="/mascots.css" />
   <script src="/icons.js"></script>
-  <!-- Umami 统计（Umami Cloud）：defer 加载不阻塞；SPA 路由切换由 umami 自动追踪 history 变化 -->
+  <!-- Umami 统计（Umami Cloud）：defer 加载不阻塞；SPA 路由切换由 umami 自动追踪 history 变化。
+       preconnect 提前把 DNS + TLS 握手做掉，省一次完整往返（2026-11-25）。 -->
+  <link rel="preconnect" href="https://analytics.umami.is" crossorigin />
   <script defer src="https://analytics.umami.is/script.js" data-website-id="96b6aaa5-bc4f-4f33-8af4-fc294f577e0b"></script>
 </head>
 <body>
 
 <!-- 落笔成画·壁纸层（2026-11-23）：纸面里点「设为壁纸」后，画就铺在这层（app.js 收 postMessage 存 localStorage）。
      z-index:-1 钉在整页内容底下 + pointer-events:none——纯背景，绝不挡点击；卡片是白底自动盖住，
-     首页 aurora 光斑由 body.paint-wp 淡出让画在首屏露出来。摘壁纸走纸面右上角那颗「摘壁纸」。 -->
+     首页 aurora 光斑由 body.paint-wp 淡出让画在首屏露出来。取消壁纸走纸面右上角那颗「取消壁纸」。 -->
 <div id="paintWp" hidden></div>
   <header class="site-header">
     <div class="container header-inner">
-      <a class="logo" href="/" data-nav><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
+      <a class="logo" href="/" data-nav><span class="logo-mark" aria-hidden="true"></span>造梦橱窗</a>
 
       <!-- 手机端：头部收成一行，搜索框藏进这个放大镜，点开在头部下方展开（≤640px 才显示） -->
       <button id="mSearchBtn" class="m-search-btn" type="button" aria-label="搜索"><i class="ico" data-ico="search"></i></button>
@@ -66,8 +74,8 @@
       <!-- role=search + name=q + autocomplete=off：告诉浏览器这是搜索框，别按用户名输入框配对自动填充账号 -->
       <form class="search-box" role="search" onsubmit="return false;">
         <span class="search-icon"><i class="ico" data-ico="search"></i></span>
-        <!-- placeholder 默认只写「搜索」，聚焦时由 app.js 换成完整提示文案 -->
-        <input id="searchInput" type="search" name="q" autocomplete="off" placeholder="搜索" />
+        <!-- 输入框够长，完整提示常驻默认（不再聚焦才换文案） -->
+        <input id="searchInput" type="search" name="q" autocomplete="off" placeholder="搜索作品、作者、关键词…" />
         <!-- 手机端覆盖层展开时的「取消」按钮（PC 隐藏） -->
         <button type="button" class="search-cancel" id="searchCancel">取消</button>
         <!-- 聚焦时下拉：最近搜索（本地记住）+ 在搜这些（站点真实分类） -->
@@ -95,18 +103,16 @@
             高亮逻辑仍按 .nav-btn[href] 找，包裹层不影响路由/提示气泡。 -->
        <div class="nav-tabs">
         <!-- 顺序按「逛作品 → 看热度 → 认作者 → 进社区 → 另一个端」：发现是主浏览入口放最前，
-             小程序只是扫码入口，收尾。星梦榜 / 造梦酒馆对站内人是不用解释的黑话，对新访客不是：
+             小程序只是扫码入口，收尾。榜单 / 造梦酒馆对站内人是不用解释的黑话，对新访客不是：
              hover（键盘用户是 focus）一句话说清各自是什么。
              data-tip 由 style.css 画成气泡，比原生 title 出得快、样式统一；aria-label 给读屏，也在没有 CSS 时兜底。
              触屏没有 hover，顶部导航在 ≤640px 本来就隐藏，靠 /howto 开头的「先认认路」那一节兜底。 -->
         <!-- PC「发现」入口（2026-11-18 上线）：≥641px 显示新版式（左分类侧栏 + 内容网格），
              ≤640px 不显示这条（顶部导航本来就隐藏），走底部 Tab「发现」的专栏版式。
              app.js updateNavActive 里的 onDiscover 高亮一直写好着，按钮回来即生效 -->
-        <a class="nav-btn" href="/discover" data-nav data-tip="按平台和分类逛作品——iOS、安卓、小程序、游戏、效率工具都在这儿" aria-label="发现：按平台和分类逛作品，iOS、安卓、小程序、游戏、效率工具都在这儿"><i class="ico" data-ico="globe"></i> 发现</a>
-        <a class="nav-btn" href="/rank" data-nav data-tip="作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届" aria-label="星梦榜：作品的热度排行，访客、收藏、评论、灯火加权计分，每周换一届"><i class="ico" data-ico="rank"></i> 星梦榜</a>
-        <a class="nav-btn" href="/creators" data-nav data-tip="认识认真造梦的创作者，看他们的作品与访客" aria-label="造梦者书架：认识创作者，看他们的作品与访客"><i class="ico" data-ico="shelf"></i> 造梦者</a>
-        <a class="nav-btn" href="/bar" data-nav data-tip="说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现，也能闲聊、安利、分享"><i class="ico" data-ico="wish"></i> 酒馆</a>
-        <button type="button" class="nav-btn hero-mini-open" data-tip="扫小程序码，微信里也能逛橱窗、签到、看酒馆" aria-label="小程序：扫小程序码，微信里也能逛橱窗、签到、看酒馆"><i class="ico" data-ico="mini"></i> 小程序</button>
+        <!-- 2026-11-25：导航项改由服务端从 /site-shell.html 注入，与独立页共用一份。
+             直接打开本文件（不经服务端）时这里会是空的，站内一律走 server.js。 -->
+        <!--SITE_NAV-->
         <!-- 精选专栏 /column 的入口放在页脚「逛逛 · 软件精选」，顶部导航不再加入口 -->
        </div>
       </nav>
@@ -209,19 +215,20 @@
         <h1>每一个用心的作品，<br class="hero-br" />都值得<span class="grad">被更多人看见</span></h1>
         <!-- 手机端才显示的一行定位：大标题在窄屏是藏掉的，没有这行新访客不知道这是什么站 -->
         <p class="hero-tagline"><b>大家的作品</b> · 网站 / 小程序 / 智能体 / 软件，每周更新，点开就能直接用，<button type="button" class="hero-link hero-link-mini hero-mini-open" title="点开看本站小程序码，微信扫码直达">小程序版更顺手 ›</button></p>
-        <p class="hero-sub">收录独立开发者、创作者自制的网站、小程序、智能体、软件、游戏，<br class="hero-sub-br" />你可以<button type="button" class="hero-link hero-link-submit" id="heroSubmitLink" title="提交你的作品">提交作品</button>、<a class="hero-link" href="/bar" title="去造梦酒馆投递灵感">投递灵感</a>，也可以<button type="button" class="hero-link" id="heroLightLink" title="登录后点亮灯火，把喜欢的作品送上星梦榜">点亮灯火</button>，让好作品在<a class="hero-link" href="/rank" data-nav title="去星梦榜看看灯火最多的作品">星梦榜</a>上脱颖而出。没灵感的时候，去翻翻 GitHub 上的<a class="hero-link" href="/open" title="站外收录的开源项目，只放外链">开源好物</a>。</p>
+        <p class="hero-sub">收录独立开发者、创作者自制的网站、小程序、智能体、软件、游戏。<br class="hero-sub-br" />想让好作品被看见，去<button type="button" class="hero-link hero-link-submit" id="heroSubmitLink" title="提交你的作品">提交作品</button>或<a class="hero-link" href="/bar" title="去造梦酒馆投递灵感">投递灵感</a>；没头绪时，去 GitHub 翻翻<a class="hero-link" href="/open" title="站外收录的开源项目，只放外链">开源好物</a>。<span class="hero-sub-extra">也可以<button type="button" class="hero-link" id="heroLightLink" title="登录后点亮灯火，把喜欢的作品送上榜单">点亮灯火</button>，让好作品在<a class="hero-link" href="/rank" data-nav title="去榜单看看灯火最多的作品">榜单</a>上脱颖而出；没灵感时翻翻 GitHub 上的<a class="hero-link" href="/open" title="站外收录的开源项目，只放外链">开源好物</a>。</span></p>
         <!-- 手机端常驻搜索胶囊（对齐小程序首页）：点了打开头部搜索覆盖层，不占头部一行 -->
         <!-- 原来的「已收录 X 件作品」统计行已删：与列表头「共 X 件」重复 -->
-        <button type="button" class="hero-search" id="heroSearchBtn" aria-label="搜索"><i class="ico" data-ico="search"></i><span>搜作品、作者、关键词</span></button>
-        <!-- 不知道叫什么名字的人，搜索框是帮不上的（它只认字面）。这颗是给他们的：
-             说一句「想把录音转成文字」，由「找找」去站里翻。
-             2026-11-14 文案改口：「问找找」念着像「问问找找」、也说不清这人是谁，
-             换成「让找找帮你翻」——把「谁」和「干什么」都放在一句里，跟下面「大家在找」
-             那行也不再连成一片「找」字。
-             2026-11-22 再改口：「找找」点明是 AI——「找找ai帮你翻」，让人一眼知道背后是 AI 在翻。 -->
-        <button type="button" class="hero-find" id="heroFindBtn" title="说不清叫什么？用一句话描述你想找的东西，找找去站里翻给你">
-          <span class="hf-star" aria-hidden="true">✦</span>说不清叫什么？<b>找找ai帮你翻</b>
-        </button>
+        <!-- 2026-11-24 站长：搜索 / 找找两颗按钮并排同一行（原来各占一行，首屏白扔一行）。
+             两颗按钮的 id 和点击行为都没动，只加了个壳子让手机端 CSS 排成一行；桌面两颗都藏掉。 -->
+        <div class="hero-search-row">
+          <button type="button" class="hero-search" id="heroSearchBtn" aria-label="搜索"><i class="ico" data-ico="search"></i><span>搜作品、作者、关键词</span></button>
+          <!-- 不知道叫什么名字的人，搜索框是帮不上的（它只认字面）。这颗是给他们的：
+               说一句「想把录音转成文字」，由「找找」去站里翻。
+               2026-11-24：同一行放不下长句，胶囊上只写「找找AI」，完整用途留在 title / aria-label。 -->
+          <button type="button" class="hero-find" id="heroFindBtn" aria-label="说不清叫什么？用一句话描述你想找的东西，找找去站里翻给你" title="说不清叫什么？用一句话描述你想找的东西，找找去站里翻给你">
+            <span class="hf-star" aria-hidden="true">✦</span>找找<b>AI</b>
+          </button>
+        </div>
         <!-- 2026-11-23 站长拍板：搜索框从列表标题行搬回首屏，紧跟「搜索 / 找找AI」两个按钮。
              全站仍只有一个 .search-box（由 syncSearchBoxPlacement 搬进 #heroSearchSlot），
              下拉建议 / 搜索历史 / 防抖绑定全部沿用，不做第二套。桌面显示这一条、藏掉上面的老胶囊；
@@ -310,7 +317,7 @@
              文案写清「筛选条件」+ 常驻说明，用户一眼知道记住的是什么、下次会怎样。 -->
         <div class="remember-filters">
           <label class="remember-filters-main" title="勾选后记住上方形态/场景/分类/开源/时间这五项筛选，下次打开仍按它们显示；不勾则每次刷新都回到全部">
-            <input type="checkbox" data-remember-filters><span>记住筛选条件</span>
+            <input type="checkbox" data-remember-filters><span>记住</span>
           </label>
           <span class="remember-hint"></span>
         </div>
@@ -321,7 +328,7 @@
         <div class="fbar-panel" hidden><div class="fbar-chips"></div></div>
       </div>
       <div class="remember-filters-h5 h5-only">
-        <label class="remember-filters-main"><input type="checkbox" data-remember-filters><span>记住筛选条件</span></label>
+        <label class="remember-filters-main"><input type="checkbox" data-remember-filters><span>记住</span></label>
         <span class="remember-hint"></span>
       </div>
 
@@ -454,7 +461,7 @@
     <!-- 榜单 -->
     <section id="rankView" style="display:none">
       <!-- 推荐位（灯火兑换投放）：页头正下方第一行，与酒馆页同口径。
-           不放大标题：顶部导航「星梦榜」已高亮定位（酒馆页同理没有大标题），H5 端也从未有过标题。
+           不放大标题：顶部导航「榜单」已高亮定位（酒馆页同理没有大标题），H5 端也从未有过标题。
            2026-11-09：标题先挪到推荐位上方、再改为推荐位右侧同行，最后按用户意见整个去掉 -->
       <div class="rank-top">
         <div class="ad-slot" data-ad-slot="rank"></div>
@@ -745,7 +752,7 @@
           <div class="mini-self-main">
             <span class="mini-self-tag">本站小程序</span>
             <b class="mini-self-title">造梦橱窗</b>
-            <p class="mini-self-desc">微信里逛橱窗、收藏作品、看星梦榜</p>
+            <p class="mini-self-desc">微信里逛橱窗、收藏作品、看榜单</p>
             <span class="mini-self-hint">微信扫码打开</span>
           </div>
         </div>
@@ -887,7 +894,7 @@
           <div class="author-medals" id="authorMedalsCard" style="display:none">
             <div class="medals-head">
               <b>勋章</b>
-              <a href="/medals.html" title="看看全部勋章和获取条件">全部勋章 →</a>
+              <a href="/medals" title="看看全部勋章和获取条件">全部勋章 →</a>
             </div>
             <div class="author-badges" id="authorBadges"></div>
           </div>
@@ -898,7 +905,7 @@
       <div class="author-join" id="authorJoin" style="display:none">
         <div class="aj-copy">
           <b>也想拥有一页这样的创作者主页？</b>
-          <p>注册即送个人橱窗：作品免审核直接上线，勋章、灯火、星梦榜为你的作品做见证。</p>
+          <p>注册即送个人橱窗：作品免审核直接上线，勋章、灯火、榜单为你的作品做见证。</p>
         </div>
         <div class="aj-actions">
           <button type="button" class="aj-btn" id="authorJoinBtn">免费入驻</button>
@@ -924,7 +931,8 @@
           <h3><span class="howto-no">?</span>先认认路：这些名字是什么意思</h3>
           <ul class="gloss-list">
             <li><b>橱窗</b>首页，全部作品按最新 / 最热 / 随便逛逛排，往下翻就是站里所有东西</li>
-            <li><b>星梦榜</b>作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届</li>
+            <li><b>榜单</b>作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届</li>
+            <li><b>创作者</b>认识认真造梦的创作者，看他们的作品与访客</li>
             <li><b>造梦酒馆</b>说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享</li>
             <li><b>发现</b>按平台和分类逛：iOS、安卓、小程序、游戏、效率工具…</li>
             <li><b>我的</b>你的作品、收藏、点赞、灯火余额和设置都在这</li>
@@ -1217,7 +1225,8 @@
 
   <!-- 落笔成画入口（2026-11-23）：首页右上角一颗常驻小胶囊（站长定的：header 导航里不放）。
        点开同一张纸面；画好后纸面里「设为壁纸」可把画铺成全站背景。
-       手机端隐藏，入口走小住客面板那扇门；/paint 直达仍保留。原作 github.com/ns2250225/ink（MIT）。 -->
+       手机端隐藏，入口走小住客面板那扇门；/paint 直达仍保留。原作 github.com/ns2250225/ink（MIT）。
+       2026-11-24：纸面里那颗「摘壁纸」改叫「取消壁纸」，口径跟按钮一致。 -->
   <button type="button" class="paint-entry paint-open" title="点一个字，现场挥毫成一幅水墨画；画好还能设成站里的壁纸">
     <i class="ico" data-ico="edit"></i>落笔成画
   </button>
@@ -1231,7 +1240,7 @@
       <iframe id="paintFrame" title="落笔成画：点字生成水墨画" scrolling="no"></iframe>
       <div class="paint-actions">
         <button type="button" class="paint-wall" id="paintWall" title="把当前画面设成站里的壁纸">设为壁纸</button>
-        <button type="button" class="paint-unwall" id="paintUnwall" title="摘下壁纸，换回原来的底色" hidden>摘壁纸</button>
+        <button type="button" class="paint-unwall" id="paintUnwall" title="取消壁纸，换回原来的底色" hidden>取消壁纸</button>
         <button type="button" class="paint-close" id="paintClose" aria-label="收起落笔成画">收笔 ✕</button>
       </div>
     </div>
@@ -1296,6 +1305,8 @@
             <span class="fg-label">站务</span>
             <a href="/admin" class="footer-link">管理入口</a>
             <a href="/admin?apply=1" class="footer-link">申请管理员</a>
+            <!-- 外观主题：走 document 委托（data-theme-open），「关于本站」弹窗克隆的这份页脚也能点开 -->
+            <button type="button" class="footer-link" data-theme-open>外观主题 ›</button>
           </div>
         </nav>
       </div>
@@ -1307,7 +1318,7 @@
     <div class="container footer-base">
       <span class="fb-text">© 2026 造梦橱窗</span>
       <!-- 备案号：法定信息放落款行（页脚最末一行）靠右，不再挤在品牌描述行右边悬空 -->
-      <a class="footer-icp" href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
+      <a class="footer-icp" href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号-4</a>
     </div>
   </footer>
 
@@ -1404,7 +1415,7 @@
 
         <!-- 让 AI 替我投稿（2026-11-23）：一键复制「说明书链接 + 投稿密钥 + 提示词」，贴给自己的 AI
              助手就能走 /api/works 投稿。密钥不拼进 URL（URL 会进服务器日志 / 浏览器历史，截图就泄露），
-             随文本单独一行复制；完整密钥只在生成那一刻出现，这里拿不到旧密钥，忘了就地换新 -->
+             随文本单独一行复制；登录后展开面板会自动带出现有密钥，忘了就地换新 -->
         <div class="ai-feed" id="aiFeedBox">
           <button type="button" class="ai-feed-toggle" id="aiFeedToggle" aria-expanded="false" aria-controls="aiFeedBody">
             <span class="ai-fill-ico ai-feed-ico" aria-hidden="true">🤖</span>
@@ -1413,9 +1424,9 @@
             <span class="ai-fill-caret" aria-hidden="true"></span>
           </button>
           <div class="ai-feed-body" id="aiFeedBody" hidden>
-            <p class="ai-fill-tip">复制这段话粘给你的 AI 助手（ChatGPT / Claude / 元宝…都行），它会照 <a href="/skill.md" target="_blank" rel="noopener">投稿说明书</a> 替你完成投稿、把作品送进审核。<b>密钥只对投稿生效</b>，动不了你的账号；感觉泄露了就去设置页换一把新的。</p>
+            <p class="ai-fill-tip">复制这段话粘给你的 AI 助手（ChatGPT / Claude / 元宝…都行），它会照 <a href="/skill.md" target="_blank" rel="noopener">投稿说明书</a> 替你完成投稿、把作品送进审核。密钥已自动带出，点按钮就能复制；<b>只对投稿生效</b>，动不了你的账号；感觉泄露了就换一把新的。</p>
             <input type="text" id="aiFeedKey" maxlength="56" autocomplete="off" spellcheck="false"
-                   placeholder="粘贴你的投稿密钥（pk 开头，生成那一刻复制过）" />
+                   placeholder="这里会自动带出你的投稿密钥；没有就点下面生成" />
             <div class="ai-fill-actions">
               <button type="button" class="btn-primary" id="aiFeedCopy">复制喂给 AI 的话</button>
               <button type="button" class="ai-feed-rotate" id="aiFeedRotate" hidden>忘了密钥？换一把新的并复制</button>
@@ -1687,7 +1698,8 @@
     </div>
   </div>
 
-  <!-- 认领暗号随作品链接带来：/w/<id>?claim=<暗号>。作者打开→确认→登录/注册后当场认领，不用等审核 -->
+  <!-- 认领暗号随链接带来：主链 https://zm94.com?c=<暗号> 或详情页 /w/<id>?c=<暗号>（兼容 ?claim=）。
+       作者打开→确认→登录/注册后当场认领，不用等审核；主链没带作品 id，作品由服务端按暗号全站找 -->
   <div class="modal-mask" id="codeClaimModal" style="display:none">
     <div class="modal modal-claim">
       <div class="modal-head">
@@ -1695,7 +1707,8 @@
         <button class="close-btn" id="codeClaimClose" title="关闭">✕</button>
       </div>
       <div class="claim-body">
-        <p>这条链接带着作品「<b id="codeClaimWork">…</b>」的认领暗号。确认是你做的，我们就能当场挂到你名下：</p>
+        <p id="codeClaimDesc">这条链接带着作品「<b id="codeClaimWorkName">…</b>」的认领暗号。确认是你做的，我们就能当场挂到你名下：</p>
+        <p id="codeClaimIntro" style="display:none">这条链接带着你作品的认领暗号。确认是你做的，我们就能当场挂到你名下：</p>
         <ul>
           <li>不用交证据、不用等管理员审核，暗号对上就算认领成功</li>
           <li>署名换成你的账号名，「我的作品」里能看到浏览、点赞、收藏数据</li>
@@ -2081,7 +2094,7 @@
     </div>
   </div>
 
-  <!-- AI 发布密钥：把投稿交给 AI 助手的钥匙。完整密钥只在生成那一刻显示，可随时轮换 / 吊销 -->
+  <!-- AI 发布密钥：把投稿交给 AI 助手的钥匙。登录后自动带出现有密钥，可随时轮换 / 吊销 -->
   <div class="modal-mask" id="pubkeyModal" style="display:none">
     <div class="modal modal-nick">
       <div class="modal-head">
@@ -2106,6 +2119,7 @@
         <p class="nick-tip">
           给 AI 的投稿说明书：<a href="/skill.md" target="_blank" rel="noopener">zm94.com/skill.md</a>——
           把这个链接发给 AI（或让它直接读这个地址），再补上你的密钥和产品资料，剩下的它来办。
+          拿不准你的 AI 能不能干、或手头只有一篇文章想让它解析？看人读版指南：<a href="/skill-guide.md" target="_blank" rel="noopener">zm94.com/skill-guide.md</a>。
         </p>
       </div>
     </div>
@@ -3120,13 +3134,20 @@
        - 网络失败给一句人话，不静默失败
        - 只在点击时才访问 window.doCheckin / openDmToOwner / ShareCard：
          本段脚本在 app.js 之前执行，提前缓存会是 undefined
-       - 现在只有四件真的能做：灯火（签到）、星星罐（攒灯火/收灯火）、机器人（找工具）、
-         八音盒（放音乐）；mascots.js 里标了 dev:true 的形象在 actBtn 那里就被拦下，
-         到不了这里。下线的动作文案在 mascots.js 的行内注释里留了旧款说明。 */
+       - 现在五件真的能做：灯火（签到）、梦蝶（签到多六成，跟灯火同一扇门）、
+         星星罐（攒灯火/收灯火）、机器人（找工具）、八音盒（放音乐）；
+         mascots.js 里标了 dev:true 的形象在 actBtn 那里就被拦下，到不了这里。
+         下线的动作文案在 mascots.js 的行内注释里留了旧款说明。 */
     var ACTS = {
       /* 灯火：点一下立刻签到。doCheckin 自己处理「没登录 → 打开登录框」「今天签过了」；
          2026-11-18 起签到只有这一扇门（在线自动补签已按站长要求下掉，心跳不再碰签到）。 */
       lamp: function(){
+        if (typeof window.doCheckin === 'function') window.doCheckin();
+        else actNeedLogin();
+      },
+      /* 梦蝶（2026-11-25）：同灯火走 doCheckin，加成倍率由服务端按账号里领没领算，
+         前端不传「我加倍」这种自己说了算的参数。 */
+      bfly: function(){
         if (typeof window.doCheckin === 'function') window.doCheckin();
         else actNeedLogin();
       },
@@ -4077,7 +4098,7 @@
         <input id="fbInput" type="text" maxlength="100" placeholder="比如：能把录音转成文字的工具" aria-label="描述你想找的东西" />
         <button type="submit" id="fbSend">找</button>
       </form>
-      <div class="fb-foot">只报站里真有的作品 · 没有就说没有，不给你凑数</div>
+      <div class="fb-foot">只找站里有的作品，找不到就直说，不硬凑</div>
     </div>
   </div>
 

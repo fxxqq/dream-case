@@ -1,0 +1,79 @@
+/*
+ * 独立页公共站头样式（2026-11-25）
+ * ------------------------------------------------------------------
+ * 只给不引 app.js / style.css 的独立页用（medals / mascots / musicbox / appeal）。
+ * 视觉对齐主站 style.css 的 .site-header + .main-nav .nav-tabs：
+ * 60px 高、1260px 容器、通栏 tab、当前页底部 2px 主紫条、data-tip 气泡。
+ * 主站那边的样式在 style.css，改视觉时两边一起看（这里注释写清楚，免得又漂）。
+ * logo / 登录区与主站同款，颜色走各页已有的 CSS 变量，切主题自动跟。
+ */
+.site-header{background:var(--card,#fff);border-bottom:1px solid var(--border,#e6e8f0);position:sticky;top:0;z-index:10}
+.sh-inner{max-width:1260px;margin:0 auto;padding:0 20px;height:60px;display:flex;align-items:center;gap:24px}
+.logo{
+  display:inline-flex;align-items:center;gap:8px;flex:none;
+  font-size:18px;font-weight:700;color:var(--primary,#5b5bd6);text-decoration:none;letter-spacing:.2px;
+}
+.logo-mark{display:block;flex:none;width:26px;height:26px}
+.sh-nav{display:flex;align-items:center;gap:4px;flex:1;min-width:0}
+/* 通栏 tab：与主站 .main-nav .nav-tabs 同款（占满头部高度、hover 淡底、active 底部紫条） */
+.sh-nav .nav-tabs{display:inline-flex;align-items:stretch;height:60px;gap:2px;background:none;border:0;padding:0}
+.sh-nav .nav-tabs .nav-btn{
+  display:inline-flex;align-items:center;gap:7px;padding:0 14px;border-radius:0;
+  color:#5c6275;font-size:14.5px;font-weight:500;text-decoration:none;white-space:nowrap;flex:none;
+  transition:color .16s ease,background .16s ease;
+}
+.sh-nav .nav-tabs .nav-btn:hover{color:var(--text,#1f2330);background:var(--soft,#f4f3ff)}
+.sh-nav .nav-tabs .nav-btn.active{color:var(--primary,#5b5bd6);font-weight:600;background:none;box-shadow:inset 0 -2px 0 var(--primary,#5b5bd6)}
+.sh-nav .nav-tabs .nav-btn .ico{display:inline-flex;width:15px;height:15px}
+.sh-nav .nav-tabs .nav-btn .ico svg{width:15px;height:15px;display:block}
+/* 小程序图标在 icons.js 里写死品牌紫，tab 组里跟旁边灰图标不齐，跟着文字走 */
+.sh-nav .nav-tabs .nav-btn .ico[data-ico="mini"] svg path{fill:currentColor}
+@media (min-width:821px) and (max-width:1360px){
+  .sh-nav .nav-tabs .nav-btn{padding:0 10px;font-size:13.5px}
+}
+/* 导航黑话提示：与主站 .main-nav .nav-btn[data-tip] 同一份视觉 */
+.sh-nav .nav-btn[data-tip]{position:relative}
+.sh-nav .nav-btn[data-tip]::before,.sh-nav .nav-btn[data-tip]::after{
+  opacity:0;visibility:hidden;pointer-events:none;z-index:30;
+  transition:opacity .14s ease,transform .14s ease,visibility .14s;
+  transform:translateY(-4px);
+}
+.sh-nav .nav-btn[data-tip]::after{
+  content:attr(data-tip);position:absolute;top:calc(100% + 10px);left:0;
+  width:max-content;max-width:262px;padding:8px 11px 9px;border-radius:9px;
+  background:#22253a;color:#fff;font-size:12.5px;font-weight:400;line-height:1.65;letter-spacing:0;
+  text-align:left;white-space:normal;box-shadow:0 10px 28px rgba(24,24,48,.2);
+}
+.sh-nav .nav-btn[data-tip]::before{
+  content:"";position:absolute;top:calc(100% - 4px);left:16px;
+  border:5px solid transparent;border-bottom-color:#22253a;
+}
+.sh-nav .nav-btn[data-tip]:hover::before,.sh-nav .nav-btn[data-tip]:hover::after,
+.sh-nav .nav-btn[data-tip]:focus-visible::before,.sh-nav .nav-btn[data-tip]:focus-visible::after{
+  opacity:1;visibility:visible;transform:translateY(0)
+}
+
+/* 登录区：与主站同款（未登录胶囊 / 登录后头像+昵称） */
+.sh-auth{flex:none;display:flex;align-items:center;gap:10px;margin-left:auto}
+.sh-login{
+  border:1px solid var(--border,#e6e8f0);background:#fff;color:var(--text,#1f2330);text-decoration:none;
+  font-size:13.5px;padding:7px 15px;border-radius:10px;transition:.16s;white-space:nowrap;
+}
+.sh-login:hover{border-color:#cdd0e0;color:var(--primary,#5b5bd6)}
+.sh-user{
+  display:inline-flex;align-items:center;gap:6px;max-width:160px;text-decoration:none;
+  font-size:13.5px;color:var(--text,#1f2330);padding:5px 12px 5px 6px;border-radius:999px;background:#f2f3f9;
+}
+.sh-user:hover{background:#eaecf5}
+.sh-user b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sh-user .ico{display:inline-flex;flex:none}
+.sh-user .ico svg{width:22px;height:22px;display:block}
+
+/* 手机端：跟主站一样收起顶级导航，只留 logo 和登录/我的 */
+@media (max-width:640px){
+  .sh-inner{height:52px;gap:12px;padding:0 16px}
+  .sh-nav{display:none}
+  .sh-auth{margin-left:auto}
+  .logo{font-size:16px}
+  .logo-mark{width:23px;height:23px}
+}

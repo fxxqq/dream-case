@@ -10,7 +10,8 @@
 <!--
   八音盒作曲页（/musicbox，2026-11-19）
   - 独立文件：照 /mascots 的路数，不接 app.js / SPA，服务端 app.get('/musicbox') 直接回本文件。
-  - 站头 / 站脚照 /mascots 手写一份（同高 60px、同底色、同链接分组）；登录态由 /api/mascots/state 顺带给。
+  - 站头不再手写：由服务端从 /site-shell.html 注入（全站唯一一份，与首页共用同一套导航），
+    样式走 /site-shell.css，登录态由 /site-shell.js 统一拉 /api/me/brief 渲染。
   - 发声全在 /musicbox.js：曲库 20 首 + 种子生成器照旧，本页用新加的 MB.playSong（自己摆的音符）
     和 MB.preview（点亮格子时当场响一下）。
   - 作曲台 = 16 / 32 / 64 步（2 / 4 / 8 小节，C 宫五声音阶两个八度：怎么摆都不难听），
@@ -36,57 +37,6 @@ body{
   -webkit-font-smoothing:antialiased;
 }
 .wrap{max-width:1260px;margin:0 auto;padding:28px 20px 60px}
-
-/* ---------- 站头：与主站 .site-header 同款（/medals /mascots 已有同份） ---------- */
-.site-header{background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
-.sh-inner{max-width:1260px;margin:0 auto;padding:0 20px;height:60px;display:flex;align-items:center;gap:24px}
-.logo{
-  display:inline-flex;align-items:center;gap:8px;flex:none;
-  font-size:18px;font-weight:700;color:var(--primary);text-decoration:none;letter-spacing:.2px;
-}
-.logo-mark{display:block;flex:none}
-.sh-nav{display:flex;align-items:center;gap:4px;flex:1;min-width:0}
-.sh-nav .nav-btn{
-  display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:8px;
-  font-size:14px;color:var(--muted);text-decoration:none;white-space:nowrap;transition:.16s;
-}
-.sh-nav .nav-btn:hover{color:var(--text);background:#f2f3f9}
-.sh-nav .nav-btn .ico{display:inline-flex;width:15px;height:15px}
-.sh-nav .nav-btn .ico svg{width:15px;height:15px;display:block}
-.sh-nav .nav-btn[data-tip]{position:relative}
-.sh-nav .nav-btn[data-tip]::after{
-  content:attr(data-tip);position:absolute;top:calc(100% + 10px);left:0;
-  width:max-content;max-width:262px;padding:8px 11px 9px;border-radius:9px;
-  background:#22253a;color:#fff;font-size:12.5px;font-weight:400;line-height:1.65;
-  letter-spacing:0;text-align:left;white-space:normal;box-shadow:0 10px 28px rgba(24,24,48,.2);
-  opacity:0;visibility:hidden;pointer-events:none;z-index:30;
-  transform:translateY(-4px);transition:opacity .14s ease,transform .14s ease,visibility .14s;
-}
-.sh-nav .nav-btn[data-tip]::before{
-  content:"";position:absolute;top:calc(100% - 4px);left:16px;
-  border:5px solid transparent;border-bottom-color:#22253a;
-  opacity:0;visibility:hidden;pointer-events:none;z-index:30;
-  transform:translateY(-4px);transition:opacity .14s ease,transform .14s ease,visibility .14s;
-}
-.sh-nav .nav-btn[data-tip]:hover::before,.sh-nav .nav-btn[data-tip]:hover::after,
-.sh-nav .nav-btn[data-tip]:focus-visible::before,.sh-nav .nav-btn[data-tip]:focus-visible::after{
-  opacity:1;visibility:visible;transform:translateY(0)
-}
-.sh-auth{flex:none;display:flex;align-items:center;gap:10px;margin-left:auto}
-.sh-login{
-  border:1px solid var(--border);background:#fff;color:var(--text);text-decoration:none;
-  font-size:13.5px;padding:7px 15px;border-radius:10px;transition:.16s;white-space:nowrap;
-}
-.sh-login:hover{border-color:#cdd0e0;color:var(--primary)}
-.sh-user{
-  display:inline-flex;align-items:center;gap:6px;max-width:160px;text-decoration:none;
-  font-size:13.5px;color:var(--text);padding:5px 12px 5px 6px;border-radius:999px;background:#f2f3f9;
-}
-.sh-user:hover{background:#eaecf5}
-.sh-user b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sh-user .ico{display:inline-flex;flex:none}
-.sh-user .ico svg{width:22px;height:22px;display:block}
-
 /* ---------- 页面标题 ---------- */
 .hd{padding:6px 0 20px}
 .hd h1{font-size:22px;font-weight:600;letter-spacing:.4px;text-align:center}
@@ -271,24 +221,15 @@ body{
 }
 .toast.show{opacity:1;transform:translate(-50%,0)}
 @media (max-width:640px){
-  .sh-nav{display:none}
   .card{padding:16px 14px}
   .toolbar .btn{padding:6px 11px;font-size:13px}
 }
 </style>
 </head>
 <body>
-<header class="site-header">
-  <div class="sh-inner">
-    <a class="logo" href="/" title="回造梦橱窗首页"><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
-    <nav class="sh-nav" aria-label="主导航">
-      <a class="nav-btn" href="/rank" data-tip="作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届" aria-label="星梦榜：作品的热度排行，访客、收藏、评论、灯火加权计分，每周换一届"><i class="ico" data-ico="rank"></i>星梦榜</a>
-      <a class="nav-btn" href="/bar" data-tip="说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现"><i class="ico" data-ico="wish"></i>酒馆</a>
-      <a class="nav-btn" href="/medals" data-tip="完成指定事情拿勋章，永久挂在你的主页和作品页" aria-label="造梦勋章：完成指定事情拿勋章，永久挂在你的主页和作品页"><i class="ico" data-ico="medal"></i>造梦勋章</a>
-    </nav>
-    <div class="sh-auth" id="authBox"></div>
-  </div>
-</header>
+<!-- 站头由服务端从 /site-shell.html 注入（全站唯一一份，含导航/登录态），本页不再手写。
+     直开本文件（不经服务端）这里会是空的，属正常。 -->
+<!--SITE_HEADER-->
 
 <div class="wrap">
   <header class="hd">
@@ -384,7 +325,7 @@ body{
     </div>
     <div class="ft-base">
       <span class="fb-text">© 2026 造梦橱窗</span>
-      <a href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号</a>
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="nofollow noopener noreferrer">沪ICP备2026057999号-4</a>
     </div>
   </div>
 </footer>
@@ -1006,20 +947,7 @@ body{
     refreshCode();
   })();
 
-  /* ---------------- 站头登录区：跟 /mascots 同一套（登录态顺路问，不拉 /api/me） ---------------- */
-  var authBox = document.getElementById('authBox');
-  function renderAuth(ok, name){
-    if (!authBox) return;
-    authBox.innerHTML = ok
-      ? '<a class="sh-user" href="/me" title="我的主页"><span class="ico" data-ico="user"></span><b>' + esc(name || '我') + '</b></a>'
-      : '<a class="sh-login" href="/?login=1">登录 / 注册</a>';
-    if (window.Icons) Icons.hydrate(authBox);   // 后插的节点要手动水合
-  }
-  renderAuth(false, '');
-  fetch('/api/mascots/state', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-    .then(function(r){ return r.json(); })
-    .then(function(d){ renderAuth(!!d.loggedIn, d.name || ''); })
-    .catch(function(){});
+  /* 站头登录区由公共脚本 /site-shell.js 统一渲染（拉无副作用的 /api/me/brief），本页不再自己画。 */
 })();
 </script>
 </body>

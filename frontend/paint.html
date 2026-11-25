@@ -22,7 +22,7 @@
   font-display:swap;
 }
 :root{
-  --paper:#f0e8d6; --ink:#1b1a18; --red:#b22c22;
+  --paper:#fff; --ink:#1b1a18; --red:#b22c22;
   --brush:"Mo Brush","Xingkai SC","STXingkai","华文行楷","Kaiti SC","STKaiti","KaiTi","楷体",serif;
 }
 *{box-sizing:border-box}
@@ -39,7 +39,10 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var
 #intro p{font:clamp(15px,1.7vw,21px)/1.6 var(--brush);color:rgba(27,26,24,.46);letter-spacing:.32em;margin:26px 0 0;padding-left:.32em}
 #intro p+p{margin-top:6px;color:rgba(27,26,24,.3);letter-spacing:.2em}
 
-#tools{position:fixed;left:max(22px,3vw);top:max(16px,2.2vh);display:flex;gap:6px;z-index:10}
+/* 换纸/题诗/存画（2026-11-24 站长：从左上角挪到右上，排在父页那组「设为壁纸/取消壁纸/收笔」左边）：
+   右边留出 16 + 256 + 20 = 292px 给父页按钮组（「取消壁纸」露出时最宽，实测 256px），
+   窄屏（≤560px）改排第二行免得挤出画布。 */
+#tools{position:fixed;right:292px;left:auto;top:max(16px,2.2vh);display:flex;gap:6px;z-index:10}
 #tools button,#chips button{font-family:var(--brush);background:none;border:0;cursor:pointer;color:rgba(27,26,24,.5);
   transition:color .25s,transform .25s;border-radius:4px}
 #tools button{font-size:20px;padding:6px 10px;letter-spacing:.1em}
@@ -50,7 +53,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var
 #ui{position:fixed;left:0;right:0;bottom:max(16px,env(safe-area-inset-bottom));display:flex;flex-direction:column;
   align-items:center;gap:8px;z-index:10;pointer-events:none}
 #ui::before{content:"";position:absolute;left:0;right:0;bottom:calc(-1 * max(16px,env(safe-area-inset-bottom)));height:150px;z-index:-1;
-  background:linear-gradient(to top,rgba(240,232,214,.9),rgba(240,232,214,.6) 45%,rgba(240,232,214,0))}
+  background:linear-gradient(to top,rgba(255,255,255,.92),rgba(255,255,255,.62) 45%,rgba(255,255,255,0))}
 #ui>*{pointer-events:auto}
 #chips{display:flex;flex-wrap:wrap;justify-content:center;align-content:flex-start;max-width:min(1100px,96vw);max-height:min(20vh,180px);overflow-y:auto;
   padding:0 10px;scrollbar-width:thin;scrollbar-color:rgba(27,26,24,.22) transparent;-webkit-overflow-scrolling:touch}
@@ -58,7 +61,10 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var
 #chips::-webkit-scrollbar-thumb{background:rgba(27,26,24,.22);border-radius:2px}
 #chips button{font-size:18px;padding:3px 6px}
 #chips button:hover{transform:translateY(-2px) scale(1.3)}
-@media (max-width:560px){#chips button{font-size:17px;padding:3px 5px}#tools button{font-size:18px;padding:6px 7px}}
+@media (max-width:560px){
+  #tools{right:16px;top:max(56px,2.2vh + 40px)}   /* 窄屏：父页按钮组下面另起一行，三者仍靠右 */
+  #chips button{font-size:17px;padding:3px 5px}#tools button{font-size:18px;padding:6px 7px}
+}
 </style>
 </head>
 <body>
@@ -106,7 +112,7 @@ const fbm = (x, o = 3) => { let s = 0, a = .5, n = 0; for (let i = 0; i < o; i++
 const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 
 const INK = [26, 24, 22], PALE = [58, 72, 84], GREEN = [42, 62, 50], RED = [186, 44, 34],
-      PINK = [222, 124, 136], OCHRE = [198, 146, 38], PAPER = [240, 232, 214];
+      PINK = [222, 124, 136], OCHRE = [198, 146, 38], PAPER = [255, 255, 255];
 const FONT = '"Mo Brush","Xingkai SC","STXingkai","华文行楷","Kaiti SC","STKaiti","KaiTi","楷体",serif';
 const Q = new URLSearchParams(location.search);
 const FAST = Q.has('fast');
@@ -162,26 +168,26 @@ function drawPaper() {
   const t = document.createElement('canvas'); t.width = t.height = 256;
   const tg = t.getContext('2d'), id = tg.createImageData(256, 256);
   for (let i = 0; i < id.data.length; i += 4) {
-    const v = Math.random() < .5 ? 80 : 255;
-    id.data[i] = v; id.data[i + 1] = v * .96; id.data[i + 2] = v * .88; id.data[i + 3] = Math.random() * 15;
+    const v = Math.random() < .5 ? 236 : 255;
+    id.data[i] = v; id.data[i + 1] = v; id.data[i + 2] = v; id.data[i + 3] = Math.random() * 8;
   }
   tg.putImageData(id, 0, 0);
   g.fillStyle = g.createPattern(t, 'repeat'); g.fillRect(0, 0, W, H);
   for (let i = 0; i < 16; i++) {
     const x = rand(W), y = rand(H), r = rand(140, 460);
-    const gr = g.createRadialGradient(x, y, 0, x, y, r), c = chance(.5) ? '150,118,66' : '255,252,240';
-    gr.addColorStop(0, `rgba(${c},${rand(.03, .075)})`); gr.addColorStop(1, `rgba(${c},0)`);
+    const gr = g.createRadialGradient(x, y, 0, x, y, r), c = chance(.5) ? '110,110,110' : '255,255,255';
+    gr.addColorStop(0, `rgba(${c},${rand(.02, .05)})`); gr.addColorStop(1, `rgba(${c},0)`);
     g.fillStyle = gr; g.fillRect(x - r, y - r, 2 * r, 2 * r);
   }
   const nf = W * H / 800;
   for (let i = 0; i < nf; i++) {
     const x = rand(W), y = rand(H), a = rand(TAU), l = rand(4, 24);
-    g.strokeStyle = chance(.6) ? `rgba(255,255,255,${rand(.1, .34)})` : `rgba(120,94,58,${rand(.04, .13)})`;
+    g.strokeStyle = chance(.6) ? `rgba(255,255,255,${rand(.1, .3)})` : `rgba(100,100,100,${rand(.03, .1)})`;
     g.lineWidth = rand(.3, .9); g.beginPath(); g.moveTo(x, y);
     g.quadraticCurveTo(x + cos(a) * l * .5 + rand(-3, 3), y + sin(a) * l * .5 + rand(-3, 3), x + cos(a) * l, y + sin(a) * l); g.stroke();
   }
   const vg = g.createRadialGradient(W / 2, H / 2, min(W, H) * .36, W / 2, H / 2, hypot(W, H) * .62);
-  vg.addColorStop(0, 'rgba(120,90,50,0)'); vg.addColorStop(1, 'rgba(104,76,40,.24)');
+  vg.addColorStop(0, 'rgba(100,100,100,0)'); vg.addColorStop(1, 'rgba(90,90,90,.08)');
   g.fillStyle = vg; g.fillRect(0, 0, W, H);
 }
 
@@ -2202,8 +2208,11 @@ function drawLive(now, dt) {
 
 /* ───────────── 主循环 ───────────── */
 let last = performance.now(), acc = 0;
+let exporting = false;   // 存画编码期间冻结动画：让出主线程，toBlob 才不会被拖几秒
 function frame(now) {
-  const dt = min(100, now - last); last = now; acc += dt;
+  const dt = min(100, now - last); last = now;
+  if (exporting) { requestAnimationFrame(frame); return; }   // 空转保留 rAF，恢复时不跳帧
+  acc += dt;
   let n = 0; const quick = CALM || FAST, cap = quick ? 40 : 3;
   while ((acc >= 16.6 || quick) && n < cap) { tick(); acc -= 16.6; n++; }
   if (acc > 50 || quick) acc = 0;
@@ -2241,13 +2250,20 @@ function composite() {
   g.globalCompositeOperation = 'source-over'; g.drawImage(cv.live, 0, 0); g.globalCompositeOperation = 'multiply'; g.drawImage(cv.text, 0, 0);
   return c;
 }
+/* 存画（2026-11-24）：异步 toBlob 编码，不再同步 toDataURL + atob 逐字节拷贝。
+   编码前先冻结动画把主线程让出来（上面的 exporting），否则 toBlob 回调会被动画拖几秒。
+   blob 直接给 URL.createObjectURL，省掉 base64 解码和逐字节循环，大图也不卡界面。 */
 $('#btn-save').onclick = () => {
+  if (exporting) return;   // 防连点：上一张还没编码完
+  exporting = true;
   const c = composite();
-  // 同步导出：toBlob 依赖空闲时间，动画进行中会被拖延数秒
-  const bin = atob(c.toDataURL('image/png').split(',')[1]), buf = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([buf], { type: 'image/png' }));
-  a.download = '落笔成画.png'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+  c.toBlob(blob => {
+    exporting = false;
+    if (!blob) return;   // 浏览器极端情况下编码失败，静默放过
+    const url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = '落笔成画.png'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);   // 慢设备下载写盘慢，留足时间再撤 URL
+  }, 'image/png');
 };
 /* 设为壁纸（2026-11-23 站长加）：按钮不在本页——在父页纸面右上角（app.js），这里只听指令做合成回传。
    画合成后缩到 ≤1600 宽、转 JPEG（画没有透明像素），postMessage 交给父页存 localStorage 铺背景。 */
