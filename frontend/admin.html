@@ -611,6 +611,10 @@
     .empty { padding:40px; text-align:center; color:var(--muted); font-size:14px; }
     .form-inline { display:flex; gap:10px; padding:16px 18px; flex-wrap:wrap; }
     .form-inline input { flex:1; min-width:140px; padding:9px 12px; border:1px solid var(--border); border-radius:10px; font-size:13px; background:#fafafe; }
+    /* 兑换码创建行：每个输入框上面带小标签，一眼看出哪格填啥 */
+    .form-inline .gift-f { display:flex; flex-direction:column; gap:4px; }
+    .form-inline .gift-f > label { font-size:11.5px; color:var(--muted); line-height:1; }
+    .form-inline .gift-f input, .form-inline .gift-f select { flex:0 0 auto; width:100%; min-width:0; box-sizing:border-box; }
     .hint { padding:0 18px 16px; color:var(--muted); font-size:12px; }
     /* 筛选条里的行内勾选项（用户管理「只看有作品的」）：.form-inline input 是给文本框用的
        flex:1 + min-width:140px，勾选框得单独收回来，不然会被拉成一条长条 */
@@ -693,12 +697,34 @@
     .work-table .w-intro { color:var(--muted); font-size:11.5px; line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
     .work-table .w-link { color:#5b5bd6; }
     .work-table .w-date { white-space:nowrap; }
+    /* 操作列横向吸右（2026-11-25）：表格左右滑时「编辑 / 操作」始终钉在可视区右缘。
+       thead th 本来就是 sticky（只设了 top），补上 right 即两轴吸附；td 自己 sticky + 不透明底色，
+       旁边列的内容从它下面滑过。zebra / hover 行的底色跟着行走，别让吸右列白一块。 */
+    .work-table thead tr.wgroup-row th.col-ops { right:0; }
+    .work-table thead tr.wcol-row th.col-ops { right:0; }
+    .work-table td.col-ops { position:sticky; right:0; z-index:1; background:#fff; }
+    .work-table tbody tr:nth-child(even) td.col-ops { background:#fcfcff; }
+    .work-table tbody tr:hover td.col-ops { background:#f3f3fd; }
+    .work-table th.col-ops, .work-table td.col-ops { box-shadow:-12px 0 12px -12px rgba(40,40,90,.22); }
+    /* 行内「操作」菜单展开时，把所在吸右格抬到高层：菜单被困在本格的堆叠上下文里（z:60 也出不去），
+       下面各行的吸右格同为 z:1 且 DOM 靠后，会把菜单盖住 —— 展开期间本格抬到 z:50（modal 60 之下）。 */
+    .work-table td.col-ops:has(.act-more:hover), .work-table td.col-ops:has(.act-more.open) { z-index:50; }
+    /* 注意：别学 .user-table-wrap 那样在菜单展开时把 wrap 放开 overflow:visible ——
+       吸右列依赖 wrap 的横向滚动上下文，放开就脱锚；作品表的菜单有向上翻（.up）兜底。 */
+
+
 
     /* ===== 后台通用「筛选卡片 + 表格 + 分页」底座（2026-11-23，照站长给的参考图）=====
        先在作品页落地做样板，之后其余列表页统一套这套 class；只新增，不改上面已有的 .work-table / .user-table。 */
     .dm-card { margin:0 18px 14px; background:#fff; border:1px solid var(--border); border-radius:12px; padding:14px 16px; }
     .dm-card-title { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--text); margin-bottom:12px; }
     .dm-card-title::before { content:''; width:3px; height:14px; border-radius:2px; background:var(--primary); }
+    /* 筛选卡可收缩（2026-11-25 站长要求）：点标题收起 / 展开，箭头跟随转向；只作用于可收缩的卡 */
+    .dm-card.collapsible > .dm-card-title { cursor:pointer; user-select:none; -webkit-user-select:none; }
+    .dm-card .dm-caret { width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-top:6px solid #9aa0b8; transition:transform .15s; }
+    .dm-card.collapsed .dm-caret { transform:rotate(-90deg); }
+    .dm-card.collapsed > .dm-card-title { margin-bottom:0; }
+    .dm-card.collapsed .dm-filter-grid, .dm-card.collapsed .dm-filter-actions { display:none; }
     .dm-filter-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:12px 16px; }
     .dm-field { display:flex; flex-direction:column; gap:5px; min-width:0; }
     .dm-field > label { font-size:12px; color:var(--muted); white-space:nowrap; }
@@ -5262,6 +5288,7 @@
     // 筛选卡片的字段值：q = 全文关键词（标题/作者/介绍/正文/链接/ID，空格分隔多词），其余是精确字段；
     // 各字段可叠加，切 tab / 翻页都保留。2026-11-24 站长要求收掉顶部那条重复搜索框，全文词并进这里。
     const workFilters = { q: '', id: '', author: '', type: '', category: '', state: '', commType: '', owner: '' };
+    let wfCollapsed = false; // 筛选卡收起态（2026-11-25 站长要求可收缩），重绘 / 换 tab 不丢
     const WORK_TYPES_FILTER = ['Web', 'iOS', 'Android', 'macOS', 'Windows', 'Linux', '小程序', '浏览器插件', '机器人', 'API', 'cli 命令行工具'];
     let workCatOptions = [];   // 筛选卡片「分类」下拉，首次加载列表时拉一次，不依赖后面才 let 的 adminCatList
 
@@ -5408,6 +5435,7 @@
                   <button class="mi" data-act="crypto" data-id="${w.id}" title="涉虚拟货币内容（区块链资讯 / 数据 / 行情工具）：勾上前台卡片挂「涉币 · 信息参考」，不进榜单和星梦期刊，作者不能买推荐位；已有的在投推荐位会一并撤下退款">${w.crypto ? '取消涉币标记' : '标记为涉币'}</button>
                   <button class="mi" data-act="claimopen" data-id="${w.id}">${w.claimable ? '关闭认领' : '开放认领'}</button>
                   <button class="mi" data-act="claimcode" data-id="${w.id}" title="给这件作品设一个单独的认领暗号（≤10 位），发给作者；TA 填对当场归属，无需交证据、无需审核；认领成功后暗号自动作废。同一暗号设在同一位作者的几件作品上 = 作者填一次，这批一起归他">${w.claimCode ? '改暗号' : '认领暗号'}</button>
+                  ${w.claimCode ? `<button class="mi" data-act="claimlink" data-id="${w.id}" title="复制这条作品的认领链接（详情页 + ?c=暗号）：发给作者，TA 打开→确认→登录后就当场认领，暗号即作废。同一暗号设在同一位作者的几件上时，也可以发主链 站点域名/?c=暗号 一次整批认领">生成认领链接</button>` : ''}
                   <button class="mi" data-act="anonymous" data-id="${w.id}">${w.anonymous ? '取消匿名' : '设为匿名'}</button>
                   <button class="mi" data-act="assign" data-id="${w.id}" title="把作品指定给站内某个账号名下">指定账号</button>
                   <button class="mi" data-act="merge" data-id="${w.id}" title="重复投稿合并：把这件的浏览/点赞/收藏/评论/打赏/访问统计并入另一件，然后删除它">合并</button>
@@ -5480,8 +5508,8 @@
           cell: w => `<td class="w-date">${w.createdAt ? esc(new Date(w.createdAt).toLocaleString('zh-CN')) : '—'}</td>` },
         { key: 'updated', label: '更新时间', w: 110, sort: 'updatedNew', alt: 'updatedOld',
           cell: w => `<td class="w-date">${w.updatedAt ? esc(new Date(w.updatedAt).toLocaleString('zh-CN')) : '—'}${w.offlineAt ? `<span class="cell-sub" style="color:#a32d2d">下架 ${esc(new Date(w.offlineAt).toLocaleString('zh-CN'))}</span>` : ''}</td>` },
-        { key: 'ops', label: '操作', w: 120, fixed: true, title: '编辑 / 上架下架 / 精选置顶 / 认领 / 删除等',
-          cell: w => `<td>${workActionsHtml(w)}</td>` }
+        { key: 'ops', label: '操作', w: 120, fixed: true, title: '编辑 / 上架下架 / 精选置顶 / 认领 / 删除等（横向滚动时钉在右侧）',
+          cell: w => `<td class="col-ops">${workActionsHtml(w)}</td>` }
       ];
     }
 
@@ -5495,8 +5523,8 @@
       const input = (key, ph, opts = {}) => `<div class="dm-field"><label>${ph}</label><input type="text" data-wf="${key}" value="${esc(f[key] || '')}" placeholder="${opts.ph || ph}"${opts.max ? ` maxlength="${opts.max}"` : ''} /></div>`;
       const select = (key, label, opts) => `<div class="dm-field"><label>${label}</label><select data-wf="${key}">${opts.map(([v, t]) => `<option value="${esc(v)}"${f[key] === v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></div>`;
       const cats = workCatOptions;
-      return `<div class="dm-card">
-        <div class="dm-card-title">筛选条件</div>
+      return `<div class="dm-card collapsible${wfCollapsed ? ' collapsed' : ''}">
+        <div class="dm-card-title" title="点击收起 / 展开筛选条件">筛选条件<span class="dm-caret"></span></div>
         <div class="dm-filter-grid">
           ${input('q', '关键词 / 全文', { ph: '标题 / 作者 / 介绍 / 正文 / 链接 / ID，空格分隔', max: 60 })}
           ${input('id', '作品 ID')}
@@ -5570,8 +5598,8 @@
           <table class="work-table" style="min-width:${w + 34}px">
             <colgroup><col style="width:34px" />${cols.map(c => `<col style="width:${c.w}px" />`).join('')}</colgroup>
             <thead>
-              <tr class="wgroup-row"><th></th>${groups.map(g => `<th colspan="${g.n}">${esc(g.name)}</th>`).join('')}</tr>
-              <tr class="wcol-row"><th class="dm-check-col"><input type="checkbox" class="dm-check" id="wfCheckAll" title="全选 / 取消本页" /></th>${cols.map(c => `<th${c.sort ? ` data-wsort="${c.sort}" data-wa="${c.alt}"` : ''}${c.title ? ` title="${esc(c.title)}"` : ''}>${c.label}${c.sort ? ' <span class="su"></span>' : ''}</th>`).join('')}</tr>
+              <tr class="wgroup-row"><th></th>${groups.map(g => `<th${g.name === '操作' ? ' class="col-ops"' : ''} colspan="${g.n}">${esc(g.name)}</th>`).join('')}</tr>
+              <tr class="wcol-row"><th class="dm-check-col"><input type="checkbox" class="dm-check" id="wfCheckAll" title="全选 / 取消本页" /></th>${cols.map(c => `<th${c.key === 'ops' ? ' class="col-ops"' : ''}${c.sort ? ` data-wsort="${c.sort}" data-wa="${c.alt}"` : ''}${c.title ? ` title="${esc(c.title)}"` : ''}>${c.label}${c.sort ? ' <span class="su"></span>' : ''}</th>`).join('')}</tr>
             </thead>
             <tbody>${list.map(workRowHtml).join('')}</tbody>
           </table>
@@ -5741,6 +5769,9 @@
     function bindWorkFilterCard() {
       const card = panel.querySelector('.dm-card');
       if (!card) return;
+      // 收缩：点标题收起 / 展开，状态存 wfCollapsed，翻页重绘不丢（2026-11-25 站长要求）
+      const title = card.querySelector('.dm-card-title');
+      if (title) title.onclick = () => { wfCollapsed = !wfCollapsed; card.classList.toggle('collapsed', wfCollapsed); };
       // 点搜索先把 DOM 里的值收进 workFilters（重绘会用状态回填，不读 DOM）
       const syncFilters = () => card.querySelectorAll('[data-wf]').forEach(el => { workFilters[el.dataset.wf] = el.value || ''; });
       const doSearch = () => { syncFilters(); workSelected.clear(); loadWorks(curStatus, 1); };
@@ -8422,6 +8453,13 @@
           w.claimCode = r.code || '';
           if (!r.code) w.claimBonus = null;   // 暗号一清，额外奖励跟着作废（服务端已删，缓存同步一下）
           toast(r.code ? `「${w.title}」已设置认领暗号：${r.code}（记得发给作者）` : '已清除暗号，这件作品的认领回到人工审核');
+        } else if (act === 'claimlink') {
+          // 认领链接（2026-11-25）：详情页 ?c=暗号 是暗号认领两条入口之一，作者打开→确认→登录后当场认领。
+          // 没设暗号 / 没开放认领时链接都无效，当场拦下来别让站长发了条死链。
+          if (!w.claimCode) { toast('这件作品还没设认领暗号，先点「认领暗号」设一个再生成链接'); return; }
+          if (!w.claimable) { toast('这件作品还没开放认领，先点「开放认领」，链接才会生效'); return; }
+          const url = location.origin + '/w/' + w.id + '?c=' + encodeURIComponent(w.claimCode);
+          wxCopyText(url, '认领链接已复制，粘贴发给作者即可：' + url);
         } else if (act === 'jury') {
           // 发起众判：与「众人小法官」页的手动贴标是同一个接口，只是不用再粘贴作品 ID
           if (!confirm(`把「${w.title}」交给众人小法官？\n· 前台会挂出「疑似推广」投票入口，站内用户可以投票\n· 认定票净差满 ${w.jury ? w.jury.gap : 5} 票会自动下架待整改\n· 作品状态不变，随时可在「众人小法官」页结案清票`)) return;
@@ -13903,23 +13941,47 @@
             <b>渠道</b>（选填）：填 2 个字母，和投放链接的 <code>?fr=</code> 用同一套（<code>vx</code>=V2EX、<code>gz</code>=公众号）。
             生成的码会用它当前缀（<code>VX-7K3M-9QTP</code>）；兑换成功后这位用户会被打上「来源」标记，后台用户管理可以按来源筛。
           </div>
-          <div class="form-inline" style="align-items:center">
-            <input id="giftName" maxlength="40" placeholder="活动名称，如「双十一送灯火」" style="flex:2;min-width:200px" />
-            <input id="giftPoints" type="number" value="50" style="max-width:120px" title="每个码送多少盏灯火" />
-            <select id="giftMode" style="${giftBtnStyle}">
-              <option value="batch">批量码（一码一人）</option>
-              <option value="public">公开口令（一码多人）</option>
-            </select>
-            <input id="giftCount" type="number" value="20" style="max-width:110px" title="批量码=生成个数 / 公开口令=最多可兑人数" />
-            <input id="giftPerUser" type="number" value="1" style="max-width:100px" title="同一活动每人最多兑几次" />
-            <input id="giftExpire" type="date" style="${giftBtnStyle};max-width:150px" title="有效期，留空长期有效" />
-            <input id="giftFr" list="giftFrList" maxlength="12" placeholder="渠道 2 字母，如 vx"
-                   style="${giftBtnStyle};max-width:150px" title="选填：填了就按这个渠道打来源标记，码也会用它当前缀" />
-            <datalist id="giftFrList">
-              ${FR_SUGGEST.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}
-            </datalist>
-            <input id="giftCustom" maxlength="30" placeholder="自定义口令（选填）"
-                   style="${giftBtnStyle};max-width:170px;display:none" />
+          <div class="form-inline" style="align-items:flex-end">
+            <div class="gift-f" style="flex:2;min-width:200px">
+              <label>活动名称</label>
+              <input id="giftName" maxlength="40" placeholder="如「双十一送灯火」" />
+            </div>
+            <div class="gift-f" style="width:110px">
+              <label>每码灯火</label>
+              <input id="giftPoints" type="number" value="50" title="每个码送多少盏灯火" />
+            </div>
+            <div class="gift-f" style="flex:1.4;min-width:170px">
+              <label>类型</label>
+              <select id="giftMode" style="${giftBtnStyle}">
+                <option value="batch">批量码（一码一人）</option>
+                <option value="public">公开口令（一码多人）</option>
+              </select>
+            </div>
+            <div class="gift-f" style="width:110px">
+              <label id="giftCountL">生成个数</label>
+              <input id="giftCount" type="number" value="20" title="批量码=生成个数 / 公开口令=最多可兑人数" />
+            </div>
+            <div class="gift-f" style="width:100px">
+              <label>每人限兑</label>
+              <input id="giftPerUser" type="number" value="1" title="同一活动每人最多兑几次" />
+            </div>
+            <div class="gift-f" style="width:150px">
+              <label>有效期（留空长期）</label>
+              <input id="giftExpire" type="date" style="${giftBtnStyle}" title="有效期，留空长期有效" />
+            </div>
+            <div class="gift-f" style="width:150px">
+              <label>渠道（选填 2 字母）</label>
+              <input id="giftFr" list="giftFrList" maxlength="12" placeholder="如 vx"
+                     style="${giftBtnStyle}" title="选填：填了就按这个渠道打来源标记，码也会用它当前缀" />
+              <datalist id="giftFrList">
+                ${FR_SUGGEST.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}
+              </datalist>
+            </div>
+            <div class="gift-f" id="giftCustomF" style="width:170px;display:none">
+              <label>自定义口令</label>
+              <input id="giftCustom" maxlength="30" placeholder="选填，如「juejin」"
+                     style="${giftBtnStyle}" />
+            </div>
             <button class="btn btn-primary" id="giftCreate">＋ 创建活动</button>
           </div>
           <div id="giftMade" style="padding:0 18px"></div>
@@ -13928,8 +13990,9 @@
         const modeSel = $('giftMode');
         modeSel.onchange = () => {
           const pub = modeSel.value === 'public';
-          $('giftCustom').style.display = pub ? '' : 'none';
+          $('giftCustomF').style.display = pub ? '' : 'none';
           $('giftCount').title = pub ? '最多可兑人数' : '生成个数';
+          $('giftCountL').textContent = pub ? '最多可兑人数' : '生成个数';
         };
       } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     }

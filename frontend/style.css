@@ -4719,6 +4719,49 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
   .bio-msg { margin-left: 0; }
 }
 
+/* 「编辑主页」表单（2026-11-25）：把原来一项一弹的六个编辑入口收成一张表单 */
+.modal.eh-modal { max-width: 560px; }
+.eh-title { margin: 0 0 6px; font-size: 16px; font-weight: 700; }
+.eh-hint { margin: 0 0 16px; font-size: 12.5px; line-height: 1.65; color: var(--muted); }
+.eh-form { display: flex; flex-direction: column; gap: 14px; }
+.eh-field { display: flex; flex-direction: column; gap: 6px; }
+/* 没消息时不占位：六个字段各留一行空白会把表单撑得很长 */
+.eh-modal .nick-msg:empty { display: none; }
+.eh-opt { font-weight: 400; color: var(--muted); }
+.eh-ava {
+  display: flex; align-items: center; gap: 16px;
+  padding: 12px; border-radius: 12px;
+  background: var(--tk98); border: 1px solid var(--border);
+}
+.eh-ava .author-avatar { flex: none; width: 64px; height: 64px; font-size: 26px; }
+.eh-ava-side { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.eh-ava-btns { width: 100%; flex-wrap: wrap; }
+.eh-ava-side .nick-msg { min-height: 0; }
+.eh-ava-side .ava-reset { align-self: flex-start; }
+.eh-switch {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; border-radius: 12px;
+  background: var(--tk98); border: 1px solid var(--border);
+}
+.eh-switch-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.eh-switch-txt b { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.eh-switch-txt span { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.eh-switch .au-sw { border: 0; padding: 0; cursor: pointer; }
+/* 保存区吸在弹层底部：表单较长时不用滚到底才找得到「保存」 */
+.eh-foot {
+  position: sticky; bottom: -24px; z-index: 1;
+  margin: 0 -24px -24px; padding: 10px 24px 24px;
+  background: var(--card); border-top: 1px solid var(--border);
+}
+.eh-save { width: 100%; }
+.eh-form-msg { min-height: 18px; margin-bottom: 8px; }
+@media (max-width: 640px) {
+  .eh-ava { align-items: flex-start; gap: 12px; padding: 12px 10px; }
+  .eh-ava .author-avatar { width: 56px; height: 56px; font-size: 22px; }
+  .eh-ava-btns .ava-btn { flex: 1 1 auto; }
+  .eh-foot { bottom: -24px; margin: 0 -24px -24px; padding: 10px 24px 24px; }
+}
+
 /* 自己主页的「我的点赞 / 屏蔽管理」入口：与统计行同一视觉层级（都是查看类操作，不是危险操作）。
    两个胶囊并排，窄屏自动换行（不拉成一条长条） */
 .author-tools { margin: 10px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
@@ -13522,6 +13565,12 @@ html.dm-quiet .jar-fly-star { display: none; }
    目标是「引导绑定账号」：一张主色卡讲清还能领多少，下面是三行账号任务，
    完成态用绿色勾、未完成用主色按钮，视觉上不需要再解释一遍怎么用。 */
 .task-wrap { max-width: 720px; margin: 0 auto; padding: 0 0 44px; }
+@media (min-width: 900px) {
+  .task-wrap { max-width: 980px; }
+}
+@media (min-width: 1200px) {
+  .task-wrap { max-width: 1200px; }
+}
 .task-hero {
   position: relative; display: flex; align-items: center; gap: 16px;
   padding: 22px 24px; border-radius: 18px; overflow: hidden; color: #fff;
@@ -13549,9 +13598,44 @@ html.dm-quiet .jar-fly-star { display: none; }
 .task-sec-head h3 { font-size: 15px; font-weight: 700; }
 .task-sec-head span { font-size: 12px; color: var(--muted); }
 .task-list { list-style: none; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 4px 0; }
+/* 注意：.task-more 基础规则必须写在下面 PC 网格 media query 之前，
+   否则同优先级后写的白底会盖掉网格模式的 background:transparent，
+   PC 端第五/六格空位就会露出容器自己的白底（2026-11-25 修） */
+.task-more { list-style: none; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 4px 0; }
 .task-item { position: relative; }
 .task-item + .task-item::before {
   content: ""; position: absolute; left: 60px; right: 14px; top: 0; border-top: 1px solid var(--tk94);
+}
+/* PC 端双列：900px+ 先 2 列，1200px+ 再切成 3 列 —— 页面更紧凑 */
+@media (min-width: 900px) {
+  .task-list,
+  .task-more {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    align-items: start;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+  }
+  .task-list > .task-item,
+  .task-more > li {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 4px 0;
+    margin: 0 !important;
+  }
+  /* grid 下不再需要列表项之间的分隔线 */
+  .task-item + .task-item::before,
+  .task-more-row + .task-more-row::before { display: none; }
+}
+@media (min-width: 1200px) {
+  .task-list,
+  .task-more {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
 }
 .task-row { display: flex; align-items: center; gap: 12px; padding: 14px; }
 .task-ico {
@@ -13602,7 +13686,6 @@ html.dm-quiet .jar-fly-star { display: none; }
   font-size: 11.5px; color: var(--muted);
 }
 .task-qr-tip { text-align: center; font-size: 11.5px; color: var(--muted); }
-.task-more { list-style: none; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 4px 0; }
 .task-more-row {
   position: relative; display: flex; align-items: center; gap: 12px; width: 100%;
   padding: 12px 14px; border: 0; background: none; color: var(--text); font: inherit;
@@ -14786,7 +14869,7 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
 }
 .paint-sheet {
   position: absolute; left: 0; right: 0; top: 60px; bottom: 0;   /* 60px = header 高 */
-  background: #fff;                 /* 白纸底色，iframe 加载 / 字体还没就位时先垫着 */
+  background: var(--bg);             /* 与站点同底色：纸面滑下来时不出现一条白边（iframe 内 JS 也会用当前主题色重画） */
   transform: translateY(-104%);
   transition: transform .45s cubic-bezier(.32, .72, .35, 1);
   box-shadow: 0 -8px 30px rgba(27, 26, 24, .12);
@@ -14858,17 +14941,24 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
   #paintWp, #paintWp::after { animation: none !important; }
 }
 body.paint-wp .aurora { opacity: 0; transition: opacity .8s; }
+/* 纸面（落笔成画）打开时，壁纸被完整盖在下面，两层全屏动画继续跑只是白烧 GPU
+   （2026-11-25 用户反馈卡顿）。类由 app.js 的 openPaint/closePaint 加删，收笔即自动续上。 */
+body.paint-sheet-open #paintWp,
+body.paint-sheet-open #paintWp::after { animation-play-state: paused; }
 /* 壁纸开着时，头部也融入画里（2026-11-23 站长：既然是壁纸，头部也弄成这样；
-   11-24 纸面改白，薄纱跟着改白色）：白卡底换成白色薄纱，画能透过来。
+   11-25 壁纸改成透明墨层后，薄纱改用主题底色 color-mix，任何主题下都只压一层极淡的底，
+   墨从纱下透出来，不再出现「白纸 + 白纱」叠出的亮带。
    故意不用 backdrop-filter——头部是吸顶的，滚动内容会不停从它底下过，
    实时模糊是常驻合成开销（底栏当年也是为这个拆的） */
 body.paint-wp .site-header {
-  background: rgba(255, 255, 255, .68);
-  border-bottom-color: rgba(27, 26, 24, .12);
+  background: rgba(247, 247, 251, .62);
+  background: color-mix(in srgb, var(--bg) 62%, transparent);   /* 薄纱跟着主题底色走，墨色从纱下透出来 */
+  border-bottom-color: rgba(27, 26, 24, .1);
 }
 /* 页脚同一层薄纱口径：壁纸上下的「框」都融进画里，只剩中间内容区卡片自己浮着 */
 body.paint-wp .site-footer {
-  background: rgba(255, 255, 255, .68);
+  background: rgba(247, 247, 251, .62);
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
 }
 /* 手机端 header 整个移掉（height:0），纸直接从屏幕顶上滑下来铺满 */
 @media (max-width: 640px) {

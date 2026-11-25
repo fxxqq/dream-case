@@ -7,7 +7,12 @@
      ② chips 从 27 个字改成字库全集：遍历 M（def 注册的一字一景映射）去重后全部列出，
         引擎认得多少字就上多少字，以后 def 加字 chips 自动跟上。chips 区可滚动。
      ③ 「设为壁纸」：按钮在父页纸面右上角（app.js），本页只听 dm-paint-wall-req 指令——合成当前画
-        → 缩到 ≤1600 宽 → JPEG → postMessage 回父页（app.js 存 localStorage 铺全站背景）。 -->
+        → 缩到 ≤1920 宽 → 透明 WebP → postMessage 回父页（app.js 存 localStorage 铺全站背景）。
+-->
+<!-- 2026-11-25 站长改：
+     ① 纸色跟站点主题走：父页开纸面时带 ?paper=#rrggbb（当前 --bg），纸/白纱/暗角全部对齐站点底色。
+     ② 壁纸改「透明墨层」：导出按纸色亮度差算 alpha，存 WebP（带透明），站点底色和主题光透上来。
+     ③ 新增 AI 题诗：底部输入 ≤10 字，服务端 /api/paint/poem 拼五言/七言绝句，逐句落墨。 -->
 <!doctype html>
 <html lang="zh-CN">
 <head>
@@ -22,7 +27,9 @@
   font-display:swap;
 }
 :root{
-  --paper:#fff; --ink:#1b1a18; --red:#b22c22;
+  /* 纸色 = 站点底色（父页按当前主题传 ?paper=，JS 会覆盖这两个值）：
+     纸和站内底色一致，纸面从 header 底下滑下来时没有白边，也不会比周围亮一档 */
+  --paper:#f7f7fb; --paper-rgb:247,247,251; --ink:#1b1a18; --red:#b22c22;
   --brush:"Mo Brush","Xingkai SC","STXingkai","华文行楷","Kaiti SC","STKaiti","KaiTi","楷体",serif;
 }
 *{box-sizing:border-box}
@@ -53,8 +60,24 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var
 #ui{position:fixed;left:0;right:0;bottom:max(16px,env(safe-area-inset-bottom));display:flex;flex-direction:column;
   align-items:center;gap:8px;z-index:10;pointer-events:none}
 #ui::before{content:"";position:absolute;left:0;right:0;bottom:calc(-1 * max(16px,env(safe-area-inset-bottom)));height:150px;z-index:-1;
-  background:linear-gradient(to top,rgba(255,255,255,.92),rgba(255,255,255,.62) 45%,rgba(255,255,255,0))}
+  background:linear-gradient(to top,rgba(var(--paper-rgb),.92),rgba(var(--paper-rgb),.62) 45%,rgba(var(--paper-rgb),0))}
 #ui>*{pointer-events:auto}
+/* AI 题诗（2026-11-25）：输入 ≤10 个字，五言/七言各一颗；和 chips 一样悬在纸底白纱上 */
+#poemBar{display:flex;align-items:center;gap:2px;padding:3px 6px 3px 12px;border-radius:999px;
+  background:rgba(var(--paper-rgb),.72);border:1px solid rgba(27,26,24,.1);box-shadow:0 4px 16px rgba(27,26,24,.06)}
+#poemSeed{width:clamp(148px,24vw,220px);padding:2px 4px;border:0;background:none;outline:none;
+  font:16px/1.5 var(--brush);color:var(--ink);text-align:center;letter-spacing:.04em}
+#poemSeed::placeholder{color:rgba(27,26,24,.34);letter-spacing:.03em}
+#poemBar button{font:16px/1 var(--brush);padding:5px 9px;letter-spacing:.06em}
+#poemBar button:disabled{opacity:.42;cursor:default;transform:none}
+#poemBar button:disabled:hover{color:rgba(27,26,24,.5)}
+/* 题诗反馈（2026-11-25）：以前失败只改输入框 placeholder，框里有字就完全看不见，
+   用户以为按钮坏了。改成输入条上方一条小字，成功自动收，失败停几秒。 */
+#poemMsg{display:none;max-width:min(560px,92vw);padding:4px 14px;border-radius:999px;
+  background:rgba(var(--paper-rgb),.86);border:1px solid rgba(179,53,46,.26);
+  font:14px/1.45 var(--brush);color:#b3352e;letter-spacing:.03em;text-align:center}
+#poemMsg.on{display:block}
+#poemMsg.info{color:rgba(27,26,24,.62);border-color:rgba(27,26,24,.12)}
 #chips{display:flex;flex-wrap:wrap;justify-content:center;align-content:flex-start;max-width:min(1100px,96vw);max-height:min(20vh,180px);overflow-y:auto;
   padding:0 10px;scrollbar-width:thin;scrollbar-color:rgba(27,26,24,.22) transparent;-webkit-overflow-scrolling:touch}
 #chips::-webkit-scrollbar{width:4px}
@@ -64,6 +87,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var
 @media (max-width:560px){
   #tools{right:16px;top:max(56px,2.2vh + 40px)}   /* 窄屏：父页按钮组下面另起一行，三者仍靠右 */
   #chips button{font-size:17px;padding:3px 5px}#tools button{font-size:18px;padding:6px 7px}
+  #poemSeed{width:42vw;font-size:15px}
+  #poemBar{padding:2px 4px 2px 10px}
+  #chips{max-height:min(17vh,150px)}
 }
 </style>
 </head>
@@ -90,6 +116,13 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var
 </div>
 
 <div id="ui">
+  <div id="poemMsg" role="status" aria-live="polite"></div>
+  <div id="poemBar">
+    <input id="poemSeed" type="text" maxlength="10" autocomplete="off" spellcheck="false"
+      placeholder="输入 ≤10 字，AI 题成诗" aria-label="输入不超过十个字，让 AI 拼成一首五言或七言绝句">
+    <button type="button" class="poem-go" data-form="5" title="拼成五言绝句">五言</button>
+    <button type="button" class="poem-go" data-form="7" title="拼成七言绝句">七言</button>
+  </div>
   <div id="chips" aria-label="点选一字入画"></div>
 </div>
 
@@ -112,11 +145,18 @@ const fbm = (x, o = 3) => { let s = 0, a = .5, n = 0; for (let i = 0; i < o; i++
 const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 
 const INK = [26, 24, 22], PALE = [58, 72, 84], GREEN = [42, 62, 50], RED = [186, 44, 34],
-      PINK = [222, 124, 136], OCHRE = [198, 146, 38], PAPER = [255, 255, 255];
+      PINK = [222, 124, 136], OCHRE = [198, 146, 38];
 const FONT = '"Mo Brush","Xingkai SC","STXingkai","华文行楷","Kaiti SC","STKaiti","KaiTi","楷体",serif';
 const Q = new URLSearchParams(location.search);
 const FAST = Q.has('fast');
 const CALM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+/* 纸色跟随站点主题（2026-11-25）：父页开纸面时带 ?paper=#rrggbb（当前 --bg），
+   纸、题跋留白、底部白纱全部用同一底色，纸从 header 底下滑下来时没有接缝。
+   直接访问 /paint 时用站点默认底色兜底。 */
+const PAPER_HEX = /^#[0-9a-f]{6}$/i.test(Q.get('paper') || '') ? Q.get('paper').toLowerCase() : '#f7f7fb';
+const PAPER = [parseInt(PAPER_HEX.slice(1, 3), 16), parseInt(PAPER_HEX.slice(3, 5), 16), parseInt(PAPER_HEX.slice(5, 7), 16)];
+document.documentElement.style.setProperty('--paper', PAPER_HEX);
+document.documentElement.style.setProperty('--paper-rgb', PAPER.join(','));
 
 const cv = {}, cx = {};
 for (const k of ['paper', 'far', 'mid', 'near', 'live', 'text']) { cv[k] = $('#' + k); cx[k] = cv[k].getContext('2d'); }
@@ -186,9 +226,8 @@ function drawPaper() {
     g.lineWidth = rand(.3, .9); g.beginPath(); g.moveTo(x, y);
     g.quadraticCurveTo(x + cos(a) * l * .5 + rand(-3, 3), y + sin(a) * l * .5 + rand(-3, 3), x + cos(a) * l, y + sin(a) * l); g.stroke();
   }
-  const vg = g.createRadialGradient(W / 2, H / 2, min(W, H) * .36, W / 2, H / 2, hypot(W, H) * .62);
-  vg.addColorStop(0, 'rgba(100,100,100,0)'); vg.addColorStop(1, 'rgba(90,90,90,.08)');
-  g.fillStyle = vg; g.fillRect(0, 0, W, H);
+  /* 四边暗角已去掉（2026-11-25）：纸色和站点底色一致时，任何沿边的压暗都会显出一圈灰框，
+     看起来还是「贴了一张纸」。纸感靠上面的纤维和墨团，不靠边框。 */
 }
 
 function resize(first) {
@@ -2225,7 +2264,12 @@ function frame(now) {
 
 /* ───────────── 交互 ───────────── */
 /* 输入框已去（2026-11-23 站长改）：入画只靠点字（chips 全集），Esc 保留「换纸」快捷 */
-addEventListener('keydown', e => { if (e.key === 'Escape' && !e.ctrlKey && !e.metaKey && !e.altKey) newPaper(); });
+// Esc 换纸；但正在题诗输入框里按 Esc 只是想退出输入，不该把整张画清掉
+addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) { e.target.blur(); return; }
+  newPaper();
+});
 
 let clearing = false;
 function newPaper(then) {
@@ -2265,15 +2309,29 @@ $('#btn-save').onclick = () => {
     setTimeout(() => URL.revokeObjectURL(url), 10000);   // 慢设备下载写盘慢，留足时间再撤 URL
   }, 'image/png');
 };
-/* 设为壁纸（2026-11-23 站长加）：按钮不在本页——在父页纸面右上角（app.js），这里只听指令做合成回传。
-   画合成后缩到 ≤1600 宽、转 JPEG（画没有透明像素），postMessage 交给父页存 localStorage 铺背景。 */
+/* 设为壁纸（2026-11-25 改透明墨层）：按钮不在本页——父页纸面右上角（app.js），这里只听指令合成回传。
+   纸不再是白的：按「与纸色的亮度差」逐像素算 alpha，纯纸变全透明、墨越浓越实，
+   站点底色 / 纸纹 / 主题光晕从画里直接透上来，换主题自动融合，四边也不再有白框。
+   带 alpha 的 WebP 通常比原来的 JPEG 还小；浏览器不支持 WebP 编码时回落 PNG。 */
 if (window.parent !== window) addEventListener('message', e => {
   if (e.source !== window.parent || !e.data || e.data.type !== 'dm-paint-wall-req') return;
-  const c = composite(), MAXW = 1600;
+  const c = composite(), MAXW = 1920;
   const w = c.width > MAXW ? MAXW : c.width, h = round(c.height * w / c.width);
   const s = document.createElement('canvas'); s.width = w; s.height = h;
-  s.getContext('2d').drawImage(c, 0, 0, w, h);
-  parent.postMessage({ type: 'dm-paint-wallpaper', data: s.toDataURL('image/jpeg', .86) }, e.origin);
+  const sg = s.getContext('2d');
+  sg.drawImage(c, 0, 0, w, h);
+  const id = sg.getImageData(0, 0, w, h), d = id.data;
+  const pl = PAPER[0] * .299 + PAPER[1] * .587 + PAPER[2] * .114;
+  for (let i = 0; i < d.length; i += 4) {
+    const lum = d[i] * .299 + d[i + 1] * .587 + d[i + 2] * .114;
+    const a = (pl - lum) / pl * 255 * 1.35;   // 1.35：补一点淡墨层次，雾和远山不至于全透明
+    d[i + 3] = a <= 12 ? 0 : a >= 255 ? 255 : a;   // ≤12 判为纸纹/压缩底噪，整片清掉，壁纸不留灰雾
+  }
+  sg.putImageData(id, 0, 0);
+  let data = '';
+  try { data = s.toDataURL('image/webp', .86); } catch { /* 老浏览器不支持 webp 编码 */ }
+  if (data.indexOf('data:image/webp') !== 0) data = s.toDataURL('image/png');
+  parent.postMessage({ type: 'dm-paint-wallpaper', data }, e.origin);
 });
 const chips = $('#chips');
 /* 全字 chips（2026-11-23）：M 是 def 注册的「一字一景」映射，引擎认得多少字就列多少；
@@ -2286,6 +2344,66 @@ const chips = $('#chips');
     if (prevFn && M[c] !== prevFn) b.style.marginLeft = '12px';
     prevFn = M[c];
     b.onclick = () => typeText(c); chips.appendChild(b);
+  }
+}
+
+/* AI 题诗（2026-11-25）：输入 ≤10 个字 → 服务端用它拼一首五言/七言绝句 → 逐句落墨。
+   提示词里带了字库认得的意象字，生成的句子基本每个字都能落成景；进度/失败都写在输入条上方的小字里
+   （不再改 placeholder——框里有字时那个提示是隐形的），失败不动画布、不弹窗（纸面上弹东西最出戏）。 */
+const poemSeed = $('#poemSeed'), poemBtns = [...document.querySelectorAll('.poem-go')], poemMsg = $('#poemMsg');
+let poemBusy = false, poemMsgTimer = 0;
+// hold 给「会自己消失」的提示用（成功/失败都停一会儿，别一直挂在那）
+function poemSay(text, kind, hold) {
+  clearTimeout(poemMsgTimer);
+  if (!text) { poemMsg.textContent = ''; poemMsg.classList.remove('on', 'info'); return; }
+  poemMsg.textContent = text;
+  poemMsg.classList.toggle('info', kind === 'info');
+  poemMsg.classList.add('on');
+  if (hold) poemMsgTimer = setTimeout(() => { poemMsg.textContent = ''; poemMsg.classList.remove('on', 'info'); }, hold);
+}
+// 中文输入法在组字（拼音还没上屏）时 input 会连着触发，这时改写 value 会把组字打断，
+// 表现就是「打不出字 / 输不进去」，所以组字期间一律不动 value（11-25 用户反馈重新输入不了）。
+let poemComposing = false;
+function poemNormalize() {
+  const v = poemSeed.value.replace(/\s+/g, '').slice(0, 10);
+  if (v !== poemSeed.value) poemSeed.value = v;
+}
+poemSeed.addEventListener('compositionstart', () => { poemComposing = true; });
+poemSeed.addEventListener('compositionend', () => { poemComposing = false; poemNormalize(); });
+poemSeed.addEventListener('input', e => { if (poemComposing || e.isComposing) return; poemNormalize(); });
+poemSeed.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); startPoem(5); } });
+poemBtns.forEach(b => { b.onclick = () => startPoem(Number(b.dataset.form)); });
+async function startPoem(form) {
+  if (poemBusy) return;
+  const seed = poemSeed.value.replace(/[^\u3400-\u9fff]/g, '').slice(0, 10);
+  if (!seed) { poemSay('先输入一两个字，再题诗', 'warn', 2600); poemSeed.focus(); return; }
+  poemBusy = true;
+  const hit = poemBtns.find(b => b.dataset.form === String(form));
+  const labels = poemBtns.map(b => b.textContent);
+  poemBtns.forEach(b => { b.disabled = true; });
+  if (hit) hit.textContent = '落笔中…';
+  poemSay('正在题诗，十几秒就好…', 'info');
+  // 前端自己也设一道闸：服务端 18s 会回 504，这里多留几秒兜住「连接挂住不回」
+  const ctrl = new AbortController();
+  const cut = setTimeout(() => ctrl.abort(), 26000);
+  try {
+    const r = await fetch('/api/paint/poem', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seed, form }), signal: ctrl.signal
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !Array.isArray(j.lines) || j.lines.length < 2) throw new Error(j.error || 'AI 没接上，等会儿再试');
+    poemSeed.value = '';
+    poemSay('');
+    intro.classList.add('gone');
+    newPaper(() => typeText(j.lines.join('，') + '。'));
+  } catch (err) {
+    const msg = err && err.name === 'AbortError' ? '等了太久，AI 没回话，再点一次' : String((err && err.message) || '题诗没成功，再试一次');
+    poemSay(msg.slice(0, 40), 'warn', 6000);
+  } finally {
+    clearTimeout(cut);
+    poemBusy = false;
+    poemBtns.forEach((b, i) => { b.disabled = false; b.textContent = labels[i]; });
   }
 }
 

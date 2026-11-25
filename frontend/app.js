@@ -10263,24 +10263,363 @@ async function toggleAuSheetSwitch(btn, it) {
   }
 }
 
-// 「编辑主页」：头像 / 昵称 / 个性地址——三件事原来散在三个入口，主页上给一个总口
+// 「编辑主页」（2026-11-25 改版）：原来头像/昵称/地址/介绍/链接各弹一个窗，现在收成一张表单，
+// 一次填完、一个「保存」。只有改动过的字段才会各自请求接口——昵称 7 天、个性地址 30 天的冷却
+// 是分开算的，一个字段被拒不该连累其他字段。头像仍是「选了就传」，文件上传没法跟文字一起提交。
+let editHomeEl = null;
+let ehShowWorks = true;      // 表单里的「主页作品」开关：true = 公开
+let ehComposing = false;     // 中文输入法组词中：这时的回车是选字，不是提交
+let ehSlugTimer = null;
+let ehSlugSeq = 0;
+let EH_AVA_BUSY = false;
+const EH_BIO_LIMIT = 100;
+const EH_LINKS_PH = [
+  'https://github.com/你的名字',
+  'https://www.zhihu.com/people/你的名字',
+  'https://juejin.cn/user/…'
+];
+
 function openAuthorEditSheet() {
-  const u = state.user || {};
-  const ls = Array.isArray(u.links) ? u.links : [];
-  openAuthorActionSheet('编辑主页', [
-    { icon: 'user', label: '换个头像', sub: u.avatar ? '当前已有自定义头像' : '现在是名字首字母', on: openAvaModal },
-    { icon: 'edit', label: '修改昵称', sub: u.nickname ? `现在叫「${u.nickname}」` : '还没设过昵称', on: openNickModal },
-    { icon: 'link', label: '个性地址', sub: u.slug ? `/u/${u.slug}` : '把 /u/ 后面的编号换成好记的词', on: openSlugModal },
-    { icon: 'edit', label: '个人介绍', sub: u.bio ? u.bio.slice(0, 24) + (u.bio.length > 24 ? '…' : '') : '技能、擅长的事、兴趣爱好，写在主页上', on: openBioModal },
-    { icon: 'globe', label: '我的链接', sub: ls.length ? ls.map(l => l.label).join(' / ') : 'GitHub、知乎、掘金… 填了才显示', on: openLinksModal },
-    { // 开关行：拨过去 = 公开，拨回来 = 对访客隐藏；副文案跟着开关走
-      icon: 'eye', label: '主页作品', sw: true,
-      swOn: () => (state.user || {}).hideWorks !== true,
-      swSub: on => on ? '公开：访客能看到你的全部作品' : '已对访客隐藏：别人只看得到档案',
-      onSwitch: on => setHideWorks(!on)   // 开关 on = 公开；接口参数要的是 hideWorks，语义相反
+  if (!state.user) { openAuth('login'); return; }
+  const u = state.user;
+  const ls = (Array.isArray(u.links) ? u.links : []).map(l => l.url);
+  ehShowWorks = u.hideWorks !== true;
+  if (!editHomeEl) {
+    editHomeEl = document.createElement('div');
+    editHomeEl.className = 'modal-mask';
+    document.body.appendChild(editHomeEl);
+    bindMaskClose(editHomeEl, () => hideModal(editHomeEl));
+  }
+  editHomeEl.innerHTML = `
+    <div class="modal eh-modal">
+      <button type="button" class="close-btn" aria-label="关闭">×</button>
+      <h3 class="eh-title">编辑主页</h3>
+      <p class="eh-hint">这些内容会显示在别人打开的你的作者主页上；改完点底部「保存」。</p>
+      <form class="eh-form" id="ehForm" novalidate>
+        <div class="eh-ava">
+          <span class="author-avatar" id="ehAvaPreview"></span>
+          <div class="eh-ava-side">
+            <div class="ava-actions eh-ava-btns" id="ehAvaBtns">
+              <label class="btn-ghost ava-btn" for="ehAvaFile">上传图片</label>
+              <input type="file" id="ehAvaFile" accept="image/*" hidden />
+              <button type="button" class="btn-ghost ava-btn" id="ehAvaGh">用 GitHub 头像</button>
+            </div>
+            <button type="button" class="ava-reset" id="ehAvaReset" style="display:none">恢复首字母</button>
+            <p class="nick-msg" id="ehAvaMsg"></p>
+          </div>
+        </div>
+
+        <div class="eh-field">
+          <label class="nick-label" for="ehNick">昵称 <span class="eh-opt">2–16 个字，留空显示账号名</span></label>
+          <input id="ehNick" class="nick-input" maxlength="16" autocomplete="off"
+                 placeholder="例如：做小程序的老张" value="${escapeHtml(u.nickname || '')}" />
+          <p class="nick-msg" id="ehNickMsg"></p>
+        </div>
+
+        <div class="eh-field">
+          <label class="nick-label" for="ehSlug">个性地址</label>
+          <div class="slug-field">
+            <span class="slug-prefix" aria-hidden="true">/u/</span>
+            <input id="ehSlug" class="nick-input slug-input" maxlength="20" autocomplete="off"
+                   autocapitalize="off" spellcheck="false" placeholder="你的名字，比如 lin"
+                   value="${escapeHtml(u.slug || '')}" />
+          </div>
+          <p class="nick-msg" id="ehSlugMsg"></p>
+        </div>
+
+        <div class="eh-field">
+          <label class="nick-label" for="ehBio">个人介绍</label>
+          <div class="bio-box">
+            <textarea id="ehBio" class="bio-inp" maxlength="${EH_BIO_LIMIT}" rows="3"
+              placeholder="请填写职业技能、擅长的事情、兴趣爱好等">${escapeHtml(u.bio || '')}</textarea>
+            <span class="bio-count" id="ehBioCount"></span>
+          </div>
+          <p class="nick-msg" id="ehBioMsg"></p>
+        </div>
+
+        <div class="eh-field">
+          <label class="nick-label">我的链接 <span class="eh-opt">最多 3 个，只认 GitHub / 知乎 / 掘金 / V2EX / 微博</span></label>
+          <div class="links-rows">${[0, 1, 2].map(i => `
+            <input class="links-inp eh-link-inp" type="url" inputmode="url" autocomplete="off" spellcheck="false"
+              placeholder="${EH_LINKS_PH[i]}" value="${escapeHtml(ls[i] || '')}" />`).join('')}
+          </div>
+          <p class="nick-msg" id="ehLinksMsg"></p>
+        </div>
+
+        <div class="eh-switch">
+          <div class="eh-switch-txt">
+            <b>主页作品</b>
+            <span id="ehWorksSub"></span>
+          </div>
+          <button type="button" class="au-sw" id="ehWorksSw" role="switch" aria-checked="true"><i></i></button>
+        </div>
+
+        <div class="eh-foot">
+          <p class="nick-msg eh-form-msg" id="ehMsg"></p>
+          <button type="submit" class="btn-primary eh-save" id="ehSave">保存</button>
+        </div>
+      </form>
+    </div>`;
+  const el = sel => editHomeEl.querySelector(sel);
+  editHomeEl.querySelector('.close-btn').onclick = () => hideModal(editHomeEl);
+
+  // 头像：三个来源都当场生效（不等表单保存）
+  ehPaintAva();
+  el('#ehAvaFile').onchange = onEhAvaFile;
+  el('#ehAvaGh').onclick = () => {
+    if (!(state.user && state.user.github)) {
+      return ehAvaMsg('这个账号还没绑 GitHub——去「账号设置」绑一下就能用', 'err');
     }
-    // 账号设置不再放这里：编辑主页只管主页内容，密码/绑定/提醒走头像下拉或「全部功能」的账号设置
-  ]);
+    ehSaveAvatar('/api/me/avatar/github', { method: 'POST' }, '正在从 GitHub 取头像…', '已换成 GitHub 头像');
+  };
+  el('#ehAvaReset').onclick = () => ehSaveAvatar('/api/me/avatar/reset', { method: 'POST' }, '恢复中…', '已恢复名字首字');
+
+  // 个性地址：输入即规范化，并防抖查重
+  const slugInp = el('#ehSlug');
+  slugInp.oninput = () => {
+    slugInp.value = slugInp.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+    ehScheduleSlugCheck();
+  };
+
+  // 个人介绍字数
+  const bioInp = el('#ehBio');
+  const paintBioCount = () => { el('#ehBioCount').textContent = `${bioInp.value.length}/${EH_BIO_LIMIT}`; };
+  bioInp.oninput = paintBioCount;
+  paintBioCount();
+
+  // 主页作品开关：先只改本地状态，保存时才提交
+  el('#ehWorksSw').onclick = () => { ehShowWorks = !ehShowWorks; ehPaintSwitch(); };
+  ehPaintSwitch();
+
+  // 组词中的回车不提交（和「修改昵称」同一个坑）
+  const form = el('#ehForm');
+  form.addEventListener('compositionstart', () => { ehComposing = true; });
+  form.addEventListener('compositionend', () => { setTimeout(() => { ehComposing = false; }, 0); });
+  form.onsubmit = e => {
+    e.preventDefault();
+    if (!ehComposing) submitAuthorEditForm();
+  };
+
+  // 个性地址当前状态一行话
+  if (!u.slugEligible) ehMsg('ehSlugMsg', '发布至少 1 件已上线的作品后就能设置个性地址');
+  else if (u.slugNextAt && Date.now() < u.slugNextAt) ehMsg('ehSlugMsg', slugCooldownText(u.slugNextAt));
+  else ehMsg('ehSlugMsg', `当前地址：${location.host}/u/${u.slug || u.id}`);
+
+  showModal(editHomeEl);
+}
+
+function ehMsg(id, text, kind) {
+  const el = editHomeEl && editHomeEl.querySelector('#' + id);
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = (id === 'ehMsg' ? 'nick-msg eh-form-msg' : 'nick-msg') + (kind ? ' ' + kind : '');
+}
+
+// 主页作品开关的视觉：只在保存成功或用户拨动时重画
+function ehPaintSwitch() {
+  const sw = editHomeEl && editHomeEl.querySelector('#ehWorksSw');
+  const sub = editHomeEl && editHomeEl.querySelector('#ehWorksSub');
+  if (!sw || !sub) return;
+  sw.classList.toggle('on', ehShowWorks);
+  sw.setAttribute('aria-checked', ehShowWorks ? 'true' : 'false');
+  sub.textContent = ehShowWorks ? '公开：访客能看到你的全部作品' : '已对访客隐藏：别人只看得到档案';
+}
+
+async function ehPost(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || '保存失败，稍后再试');
+  return d;
+}
+
+// 查重防抖 400ms：seq 丢弃过期响应，打字快时旧结果不能盖掉新结果
+function ehScheduleSlugCheck() {
+  const inp = editHomeEl && editHomeEl.querySelector('#ehSlug');
+  if (!inp) return;
+  const u = state.user || {};
+  const val = inp.value.trim();
+  clearTimeout(ehSlugTimer);
+  if (!val) { ehMsg('ehSlugMsg', `未设置，作者页还是 /u/${u.slug || u.id}`); return; }
+  if (val === (u.slug || '')) { ehMsg('ehSlugMsg', '这就是你现在的地址'); return; }
+  if (val.length < 4) { ehMsg('ehSlugMsg', '至少 4 位', 'err'); return; }
+  if (!u.slugEligible) { ehMsg('ehSlugMsg', '发布至少 1 件已上线的作品后就能设置个性地址', 'err'); return; }
+  ehMsg('ehSlugMsg', '检查中…');
+  const seq = ++ehSlugSeq;
+  ehSlugTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/me/slug/check?slug=' + encodeURIComponent(val), { cache: 'no-store' });
+      const d = await r.json().catch(() => ({}));
+      if (seq !== ehSlugSeq) return;
+      if (d.ok) ehMsg('ehSlugMsg', `${location.host}/u/${d.slug} 可以用`, 'ok');
+      else ehMsg('ehSlugMsg', d.error || '这个地址不能用', 'err');
+    } catch {
+      // 网络抖动不拦人：保存时服务端还会再判一次
+      if (seq === ehSlugSeq) ehMsg('ehSlugMsg', '');
+    }
+  }, 400);
+}
+
+async function submitAuthorEditForm() {
+  if (!state.user || !editHomeEl) return;
+  const el = sel => editHomeEl.querySelector(sel);
+  const u = state.user;
+  const jobs = [];   // { msg: 该字段的提示容器, run: 实际请求 }
+
+  // 昵称：留空 = 恢复默认（显示账号名），不受冷却限制
+  const nick = el('#ehNick').value.trim();
+  if (nick !== (u.nickname || '')) {
+    if (nick && nick.length < 2) { ehMsg('ehNickMsg', '昵称至少 2 个字', 'err'); return; }
+    jobs.push({ msg: 'ehNickMsg', run: async () => {
+      const d = await ehPost('/api/me/nickname', { nickname: nick });
+      u.nickname = d.nickname || '';
+    } });
+  }
+
+  // 个性地址：空 = 取消；非空至少 4 位，且要有作品
+  const slugVal = el('#ehSlug').value.trim().toLowerCase();
+  const oldSlug = u.slug || '';
+  if (slugVal !== oldSlug) {
+    if (slugVal && slugVal.length < 4) { ehMsg('ehSlugMsg', '个性地址至少 4 位', 'err'); return; }
+    if (slugVal && !u.slugEligible) { ehMsg('ehSlugMsg', '发布至少 1 件已上线的作品后就能设置个性地址', 'err'); return; }
+    if (u.slugNextAt && Date.now() < u.slugNextAt) { ehMsg('ehSlugMsg', slugCooldownText(u.slugNextAt), 'err'); return; }
+    jobs.push({ msg: 'ehSlugMsg', run: async () => {
+      const d = await ehPost('/api/me/slug', { slug: slugVal });
+      u.slug = d.slug || '';
+      u.slugPath = d.path || '';
+      u.slugNextAt = d.slugNextAt || 0;
+      // 正停在自己的作者页：地址栏换成新门牌号（replaceState，不在历史里留旧地址）
+      const ref = location.pathname.startsWith('/u/') ? decodeURIComponent(location.pathname.slice(3)) : '';
+      if (d.path && ref && (ref === u.id || ref === u.username || ref === oldSlug)) {
+        history.replaceState({}, '', d.path);
+      }
+    } });
+  }
+
+  // 个人介绍
+  const bio = el('#ehBio').value.trim();
+  if (bio !== (u.bio || '')) {
+    if (bio.length > EH_BIO_LIMIT) { ehMsg('ehBioMsg', `最多 ${EH_BIO_LIMIT} 个字`, 'err'); return; }
+    jobs.push({ msg: 'ehBioMsg', run: async () => {
+      const d = await ehPost('/api/me/bio', { bio });
+      u.bio = d.bio || '';
+    } });
+  }
+
+  // 我的链接：三个通用槽位，空槽不提交
+  const links = Array.from(editHomeEl.querySelectorAll('.eh-link-inp')).map(i => i.value.trim()).filter(Boolean);
+  const oldLinks = (Array.isArray(u.links) ? u.links : []).map(l => l.url);
+  if (links.join('\n') !== oldLinks.join('\n')) {
+    jobs.push({ msg: 'ehLinksMsg', run: async () => {
+      const d = await ehPost('/api/me/links', { links });
+      u.links = Array.isArray(d.links) ? d.links : [];
+    } });
+  }
+
+  // 主页作品开关：接口参数要的是 hideWorks，语义和「公开」相反
+  if (ehShowWorks !== (u.hideWorks !== true)) {
+    jobs.push({ msg: 'ehMsg', run: async () => {
+      const d = await ehPost('/api/me/hide-works', { on: !ehShowWorks });
+      u.hideWorks = d.hideWorks === true;
+    } });
+  }
+
+  if (!jobs.length) { ehMsg('ehMsg', '没有改动'); return; }
+
+  const btn = el('#ehSave');
+  btn.disabled = true;
+  btn.textContent = '保存中…';
+  const failed = [];
+  for (const job of jobs) {
+    try { await job.run(); }
+    catch (e) {
+      failed.push(job);
+      ehMsg(job.msg, e.message || '保存失败，稍后再试', 'err');
+      // 开关没存进去就拨回原位，别让眼前的状态和账号里存的说不一致
+      if (job.msg === 'ehMsg') { ehShowWorks = u.hideWorks !== true; ehPaintSwitch(); }
+    }
+  }
+  btn.disabled = false;
+  btn.textContent = '保存';
+  if (failed.length) {
+    ehMsg('ehMsg', `有 ${failed.length} 项没保存成功，看看上面的提示`, 'err');
+    return;
+  }
+  hideModal(editHomeEl);
+  showToast('主页信息已更新', undefined, 'ok');
+  refreshAfterProfileEdit();
+}
+
+// 保存后要刷新的地方：顶栏、主页作品隐藏提示条、当前页（作品列表/设置/我的/作者页）
+function refreshAfterProfileEdit() {
+  renderAuthBox();
+  paintAuthorHideStrip();
+  if (location.pathname === '/') loadWorks();
+  if (location.pathname === '/settings') renderSettingsPage();
+  if (location.pathname === '/me') renderMePage();
+  if (location.pathname.startsWith('/u/')) loadAuthor(decodeURIComponent(location.pathname.slice(3)));
+}
+
+// ---- 表单里的头像（不关弹窗，所以不复用独立头像弹窗那套 DOM）----
+function ehAvaMsg(text, kind) {
+  const el = editHomeEl && editHomeEl.querySelector('#ehAvaMsg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.className = 'nick-msg' + (kind ? ' ' + kind : '');
+}
+
+function ehPaintAva() {
+  const u = state.user || {};
+  const pv = editHomeEl && editHomeEl.querySelector('#ehAvaPreview');
+  paintAvatar(pv, u.nickname || u.username || '', u.avatar);
+  const gh = editHomeEl && editHomeEl.querySelector('#ehAvaGh');
+  if (gh) {
+    gh.style.display = (state.providers && state.providers.github) ? '' : 'none';
+    gh.textContent = u.avatarSrc === 'github' ? '重新取一次 GitHub 头像' : '用 GitHub 头像';
+  }
+  const rs = editHomeEl && editHomeEl.querySelector('#ehAvaReset');
+  if (rs) rs.style.display = u.avatar ? '' : 'none';
+}
+
+function onEhAvaFile(e) {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';   // 清掉 value：同一个文件改完再选一次也要能触发 change
+  if (!f || EH_AVA_BUSY) return;
+  if (!/^image\//.test(f.type || '')) return ehAvaMsg('只能选图片文件', 'err');
+  if (f.size > 8 * 1024 * 1024) return ehAvaMsg('图片不能超过 8MB，先压一下再传', 'err');
+  const fd = new FormData();
+  fd.append('avatar', f);
+  ehSaveAvatar('/api/me/avatar', { method: 'POST', body: fd }, '上传中…', '头像已更新');
+}
+
+async function ehSaveAvatar(url, init, pendingText, doneText) {
+  if (EH_AVA_BUSY) return;
+  EH_AVA_BUSY = true;
+  const pv = editHomeEl && editHomeEl.querySelector('#ehAvaPreview');
+  const btns = editHomeEl && editHomeEl.querySelector('#ehAvaBtns');
+  if (pv) pv.classList.add('is-busy');
+  if (btns) btns.classList.add('is-busy');
+  ehAvaMsg(pendingText, 'busy');
+  try {
+    const r = await fetch(url, init);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { ehAvaMsg(d.error || '保存失败，稍后再试', 'err'); return; }
+    state.user.avatar = d.avatar || '';
+    state.user.avatarSrc = d.avatarSrc || '';
+    state.user.avatarSrcLabel = d.avatarSrcLabel || '';
+    ehPaintAva();
+    afterAvatarChange();
+    ehAvaMsg(doneText || '头像已更新', 'ok');
+  } catch {
+    ehAvaMsg('网络异常，稍后再试', 'err');
+  } finally {
+    EH_AVA_BUSY = false;
+    if (pv) pv.classList.remove('is-busy');
+    if (btns) btns.classList.remove('is-busy');
+  }
 }
 
 // ---- 主页背景皮肤（2026-11-14）----
@@ -10466,142 +10805,6 @@ document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('[data-theme-open]');
   if (b) openThemeModal();
 });
-
-// 「我的链接」：三个输入框，贴链接就行，展示文案由服务端按域名算（GitHub / 知乎 / 掘金 / V2EX / 微博）。
-// 为什么不是「每个平台一个框」：68 个账号里资料区目前只有入驻时间和分类，一次摆五个空框，
-// 大多数人只会填一个，剩下四个空着反而让弹层变长、显得没填完。三个通用槽位够用也收得住。
-// ---- 个人介绍（作者自己填，展示在 /u/ 档案区）----
-// 纯文本 100 字：桌面端 label 在左、输入框在右（截图的排版），手机端折成上下。
-let bioModalEl = null;
-const BIO_LIMIT = 100;
-function openBioModal() {
-  if (!state.user) { openAuth('login'); return; }
-  if (!bioModalEl) {
-    bioModalEl = document.createElement('div');
-    bioModalEl.className = 'modal-mask';
-    document.body.appendChild(bioModalEl);
-    bindMaskClose(bioModalEl, () => hideModal(bioModalEl));
-  }
-  const cur = state.user.bio || '';
-  bioModalEl.innerHTML = `
-    <div class="modal bio-modal">
-      <button type="button" class="close-btn" aria-label="关闭">×</button>
-      <h3 class="bio-title">个人介绍</h3>
-      <p class="bio-hint">写点技能、擅长的事、兴趣爱好——会出现在你的主页上，别人看得见。最多 100 字。</p>
-      <div class="bio-field">
-        <label class="bio-label" for="bioInput">个人介绍</label>
-        <div class="bio-box">
-          <textarea id="bioInput" class="bio-inp" maxlength="${BIO_LIMIT}" rows="4"
-            placeholder="请填写职业技能、擅长的事情、兴趣爱好等">${escapeHtml(cur)}</textarea>
-          <span class="bio-count" id="bioCount">${cur.length}/${BIO_LIMIT}</span>
-        </div>
-      </div>
-      <p class="bio-msg" id="bioMsg"></p>
-      <button type="button" class="btn-primary bio-save" id="bioSave">保存</button>
-    </div>`;
-  bioModalEl.querySelector('.close-btn').onclick = () => hideModal(bioModalEl);
-  const inp = bioModalEl.querySelector('#bioInput');
-  const count = bioModalEl.querySelector('#bioCount');
-  inp.oninput = () => { count.textContent = `${inp.value.length}/${BIO_LIMIT}`; };
-  bioModalEl.querySelector('#bioSave').onclick = () => submitBio(inp);
-  showModal(bioModalEl);
-  setTimeout(() => { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }, 60);
-}
-
-async function submitBio(inp) {
-  const box = bioModalEl;
-  if (!box) return;
-  const msg = box.querySelector('#bioMsg');
-  const btn = box.querySelector('#bioSave');
-  const say = (t, kind) => { msg.textContent = t || ''; msg.className = 'bio-msg' + (kind ? ' ' + kind : ''); };
-  const val = inp.value.trim();
-  if (val.length > BIO_LIMIT) { say(`最多 ${BIO_LIMIT} 个字`, 'err'); return; }
-  btn.disabled = true;
-  say('保存中…');
-  try {
-    const r = await fetch('/api/me/bio', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bio: val })
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) { say(d.error || '保存失败，稍后再试', 'err'); return; }
-    state.user.bio = d.bio || '';
-    hideModal(box);
-    showToast(val ? '个人介绍已更新' : '个人介绍已清空', undefined, 'ok');
-    // 在自己的主页上改的：档案区那段当场刷新，不必整页重载
-    if (location.pathname.startsWith('/u/')) loadAuthor(decodeURIComponent(location.pathname.slice(3)));
-  } catch {
-    say('网络异常，稍后再试', 'err');
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-let linksModalEl = null;
-function openLinksModal() {
-  if (!state.user) { openAuth('login'); return; }
-  const cur = (Array.isArray(state.user.links) ? state.user.links : []).map(l => l.url);
-  if (!linksModalEl) {
-    linksModalEl = document.createElement('div');
-    linksModalEl.className = 'modal-mask';
-    document.body.appendChild(linksModalEl);
-    bindMaskClose(linksModalEl, () => hideModal(linksModalEl));
-  }
-  const PH = [
-    'https://github.com/你的名字',
-    'https://www.zhihu.com/people/你的名字',
-    'https://juejin.cn/user/…'
-  ];
-  linksModalEl.innerHTML = `
-    <div class="modal links-modal">
-      <button type="button" class="close-btn" aria-label="关闭">×</button>
-      <h3 class="links-title">我的链接</h3>
-      <p class="links-hint">最多 3 个，会显示在你的主页上。只认 GitHub / 知乎 / 掘金 / V2EX / 微博——不开自由网址，免得这里变成广告位。</p>
-      <div class="links-rows">${[0, 1, 2].map(i => `
-        <input class="links-inp" type="url" inputmode="url" autocomplete="off" spellcheck="false"
-          placeholder="${PH[i]}" value="${escapeHtml(cur[i] || '')}">`).join('')}
-      </div>
-      <p class="links-msg" id="linksMsg"></p>
-      <button type="button" class="btn-primary links-save" id="linksSave">保存</button>
-    </div>`;
-  linksModalEl.querySelector('.close-btn').onclick = () => hideModal(linksModalEl);
-  const btn = linksModalEl.querySelector('#linksSave');
-  btn.onclick = () => submitLinks(btn);
-  if (!cur.length) {
-    const first = linksModalEl.querySelector('.links-inp');
-    setTimeout(() => { if (first) first.focus(); }, 60);
-  }
-  showModal(linksModalEl);
-}
-
-async function submitLinks(btn) {
-  const box = linksModalEl;
-  if (!box) return;
-  const msg = box.querySelector('#linksMsg');
-  const say = (t, kind) => { msg.textContent = t || ''; msg.className = 'links-msg' + (kind ? ' ' + kind : ''); };
-  const vals = Array.from(box.querySelectorAll('.links-inp')).map(i => i.value.trim()).filter(Boolean);
-  btn.disabled = true;
-  say('保存中…');
-  try {
-    const r = await fetch('/api/me/links', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ links: vals })
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) { say(d.error || '保存失败，稍后再试', 'err'); return; }
-    state.user.links = Array.isArray(d.links) ? d.links : [];
-    hideModal(box);
-    showToast(vals.length ? '链接已更新' : '链接已清空', undefined, 'ok');
-    // 在自己的主页上改的：卡片和 tab 不用重拉，只把档案行下面那排刷新一下
-    if (location.pathname.startsWith('/u/')) loadAuthor(decodeURIComponent(location.pathname.slice(3)));
-  } catch {
-    say('网络异常，稍后再试', 'err');
-  } finally {
-    btn.disabled = false;
-  }
-}
 
 // 「全部功能」：主页上放不下的入口都收在这里（不新造功能，全是已有入口的集合）
 function openAuthorMoreSheet() {
@@ -23839,12 +24042,20 @@ function setupInstall() {
       if (window.closeBotPanel) window.closeBotPanel();
       paintLayer.classList.add('on');
       paintLayer.setAttribute('aria-hidden', 'false');
-      if (!paintLoaded) { paintFrame.src = '/paint'; paintLoaded = true; }
+      // 纸面把壁纸整层盖住了，底下那两层全屏动画纯属空转（11-25 用户反馈卡顿），暂停掉
+      document.body.classList.add('paint-sheet-open');
+      if (!paintLoaded) {
+        // 纸色跟着当前主题（2026-11-25）：把 --bg 传给 /paint，纸面和站点底色一致，滑下来才没有白边
+        const bg = (getComputedStyle(document.documentElement).getPropertyValue('--bg') || '').trim();
+        paintFrame.src = '/paint' + (/^#[0-9a-f]{6}$/i.test(bg) ? '?paper=' + encodeURIComponent(bg) : '');
+        paintLoaded = true;
+      }
     };
     const closePaint = () => {
       if (!paintLayer.classList.contains('on')) return;
       paintLayer.classList.remove('on');
       paintLayer.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('paint-sheet-open');
       // 过渡完再卸 iframe：画不占内存，下次打开是一张新纸（「换纸」本来就是常态）
       setTimeout(() => { paintFrame.src = 'about:blank'; paintLoaded = false; }, 420);
     };
@@ -23868,7 +24079,9 @@ function setupInstall() {
     // 收到 dataURL 存 localStorage 铺 #paintWp。
     // 那层 z-index:-1 + pointer-events:none，纯背景不挡任何点击；卡片白底自动盖住，
     // aurora 光斑由 body.paint-wp 淡出，画就在首屏露出来。取消壁纸 = 清存储回到原来的底。
-    const WP_KEY = 'dm_paint_wp';
+    // 2026-11-25：壁纸从「不透明白纸 JPEG」换成「透明墨层 WebP」，存储 key 升一版；
+    // 旧值必须主动清掉，否则回访者看到的还是白底图，会以为没改。
+    const WP_KEY = 'dm_paint_wp2', WP_KEY_OLD = 'dm_paint_wp';
     const paintWp = $('paintWp'), paintUnwall = $('paintUnwall'), paintWall = $('paintWall');
     const applyWp = data => {
       if (!data) {
@@ -23882,7 +24095,11 @@ function setupInstall() {
       document.body.classList.add('paint-wp');
       if (paintUnwall) paintUnwall.hidden = false;
     };
-    try { const saved = localStorage.getItem(WP_KEY); if (saved) applyWp(saved); } catch { /* 存储被禁就当没壁纸 */ }
+    try {
+      localStorage.removeItem(WP_KEY_OLD);
+      const saved = localStorage.getItem(WP_KEY);
+      if (saved) applyWp(saved);
+    } catch { /* 存储被禁就当没壁纸 */ }
     if (paintWall) paintWall.onclick = () => {
       if (!paintLoaded) return;   // 纸还没灌进来，没什么可设
       paintFrame.contentWindow.postMessage({ type: 'dm-paint-wall-req' }, location.origin);

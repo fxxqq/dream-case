@@ -2933,6 +2933,12 @@ function rateUsedUp(key, limit, windowMs) {
   if (Date.now() - rec.start > windowMs) return false;
   return rec.count >= limit;
 }
+// 退一格（2026-11-25）：请求最后没给出结果（模型超时/限流/没写出来），
+// 不该算在用户头上——否则「点两次失败就再也不能重新输入」，用户只会以为坏了。
+function rateRefund(key) {
+  const rec = rateBuckets.get(key);
+  if (rec && rec.count > 0) rec.count -= 1;
+}
 // 真实客户端 IP：只信「我们自己的代理追加的那一段」。
 // nginx 用 $proxy_add_x_forwarded_for 时会把客户端自带的 XFF 原样带过来，再在末尾追加它看到的对端；
 // 取第一段等于让请求方随便填 IP——限流、防刷、UV 统计全都能被绕过。取倒数第 TRUSTED_PROXY_HOPS 段才是可信的。
@@ -20972,6 +20978,125 @@ app.post('/api/ai/intro', async (req, res) => {
     res.status(502).json({ error: e && e.name === 'AbortError' ? 'AI 生成超时，再试一次' : 'AI 暂时不可用，先手动写一句吧' });
   } finally {
     clearTimeout(timer);
+  }
+});
+
+// ================= 落笔成画 · AI 题诗（只回文本，不写库） =================
+// 访客输入 ≤10 个字，模型把它们拼成五言/七言绝句（四句），前端逐句落墨成画。
+// 生成结果必须严格过「四句 × 每句 N 字且全是汉字」的校验 —— 模型爱加解释、标题、标点，
+// 校验不过就先从返回文本里捞等长汉字串兜底，再不行直接拒掉让用户重试，绝不把半成品落进画里。
+// 18s 是「主模型 + 回退 + 最多一次补写」共享的总预算，不是单次超时。
+// 11-25 线上实测出现过 22.9s 才回 504，前端一直「落笔中…」，用户以为坏了。
+// 同一天实测：glm-4.5-flash 写一首五绝稳定要 19s（还常回 1305），
+// glm-4-flash 只要 3~5s —— 题诗是交互动作，先要「有反应」，所以默认换成快的；
+// 想要文采可以 PAINT_POEM_MODEL=glm-4.5-flash 覆盖，但首调用时会单独卡 9s。
+const PAINT_POEM_TIMEOUT = 18000;
+const PAINT_POEM_FIRST_MS = 9000;
+const PAINT_POEM_MODEL = String(process.env.PAINT_POEM_MODEL || 'glm-4-flash').trim();
+// 字库里认得的意象字：写进提示词，让模型优先选「能落成景」的字，
+// 认不得的字在画里只会化成一团墨点，诗句再好画面也是空的。
+const PAINT_POEM_HINT = '山水日月舟竹梅松鹤荷柳泉石桥灯火鱼鸟花草木叶秋春夜星霜雾云烟江天风雪雨';
+
+app.post('/api/paint/poem', async (req, res) => {
+  const user = currentUser(req);
+  const ip = clientIp(req);
+  const b = req.body || {};
+  const seed = String(b.seed || '').replace(/[^\u3400-\u9fff]/g, '').slice(0, 10);
+  const form = Number(b.form) === 7 ? 7 : 5;
+  if (!seed) return res.status(400).json({ error: '先输入一两个字，AI 才有得题' });
+  if (!ZHIPU_API_KEY) return res.status(503).json({ error: 'AI 题诗暂未开启，点下面的字也能成画' });
+  // 匿名 6 首/小时（够玩也防刷），登录 20 首；再压一道全站闸门，免费额度整站共享。
+  // 两道闸门都只在「真的给出一首诗」时才算数：下面任何失败路径都会 rateRefund 退回去。
+  const whoKey = 'paintpoem:' + (user ? 'u:' + user.id : ip);
+  const allKey = 'paintpoem-all';
+  if (!rateLimit(whoKey, user ? 20 : 6, 3600e3)) {
+    return res.status(429).json({ error: user ? '这一小时题诗次数用完了，先点字玩吧' : '匿名每小时 6 首，登录后额度更高' });
+  }
+  if (!rateLimit(allKey, 10, 60000)) {
+    rateRefund(whoKey);
+    return res.status(429).json({ error: '题诗的人有点多，等一分钟再试' });
+  }
+  // 失败不算次数：超时 / 没写出来 / 内容过滤都退额度，用户才能立刻改了字重新题
+  const fail = (status, error) => {
+    rateRefund(whoKey); rateRefund(allKey);
+    return res.status(status).json({ error });
+  };
+
+  const sys = [
+    `你是水墨画页面的题诗者。根据访客给的意象字，写一首${form === 7 ? '七言' : '五言'}绝句：严格四句，每句正好 ${form} 个字，句内只写汉字、不要标点。`,
+    '访客给的字能入诗的都尽量化用进去；像「多、大、事、段」这种虚字不要硬塞，宁可换成同义的意象字，写得通顺比逐字凑齐重要。',
+    '同一句里不要重复同一个字，整首也别反复用同一个意象字。',
+    `优先使用这些字库里认得的字（每个字都能在画里落成景）：${PAINT_POEM_HINT}。`,
+    '风格清淡、含蓄、有画面感，像旧体山水诗；不要口号、不要现代词、不要解释。',
+    '不要「诗意满人间」这类套话，也不要为凑字数硬拼。',
+    '只输出一个 JSON 对象，不要 markdown 代码块：{"lines":["第一句","第二句","第三句","第四句"]}'
+  ].join('\n');
+
+  // 每次调用各自计时，上限不能超过「总预算剩多少」：一次卡死不会把后面的补写也堵住，
+  // 整条链路又始终压在 PAINT_POEM_TIMEOUT 内。
+  const startedAt = Date.now();
+  const left = () => PAINT_POEM_TIMEOUT - (Date.now() - startedAt);
+  const ask = async (model, userText, limit) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), Math.max(1500, Math.min(limit || PAINT_POEM_TIMEOUT, left())));
+    try {
+      const r = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ZHIPU_API_KEY },
+        signal: ctrl.signal,
+        body: JSON.stringify({
+          model, temperature: 0.85, max_tokens: 200,
+          messages: [{ role: 'system', content: sys }, { role: 'user', content: userText }]
+        })
+      });
+      return { ok: r.ok, status: r.status, body: await r.json().catch(() => ({})) };
+    } catch {
+      // 超时 / 连接断：标记出来，交给上层决定回退还是收尾
+      return { ok: false, status: 0, aborted: true, body: {} };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const textOf = out => String((((out.body.choices || [])[0] || {}).message || {}).content || '');
+  // 只认「整句正好 N 个汉字」的行：JSON 里带标点的先剔掉；模型没给 JSON 就从整段里捞等长汉字串
+  const lineRe = new RegExp('^[\\u3400-\\u9fff]{' + form + '}$');
+  const pickLines = text => {
+    const j = parseLooseJson(text);
+    const raw = j && Array.isArray(j.lines) ? j.lines : (text.match(/[\u3400-\u9fff]+/g) || []);
+    return raw.map(x => String(x || '').replace(/[^\u3400-\u9fff]/g, ''))
+      .filter(s => lineRe.test(s)).slice(0, 4);
+  };
+  try {
+    // 首调用限时 9s：主模型要是又慢又回 1305，就立刻退回站内一直在用的 glm-4-flash，
+    // 不陪着它把 18s 预算耗光。
+    let model = PAINT_POEM_MODEL, out = await ask(model, '意象字：' + seed, PAINT_POEM_FIRST_MS);
+    if (!out.ok && (out.status === 0 || out.status === 429 || out.status >= 500) && ZHIPU_MODEL !== model) {
+      model = ZHIPU_MODEL;
+      out = await ask(model, '意象字：' + seed);
+    }
+    if (!out.ok) {
+      if (out.body.contentFilter || (out.body.error && out.body.error.code === '1301')) {
+        return fail(400, '这几个字触发了内容过滤，换几个字试试');
+      }
+      if (out.status === 0) return fail(504, 'AI 反应太慢，超时了，再点一次');
+      return fail(502, 'AI 暂时没接上，等会儿再试');
+    }
+    let lines = pickLines(textOf(out));
+    // 兜底：模型偶尔只写两联（2 句），补一次就够（补两次会把总时长拖过 20s，11-25 修）。
+    // 剩余预算不够 4s 就别再发了，发了也只会被掐断。
+    if (lines.length < 4 && left() > 4000) {
+      const prev = lines.length ? lines.join('，') : '（空）';
+      const more = await ask(model, `意象字：${seed}\n上一版只写了这几句：${prev}。这次必须写满四句，每句 ${form} 个字，四句都要自然用上这些意象字。`);
+      if (more.ok) {
+        const got = pickLines(textOf(more));
+        if (got.length > lines.length) lines = got;
+      }
+    }
+    // 实在凑不齐四句，两句也收（五言/七言两联照样能落墨成画），一首都写不出才报错
+    if (lines.length < 2) return fail(502, 'AI 这次没写出来，再点一次试试');
+    res.json({ lines, form, full: lines.length === 4 });
+  } catch {
+    fail(504, '题诗超时了，再试一次');
   }
 });
 
