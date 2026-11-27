@@ -120,7 +120,7 @@ function register(deps) {
     const ctaFoot = b.ctaUrl ? `<a class="btn-primary brand-btn" href="${seo.esc(b.ctaUrl)}"
         target="_blank" rel="nofollow sponsored noopener">${seo.esc(b.ctaLabel || '去官网看看')} ↗</a>` : '';
 
-    // logo 走 400 档：/t/ 只认 400/800/1200/1600（见 server.js THUMB_SIZES），写 200 会 404 破图
+    // logo 走 400 档：/t/ 只认 32/400/800/1200/1600（见 server.js THUMB_SIZES），写 200 会 404 破图
     const logoHtml = b.logo
       ? `<img class="brand-logo-img" src="${seo.esc(imgUrl(b.logo, 400))}" alt="${seo.esc(b.name)}" />`
       : `<span class="brand-logo-txt" aria-hidden="true">${seo.esc(String(b.name || '?').slice(0, 1))}</span>`;

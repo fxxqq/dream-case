@@ -25,6 +25,7 @@ const ALIPAY_PAGE_CSS = `
 .alipay-card{background:#fff;border:1px solid var(--tk90,#e8e8f0);border-radius:16px;padding:26px 28px;box-shadow:0 8px 30px rgba(60,50,110,.06)}
 .alipay-page h1,.alipay-return h1{margin:0 0 8px;font-size:24px;line-height:1.35;color:var(--text,#26263a)}
 .alipay-tip{margin:0 0 22px;font-size:13px;line-height:1.7;color:var(--muted,#6b6b80)}
+.alipay-tip.alipay-legal{margin:-14px 0 22px}
 .alipay-goods-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
 .alipay-goods{display:flex;flex-direction:column;align-items:flex-start;gap:6px;width:100%;padding:16px 18px;cursor:pointer;border-radius:14px;border:1.5px solid var(--tk86,#ddd9f0);background:linear-gradient(180deg,#fff,#fbfaff);color:var(--text,#26263a);text-align:left;transition:transform .15s,border-color .15s,box-shadow .15s}
 .alipay-goods:hover,.alipay-goods.is-preset{transform:translateY(-2px);border-color:var(--primary,#6b5bd2);box-shadow:0 8px 22px rgba(107,91,210,.12)}
@@ -388,9 +389,25 @@ function register(deps) {
       const fundChange = result && (result.fundChange || result.fund_change);
       order.refunds = Array.isArray(order.refunds) ? order.refunds : [];
       order.refunds.push({ outRequestNo, refundAmount, fundChange, at: Date.now() });
+      // 全额退款且资金已动（fundChange=Y）：状态置 refunded，已发货的灯火包同步扣回（与微信侧退款口径一致）
+      const refundedNow = !!(result && result.code === '10000' && fundChange === 'Y' && amountEquals(refundAmount, order.amountText));
+      let deducted = 0;
+      if (refundedNow) {
+        if (order.status === 'delivered' && order.kind === 'lamp') {
+          deducted = Math.max(0, Math.floor(Number(order.lamps) || 0));
+          if (deducted) addPoints(order.uid, -deducted, 'admin');
+        }
+        order.status = 'refunded';
+        order.refundedAt = Date.now();
+        addNotice(order.uid, {
+          kind: 'points',
+          title: '订单已退款',
+          text: `你的支付宝订单 ${order.outTradeNo}（¥${order.amountText}）已由站长退款，钱会原路退回你的支付宝。${deducted ? `同时扣回了这笔订单发放的 ${deducted} 盏灯火。` : ''}`,
+        });
+      }
       saveOrders();
       const needQuery = !result || result.code !== '10000' || fundChange !== 'Y';
-      res.json({ ok: true, fundChange, needQuery, outRequestNo });
+      res.json({ ok: true, fundChange, needQuery, outRequestNo, deductedLamps: deducted });
     } catch (e) {
       res.status(500).json({ error: '退款请求失败', needQuery: true, outRequestNo });
     }
@@ -430,6 +447,49 @@ function register(deps) {
     }
   });
 
+  // ---------- 后台订单总表（2026-11-25）：admin.html「支付订单」tab 的支付宝区块 ----------
+  // 与微信 /api/admin/xpay-orders 同口径：列表 + 汇总磁贴，只站长能看。
+  app.get('/api/admin/alipay-orders', requireOwner, (req, res) => {
+    const list = alipayOrders.slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).map(o => {
+      const u = users.find(x => x.id === o.uid);
+      const refunds = Array.isArray(o.refunds) ? o.refunds : [];
+      return {
+        outTradeNo: o.outTradeNo, productId: o.productId, subject: o.subject,
+        kind: o.kind || 'lamp', lamps: o.lamps || 0, priceFen: o.priceFen, amountText: o.amountText,
+        uid: o.uid, username: u ? (u.nickname || u.username) : ('（' + o.uid + '）'),
+        status: o.status, tradeNo: o.tradeNo || '',
+        refunded: refunds.some(r => r && r.fundChange === 'Y'),
+        lastError: o.lastError || '',
+        createdAt: o.createdAt || 0, paidAt: o.paidAt || 0, deliveredAt: o.deliveredAt || 0,
+      };
+    });
+    const sum = { all: list.length, pending: 0, paid: 0, delivered: 0, closed: 0, failed: 0, refunded: 0, incomeFen: 0, refundFen: 0 };
+    for (const o of list) {
+      sum[o.status] = (sum[o.status] || 0) + 1;
+      if (o.status === 'paid' || o.status === 'delivered') sum.incomeFen += o.priceFen;
+      if (o.status === 'refunded') sum.refundFen += o.priceFen;
+    }
+    res.json({ orders: list.slice(0, 200), sum, enabled: enabled(), mode: conf.mode });
+  });
+
+  // 核实补发（站长）：等价于用户点 confirm，但不需要用户在场。
+  // 主动向支付宝查单，查到真实付款才标记 paid 并发货；deliverOrder 幂等，不会重复送灯。
+  app.post('/api/admin/alipay-orders/verify', requireOwner, async (req, res) => {
+    const order = findOrder((req.body || {}).outTradeNo);
+    if (!order) return res.status(404).json({ error: '找不到这笔订单' });
+    if (order.status === 'delivered') return res.json({ ok: true, status: 'delivered', note: '这单早已发货' });
+    if (order.status !== 'pending' && order.status !== 'paid') {
+      return res.status(400).json({ error: '只有待支付 / 已支付未发货的单能核实，当前状态 ' + order.status });
+    }
+    if (!enabled()) return res.status(400).json({ error: '支付宝支付未启用，无法向支付宝核实' });
+    const state = await verifyAndSettle(order);
+    if (order.status === 'delivered') return res.json({ ok: true, status: 'delivered', tradeState: state });
+    return res.status(400).json({
+      error: '支付宝侧不是已支付状态（' + state + '），不能发货',
+      tradeState: state, status: order.status,
+    });
+  });
+
   // 付款页：选套餐 -> 下单 -> 渲染并自动提交支付宝表单（禁止 URL 直接跳转）
   app.get('/alipay/pay', (req, res) => {
     const base = seo.baseUrl(req);
@@ -449,7 +509,8 @@ function register(deps) {
     const block = `${ALIPAY_PAGE_CSS}<div id="seoContent" class="seo-wrap alipay-page">
       <div class="alipay-card">
         <h1>灯火包 · 支付宝支付</h1>
-        <p class="alipay-tip">选择套餐后用支付宝付款，到账后灯火自动进余额。</p>
+        <p class="alipay-tip">选择套餐后用支付宝付款，付款后灯火自动到账。</p>
+        <p class="alipay-tip alipay-legal">灯火为站内虚拟道具，不可提现、不可转让；除平台原因外不退款。</p>
         <div class="alipay-goods-row">${goodsHtml}</div>
         <div id="alipayMsg" class="alipay-msg" role="status"></div>
       </div>

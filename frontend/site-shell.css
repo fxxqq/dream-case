@@ -7,7 +7,11 @@
  * 主站那边的样式在 style.css，改视觉时两边一起看（这里注释写清楚，免得又漂）。
  * logo / 登录区与主站同款，颜色走各页已有的 CSS 变量，切主题自动跟。
  */
-.site-header{background:var(--card,#fff);border-bottom:1px solid var(--border,#e6e8f0);position:sticky;top:0;z-index:10}
+.site-header{
+  background:linear-gradient(100deg,var(--tk98,#fafafe),var(--primary-soft,var(--tk96,#eeeefc)) 52%,var(--tk98,#fafafe));
+  border-bottom:1px solid rgba(91,91,214,.12);position:sticky;top:0;z-index:10;
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)
+}
 .sh-inner{max-width:1260px;margin:0 auto;padding:0 20px;height:60px;display:flex;align-items:center;gap:24px}
 .logo{
   display:inline-flex;align-items:center;gap:8px;flex:none;
@@ -15,21 +19,26 @@
 }
 .logo-mark{display:block;flex:none;width:26px;height:26px}
 .sh-nav{display:flex;align-items:center;gap:4px;flex:1;min-width:0}
-/* 通栏 tab：与主站 .main-nav .nav-tabs 同款（占满头部高度、hover 淡底、active 底部紫条） */
-.sh-nav .nav-tabs{display:inline-flex;align-items:stretch;height:60px;gap:2px;background:none;border:0;padding:0}
+/* 清新胶囊导航：与主站 .main-nav .nav-tabs 同款（浅底胶囊组、active 白底胶囊） */
+.sh-nav .nav-tabs{
+  display:inline-flex;align-items:center;height:auto;gap:2px;padding:3px;
+  background:rgba(255,255,255,.62);border:1px solid rgba(91,91,214,.1);border-radius:999px
+}
 .sh-nav .nav-tabs .nav-btn{
-  display:inline-flex;align-items:center;gap:7px;padding:0 14px;border-radius:0;
-  color:#5c6275;font-size:14.5px;font-weight:500;text-decoration:none;white-space:nowrap;flex:none;
+  display:inline-flex;align-items:center;gap:7px;padding:6px 13px;border-radius:999px;
+  color:#5c6275;font-size:13.5px;font-weight:500;text-decoration:none;white-space:nowrap;flex:none;
   transition:color .16s ease,background .16s ease;
 }
-.sh-nav .nav-tabs .nav-btn:hover{color:var(--text,#1f2330);background:var(--soft,#f4f3ff)}
-.sh-nav .nav-tabs .nav-btn.active{color:var(--primary,#5b5bd6);font-weight:600;background:none;box-shadow:inset 0 -2px 0 var(--primary,#5b5bd6)}
+.sh-nav .nav-tabs .nav-btn:hover{color:var(--primary,#5b5bd6);background:rgba(255,255,255,.92)}
+.sh-nav .nav-tabs .nav-btn.active{
+  color:var(--primary,#5b5bd6);font-weight:600;background:#fff;box-shadow:0 1px 4px rgba(60,60,120,.12)
+}
 .sh-nav .nav-tabs .nav-btn .ico{display:inline-flex;width:15px;height:15px}
 .sh-nav .nav-tabs .nav-btn .ico svg{width:15px;height:15px;display:block}
 /* 小程序图标在 icons.js 里写死品牌紫，tab 组里跟旁边灰图标不齐，跟着文字走 */
 .sh-nav .nav-tabs .nav-btn .ico[data-ico="mini"] svg path{fill:currentColor}
 @media (min-width:821px) and (max-width:1360px){
-  .sh-nav .nav-tabs .nav-btn{padding:0 10px;font-size:13.5px}
+  .sh-nav .nav-tabs .nav-btn{padding:6px 10px;font-size:13.5px}
 }
 /* 导航黑话提示：与主站 .main-nav .nav-btn[data-tip] 同一份视觉 */
 .sh-nav .nav-btn[data-tip]{position:relative}
@@ -56,15 +65,16 @@
 /* 登录区：与主站同款（未登录胶囊 / 登录后头像+昵称） */
 .sh-auth{flex:none;display:flex;align-items:center;gap:10px;margin-left:auto}
 .sh-login{
-  border:1px solid var(--border,#e6e8f0);background:#fff;color:var(--text,#1f2330);text-decoration:none;
-  font-size:13.5px;padding:7px 15px;border-radius:10px;transition:.16s;white-space:nowrap;
+  border:1px solid rgba(91,91,214,.14);background:rgba(255,255,255,.72);color:var(--text,#1f2330);text-decoration:none;
+  font-size:13.5px;padding:7px 15px;border-radius:999px;transition:.16s;white-space:nowrap;
 }
 .sh-login:hover{border-color:#cdd0e0;color:var(--primary,#5b5bd6)}
 .sh-user{
   display:inline-flex;align-items:center;gap:6px;max-width:160px;text-decoration:none;
-  font-size:13.5px;color:var(--text,#1f2330);padding:5px 12px 5px 6px;border-radius:999px;background:#f2f3f9;
+  font-size:13.5px;color:var(--text,#1f2330);padding:5px 12px 5px 6px;border-radius:999px;
+  background:rgba(255,255,255,.72);border:1px solid rgba(91,91,214,.1);
 }
-.sh-user:hover{background:#eaecf5}
+.sh-user:hover{background:rgba(255,255,255,.95)}
 .sh-user b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sh-user .ico{display:inline-flex;flex:none}
 .sh-user .ico svg{width:22px;height:22px;display:block}
@@ -76,4 +86,40 @@
   .sh-auth{margin-left:auto}
   .logo{font-size:16px}
   .logo-mark{width:23px;height:23px}
+}
+
+/* 2026-11-26 九改：独立页站头跟首页一起按参考图复刻（淡紫→淡青 + 白鲸方块 + 浅紫当前项）。
+   只改视觉；导航仍从 site-shell.html 注入，菜单开合仍由 site-shell.js 管。 */
+@media (min-width:641px){
+  .site-header{
+    background-color:#f4f3fe;
+    background-image:radial-gradient(rgba(107,60,228,.07) .7px,transparent .8px),linear-gradient(100deg,#f4f3fe 0%,#f3f1fe 32%,#f7f8fd 62%,#e6f8fb 100%);
+    background-size:18px 18px,100% 100%;border-bottom-color:rgba(107,60,228,.08)
+  }
+  .sh-inner{gap:18px}
+  .logo{font-size:17px;color:#211d33;gap:9px}
+  .logo-text{color:#211d33}
+  .logo-mark{position:relative;width:26px;height:26px;border-radius:8px;background:#6b3ce4;-webkit-mask:none;mask:none}
+  .logo-mark::before{content:"";position:absolute;inset:4px;background:#fff;-webkit-mask:url('/logo.svg') center/contain no-repeat;mask:url('/logo.svg') center/contain no-repeat}
+  .sh-nav .nav-tabs{height:auto;gap:3px;padding:0;background:none;border:0}
+  .sh-nav .nav-tabs .nav-btn{padding:7px 13px;border-radius:10px;font-size:13.5px;color:#666579}
+  .sh-nav .nav-tabs .nav-btn:hover{color:#6b3ce4;background:rgba(107,60,228,.07)}
+  .sh-nav .nav-tabs .nav-btn.active{color:#6b3ce4;background:#ebeaff;font-weight:600;box-shadow:none}
+  .sh-nav .nav-tabs > .nav-btn > .ico{display:none}
+  /* 2026-11-26 站长定：PC 端榜单提到最前，与发现互换（首页同款在 style.css）。
+     DOM 顺序不动，只调视觉顺序，移动端底部 tab 不受影响。 */
+  .sh-nav .nav-tabs .nav-rank{order:-1}
+  .nav-more{position:relative;display:inline-flex}
+  /* 独立页没引 style.css，button 的浏览器默认边框要在这里自己抹掉 */
+  .nav-more-btn{cursor:pointer;border:0;background:none;color:inherit;font:inherit;line-height:inherit;display:inline-flex;align-items:center;gap:4px}
+  .nm-caret{width:14px;height:14px;flex:none;transition:transform .16s}
+  .nav-more.is-open .nm-caret{transform:rotate(180deg)}
+  .nav-more-menu{position:absolute;top:calc(100% + 8px);left:0;z-index:40;min-width:150px;padding:6px;background:#fff;border:1px solid rgba(107,60,228,.12);border-radius:12px;box-shadow:0 12px 30px rgba(40,34,90,.14)}
+  .nav-more-menu[hidden]{display:none}
+  .nav-menu-item{display:flex;align-items:center;gap:9px;width:100%;padding:9px 11px;border:0;border-radius:9px;background:none;color:#4a475c;font-size:13px;font-weight:500;text-align:left;text-decoration:none;cursor:pointer}
+  .nav-menu-item:hover,.nav-menu-item:focus-visible{color:#6b3ce4;background:#f2f0ff;outline:none}
+  .nav-menu-item .ico{display:inline-flex;width:15px;height:15px}
+  .nav-menu-item .ico svg{width:15px;height:15px}
+  .sh-login,.sh-user{background:rgba(255,255,255,.56);border-color:rgba(107,60,228,.08)}
+  .sh-login:hover{background:#ebeaff;border-color:rgba(107,60,228,.12)}
 }

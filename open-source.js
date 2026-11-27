@@ -338,6 +338,9 @@ function hueOf(s) {
 }
 
 const OSS_CSS = `
+/* 提交弹窗锁滚动：槽位挪到 html padding、body 负 margin 抵消，开合不横向抖动 */
+html.scroll-lock-gap { overflow-y: hidden; padding-right: var(--zm-lock-gap, 0px); }
+body.scroll-locked { overflow: hidden; margin-right: calc(-1 * var(--zm-lock-gap, 0px)); }
 .oss-wrap { padding-bottom: 8px; }
 .oss-hero { padding: 26px 0 2px; max-width: 800px; }
 .oss-kicker {
@@ -728,17 +731,34 @@ function register(app, deps) {
       catInput.addEventListener('change', function () {
         newCatBox.hidden = catInput.value !== '__new';
       });
+      var lockCount = 0, lockY = 0;
+      function lockScroll() {
+        if (++lockCount > 1) return;
+        lockY = window.scrollY;
+        var gap = Math.max(0, window.innerWidth - document.documentElement.clientWidth);
+        document.documentElement.style.setProperty('--zm-lock-gap', gap + 'px');
+        document.documentElement.classList.add('scroll-lock-gap');
+        document.body.classList.add('scroll-locked');
+      }
+      function unlockScroll() {
+        if (!lockCount) return;
+        if (--lockCount) return;
+        document.body.classList.remove('scroll-locked');
+        document.documentElement.classList.remove('scroll-lock-gap');
+        document.documentElement.style.removeProperty('--zm-lock-gap');
+        window.scrollTo(0, lockY);
+      }
       function openModal() {
         modal.hidden = false;
         form.hidden = false;
         done.hidden = true;
         err.hidden = true;
-        document.body.style.overflow = 'hidden';
+        lockScroll();
         setTimeout(function () { repoInput.focus(); }, 40);
       }
       function closeModal() {
         modal.hidden = true;
-        document.body.style.overflow = '';
+        unlockScroll();
       }
       document.querySelectorAll('.oss-open-submit').forEach(function (b) { b.addEventListener('click', openModal); });
       modal.addEventListener('click', function (e) {

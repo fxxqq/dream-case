@@ -19,6 +19,7 @@
       else if (p === '/me') k = 'me';
       else if (p === '/tasks') k = 'tasks';
       else if (p === '/chronicle') k = 'chronicle';
+      else if (p === '/about') k = 'about';
       else if (p === '/rules') k = 'rules';
       else if (p === '/invite') k = 'invite';
       else if (p === '/ads') k = 'ads';
@@ -28,7 +29,8 @@
       else if (p.indexOf('/brand/') === 0) k = 'brand';   // 品牌橱窗页（企业合作内容，整页服务端渲染）
       else if (p.indexOf('/u/') === 0) k = 'author';
       else if (p.indexOf('/list/') === 0) k = 'list';
-      // /w/ 保持 home：详情页是「首页列表 + 弹窗」，首屏本来就要首页视图托底
+      // /w/ 首屏只展示服务端正文；站内卡片仍由 app.js 走详情弹窗
+      else if (p.indexOf('/w/') === 0) k = 'work';
     document.documentElement.setAttribute('data-page', k);
     // hero 进场动画同一标签页只播一次：刷新（含站内跳转回来）不再重播 0.55s 淡入，减少「闪」感。
     // 标记由 app.js 首屏就绪 1.5s 后写入（保证本屏动画先完整播完）
@@ -50,6 +52,10 @@
        但 SSR 索引块被 JS 渲染替换时会多出一次大位移，CLS 从 0.07 恶化到 0.36。
        已改用服务端压缩 CSS 体积（见 server.js 的 CSS 压缩中间件），收益接近、零风险。 -->
   <link rel="stylesheet" href="/style.css" />
+  <!-- 右上角胶囊的等宽数字字体（2026-11-26）：登录用户首绘就有数字，提前 warm 起来，
+       避免 font-display:swap 先落回雅黑再跳一格。只 preload 登录态用到的两个字重。 -->
+  <link rel="preload" href="/fonts/SpaceGrotesk-400.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/SpaceGrotesk-600.woff2" as="font" type="font/woff2" crossorigin />
   <!-- 小住客动效：与 /mascots 换形象页共用同一份，必须在 style.css 之后 -->
   <link rel="stylesheet" href="/mascots.css" />
   <script src="/icons.js"></script>
@@ -57,6 +63,10 @@
        preconnect 提前把 DNS + TLS 握手做掉，省一次完整往返（2026-11-25）。 -->
   <link rel="preconnect" href="https://analytics.umami.is" crossorigin />
   <script defer src="https://analytics.umami.is/script.js" data-website-id="96b6aaa5-bc4f-4f33-8af4-fc294f577e0b"></script>
+  <!-- 谷歌广告 AdSense（2026-11-27）：async 不阻塞渲染；大陆访问加载失败也只是静默失败，不影响页面。
+       这份壳覆盖所有 SPA 页面（首页/榜单/吧/详情/作者页…），实际展示什么广告由 AdSense 后台的自动广告配置决定。 -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5526491839331555"
+     crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -74,17 +84,24 @@
       <!-- role=search + name=q + autocomplete=off：告诉浏览器这是搜索框，别按用户名输入框配对自动填充账号 -->
       <form class="search-box" role="search" onsubmit="return false;">
         <span class="search-icon"><i class="ico" data-ico="search"></i></span>
-        <!-- 输入框够长，完整提示常驻默认（不再聚焦才换文案） -->
-        <input id="searchInput" type="search" name="q" autocomplete="off" placeholder="搜索作品、作者、关键词…" />
+        <!-- 输入框够长，完整提示常驻默认（不再聚焦才换文案）。
+             2026-11-25 站长截图红箭头指这里：抽象提示太空，带个真实例子让人一眼知道能搜什么。 -->
+        <input id="searchInput" type="search" name="q" autocomplete="off" placeholder="搜作品、作者、关键词，例如「效率工具」" />
         <!-- 手机端覆盖层展开时的「取消」按钮（PC 隐藏） -->
         <button type="button" class="search-cancel" id="searchCancel">取消</button>
         <!-- 聚焦时下拉：最近搜索（本地记住）+ 在搜这些（站点真实分类） -->
         <div class="search-suggest" id="searchSuggest" hidden>
+          <!-- 边打边搜：命中作品直接列在输入框下面，一行一件，点一下进详情。
+               页面下方（本周精选 + 列表）保持原样，不用隔着精选往下翻。 -->
+          <div class="sg-block sg-results" id="sgResultsBlock" hidden>
+            <div class="sg-head"><span>找到这些</span><span class="sg-result-count" id="sgResultCount"></span></div>
+            <div class="sg-result-list" id="sgResults"></div>
+          </div>
           <div class="sg-block" id="sgHistBlock" hidden>
             <div class="sg-head"><span>最近搜索</span><button type="button" class="sg-clear" id="sgClearHist">清空</button></div>
             <div class="sg-chips" id="sgHist"></div>
           </div>
-          <div class="sg-block">
+          <div class="sg-block" id="sgHotBlock">
             <div class="sg-head"><span>在搜这些</span></div>
             <div class="sg-chips" id="sgHot"></div>
           </div>
@@ -184,20 +201,32 @@
         });
       };
       var ck = s.checkin || {}, pts = Number(s.points || 0), unread = Number(s.unreadNotices || 0);
-      var lamp = Icons.icon('lamp'), bell = Icons.icon('bell');
+      var bell = Icons.icon('bell');
+      // 2026-11-26 起签到/余额徽章不再输出灯泡图标（app.js 已先改），这里跟上保持逐字一致，
+      // 否则手机档首绘有图标、app.js 接管后消失，会闪一下。
       var ckHtml = ck.done
-        ? '<span class="ck-pts"><span class="ico">' + lamp + '</span>' + pts + '</span>'
-        : '<span class="lb-ico"><span class="ico">' + Icons.icon('checkin') + '</span></span>'
-          + '<span class="ck-label">签到 +' + (ck.todayPoints || 2) + '</span>'
-          + '<span class="ck-pts"><span class="ico">' + lamp + '</span>' + pts + '</span>';
+        ? '<span class="ck-pts num">' + pts + '</span>'
+        : '<span class="ck-label">签到<span class="ck-plus num">+' + (ck.todayPoints || 2) + '</span></span>'
+          + '<span class="ck-pts num">' + pts + '</span>';
       var box = document.getElementById('authBox');
       if (!box) return;
+      // 首绘快照与 app.js renderAuthBox 同一套 DOM：胶囊化后头像多了一个首字圆片，
+      // 两边必须逐字一致，否则 app.js 接管时头部会闪一下。
+      var nick = s.nickname || s.username;
+      var initial = esc((nick || '?').slice(0, 1).toUpperCase());
+      // 与 app.js 的 safeAvatarUrl 同一条白名单：只认站内 /uploads/av-*.webp，避免首绘引外链；
+      // 没传过头像就只画首字，快照带图时首绘就带图，app.js 接管不闪。
+      var av = typeof s.avatar === 'string' && /^\/uploads\/av-[A-Za-z0-9_-]+\.webp$/.test(s.avatar) ? esc(s.avatar) : '';
+      var avaChip = '<span class="uc-ava">' + initial
+        + (av ? '<img src="' + av + '" alt="" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">' : '')
+        + '</span>';
       box.innerHTML =
         '<button type="button" class="link-btn checkin-entry' + (ck.done ? ' is-done' : ' is-todo') + '">' + ckHtml + '</button>'
         + '<button type="button" class="link-btn notice-entry"><span class="nb-ico"><span class="ico">' + bell + '</span></span>'
         + '<span class="nb-dot"' + (unread ? '' : ' style="display:none"') + '>' + (unread > 99 ? '99+' : unread) + '</span></button>'
-        + '<div class="user-menu"><button type="button" class="user-chip">' + Icons.icon('user')
-        + ' <span class="uc-name">' + esc(s.nickname || s.username) + '</span><span class="um-caret">▾</span></button></div>';
+        + '<div class="user-menu"><button type="button" class="user-chip">'
+        + avaChip
+        + ' <span class="uc-name">' + esc(nick) + '</span><svg class="um-caret" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button></div>';
     })();
   </script>
 
@@ -215,7 +244,9 @@
         <h1>每一个用心的作品，<br class="hero-br" />都值得<span class="grad">被更多人看见</span></h1>
         <!-- 手机端才显示的一行定位：大标题在窄屏是藏掉的，没有这行新访客不知道这是什么站 -->
         <p class="hero-tagline"><b>大家的作品</b> · 网站 / 小程序 / 智能体 / 软件，每周更新，点开就能直接用，<button type="button" class="hero-link hero-link-mini hero-mini-open" title="点开看本站小程序码，微信扫码直达">小程序版更顺手 ›</button></p>
-        <p class="hero-sub">收录独立开发者、创作者自制的网站、小程序、智能体、软件、游戏。<br class="hero-sub-br" />想让好作品被看见，去<button type="button" class="hero-link hero-link-submit" id="heroSubmitLink" title="提交你的作品">提交作品</button>或<a class="hero-link" href="/bar" title="去造梦酒馆投递灵感">投递灵感</a>；没头绪时，去 GitHub 翻翻<a class="hero-link" href="/open" title="站外收录的开源项目，只放外链">开源好物</a>。<span class="hero-sub-extra">也可以<button type="button" class="hero-link" id="heroLightLink" title="登录后点亮灯火，把喜欢的作品送上榜单">点亮灯火</button>，让好作品在<a class="hero-link" href="/rank" data-nav title="去榜单看看灯火最多的作品">榜单</a>上脱颖而出；没灵感时翻翻 GitHub 上的<a class="hero-link" href="/open" title="站外收录的开源项目，只放外链">开源好物</a>。</span></p>
+        <!-- 2026-11-25 晚三改：站长反馈「越改越难看」，副标题恢复成原来那种一整句的行文，
+             只把重复的「开源好物」从隐藏段里拿掉；heroSubmitLink / heroLightLink 的 id 都还在。 -->
+        <p class="hero-sub">收录独立开发者、创作者自制的网站、小程序、智能体、软件、游戏。<span class="hero-sub-extra">也可以<button type="button" class="hero-link" id="heroLightLink" title="登录后点亮灯火，把喜欢的作品送上榜单">点亮灯火</button>，让好作品在<a class="hero-link" href="/rank" data-nav title="去榜单看看灯火最多的作品">榜单</a>上脱颖而出。</span></p>
         <!-- 手机端常驻搜索胶囊（对齐小程序首页）：点了打开头部搜索覆盖层，不占头部一行 -->
         <!-- 原来的「已收录 X 件作品」统计行已删：与列表头「共 X 件」重复 -->
         <!-- 2026-11-24 站长：搜索 / 找找两颗按钮并排同一行（原来各占一行，首屏白扔一行）。
@@ -234,11 +265,24 @@
              下拉建议 / 搜索历史 / 防抖绑定全部沿用，不做第二套。桌面显示这一条、藏掉上面的老胶囊；
              手机端（≤640px）反过来——仍用上面的搜索胶囊 + 头部覆盖层，这一条整个藏掉。 -->
         <div class="hero-search-combo" id="heroSearchCombo">
-          <div class="hero-search-slot" id="heroSearchSlot"></div>
-          <button type="button" class="hero-search-go" id="heroSearchGo">搜索</button>
-          <button type="button" class="hero-find hero-find-go" id="heroFindGo" title="说不清叫什么？用一句话描述你想找的东西，找找去站里翻给你">
-            <span class="hf-star" aria-hidden="true">✦</span>找找<b>AI</b>
-          </button>
+          <!-- 2026-11-25 晚：输入框与「搜索」收进同一个外层胶囊，按钮内嵌，不再硬拼出接缝。
+               槽位 id 不变，syncSearchBoxPlacement 仍把同一个 .search-box 搬进来；下拉照旧锚在它上面。 -->
+          <div class="hero-search-field">
+            <div class="hero-search-slot" id="heroSearchSlot"></div>
+            <!-- 2026-11-26 站长定：两颗动作都收进同一个框——「搜索」浅色小胶囊在前，「用 AI 找找」紫色实心在后。id 不变，事件照旧。 -->
+            <button type="button" class="hero-search-go" id="heroSearchGo">搜索</button>
+            <button type="button" class="hero-find hero-find-go" id="heroFindGo" title="说不清叫什么？用一句话描述你想找的东西，找找去站里翻给你">
+              <span class="hf-star" aria-hidden="true">✦</span>用 <b>AI</b> 找找
+            </button>
+          </div>
+        </div>
+        <!-- 2026-11-26 站长给的参考图：搜索框下三条直达入口，用副标题原有的同名链接搬下来，
+             不开新业务、不重复出现；id heroSubmitLink 跟着搬，setupHeader 的绑定不用改。
+             手机端（≤640px）沿用小程序口径，这行整个不显示。 -->
+        <div class="hero-links" id="heroLinks">
+          <button type="button" class="hero-link hero-link-go" id="heroSubmitLink" title="提交你的作品">提交作品<span class="hl-arrow" aria-hidden="true">›</span></button>
+          <a class="hero-link hero-link-go" href="/bar" title="去造梦酒馆投递灵感">投递灵感<span class="hl-arrow" aria-hidden="true">›</span></a>
+          <a class="hero-link hero-link-go" href="/open" title="站外收录的开源项目，只放外链">开源好物<span class="hl-arrow" aria-hidden="true">›</span></a>
         </div>
         <!-- 大家在找：2026-11-14 从酒馆热搜榜搬来——「搜」归搜索区，酒馆只留想法。
              只放站内搜得到的词（点了落空结果是坑人的），12 条全出：种子词贴「热」、
@@ -248,6 +292,21 @@
         <div class="hero-hot is-waiting" id="heroHot">
           <span class="hero-hot-label"><i class="ico" data-ico="search"></i>大家在找</span>
           <div class="hero-hot-list" id="heroHotList"></div>
+        </div>
+        <!-- 2026-11-26 首屏右卡：原型那种 5 张叠层轮播（11-27 站长定 4 改 5），接 BOOT.featured 的真实作品。
+             桌面 ≥1024px 显示，手机仍沿用原居中排版、这一块整个藏掉（见 style.css）。
+             卡片由 app.js setupHeroShowcase 在启动时画进 #hsDeck，先按固定高度占位，避免首屏抖动。 -->
+        <div class="hero-showcase" id="heroShowcase">
+          <div class="hs-halo" aria-hidden="true"></div>
+          <!-- 首屏直出：服务端把混合池的第一批 5 张卡直接写进 #hsDeck（见 server.js 的 ssrHeroCardHtml），
+               卡片跟着 HTML 一起到，不必等 /app.js（≈780KB 压缩版）下载解析完才出现；
+               app.js 启动时校验 id 与 BOOT.heroPool 前 5 张一致后原地接管、不重画，换批时才由 JS 继续画。 -->
+          <div class="hs-deck" id="hsDeck"><!--SSR_HERO--></div>
+          <!-- 轮播进度条：当前段随自动切换倒计时填满，点段可直接跳到那件作品 -->
+          <div class="hs-dots" id="hsDots" aria-label="精选作品轮播进度" hidden></div>
+          <!-- 自动切换前的短促加载圈（参考站长视频里大卡下方的弧线） -->
+          <div class="hs-spin" id="hsSpin" aria-hidden="true" hidden></div>
+          <!-- 2026-11-26 站长定：两侧圆形箭头撤掉（悬停已有自动暂停，点卡片/进度段都能翻，箭头多余且突兀） -->
         </div>
       </div>
 
@@ -263,7 +322,7 @@
                 <circle cx="10" cy="14" r="1.05" fill="currentColor"/>
               </svg>
             </button>
-            <span class="feat-info-pop" role="tooltip">按近 7 天数据打分，取分数排名前 25 的作品入选：获赞 ×5 ＋ 收藏 ×8 ＋ 评论 ×3 ＋ 灯火人数 ×10 ＋ 访客 ×2（同一人只算 1 个访客、作者本人不计）· 不设互动门槛、不按作者分摊名额 · 同分依次比访客、累计浏览 · 展示顺序每天随机重排一次、当天固定（左上角数字是当天排位，不是分数名次）· 卡上的打开/看过是累计数据</span>
+            <span class="feat-info-pop" role="tooltip">按近 14 天数据打分，取分数排名前 25 的作品入选：获赞 ×5 ＋ 收藏 ×8 ＋ 评论 ×3 ＋ 灯火人数 ×10 ＋ 访客 ×2（同一人只算 1 个访客、作者本人不计）· 不设互动门槛、不按作者分摊名额 · 同分依次比访客、累计浏览 · 展示顺序每天随机重排一次、当天固定（左上角数字是当天排位，不是分数名次）· 卡上的打开/看过是累计数据</span>
           </span>
           <div class="featured-nav">
             <button class="fn-btn" id="featPrev" aria-label="向左滑动" disabled>‹</button>
@@ -291,6 +350,21 @@
       <!-- 广告位：首页顶部（位置排在「本周精选」下方；内容在后台「广告位」里挂，没有广告时自动隐藏不占位） -->
       <div class="ad-slot" data-ad-slot="home-top"></div>
 
+      <!-- AdSense 固定单元：首页顶部宽幅 970×250（slot 6227529120，≥1024px 显示），
+           窄屏换 320×100 替身（slot 9301249177）。固定尺寸不依赖容器测量，断点切换只是显示/隐藏，
+           隐藏的那个不出图而已。adsense-unit 类是给 app.js renderAdSlot 的排除标记
+           （ins 天然带 data-ad-slot，不标记会被自家广告位系统当空位清掉）。 -->
+      <div class="adsense-unit" id="adsHomeTop">
+        <ins class="adsbygoogle adsense-970" style="width:970px;height:250px"
+             data-ad-client="ca-pub-5526491839331555" data-ad-slot="6227529120"></ins>
+        <ins class="adsbygoogle adsense-320" style="width:320px;height:100px"
+             data-ad-client="ca-pub-5526491839331555" data-ad-slot="9301249177"></ins>
+        <script>
+          (adsbygoogle = window.adsbygoogle || []).push({});
+          (adsbygoogle = window.adsbygoogle || []).push({});
+        </script>
+      </div>
+
       <!-- 「即将上线」版块 2026-11-13 撤出首页：还在做 / 等平台上架审核的作者常被这栏劝退
            （自己的作品排不进主列表，只在下面这条"预备区"里挂着）。
            整版块挪进酒馆 /bar 右栏（紧跟推荐位「我也想推荐自己的作品」下面），卡片形式，见 bar-rail -->
@@ -308,20 +382,22 @@
       <div class="filter-bar pc-only" id="filterBar">
         <!-- 排序会记在本机（dm_sort），用户点过最新/最热下次打开还是它，所以不写死 active -->
         <div class="sort-toggle" id="sortToggle" role="group" aria-label="排序方式">
-          <button class="st-btn" data-sort="wander">随便逛逛</button>
-          <button class="st-btn" data-sort="latest">最新</button>
-          <button class="st-btn" data-sort="hot">最热</button>
+          <button class="st-btn" data-sort="wander"><i class="ico" data-ico="wander"></i><span>随便逛逛</span></button>
+          <button class="st-btn" data-sort="latest"><i class="ico" data-ico="latest"></i><span>最新</span></button>
+          <button class="st-btn" data-sort="hot"><i class="ico" data-ico="flame"></i><span>最热</span></button>
         </div>
         <div class="filter-row" id="filterRow"></div>
         <!-- 记住开关紧跟筛选胶囊：它记住的就是左边这五项，别甩到最右让人摸不着头脑。
              文案写清「筛选条件」+ 常驻说明，用户一眼知道记住的是什么、下次会怎样。 -->
         <div class="remember-filters">
           <label class="remember-filters-main" title="勾选后记住上方形态/场景/分类/开源/时间这五项筛选，下次打开仍按它们显示；不勾则每次刷新都回到全部">
-            <input type="checkbox" data-remember-filters><span>记住</span>
+            <input type="checkbox" data-remember-filters><i class="ico" data-ico="pin"></i><span>记住</span>
           </label>
           <span class="remember-hint"></span>
         </div>
       </div>
+      <!-- 2026-11-26 已选筛选标签：参考站长给的浅紫胶囊样式，带单删与一键清空 -->
+      <div class="selected-filters pc-only" id="selectedFilters" aria-label="已选筛选条件" hidden></div>
       <!-- H5 移动端专属：与微信小程序橱窗同款——一行 tab（形态/场景/分类/开源/时间/最新，2026-11-15 场景挪到形态后），点开在下方展开胶囊面板 -->
       <div class="fbar-wrap h5-only" id="filterWrap">
         <div class="fbar"></div>
@@ -391,6 +467,22 @@
       <div class="load-more-wrap">
         <div class="ad-slot" data-ad-slot="home-bottom"></div>
         <button class="btn-ghost" id="loadMore" style="display:none">加载更多</button>
+      </div>
+
+      <!-- AdSense 固定单元：首页底部大方形 336×280（slot 1525545988）——列表到底、加载更多之后的
+           自然歇脚点，不进首屏、不打断逛展；自家 home-bottom 位对游客有 3 天门槛，这里正好补位。
+           ≤380px 小屏换 320×100 替身（slot 9301249177）：336 在 360px 屏上会横向溢出。
+           adsense-unit 类是给 app.js renderAdSlot 的排除标记（ins 天然带 data-ad-slot，
+           不标记会被自家广告位系统当空位清掉）。 -->
+      <div class="adsense-unit" id="adsHomeSquare">
+        <ins class="adsbygoogle adsense-336" style="width:336px;height:280px"
+             data-ad-client="ca-pub-5526491839331555" data-ad-slot="1525545988"></ins>
+        <ins class="adsbygoogle adsense-320" style="width:320px;height:100px"
+             data-ad-client="ca-pub-5526491839331555" data-ad-slot="9301249177"></ins>
+        <script>
+          (adsbygoogle = window.adsbygoogle || []).push({});
+          (adsbygoogle = window.adsbygoogle || []).push({});
+        </script>
       </div>
 
       <!-- 站外灵感：链滴 AI 精选（需配置 LD246_TOKEN，未配置时整块 hidden，不占位）。
@@ -574,12 +666,11 @@
       </div>
     </section>
 
-    <!-- 造梦酒馆：说出你想要的作品，社区里的创作者来认领实现；上方挂「大家最近在搜」 -->
+      <!-- 造梦酒馆：说出你想要的作品，社区里的创作者来认领实现；上方挂「大家最近在搜」 -->
     <section id="wishView" style="display:none">
-      <!-- 顶部导航已有高亮的「造梦酒馆」，这里不再重复一个大标题；只留一点顶部呼吸空间 -->
-      <div class="bar-head">
-        <p class="bar-sub">都用下面这一个框，先选个主题——<b>闲聊</b>说两句、<b>安利</b>晒好东西、<b>找工具</b>等创作者来接、<b>分享</b>留点经验</p>
-      </div>
+      <!-- 顶部导航已有高亮的「造梦酒馆」，这里不再重复一个大标题；只留一点顶部呼吸空间。
+           2026-11-27 站长：那句「都用下面这一个框…」提示文案去掉，.bar-head 只当占位留间距（padding 见 style.css）。 -->
+      <div class="bar-head" aria-hidden="true"></div>
 
       <!-- 页头数字（N 个想法 / 已实现 / 正在做 / 征集中 / 本周新增）2026-11-12 先去掉：
            恢复只需把下面这行加回来，renderWishStats 与 .bar-stats 样式都还留着 -->
@@ -592,7 +683,7 @@
         <div class="bar-main">
 
         <!-- 发布器（2026-11-14 改）：不再分「提想法 / 随便聊」两个模式，改成先选主题——
-             闲聊 / 安利 / 找工具 / 分享，也能自建（≤4 字）。
+             闲聊 / 安利 / 找工具 / 分享 / 创作者故事，也能自建（≤5 字）。
              选「找工具」仍进想法池（能被创作者认领、点「我来实现」），其余进散座；
              主题落 p.topic，卡片角标直接读它，不再靠「有没有 #找工具」猜。 -->
         <div class="cmp-wrap">
@@ -602,12 +693,13 @@
             <button class="cmp-topic" type="button" data-topic="安利" aria-pressed="false">安利</button>
             <button class="cmp-topic" type="button" data-topic="找工具" aria-pressed="false">找工具</button>
             <button class="cmp-topic" type="button" data-topic="分享" aria-pressed="false">分享</button>
-            <!-- 自建主题落在这里：点「＋ 自建」输 4 个字，确认后就变成这一枚 chip -->
+            <button class="cmp-topic" type="button" data-topic="创作者故事" aria-pressed="false">创作者故事</button>
+            <!-- 自建主题落在这里：点「＋ 自建」输 5 个字，确认后就变成这一枚 chip -->
             <button class="cmp-topic" type="button" id="cmpTopicCustom" data-topic="" hidden></button>
             <button class="cmp-topic cmp-topic-add" type="button" id="cmpTopicAdd"
-              title="自己起一个主题，最多 4 个字" aria-expanded="false">＋ 自建</button>
-            <input class="cmp-topic-input" id="cmpTopicInput" maxlength="4" autocomplete="off" hidden
-              placeholder="4 字内" aria-label="自定义主题，最多 4 个字" />
+              title="自己起一个主题，最多 5 个字" aria-expanded="false">＋ 自建</button>
+            <input class="cmp-topic-input" id="cmpTopicInput" maxlength="5" autocomplete="off" hidden
+              placeholder="5 字内" aria-label="自定义主题，最多 5 个字" />
             <span class="cmp-note" id="cmpNote">找工具会被创作者看到，可以点「我来实现」</span>
           </div>
           <!-- 找工具：这一档仍走想法池（能认领、有「N 人想要」），所以只有它是「标题 + 补充说明」两段 -->
@@ -702,6 +794,13 @@
                摆在右栏「近7日热门」上方（2026-11-12 站长定的位置，原先在散座话题流第 3 楼后）；
                data-ad-rail=bar → renderAdSlot 按后台「推荐位同屏条数」的 barSide 竖排出 N 条 -->
           <div class="ad-slot" data-ad-slot="rank" data-ad-rail="bar"></div>
+          <!-- AdSense 固定单元：右栏方形 300×250（slot 1506519636）。右栏版心就是 300px
+               （宽屏档 340px），固定尺寸居中即可；adsense-unit 是 renderAdSlot 的排除标记 -->
+          <div class="adsense-unit" id="adsBarSquare">
+            <ins class="adsbygoogle" style="width:300px;height:250px"
+                 data-ad-client="ca-pub-5526491839331555" data-ad-slot="1506519636"></ins>
+            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+          </div>
           <!-- 即将上线（2026-11-13 从首页挪来）：还在做 / 等平台上架审核的作品，右栏卡片形式，
                紧跟推荐位「我也想推荐自己的作品」下面。数据少时自然收缩，一件都没有就整块收起（hidden）不留空框 -->
           <section class="bar-upcoming" id="barUpcoming" hidden>
@@ -732,6 +831,14 @@
             </div>
             <div class="bs-list" id="bsList"></div>
           </section>
+
+          <!-- AdSense 固定单元：右栏半页竖幅 300×600（slot 5964639395）。放右栏最底——
+               把右栏逛到底的人停留最深，竖幅不抢热门/书架的位置 -->
+          <div class="adsense-unit" id="adsBarHalf">
+            <ins class="adsbygoogle" style="width:300px;height:600px"
+                 data-ad-client="ca-pub-5526491839331555" data-ad-slot="5964639395"></ins>
+            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+          </div>
         </aside>
       </div><!-- /.bar-grid -->
     </section>
@@ -777,7 +884,7 @@
     <section id="guideView" style="display:none">
       <div class="page-head wish-page-head">
         <h2 class="page-title"><i class="ico" data-ico="megaphone"></i> 外宣指南</h2>
-        <p>做一次，到 8 个地方露脸——附投稿入口和避坑要点</p>
+        <p>做一次，到 9 个地方露脸——附投稿入口和避坑要点</p>
       </div>
       <div class="guide-howto">
         <div class="guide-step"><b>1</b><span>打开任意作品详情，点「<i class="ico" data-ico="megaphone"></i>外宣包」，按平台生成投稿文案</span></div>
@@ -874,6 +981,9 @@
           <!-- 「找找」补全提示条（2026-11-14）：仅本人可见。找找靠介绍/一句话定位对问题，
                缺了就只剩标题能撞——这里把「差什么」摆出来，一条「补全」直达编辑器对应输入框 -->
           <div class="author-find-strip" id="authorFindStrip" style="display:none"></div>
+          <!-- 造梦日志（2026-11-27）：作者自己写的轻量博客，几段文字 + 几张插图。
+               没写过就整块隐藏（访客视角不占位）；本人没写过时给一张「写第一篇」的引导卡 -->
+          <div class="author-logs" id="authorLogs" style="display:none"></div>
           <div class="gallery" id="authorGallery"></div>
         </div>
         <aside class="author-side" id="authorSide" style="display:none">
@@ -979,7 +1089,7 @@
         <div class="howto-card">
           <h3><span class="howto-no">7</span>上线后，这样让更多人看见</h3>
           <p>· <b>分享卡片</b>：详情页一键生成带二维码的分享图，发朋友圈 / 小红书都行<br />
-             · <b>外宣包</b>：按 Product Hunt、V2EX、少数派等 8 个平台生成现成投稿文案，复制就能投（见<a href="/guide">外宣指南</a>）<br />
+             · <b>外宣包</b>：按 Product Hunt、V2EX、少数派等 9 个平台生成现成投稿文案，复制就能投（见<a href="/guide">外宣指南</a>）<br />
              · <b>推荐</b>：用灯火给自己的作品换个推荐位，可投到「作品详情页」「榜单页顶部」「首页第一格」；榜单页顶部在榜单列表之外、<b>不占名次编号</b>，带「推荐」角标。曝光包按位置 1-4 灯火/次（首页第一格最贵，一个点击按 30 次曝光折算），点击包只为真点开的人付费、去向可选「作品详情页」或「作品官网 / 下载链接」（跳站外按站内价 2 倍收），具体单价以投放面板的实时价为准；多人投同一位置时每次随机展示一条、各家机会均等；兑换成功后你自己的浏览器会临时优先显示你那条，方便确认投放生效（其他访客仍随机）；同一访客每天最多消耗你 1 次曝光（超出不扣灯火）；随时可撤下，到期没投完也按剩余额度退回；投放只在推荐卡被看到 / 被点开时计数，<b>不改变「最新」「最热」「随便逛逛」的排序</b>，作品在那几处被正常浏览、点开也不扣灯火；一件作品可以同时投几个位置，<b>每个位置单独计</b>，同一个人当天在每个位置最多各扣 1 次<br />
              · <b>赚灯火</b>：上传作品首件 +200（作品上线即到 100 盏，剩下 100 盏 24 小时无投诉到账）、之后每件 +50（上线 48 小时无投诉到账）、每日签到 5→5→10→10→20→20→30 七天一轮、第 7 天全勤共拿 100 盏（数字是每天拿多少，不是第几天；断一天就回到第 1 天的 5 盏重来，已经拿到的不倒扣）、微信小程序看激励视频每次 +30 盏（每天 3 次，与签到互不影响，网页签到卡也能扫码去领）、好友通过你的分享链接访问 +1、好友注册 +100（累计邀请注册满 5 人一次性 +2000、此后每满 5 人再 +3000，不封顶）、标注开源 +50、开源作品的 GitHub star 点「更新 star 奖励」同步后按 1:1 换灯火（100 以内当场到账）<br />
              · <b>榜单</b>：按访客、点赞、收藏等数据评出各类榜单，数据好的作品会被「本周精选」收录，高光榜让每件作品的最好一周永久留档<br />
@@ -1050,7 +1160,7 @@
         <div class="cat-main">
           <div class="cat-head">
             <div>
-              <h2 id="discPcTitle">全部作品</h2>
+              <h1 id="discPcTitle">全部作品</h1>
               <p id="discPcDesc">按用途逛一逛，找到刚好能帮上忙的那一个</p>
             </div>
           </div>
@@ -1080,8 +1190,11 @@
               </select>
             </div>
           </div>
-          <section class="gallery cols-5" id="discPcGallery"></section>
+          <section class="gallery cols-5" id="discPcGallery"><!--SSR_DISCOVER--></section>
           <div class="cat-empty" id="discPcEmpty" style="display:none">这个分类暂时没有作品</div>
+          <div class="load-more-wrap" id="discPcMore" style="display:none">
+            <button type="button" class="btn-ghost" id="discPcMoreBtn">加载全部作品</button>
+          </div>
         </div>
       </div>
       <div class="disc-m">
@@ -1206,6 +1319,18 @@
   </main>
 
   <div class="container">
+    <!-- AdSense 固定单元：页脚上方通栏 728×90（slot 3262454437，≥768px 显示，全站各视图都经过这里），
+         窄屏换 320×100 替身（slot 9301249177）。排在自家 footer 广告位之前 -->
+    <div class="adsense-unit" id="adsFooterBar">
+      <ins class="adsbygoogle adsense-728" style="width:728px;height:90px"
+           data-ad-client="ca-pub-5526491839331555" data-ad-slot="3262454437"></ins>
+      <ins class="adsbygoogle adsense-320" style="width:320px;height:100px"
+           data-ad-client="ca-pub-5526491839331555" data-ad-slot="9301249177"></ins>
+      <script>
+        (adsbygoogle = window.adsbygoogle || []).push({});
+        (adsbygoogle = window.adsbygoogle || []).push({});
+      </script>
+    </div>
     <div class="ad-slot ad-slot-footer" data-ad-slot="footer"></div>
   </div>
 
@@ -1273,6 +1398,7 @@
             <!-- 开源好物 /open：站外 GitHub 项目外链页，与专栏（站内精选）分开，不进作品池 -->
             <a href="/open" class="footer-link">开源好物</a>
             <a href="/creators" data-nav class="footer-link">造梦者书架</a>
+            <a href="/about" class="footer-link">关于本站</a>
           </div>
           <div class="fgroup">
             <span class="fg-label">参与</span>
@@ -1323,12 +1449,15 @@
   </footer>
 
   <!-- 提交作品弹窗 -->
+  <template id="dm-tpl-uploadModal" data-modal-root>
   <div class="modal-mask" id="uploadModal" style="display:none">
     <div class="modal">
       <div class="modal-head">
         <h2 id="modalTitle">提交作品</h2>
         <button class="close-btn" id="closeUpload">✕</button>
       </div>
+      <div class="upload-body">
+      <div class="upload-main">
       <p class="form-hint" id="formHint"></p>
       <!-- 站长编辑：这件作品的认领暗号（明文只在 ?edit=1 路径下发），只读展示方便站长核对 / 转发给作者 -->
       <div class="admin-claim-code-bar" id="adminClaimCodeBar" style="display:none">
@@ -1424,9 +1553,9 @@
             <span class="ai-fill-caret" aria-hidden="true"></span>
           </button>
           <div class="ai-feed-body" id="aiFeedBody" hidden>
-            <p class="ai-fill-tip">复制这段话粘给你的 AI 助手（ChatGPT / Claude / 元宝…都行），它会照 <a href="/skill.md" target="_blank" rel="noopener">投稿说明书</a> 替你完成投稿、把作品送进审核。密钥已自动带出，点按钮就能复制；<b>只对投稿生效</b>，动不了你的账号；感觉泄露了就换一把新的。</p>
+            <p class="ai-fill-tip">复制这段话粘给你的 AI 助手（WorkBuddy / Trae / Qoder / ChatGPT / Claude / 元宝…都行），它会照 <a href="/skill.md" target="_blank" rel="noopener">投稿说明书</a> 替你完成投稿、把作品送进审核。登录后展开这里：<b>已有密钥自动带出，没有就直接生成</b>，点按钮就能复制；没登录会先提示登录，不想登录直接在下面投稿走人工审核。密钥<b>只对投稿生效</b>，动不了你的账号；感觉泄露了就换一把新的。</p>
             <input type="text" id="aiFeedKey" maxlength="56" autocomplete="off" spellcheck="false"
-                   placeholder="这里会自动带出你的投稿密钥；没有就点下面生成" />
+                   placeholder="这里会自动带出或生成你的投稿密钥，不用手动填" />
             <div class="ai-fill-actions">
               <button type="button" class="btn-primary" id="aiFeedCopy">复制喂给 AI 的话</button>
               <button type="button" class="ai-feed-rotate" id="aiFeedRotate" hidden>忘了密钥？换一把新的并复制</button>
@@ -1520,7 +1649,7 @@
           <div class="ql-body" id="qlBody">
             <label>一句话定位 <span class="ql-count" data-for="qlPositioning">0/60</span></label>
             <input type="text" name="positioning" id="qlPositioning" maxlength="60"
-                   placeholder="它是什么 + 给谁 + 有什么用，如：独立开发者的作品发布清单，一次填完同步到 8 个平台" />
+                   placeholder="它是什么 + 给谁 + 有什么用，如：独立开发者的作品发布清单，一次填完同步到 9 个平台" />
             <!-- 定位句是最费脑的一栏，也是「找找」最依赖的一栏：直接从上面的作品介绍里提炼。
                  介绍太短时不发请求，在这里给出口（去写两句介绍），别让作者点了没反应。 -->
             <p class="ai-pos-row">
@@ -1659,11 +1788,23 @@
         <!-- 删掉当前这份草稿：单份草稿时不会弹选择层，表单里必须留一个出口（正在续填/已存过才显示） -->
         <button type="button" class="draft-discard" id="draftDiscard" style="display:none">删除这份草稿</button>
       </form>
+      </div><!-- /upload-main -->
+
+      <!-- 卡片实时预览：右边这张就是提交后在列表里别人看到的样子。
+           桌面常驻右侧；手机上折叠成一行，点开再看，不把表单往下推一大截。 -->
+      <details class="card-live-preview" id="cardLivePreview" open>
+        <summary>卡片预览 <span>边填边看 · 提交后长这样</span></summary>
+        <p class="clp-note">封面取第一张作品图；赞数、日期是示意，其余文字和角标跟真正上线一致。</p>
+        <div id="cardLivePreviewBody"></div>
+      </details>
+      </div><!-- /upload-body -->
     </div>
   </div>
+  </template>
 
   <!-- 关于本站：页脚内容（运营统计/站点描述/链接组/友链/备案）在移动端的聚合入口，
        打开时整块克隆 .footer-inner 的活节点（见 openSiteInfo），入口在「我的」页 -->
+  <template id="dm-tpl-siteInfoModal" data-modal-root>
   <div class="modal-mask" id="siteInfoModal" style="display:none">
     <div class="modal modal-site-info">
       <div class="modal-head">
@@ -1673,8 +1814,10 @@
       <div id="siteInfoBody" class="site-info-body"></div>
     </div>
   </div>
+  </template>
 
   <!-- 匿名投稿「存到我名下」：从投稿进度页带着 claimToken 过来，登录/注册后自动认领 -->
+  <template id="dm-tpl-claimOwnModal" data-modal-root>
   <div class="modal-mask" id="claimOwnModal" style="display:none">
     <div class="modal modal-claim">
       <div class="modal-head">
@@ -1697,9 +1840,11 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 认领暗号随链接带来：主链 https://zm94.com?c=<暗号> 或详情页 /w/<id>?c=<暗号>（兼容 ?claim=）。
        作者打开→确认→登录/注册后当场认领，不用等审核；主链没带作品 id，作品由服务端按暗号全站找 -->
+  <template id="dm-tpl-codeClaimModal" data-modal-root>
   <div class="modal-mask" id="codeClaimModal" style="display:none">
     <div class="modal modal-claim">
       <div class="modal-head">
@@ -1721,8 +1866,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 注册 / 登录后按 IP 认出「这个网络匿名投过、还没归属」的作品：勾选确认即当场认领，不用审核 -->
+  <template id="dm-tpl-ipClaimModal" data-modal-root>
   <div class="modal-mask" id="ipClaimModal" style="display:none">
     <div class="modal modal-claim">
       <div class="modal-head">
@@ -1740,8 +1887,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 限时任务：体验产品 → 回传截图 → 人工审核发灯火 -->
+  <template id="dm-tpl-limitedTaskModal" data-modal-root>
   <div class="modal-mask" id="limitedTaskModal" style="display:none">
     <div class="modal modal-limited-task">
       <div class="modal-head">
@@ -1765,19 +1914,25 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 数据与推荐：我的作品浏览/点赞/收藏/评论 + 可切范围的浏览趋势 + 推荐入口 -->
+  <template id="dm-tpl-statsModal" data-modal-root>
   <div class="modal-mask" id="statsModal" style="display:none">
     <div class="modal modal-stats">
       <div class="modal-head">
         <h2 id="statsTitle">作品数据</h2>
+        <!-- 签到弹窗标题栏的兑换码快捷入口：吸顶常驻，看签到进度时随时能领；只在 checkin 模式亮出来 -->
+        <button type="button" class="stats-head-gift" id="statsHeadGift"><i class="ico" data-ico="ticket" data-ico-size="15"></i> 兑换码</button>
         <button class="close-btn" id="closeStats" title="关闭">✕</button>
       </div>
       <div id="statsBody" class="stats-body"></div>
     </div>
   </div>
+  </template>
 
   <!-- 活动兑换码：输入码换灯火（推荐面板 / 个人菜单进来） -->
+  <template id="dm-tpl-giftModal" data-modal-root>
   <div class="modal-mask" id="giftModal" style="display:none">
     <div class="modal modal-gift">
       <div class="modal-head">
@@ -1791,11 +1946,13 @@
       <p class="gift-msg" id="giftMsg" style="display:none"></p>
     </div>
   </div>
+  </template>
 
   <!-- 自己生成一曲（2026-11-18）：八音盒面板里的第二扇门。
        曲子不落库、不传音频文件：只把「种子 + 四个参数」当输入，现场算出声音。
        同一个种子必然长出同一首，所以「分享」就是把这串字符给朋友，他粘回来能听到一样的一首。
        控件用原生 select / range：手机上不弹自己画的东西，稳，也不会跟站里的样式打架。 -->
+  <template id="dm-tpl-musicModal" data-modal-root>
   <div class="modal-mask" id="musicModal" style="display:none">
     <div class="modal modal-music">
       <div class="modal-head">
@@ -1851,8 +2008,10 @@
       <a href="/musicbox" style="display:block;text-align:center;margin-top:12px;font-size:12.5px;color:#6a63c9;text-decoration:none">想一颗一颗摆音符？去「作曲台」自己写一首 ↗</a>
     </div>
   </div>
+  </template>
 
   <!-- 刚发布就投首页第一格：这件作品本来就排在第一屏，买之前先劝一次（不硬拦，灯火是作者自己的） -->
+  <template id="dm-tpl-freshModal" data-modal-root>
   <div class="modal-mask" id="freshModal" style="display:none">
     <div class="modal modal-fresh">
       <div class="modal-head">
@@ -1866,8 +2025,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 草稿箱：有多份草稿时选一份继续填（1 份不弹，直接续填） -->
+  <template id="dm-tpl-draftPickModal" data-modal-root>
   <div class="modal-mask" id="draftPickModal" style="display:none">
     <div class="modal modal-draft-pick">
       <div class="modal-head">
@@ -1878,8 +2039,10 @@
       <div id="draftPickBody" class="draft-pick-body"></div>
     </div>
   </div>
+  </template>
 
   <!-- AI 帮写结果：原文还在时让作者选「替换」还是「追加」，直接关掉就不动原文 -->
+  <template id="dm-tpl-aiIntroPickModal" data-modal-root>
   <div class="modal-mask" id="aiIntroPickModal" style="display:none">
     <div class="modal modal-ai-pick">
       <div class="modal-head">
@@ -1894,8 +2057,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 分享选作品：从推荐弹窗的「去分享作品」进来，选中后打开分享卡片 -->
+  <template id="dm-tpl-sharePickModal" data-modal-root>
   <div class="modal-mask" id="sharePickModal" style="display:none">
     <div class="modal modal-share-pick">
       <div class="modal-head">
@@ -1906,6 +2071,7 @@
       <div id="sharePickBody" class="share-pick-body"></div>
     </div>
   </div>
+  </template>
 
   <!-- 详情竖排条「合集」的就地浮层：不套第二层遮罩弹窗，点开就能新建并放入 / 放进已有合集。
        位置由 JS 按按钮坐标定位，挂在 body 末尾才不会被详情弹窗的 overflow:hidden 裁掉 -->
@@ -1922,6 +2088,7 @@
   </div>
 
   <!-- 作品对比：发现页勾 2～3 件，并排看价格 / 平台 / 开源 / 最近更新这些容易来回翻的事实 -->
+  <template id="dm-tpl-compareModal" data-modal-root>
   <div class="modal-mask" id="compareModal" style="display:none">
     <div class="modal modal-compare">
       <div class="modal-head">
@@ -1932,8 +2099,10 @@
       <div id="compareBody" class="cmp-body"></div>
     </div>
   </div>
+  </template>
 
   <!-- 站内消息：按「系统 / 广告 / 灯火 / 消息 / 营销」分栏（营销永远垫底），关窗时把当前分栏结算为已读 -->
+  <template id="dm-tpl-noticeMask" data-modal-root>
   <div class="modal-mask" id="noticeMask" style="display:none">
     <div class="modal modal-notice">
       <div class="modal-head">
@@ -1959,10 +2128,12 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 用户私信：左边会话列表、右边聊天（手机端单栏切换）。
        和「给站长留言」不是同一套：那个是用户 ↔ 站长的客服通道，走站内消息；
        这里是用户之间的一对一私聊，数据单独存 data/dms.json。 -->
+  <template id="dm-tpl-dmMask" data-modal-root>
   <div class="modal-mask" id="dmMask" style="display:none">
     <div class="modal modal-dm" id="dmModal">
       <section class="dm-pane dm-list-pane" id="dmListPane">
@@ -2003,9 +2174,11 @@
       </section>
     </div>
   </div>
+  </template>
 
   <!-- 举报私信：私信没有旁观者，举报是唯一的出口。
        只让用户说「哪条、为什么」，证据由服务端随手截（被举报那条 + 前后各 2 条）-->
+  <template id="dm-tpl-dmReportModal" data-modal-root>
   <div class="modal-mask" id="dmReportModal" style="display:none">
     <div class="modal modal-dm-report">
       <div class="modal-head">
@@ -2025,8 +2198,10 @@
       <p class="form-hint">提交时会一并保存被举报消息及其前后各 2 条作为凭证，只用于处理这次举报。</p>
     </div>
   </div>
+  </template>
 
   <!-- 回复管理员：精选 / 消息通知的双向会话 -->
+  <template id="dm-tpl-replyModal" data-modal-root>
   <div class="modal-mask" id="replyModal" style="display:none">
     <div class="modal modal-reply">
       <div class="modal-head">
@@ -2041,8 +2216,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 修改昵称：只改展示名，登录账号 / 作品归属不变 -->
+  <template id="dm-tpl-nickModal" data-modal-root>
   <div class="modal-mask" id="nickModal" style="display:none">
     <div class="modal modal-nick">
       <div class="modal-head">
@@ -2065,9 +2242,11 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 个性地址：作者页链接从 /u/账号id 换成 /u/自己起的名字（好念、好印在名片和 README 上）。
        只对有作品的作者开放（没作品时作者页本身是空的），规则与冷却见 server.js 的 slugParse -->
+  <template id="dm-tpl-slugModal" data-modal-root>
   <div class="modal-mask" id="slugModal" style="display:none">
     <div class="modal modal-nick">
       <div class="modal-head">
@@ -2093,8 +2272,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- AI 发布密钥：把投稿交给 AI 助手的钥匙。登录后自动带出现有密钥，可随时轮换 / 吊销 -->
+  <template id="dm-tpl-pubkeyModal" data-modal-root>
   <div class="modal-mask" id="pubkeyModal" style="display:none">
     <div class="modal modal-nick">
       <div class="modal-head">
@@ -2103,7 +2284,7 @@
       </div>
       <div class="nick-body">
         <p class="nick-tip" style="margin-top:0">
-          把密钥交给你的 AI 助手（WorkBuddy、ChatGPT 等都行），它就能帮你把产品一键投到造梦橱窗。
+          把密钥交给你的 AI 助手（WorkBuddy、Trae、Qoder、ChatGPT、Claude、元宝等都行），它就能帮你把产品一键投到造梦橱窗。
           密钥只能用来投稿：改不了密码、看不了私信、动不了你的账号；AI 代投的作品会过一道机器初审，通过即自动上线。
         </p>
         <div class="slug-field">
@@ -2124,8 +2305,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 头像：上传 / 用 GitHub / 恢复首字母。三个来源都由服务端裁成 256 见方存站内 -->
+  <template id="dm-tpl-avaModal" data-modal-root>
   <div class="modal-mask" id="avaModal" style="display:none">
     <div class="modal modal-nick">
       <div class="modal-head">
@@ -2149,8 +2332,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 账号设置：登录名（别名）+ 密码 -->
+  <template id="dm-tpl-passModal" data-modal-root>
   <div class="modal-mask" id="passModal" style="display:none">
     <div class="modal modal-nick">
       <div class="modal-head">
@@ -2159,7 +2344,7 @@
       </div>
       <div class="nick-body">
         <label class="nick-label" for="aliasInput">登录名（建议填写，好记的名字）</label>
-        <input id="aliasInput" class="nick-input" maxlength="20" autocomplete="off" placeholder="例如：xiaoming、写代码的猫" />
+        <input id="aliasInput" class="nick-input" maxlength="50" autocomplete="off" placeholder="例如：xiaoming、写代码的猫" />
         <p class="nick-tip" id="aliasTip">登录时「登录名 + 密码」和「系统账号名 + 密码」都能进。设一次就行，之后 30 天才能改。</p>
         <label class="nick-label" for="passCurrent" id="passCurrentLabel">当前密码</label>
         <input id="passCurrent" type="password" class="nick-input" autocomplete="new-password" placeholder="输入现在的密码" />
@@ -2177,8 +2362,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- GitHub 绑定：已登录账号把 GitHub 挂上来（之后可以一键登录） -->
+  <template id="dm-tpl-ghModal" data-modal-root>
   <div class="modal-mask" id="ghModal" style="display:none">
     <div class="modal modal-nick">
       <div class="modal-head">
@@ -2188,8 +2375,10 @@
       <div class="nick-body" id="ghBody"></div>
     </div>
   </div>
+  </template>
 
   <!-- Google 绑定：已登录账号把 Gmail 挂上来（之后可以一键登录） -->
+  <template id="dm-tpl-gModal" data-modal-root>
   <div class="modal-mask" id="gModal" style="display:none">
     <div class="modal modal-nick">
       <div class="modal-head">
@@ -2199,8 +2388,10 @@
       <div class="nick-body" id="gBody"></div>
     </div>
   </div>
+  </template>
 
   <!-- 注销账号：双确认（账号名 + 密码），作品可选保留或一并删除 -->
+  <template id="dm-tpl-delAccModal" data-modal-root>
   <div class="modal-mask" id="delAccModal" style="display:none">
     <div class="modal modal-nick modal-delacc">
       <div class="modal-head">
@@ -2230,7 +2421,7 @@
         </div>
 
         <label class="nick-label" for="delAccNameInput">输入账号名 <b id="delAccNameHint"></b> 确认</label>
-        <input id="delAccNameInput" class="nick-input" maxlength="20" autocomplete="off" placeholder="完整输入你的账号名" />
+        <input id="delAccNameInput" class="nick-input" maxlength="50" autocomplete="off" placeholder="完整输入你的账号名" />
         <label class="nick-label" for="delAccPass" id="delAccPassLabel">登录密码</label>
         <input id="delAccPass" type="password" class="nick-input" autocomplete="new-password" placeholder="输入当前密码" />
         <p class="nick-msg" id="delAccMsg"></p>
@@ -2241,8 +2432,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 造梦酒馆：认领者把做好的作品挂上来 -->
+  <template id="dm-tpl-ideaDoneModal" data-modal-root>
   <div class="modal-mask" id="ideaDoneModal" style="display:none">
     <div class="modal modal-idea">
       <div class="modal-head">
@@ -2260,8 +2453,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 发布想法时撞到相似想法：先请用户「去顶一下」，别把想要票数分散到两张卡 -->
+  <template id="dm-tpl-wishSimilarModal" data-modal-root>
   <div class="modal-mask" id="wishSimilarModal" style="display:none">
     <div class="modal modal-idea">
       <div class="modal-head">
@@ -2277,8 +2472,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 造梦酒馆：点想法卡片展开的详情。里面是结构化讨论，不是自由评论区 -->
+  <template id="dm-tpl-ideaDetailModal" data-modal-root>
   <div class="modal-mask" id="ideaDetailModal" style="display:none">
     <div class="modal modal-idea-detail" role="dialog" aria-modal="true" aria-labelledby="ideaDetailTitle">
       <div class="modal-head">
@@ -2288,8 +2485,10 @@
       <div class="idea-detail-body" id="ideaDetailBody"></div>
     </div>
   </div>
+  </template>
 
   <!-- 造梦酒馆：点闲聊卡片/正文弹出的帖子详情：全文 + 碰杯 + 回应都在这层（2026-11-13） -->
+  <template id="dm-tpl-chatModal" data-modal-root>
   <div class="modal-mask" id="chatModal" style="display:none">
     <div class="modal modal-chat-post" role="dialog" aria-modal="true" aria-labelledby="chatModalTitle">
       <div class="modal-head">
@@ -2299,26 +2498,32 @@
       <div class="chat-post-body" id="chatModalBody"></div>
     </div>
   </div>
+  </template>
 
   <!-- 未登录投稿时的选择弹窗：注册免审 or 匿名等审核 -->
+  <template id="dm-tpl-submitChoiceModal" data-modal-root>
   <div class="modal-mask" id="submitChoiceModal" style="display:none">
     <div class="modal modal-choice">
       <div class="modal-head">
         <h2>要注册一下吗？</h2>
       </div>
       <div class="choice-list">
+        <p><b>微信扫码</b>投稿：手机确认后自动建号，<b>不用填注册表单</b>，作品立即上线；已填的内容和图片都留在表单里。按法规要求，首次发布前仍需核验一次手机号。</p>
         <p><b>注册 / 登录后</b>提交：作品<b>立即上线</b>（免审核），之后还能随时编辑、管理作品。</p>
         <p><b>不注册</b>也能提交：作品先进入<b>人工审核</b>，通过后才会展示，通常几小时内处理完。</p>
       </div>
       <div class="choice-actions">
+        <button type="button" class="btn-primary" id="choiceWxScan">微信扫码一键投稿（免注册）</button>
         <button type="button" class="btn-primary" id="choiceRegister">注册 / 登录，免审直发</button>
         <button type="button" class="btn-ghost" id="choiceAnon">匿名提交，等审核</button>
       </div>
       <p class="choice-cancel"><button type="button" class="link-btn" id="choiceCancel">再改改内容</button></p>
     </div>
   </div>
+  </template>
 
   <!-- 企业合作工具详情弹窗（作品流里那张工具卡点开的，不是作品详情） -->
+  <template id="dm-tpl-toolModal" data-modal-root>
   <div class="modal-mask" id="toolModal" style="display:none">
     <div class="modal tool-detail">
       <button class="close-btn" id="closeToolDetail" title="关闭">✕</button>
@@ -2339,8 +2544,10 @@
       <p class="td-dismiss"><button type="button" class="link-btn" id="tdHide">不再提示此工具</button></p>
     </div>
   </div>
+  </template>
 
   <!-- 作品详情弹窗 -->
+  <template id="dm-tpl-detailModal" data-modal-root>
   <div class="modal-mask" id="detailModal" style="display:none">
     <div class="modal detail">
       <button class="close-btn" id="closeDetail">✕</button>
@@ -2479,6 +2686,10 @@
         <!-- 简介挪到按钮区下面：作者写得再长也不会把操作按钮顶出首屏 -->
         <div class="detail-prompt" id="detailPrompt"></div>
 
+        <!-- AI 一句话点评（2026-11-26）：简介之后、更新记录之前。内容由 app.js 的 paintAiTake 填充，
+             没有缓存时这里先出占位并发起一次懒生成；整块为空时隐藏 -->
+        <div class="detail-aitake" id="detailAiTake" style="display:none"></div>
+
         <!-- 更新记录：只有作者写了说明才会出现，时间线样式沿用编年史那一套 -->
         <div class="detail-updates" id="detailUpdates" style="display:none"></div>
 
@@ -2528,6 +2739,12 @@
 
         <div class="detail-comments" id="detailComments">
           <div class="comments-head">评论与提问 <span id="commentCount"></span></div>
+          <!-- 小住客解读（2026-11-27）：点一下就地生成，替访客把评论区气氛和数据聊清楚。
+               按钮 / 气泡内容都由 app.js 的 paintInsight 填，这里只放骨架；生成后按钮收起。 -->
+          <button type="button" class="insight-ask" id="insightAsk" style="display:none">
+            <span class="insight-avatar">🫧</span><span>让小住客聊聊这件作品</span>
+          </button>
+          <div class="detail-insight" id="detailInsight" style="display:none"></div>
           <div class="comment-list" id="commentList"></div>
           <div class="comment-form" id="commentForm">
             <div class="comment-form-top">
@@ -2558,9 +2775,14 @@
           </div>
         </div>
 
-        <!-- 相关作品：同分类优先、数量不够再补同作者（数据见 /api/works/:id 的 related）。
+        <!-- 作者的其他作品（2026-11-27）：独立模块、排在相关作品前面，帮创作者导流。
+             数据见 /api/works/:id 的 moreByAuthor；样式复用相关作品那套行卡，版式不另起一套。 -->
+        <div class="detail-related" id="detailAuthorWorks" style="display:none"></div>
+
+        <!-- 相关作品：关键词重合 + 协同过滤混排（数据见 /api/works/:id 的 related）。
              放评论区之后、站外工具位之前：不打断「看完简介 → 评论」的动线，
-             又比底部的工具推荐更靠前，翻两屏内就能看到下一件。 -->
+             又比底部的工具推荐更靠前，翻两屏内就能看到下一件。
+             同作者件不再在这里兜底（挪去上面的独立模块），两边不会重复出同一件。 -->
         <div class="detail-related" id="detailRelated" style="display:none"></div>
 
         <div class="detail-tools" id="detailTools" style="display:none">
@@ -2582,8 +2804,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 已屏蔽的作品（可恢复显示） -->
+  <template id="dm-tpl-blockedModal" data-modal-root>
   <div class="modal-mask" id="blockedModal" style="display:none">
     <div class="modal blocked-modal">
       <div class="modal-head">
@@ -2599,8 +2823,10 @@
       <div class="blocked-list" id="blockedUserList" style="display:none"></div>
     </div>
   </div>
+  </template>
 
   <!-- 消息提示设置：按板块屏蔽弹窗提示（屏蔽 ≠ 拒收，消息照常进铃铛列表，只是不弹 toast），行由 app.js 渲染 -->
+  <template id="dm-tpl-noticePrefsMask" data-modal-root>
   <div class="modal-mask" id="noticePrefsMask" style="display:none">
     <div class="modal blocked-modal">
       <div class="modal-head">
@@ -2611,8 +2837,10 @@
       <div class="npref-list" id="noticePrefList"></div>
     </div>
   </div>
+  </template>
 
   <!-- 榜单规则：把图例里放不下的完整口径收进弹窗 -->
+  <template id="dm-tpl-rankRulesModal" data-modal-root>
   <div class="modal-mask" id="rankRulesModal" style="display:none">
     <div class="modal rank-rules-modal">
       <div class="modal-head">
@@ -2681,8 +2909,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 星梦期刊：单期详情（刊头 / 封面 / 本期榜单 / 本期数据），内容由 app.js 渲染 -->
+  <template id="dm-tpl-journalModal" data-modal-root>
   <div class="modal-mask" id="journalModal" style="display:none">
     <div class="modal journal-modal">
       <div class="modal-head journal-head">
@@ -2692,8 +2922,10 @@
       <div class="journal-sheet" id="journalSheet"></div>
     </div>
   </div>
+  </template>
 
   <!-- 认领作品：提交创作证据 → 管理员审核 -->
+  <template id="dm-tpl-claimModal" data-modal-root>
   <div class="modal-mask" id="claimModal" style="display:none">
     <div class="modal claim-modal">
       <div class="modal-head">
@@ -2720,8 +2952,10 @@
       </form>
     </div>
   </div>
+  </template>
 
   <!-- 用暗号直接认领：数据看板空状态点「认领」进来，作者手里只有暗号，填对当场归属 -->
+  <template id="dm-tpl-claimByCodeModal" data-modal-root>
   <div class="modal-mask" id="claimByCodeModal" style="display:none">
     <div class="modal claim-modal">
       <div class="modal-head">
@@ -2738,8 +2972,10 @@
       <p class="form-hint">没有暗号？去那件作品的详情页点「认领作品」提交创作证据，由管理员人工审核。</p>
     </div>
   </div>
+  </template>
 
   <!-- 投诉弹窗 -->
+  <template id="dm-tpl-reportModal" data-modal-root>
   <div class="modal-mask" id="reportModal" style="display:none">    <div class="modal">
       <div class="modal-head">
         <h2>投诉作品</h2>
@@ -2764,11 +3000,13 @@
       </form>
     </div>
   </div>
+  </template>
 
   <div class="toast" id="toast"></div>
 
   <!-- 分类有误：用户看到作品挂错分类，直接选一个更合适的提交，
        进后台「投诉处理」队列，由管理员/站长核实；采纳后才真改分类，提交本身不动数据 -->
+  <template id="dm-tpl-catFixModal" data-modal-root>
   <div class="modal-mask" id="catFixModal" style="display:none">
     <div class="modal">
       <div class="modal-head">
@@ -2786,9 +3024,11 @@
       <p class="catfix-hint">建议会进审核队列，由管理员核实后调整，提交后不会立刻生效。</p>
     </div>
   </div>
+  </template>
 
   <!-- 「不再看这个作品」确认弹窗：卡片上的入口点一下就到这里，取消/确认都由用户决定。
        只说清两件事：只对你自己生效、不动排名、随时可恢复 -->
+  <template id="dm-tpl-blockWorkModal" data-modal-root>
   <div class="modal-mask" id="blockWorkModal" style="display:none">
     <div class="modal blockwork-modal">
       <div class="modal-head">
@@ -2803,8 +3043,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 登录 / 注册弹窗 -->
+  <template id="dm-tpl-authModal" data-modal-root>
   <div class="modal-mask" id="authModal" style="display:none">
     <div class="modal auth-modal">
       <div class="modal-head">
@@ -2815,7 +3057,7 @@
 
       <form id="loginForm">
         <label>账号 / 登录名</label>
-        <input type="text" name="username" required maxlength="20" autocomplete="username" placeholder="注册的用户名，或自己起的登录名" />
+        <input type="text" name="username" required maxlength="50" autocomplete="username" placeholder="注册的用户名，或自己起的登录名" />
         <label>密码</label>
         <div class="pw-wrap">
           <input type="password" name="password" id="loginPass" required autocomplete="current-password" />
@@ -2833,8 +3075,8 @@
       </form>
 
       <form id="registerForm" style="display:none">
-        <label>用户名（2-20 位，只用于登录）</label>
-        <input type="text" name="username" required maxlength="20" autocomplete="username" />
+        <label>用户名（2-50 位，只用于登录）</label>
+        <input type="text" name="username" required maxlength="50" autocomplete="username" />
         <p class="form-hint">可用中文、字母、数字、下划线，不分大小写。不能用 admin、官方、客服、管理员这类容易被当成站方的名字，也别留微信/QQ/网址。</p>
         <label for="regNick">昵称（作品上显示这个名字）</label>
         <div class="nick-pick">
@@ -2886,9 +3128,11 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 绑手机弹窗：投稿 / 酒馆发帖 / 私信这些「发布内容」的动作前，还没核验过手机号的
        存量用户在这里补一次（核验一次永久有效）。浏览、点赞、收藏一律不拦。 -->
+  <template id="dm-tpl-phoneModal" data-modal-root>
   <div class="modal-mask" id="phoneModal" style="display:none">
     <div class="modal phone-modal">
       <div class="modal-head">
@@ -2910,10 +3154,12 @@
       <button type="button" class="auth-upgrade-cancel" id="phoneModalCancel">先不核验，稍后再说</button>
     </div>
   </div>
+  </template>
 
   <!-- 预留手机号弹窗（2026-11-19）：短信通道还没开（开通即产生费用），先把愿意配合的人收下来。
        和上面的 #phoneModal 刻意分开：那个是「发码 + 核验」，这个是「只留号码」，
        所以这里既没有发码按钮，也不能说成「已实名」——文案必须让人一眼看懂「现在还没验证」。 -->
+  <template id="dm-tpl-phoneKeepModal" data-modal-root>
   <div class="modal-mask" id="phoneKeepModal" style="display:none">
     <div class="modal phone-modal">
       <div class="modal-head">
@@ -2930,6 +3176,7 @@
       <button type="button" class="auth-upgrade-cancel" id="phoneKeepCancel">以后再说</button>
     </div>
   </div>
+  </template>
   <!-- 右下角小住客：Trae 同款小机器人 + 点击弹出的聊天窗口。
        原右下角三颗浮标（装到桌面 / 小程序 / 反馈）收进窗口里，按钮 id/类名不变，
        app.js 的 PWA 安装 / 小程序弹窗 / 反馈红点逻辑仍挂在原按钮上；
@@ -3773,6 +4020,7 @@
   })();
   </script>
 
+  <template id="dm-tpl-feedbackModal" data-modal-root>
   <div class="modal-mask" id="feedbackModal" style="display:none">
     <div class="modal">
       <!-- 标题和切换条一起吸顶：只吸标题的话，滚动时 tab 会被标题栏削掉上半截 -->
@@ -3823,8 +4071,10 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 兑换码：领取结果 -->
+  <template id="dm-tpl-codeModal" data-modal-root>
   <div class="modal-mask" id="codeModal" style="display:none">
     <div class="modal modal-code">
       <div class="modal-head">
@@ -3836,8 +4086,10 @@
       <button type="button" class="btn-primary btn-block" id="copyCodeBtn"><i class="ico" data-ico="copy"></i> 复制兑换码</button>
     </div>
   </div>
+  </template>
 
   <!-- 兑换码：作者管理 -->
+  <template id="dm-tpl-codeManageModal" data-modal-root>
   <div class="modal-mask" id="codeManageModal" style="display:none">
     <div class="modal">
       <div class="modal-head">
@@ -3850,8 +4102,10 @@
       <div class="code-manage-list" id="codeManageList"></div>
     </div>
   </div>
+  </template>
 
   <!-- 安装到桌面：扫码在手机上加到主屏幕，桌面设备支持一键安装 -->
+  <template id="dm-tpl-installModal" data-modal-root>
   <div class="modal-mask" id="installModal" style="display:none">
     <div class="modal modal-install">
       <div class="modal-head">
@@ -3883,8 +4137,10 @@
       <button type="button" class="btn-primary btn-block install-know" id="installKnow">知道了</button>
     </div>
   </div>
+  </template>
 
   <!-- 小程序版：从安装弹窗底部入口点开，和 PWA 指引分开讲，免得一锅炖看不清 -->
+  <template id="dm-tpl-miniModal" data-modal-root>
   <div class="modal-mask" id="miniModal" style="display:none">
     <div class="modal modal-mini">
       <div class="modal-head">
@@ -3916,8 +4172,10 @@
       <button type="button" class="btn-primary btn-block" id="miniKnow">知道了</button>
     </div>
   </div>
+  </template>
 
   <!-- 造梦星选公众号：页脚「订阅」入口打开。二维码是公众号申请下来的原图，别转成小程序码 -->
+  <template id="dm-tpl-gzhModal" data-modal-root>
   <div class="modal-mask" id="gzhModal" style="display:none">
     <div class="modal modal-gzh">
       <div class="modal-head">
@@ -3934,8 +4192,33 @@
       <button type="button" class="btn-primary btn-block" id="gzhKnow">知道了</button>
     </div>
   </div>
+  </template>
+
+  <!-- 独立开发者产品交流村（2026-11-27）：站头「更多 → 开发者群」打开的微信群码。
+       这张码 12-04 过期，换码只换 /promo-icons/dev-group-qr.jpg，弹窗文案不用动。 -->
+  <template id="dm-tpl-groupModal" data-modal-root>
+  <div class="modal-mask" id="groupModal" style="display:none">
+    <div class="modal modal-group">
+      <div class="modal-head">
+        <h2>独立开发者产品交流村</h2>
+        <button class="close-btn" id="closeGroup" title="关闭">✕</button>
+      </div>
+      <p class="wxgroup-lead">一个聊产品、聊体验、也聊怎么把产品养活自己的微信群。做网站、小程序、App、AI 应用的都有——踩过的坑和挣到钱的路子，在这儿都能聊。</p>
+      <div class="wxgroup-body">
+        <!-- 二维码/有效期后台可配（后台「进群二维码」tab）：这里的内置值只是没配置时的兜底，打开弹窗时会被 /api/group-config 覆盖 -->
+        <img class="wxgroup-qr" id="groupQrImg" src="/promo-icons/dev-group-qr.jpg" alt="独立开发者产品交流村微信群二维码" />
+        <div class="wxgroup-side">
+          <p><b>微信扫一扫</b>，或手机长按图片识别；群满扫不进来时，加微信 <b>v5pc-com</b>，手动拉你进群。</p>
+          <p class="wxgroup-expire">这张群码 <b id="groupExpire">2026-12-04 前有效</b>，过期了就扫不进来了。</p>
+        </div>
+      </div>
+      <button type="button" class="btn-primary btn-block" id="groupKnow">知道了</button>
+    </div>
+  </div>
+  </template>
 
   <!-- 申请友情链接：独立于反馈弹窗，带收录规则与来量统计口径说明；后台「友情链接」tab 审批 -->
+  <template id="dm-tpl-friendModal" data-modal-root>
   <div class="modal-mask" id="friendModal" style="display:none">
     <div class="modal">
       <div class="modal-head">
@@ -3969,10 +4252,12 @@
       <div class="fr-history" id="friendHistory" style="display:none"></div>
     </div>
   </div>
+  </template>
 
   <!-- 分享卡片：Canvas 现场生成的 1080×1350 分享图 -->
   <!-- 发布成功弹窗：登录投稿且即时上线才弹（匿名/审核中/预告不弹）。
        「转发到酒馆」复用散座发帖接口：正文可留空（留空就代写一句），作品卡必挂。 -->
+  <template id="dm-tpl-publishOkModal" data-modal-root>
   <div class="modal-mask" id="publishOkModal" style="display:none">
     <div class="modal pubok-modal">
       <button class="close-btn" id="closePubOk" aria-label="关闭">✕</button>
@@ -4032,7 +4317,9 @@
       </div>
     </div>
   </div>
+  </template>
 
+  <template id="dm-tpl-shareModal" data-modal-root>
   <div class="modal-mask" id="shareModal" style="display:none">
     <div class="modal share-modal">
       <div class="modal-head share-modal-head">
@@ -4062,7 +4349,9 @@
       <p class="share-lamp-tip" id="shareLampTip"></p>
     </div>
   </div>
+  </template>
 
+  <template id="dm-tpl-promoKitModal" data-modal-root>
   <div class="modal-mask" id="promoKitModal" style="display:none">
     <div class="modal pk-modal">
       <div class="modal-head">
@@ -4081,6 +4370,7 @@
       </div>
     </div>
   </div>
+  </template>
 
   <!-- 找找：用一句话找作品。结果全部来自站内真实作品（服务端本地检索），
        模型只负责把话翻成检索条件 + 一句回话，所以这里只渲染它给的条件和作品行 -->

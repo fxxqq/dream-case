@@ -118,9 +118,14 @@ function truncate(s, n) {
 }
 
 function baseUrl(req) {
-  const fromEnv = process.env.SITE_URL;
-  const raw = fromEnv || (req.protocol + '://' + req.get('host'));
-  return raw.replace(/\/+$/, '');
+  const raw = process.env.SITE_ORIGIN || process.env.SITE_URL || (req.protocol + '://' + req.get('host'));
+  try {
+    const url = new URL(raw);
+    url.hostname = url.hostname.replace(/^www\./, '');
+    return url.origin;
+  } catch {
+    return raw.replace(/\/+$/, '');
+  }
 }
 
 function absolute(base, p) {
@@ -133,9 +138,15 @@ function absolute(base, p) {
 function head(opts) {
   const {
     title, description, keywords, canonical, image, imageAlt,
+    imageWidth, imageHeight,
     type = 'website', publishedTime, modifiedTime, noindex = false,
     jsonLd = [], extra = ''
   } = opts;
+  const rawImage = image || '/invite-og.jpg';
+  const socialImage = /^https?:\/\//i.test(rawImage)
+    ? rawImage
+    : (canonical ? new URL(rawImage, canonical).href : rawImage);
+  const defaultImage = !image;
 
   // noindex: 'follow' 用于稀疏聚合页：不收录这一页，但页面里的作品链接仍要能被顺着抓到
   const robots = noindex
@@ -163,12 +174,14 @@ function head(opts) {
     `<meta property="og:title" content="${esc(title)}" />`,
     `<meta property="og:description" content="${esc(description)}" />`,
     canonical ? `<meta property="og:url" content="${esc(canonical)}" />` : '',
-    image ? `<meta property="og:image" content="${esc(image)}" />` : '',
-    image ? `<meta property="og:image:alt" content="${esc(imageAlt || title)}" />` : '',
-    `<meta name="twitter:card" content="${image ? 'summary_large_image' : 'summary'}" />`,
+    `<meta property="og:image" content="${esc(socialImage)}" />`,
+    `<meta property="og:image:alt" content="${esc(imageAlt || title)}" />`,
+    defaultImage ? '<meta property="og:image:width" content="1080" />' : (imageWidth ? `<meta property="og:image:width" content="${esc(imageWidth)}" />` : ''),
+    defaultImage ? '<meta property="og:image:height" content="1350" />' : (imageHeight ? `<meta property="og:image:height" content="${esc(imageHeight)}" />` : ''),
+    '<meta name="twitter:card" content="summary_large_image" />',
     `<meta name="twitter:title" content="${esc(title)}" />`,
     `<meta name="twitter:description" content="${esc(description)}" />`,
-    image ? `<meta name="twitter:image" content="${esc(image)}" />` : '',
+    `<meta name="twitter:image" content="${esc(socialImage)}" />`,
     isoDate(publishedTime) ? `<meta property="article:published_time" content="${esc(isoDate(publishedTime))}" />` : '',
     isoDate(modifiedTime) ? `<meta property="article:modified_time" content="${esc(isoDate(modifiedTime))}" />` : ''
   ].filter(Boolean);
@@ -286,7 +299,7 @@ function describeWork(w, maxLen = 150) {
 function cardHtml(w, suffix = '') {
   return `<a class="card seo-card" href="/w/${esc(w.id)}${suffix}">
   <div class="card-img-wrap">
-    <img class="card-img" src="${esc(w.thumb || w.image)}" alt="${esc(w.title)} - ${esc((w.category || '') + typesOf(w).join('/'))}作品封面" loading="lazy" decoding="async" />
+    <img class="card-img" src="${esc(w.thumb || w.image)}" alt="${esc(w.title)} - ${esc((w.category || '') + typesOf(w).join('/'))}作品封面" width="800" height="600" loading="lazy" decoding="async" />
     <span class="type-badge" title="${esc(typesOf(w).join(' / '))}">${typeTextHtml(w)}</span>
   </div>
   <div class="card-body">
@@ -346,10 +359,17 @@ function workArticle(base, w, trail, related = [], opts = {}) {
     <span class="seo-kw-title">关键词</span>
     ${kws.map(k => `<a href="/?q=${esc(encodeURIComponent(k))}">${esc(k)}</a>`).join('')}
   </div>` : '';
-  // 关键词重合优先、分类次之、不足补同作者（见 server.js relatedWorksOf），标题不再写死「同类」
+  // 关键词重合 + 协同过滤混排（见 server.js relatedWorksOf），标题不再写死「同类」
   const relatedHtml = related.length ? `<section class="seo-related">
     <h2>相关作品</h2>
     <div class="gallery">${related.map(x => cardHtml(x, suffix)).join('')}</div>
+  </section>` : '';
+  // 作者的其他作品（2026-11-27）：独立一节排在相关作品前面，帮创作者导流。
+  // 数据由 server.js /w/:id 传进来（sameAuthorWorksOf）；样式复用 seo-related，版式不另起一套
+  const moreByAuthor = Array.isArray(opts.moreByAuthor) ? opts.moreByAuthor.filter(x => x && x.id) : [];
+  const authorWorksHtml = moreByAuthor.length ? `<section class="seo-related">
+    <h2>作者的其他作品</h2>
+    <div class="gallery">${moreByAuthor.map(x => cardHtml(x, suffix)).join('')}</div>
   </section>` : '';
 
   // 完整页图片（2026-11-16 站长要求）：封面 + 宣传图合成一个轮播，不再一张张往下摞。
@@ -373,7 +393,7 @@ function workArticle(base, w, trail, related = [], opts = {}) {
   // qrSrc 是服务端算好的展示码：作者原码优先，没有就是自动短链码（扫码可数）
   const qrImg = w.qrSrc || w.qrcode;
   const qrHtml = qrImg ? `<div class="seo-qr">
-    <img src="${esc(qrImg)}" alt="${esc(w.title)} 小程序码" />
+    <img src="${esc(qrImg)}" alt="${esc(w.title)} 小程序码" width="168" height="168" />
     <p>${miniOnly ? '用微信扫一扫打开小程序' : (w.qrReal ? '手机扫码打开' : '扫码打开作品')}</p>
   </div>` : '';
   const miniNoEntry = (miniOnly && !w.qrcode && !w.link && !w.lampPrice)
@@ -431,6 +451,12 @@ function workArticle(base, w, trail, related = [], opts = {}) {
     ${miniNoEntry}
     ${lampHtml}
     <div class="seo-intro md-body">${w.introHtml || (w.intro ? esc(w.intro).replace(/\n/g, '<br>') : '<p>作者暂未填写作品介绍。</p>')}</div>
+    ${w.aiTake && w.aiTake.text
+      ? `<div class="detail-aitake seo-aitake" id="seoAiTake">
+      <div class="at-head"><span class="at-badge">${svgIco('sparkle')} AI 点评</span><span class="at-note">机器视角 · 仅供参考</span></div>
+      <p class="at-text">${esc(w.aiTake.text)}</p>
+    </div>`
+      : '<div class="detail-aitake seo-aitake" id="seoAiTake" style="display:none"></div>'}
     ${Array.isArray(w.updateLog) && w.updateLog.length ? `<div class="seo-updates">
       <h2>更新记录</h2>
       <ol class="chron-list">${w.updateLog.slice(0, 8).map(x => `<li class="chron-item">
@@ -451,6 +477,7 @@ function workArticle(base, w, trail, related = [], opts = {}) {
   return `<div id="seoContent" class="seo-wrap${full ? ' seo-full' : ''}" data-full="${full ? '1' : '0'}">
   ${breadcrumbHtml(base, trail)}
   ${fullBody}
+  ${authorWorksHtml}
   ${relatedHtml}
 </div>`;
 }
@@ -547,7 +574,7 @@ function collectionFaq({ kind, name, facts }) {
 }
 
 /** 独立列表页（/c/:cat、/t/:type），完全服务端渲染 */
-function listPage(base, { title, description, h1, activeName, kind = 'c', subtitle, intro = '', items, trail, page, hasMore, prevHref, nextHref, canonical, categories, types, noindex = false, facts = null, counts = null }) {
+function listPage(base, { title, description, h1, activeName, kind = 'c', subtitle, intro = '', items, trail, page, hasMore, prevHref, nextHref, canonical, categories, types, noindex = false, facts = null, counts = null, image = '', imageAlt = '', extra = '' }) {
   const chipHref = c => '/' + kind + '/' + encodeURIComponent(c);
   // 筛选胶囊的图标：形态页用 TYPE_SVG，分类页用 CATEGORY_SVG，都没有就回退 other
   const chipIco = c => svgIco(kind === 't' ? (TYPE_SVG[c] || 'other') : (CATEGORY_SVG[c] || 'other'));
@@ -559,8 +586,11 @@ function listPage(base, { title, description, h1, activeName, kind = 'c', subtit
     description,
     keywords: [h1, '作品集合', '工具导航', '网站推荐', '小程序收录'].join(','),
     canonical,
+    image,
+    imageAlt,
     type: 'website',
     noindex,
+    extra,
     jsonLd: [
       breadcrumbLd(base, trail),
       faq && faq.ld,
@@ -592,6 +622,8 @@ function listPage(base, { title, description, h1, activeName, kind = 'c', subtit
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   ${headHtml}
   <link rel="stylesheet" href="/style.css" />
+  <!-- 谷歌广告 AdSense（2026-11-27）：这套骨架只服务 /list/ 类 SEO 列表页，SPA 页面的注入在 index.html 里 -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5526491839331555" crossorigin="anonymous"></script>
 </head>
 <body>
   <header class="site-header">
@@ -636,6 +668,7 @@ function listPage(base, { title, description, h1, activeName, kind = 'c', subtit
         <span>本站开源在 <a href="https://github.com/fxxqq/dream-case" target="_blank" rel="noopener noreferrer">GitHub</a>，欢迎 Star / PR · 服务器部署在 <a href="https://www.aliyun.com/minisite/goods?userCode=tw6ffyfu" target="_blank" rel="nofollow sponsored noopener noreferrer">阿里云 <span aria-hidden="true">↗</span></a></span>
       </div>
       <a href="/sitemap.xml" class="footer-link">站点地图</a>
+      <a href="/about" class="footer-link">关于本站</a>
       <a href="/feed/${kind}/${encodeURIComponent(activeName)}.xml" class="footer-link">订阅这页的 RSS</a>
       <a href="/?feedback=1" class="footer-link">意见反馈</a>
     </div>
@@ -668,6 +701,10 @@ function sitemapXml(base, { works, categories, types, authors, siteUpdated, cate
   const updated = siteUpdated || (works[0] && works[0].createdAt) || new Date().toISOString();
   add('/', updated, '1.0', 'daily');
   add('/rank', updated, '0.8', 'daily');
+  add('/discover', updated, '0.8', 'daily');
+  add('/howto', updated, '0.7', 'monthly');
+  add('/guide', updated, '0.6', 'monthly');
+  add('/rules', updated, '0.6', 'monthly');
   add('/mini', updated, '0.8', 'weekly'); // 小程序专栏
   add('/bar', updated, '0.7', 'daily');
   add('/chronicle', updated, '0.5', 'weekly'); // 造梦编年史（站点大事记）

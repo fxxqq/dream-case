@@ -5,21 +5,33 @@
   1) 抽出 NAV_START 与 NAV_END 两个注释标记之间的链接，注入首页 index.html 的 .nav-tabs；
   2) 整段 header 注入 medals/mascots/musicbox/appeal 等独立页，替换各页原先手写的那份轻量站头。
   所以以后改导航的链接、文案、图标、提示气泡，只改这里一处，首页和独立页一起变。
-  MINI_ITEM 注释是小程序入口占位：首页渲染成弹码按钮（app.js 认 .hero-mini-open），
-  独立页渲染成 /mini 链接（那些页不引 app.js，按钮点了没反应）。
+  MINI_ITEM / GZH_ITEM / GROUP_ITEM 是「更多」下拉里的三个占位：首页渲染成弹码按钮（app.js 认 .hero-mini-open / [data-gzh-open] / [data-group-open]），
+  独立页渲染成 /mini、/?gzh=1、/?group=1 链接（那些页不引 app.js，按钮点了没反应）。
+  GROUP_ITEM = 独立开发者产品交流村（微信群），二维码 2026-12-04 过期，换码时只替换 frontend/promo-icons/dev-group-qr.jpg 即可。
   登录态不在这里写：由 /site-shell.js 统一拉无副作用的 /api/me/brief 渲染。
+  2026-11-26 站长先定：顶导只留发现/榜单/创作者，酒馆从顶导撤下（首页副标题与页脚仍有入口），
+  「更多」里只放小程序、App、公众号三项，照参考图复刻。（16:32 又试过把酒馆放进「更多」，站长看了撤回。）
+  当日站长再定：把「酒馆」加回顶导，放在榜单与创作者之间。
 -->
 <header class="site-header">
   <div class="sh-inner">
-    <a class="logo" href="/" title="回造梦橱窗首页"><img class="logo-mark" src="/logo.svg" alt="" width="26" height="26" />造梦橱窗</a>
+    <a class="logo" href="/" title="回造梦橱窗首页"><span class="logo-mark" aria-hidden="true"></span><span class="logo-text">造梦橱窗</span></a>
     <nav class="sh-nav" aria-label="主导航">
       <div class="nav-tabs">
 <!--NAV_START-->
-        <a class="nav-btn" href="/discover" data-nav data-tip="按平台和分类逛作品——iOS、安卓、小程序、游戏、效率工具都在这儿" aria-label="发现：按平台和分类逛作品，iOS、安卓、小程序、游戏、效率工具都在这儿"><i class="ico" data-ico="globe"></i> 发现</a>
-        <a class="nav-btn" href="/rank" data-nav data-tip="作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届" aria-label="榜单：作品的热度排行，访客、收藏、评论、灯火加权计分，每周换一届"><i class="ico" data-ico="rank"></i> 榜单</a>
-        <a class="nav-btn" href="/creators" data-nav data-tip="认识认真造梦的创作者，看他们的作品与访客" aria-label="创作者：认识认真造梦的创作者，看他们的作品与访客"><i class="ico" data-ico="shelf"></i> 创作者</a>
+        <a class="nav-btn nav-discover" href="/discover" data-nav data-tip="按平台和分类逛作品——iOS、安卓、小程序、游戏、效率工具都在这儿" aria-label="发现：按平台和分类逛作品，iOS、安卓、小程序、游戏、效率工具都在这儿"><i class="ico" data-ico="globe"></i> 发现</a>
+        <a class="nav-btn nav-rank" href="/rank" data-nav data-tip="作品热度排行：访客、收藏、评论、灯火加权计分，每周换一届" aria-label="榜单：作品的热度排行，访客、收藏、评论、灯火加权计分，每周换一届"><i class="ico" data-ico="rank"></i> 榜单</a>
         <a class="nav-btn" href="/bar" data-nav data-tip="说出你想要的作品，等创作者认领实现；也能闲聊、安利、分享" aria-label="造梦酒馆：说出你想要的作品，等创作者认领实现，也能闲聊、安利、分享"><i class="ico" data-ico="wish"></i> 酒馆</a>
+        <a class="nav-btn" href="/creators" data-nav data-tip="认识认真造梦的创作者，看他们的作品与访客" aria-label="创作者：认识认真造梦的创作者，看他们的作品与访客"><i class="ico" data-ico="shelf"></i> 创作者</a>
+        <div class="nav-more" id="navMore">
+          <button type="button" class="nav-btn nav-more-btn" id="navMoreBtn" aria-haspopup="true" aria-expanded="false" aria-controls="navMoreMenu">更多<svg class="nm-caret lucide lucide-chevron-down" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <div class="nav-more-menu" id="navMoreMenu" role="menu" aria-label="更多入口" hidden>
 <!--MINI_ITEM-->
+            <a class="nav-menu-item" href="/app" role="menuitem"><i class="ico" data-ico="mobile"></i>App</a>
+<!--GZH_ITEM-->
+<!--GROUP_ITEM-->
+          </div>
+        </div>
 <!--NAV_END-->
       </div>
     </nav>

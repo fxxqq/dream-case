@@ -17,6 +17,29 @@
     if (window.Icons) window.Icons.hydrate(root || document);
   }
 
+  // 站头「更多」下拉：独立页不引 app.js，这里自己管开合；菜单项都是普通链接。
+  (function () {
+    var wrap = document.getElementById('navMore'), btn = document.getElementById('navMoreBtn'), menu = document.getElementById('navMoreMenu');
+    if (!wrap || !btn || !menu) return;
+    function close(refocus) {
+      if (menu.hidden) return;
+      menu.hidden = true;
+      btn.setAttribute('aria-expanded', 'false');
+      wrap.classList.remove('is-open');
+      if (refocus) btn.focus();
+    }
+    btn.onclick = function (e) {
+      e.stopPropagation();
+      var open = menu.hidden;
+      menu.hidden = !open;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      wrap.classList.toggle('is-open', open);
+    };
+    menu.addEventListener('click', function (e) { if (e.target.closest('.nav-menu-item')) close(); });
+    document.addEventListener('click', function (e) { if (!wrap.contains(e.target)) close(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(true); });
+  })();
+
   // 未登录先画上入口，接口慢了也不留一块空白。
   function renderAuth(ok, name) {
     if (!box) return;
@@ -33,7 +56,8 @@
 
   // 当前页高亮：按链接路径认，不按写死的页面名——以后公共模板加/改一项，这里不用动。
   var path = location.pathname.replace(/\/+$/, '') || '/';
-  Array.prototype.forEach.call(document.querySelectorAll('.sh-nav .nav-btn[href]'), function (a) {
+  // 只认顶层导航项：下拉里的 /mini、/app 是「更多」的菜单项，不该在那些页亮成当前项
+  Array.prototype.forEach.call(document.querySelectorAll('.sh-nav .nav-tabs > .nav-btn[href]'), function (a) {
     var href = '';
     try { href = new URL(a.href, location.href).pathname.replace(/\/+$/, '') || '/'; } catch (e) { return; }
     if (href === path && path !== '/') {

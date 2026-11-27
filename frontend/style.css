@@ -1,3 +1,50 @@
+/* ============ 右上角字体令牌（2026-11-26）============
+   Space Grotesk 只给右上角胶囊里的数字/拉丁字符用，不进 body 的 font-family——
+   它没有中文字形，挂 body 只会顺手改变全站拉丁文的观感（中文落回雅黑，等于白加载）。
+   数字档位走 .num（等宽 tnum），中文标签一律 body 字体、不挂 letter-spacing。
+   警告：body 上绝不能写 font-feature-settings:"tnum" 0——它优先级高于
+   font-variant-numeric 且会继承，会把 .num 的等宽静默压掉。
+   字体文件 fonts/SpaceGrotesk-{400,600}.woff2（Google Fonts latin 子集，共约 47KB）。 */
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/SpaceGrotesk-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/SpaceGrotesk-600.woff2") format("woff2");
+}
+:root {
+  --font-display: "Space Grotesk", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+  --font-body: "Space Grotesk", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+  --font-num: "Space Grotesk", ui-monospace, "SFMono-Regular", monospace;
+  /* 灰阶四档（oklch 优先，旧浏览器落 hex）：ink-900 暂无使用场景先占位 */
+  --ink-900: #272737;
+  --ink-600: #575770;
+  --ink-400: #8c8ca0;
+  --ink-300: #b0b0c1;
+}
+@supports (color: oklch(50% 0.02 275)) {
+  :root {
+    --ink-900: oklch(0.23 0.022 275);
+    --ink-600: oklch(0.45 0.021 275);
+    --ink-400: oklch(0.63 0.017 275);
+    --ink-300: oklch(0.74 0.014 275);
+  }
+}
+/* 等宽数字：只挂在数字元素上（右上角 +10、余额等）。验收：数字变化时宽度不跳、胶囊不抖 */
+.num {
+  font-family: var(--font-num);
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
 :root {
   --bg: #f7f7fb;
   --card: #ffffff;
@@ -57,6 +104,9 @@
   --tk96: #eeeefc;
   --tk98: #fafafe;
   --tk98-rgb: 250, 250, 254;
+  /* 站头九改（2026-11-26）把 logo 方块/导航激活态写死成了 #6b3ce4，换主题站头不跟。
+     2026-11-27 收进变量：默认值仍是九改那颗深紫（站长认可的观感不动），三套主题块各覆盖一份。 */
+  --brand-strong: #6b3ce4;
   /* 全站主容器宽度：首页、榜单、酒馆、任务页、头尾共用这一个值。
      2026-11-16 统一：原来首页按列数放宽到 1330 / 1660，其它页还是 1200，
      切页面时整个头部和内容区横向跳动，看着像两个站。现在一律 1260——
@@ -68,8 +118,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* 滚动条槽位恒定：短页面（如造梦酒肆）和长页面（首页/榜单）之间切换时，
-   滚动条出现/消失不会再让内容横向抖动。
-   注意：不能动 html 的 overflow（会破坏 body.scroll-locked 的视口传播锁滚动）。 */
+   滚动条出现/消失不会再让内容横向抖动。 */
 html { scrollbar-gutter: stable; }
 
 body {
@@ -111,7 +160,9 @@ html[data-page="ads"] #homeView,
 html[data-page="brand"] #homeView,
 html[data-page="enterprise"] #homeView,
 html[data-page="app"] #homeView,
-html[data-page="open"] #homeView { display: none !important; }
+html[data-page="open"] #homeView,
+html[data-page="about"] #homeView,
+html[data-page="work"] #homeView { display: none !important; }
 
 /* 整页打开内页（/u/、/rank、/bar …）时，服务端把该页的 SSR 副本挂在 #homeView 末尾
    （index.html 的 SEO_HOME 占位符）。首屏靠上面的 data-page 把 homeView 整个藏起来，
@@ -786,7 +837,8 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
   position: absolute; inset: 0; z-index: 2; border-radius: inherit;
   font-size: 0; text-decoration: none;
 }
-.card .fav-star, .work-row .row-fav, .work-row .row-block, .card .card-share { z-index: 3; }
+/* 行内点赞钮也要压过铺满整行的 .card-link(2)，否则点了只会弹作品详情、不会真点赞（2026-11-26） */
+.card .fav-star, .work-row .row-fav, .work-row .row-like, .work-row .row-block, .card .card-share { z-index: 3; }
 .card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(60, 60, 120, .10); }
 /* 封面统一比例 4:3：不论横图还是竖版截图都裁成同一块画面，列表节奏整齐；
    裁切从顶部开始（网页截图最上面是标题区，手机截图是界面头部），比居中裁更有信息量 */
@@ -798,6 +850,22 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
 /* 封面容器裁掉溢出的装饰（扇面底光比封面大一圈，不裁就会淌到标题区）。
    角标全部在框内定位，裁了不影响任何徽标 */
 .card-img-wrap { position: relative; overflow: hidden; }
+
+/* ---------- 卡片封面模糊占位（LQIP，2026-11-27）----------
+   卡片封面是 /t/400 的 webp（单张 10~15KB），但弱网下加载完之前封面格子仍是空底色。
+   现在卡片渲染时在 .card-img-wrap 上内联 --lqip（/t/32 的几百字节微缩图），伪元素把它
+   拉大 + blur(18px) 当骨架：秒出、有色彩轮廓，主图 onload 后淡出（app.js cardHtml 挂 img-ld）。
+   层级：::before(z0) < 主图(z1，必须显式定位否则 z0 的伪元素会盖住静态图片)
+        ≤ 橱窗玻璃 ::after(z1，DOM 靠后同层仍压图) < 徽标/按钮(z≥2)。 */
+.card-img-wrap::before {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: var(--lqip, none) center / cover no-repeat;
+  filter: blur(18px);
+  transform: scale(1.12); /* 放大一点，把 blur 边缘发虚的「白边」挤出裁剪框 */
+  transition: opacity .4s ease;
+}
+.card-img-wrap > .card-img { position: relative; z-index: 1; }
+.card-img-wrap.img-ld::before { opacity: 0; }
 
 /* ---------- 橱窗效果（2026-11-12 站长要的：首页每张卡都像摆进橱窗）----------
    封面不再是一张「贴上去的图」，而是隔了一层玻璃的展品。全部是装饰层，
@@ -944,6 +1012,15 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
 }
 .card-meta { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
 .card-cat { font-size: 12px; color: var(--primary); background: var(--tk96); padding: 2px 8px; border-radius: 999px; }
+/* 卡片关键词行（2026-11-26）：简介下面一行，最多两枚；窄卡（双列 178px）里单行不换行，
+   每枚最多占一半宽，超长的按省略号收尾，两边不会顶到卡片边框 */
+.card-kw-row { display: flex; gap: 5px; margin: 0 0 6px; min-width: 0; overflow: hidden; }
+.card-kw {
+  font-size: 11px; line-height: 1.6; color: var(--muted);
+  background: var(--tk96); border: 1px solid var(--tk94);
+  padding: 0 7px; border-radius: 6px; max-width: 50%;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 /* 收藏数：淡金色，和收藏星标呼应；评论数：淡蓝紫；数字等宽避免跳动 */
 .fav-num { color: #d9820b; font-variant-numeric: tabular-nums; }
 .cmt-num { color: var(--tk60); font-variant-numeric: tabular-nums; }
@@ -952,11 +1029,21 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
 /* 底部元信息行（统计+时间 / 推荐脚注）始终贴卡片底边：标题 1/2 行都不影响底部对齐 */
 .card-body > :last-child { margin-top: auto; }
 .card-foot { padding-top: 6px; }
+/* 数据和日期分成两组：细竖线划出边界，日期再淡一档，窄屏仍按原规则隐藏日期 */
+.card-foot > span:last-child {
+  margin-left: 8px; padding-left: 10px; border-left: 1px solid var(--tk90);
+  color: #9297a8; font-size: 12px; font-variant-numeric: tabular-nums;
+}
 /* 卡片 meta / 精选卡 / 详情页统计行的线性小图标：略放半档保证笔画清晰 */
 .stat-line .s-ico, .featured-meta .s-ico, .detail-stats .s-ico { font-size: 1.08em; vertical-align: -0.16em; margin-right: 3px; }
 /* 卡片数据行按段渲染（见 cardStatsHtml）：用 flex gap 分隔，不用「·」字符——
    零值段落是 display:none，如果有分隔字符会留下孤零零的点或行首的点 */
 .stat-line { display: inline-flex; align-items: center; gap: 7px; }
+/* 本周趋势段（2026-11-26）：上升用暖橙（火苗同色），下滑用灰蓝，持平保持中性；
+   数字等宽，卡片之间不会因为位数变化而左右跳 */
+.stat-line .trend-seg { font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat-line .trend-seg.is-up { color: #e8590c; }
+.stat-line .trend-seg.is-down, .stat-line .trend-seg.is-flat { color: var(--muted); }
 /* 零值段的两种藏法（2026-11-11 站长反馈：藏可以，位置要空好）：
    - 卡片 .stat-seg：display:none 直接拿掉——卡片各自独立，留空位反而出现怪洞；
    - 列表 .row-stat：visibility:hidden 藏数字但占位——右列数据按列对齐，
@@ -977,9 +1064,10 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
    --fb-line 是本区块局部变量：灰底上 var(--tk92) 对比不够，线要深一档才等对比；
    熄灯模式是整页叠一层深色遮罩（html.dm-night::after），所以这里的写死色值同样会跟着变暗，不用另做适配。
    伪元素挂在 .site-footer 上而不是 .footer-inner 上——「关于本站」弹窗会克隆 .footer-inner，不能带进弹窗。 */
+/* 2026-11-27 站长反馈：榜单列表最后一张卡到页脚数据行贴得太近，顶部留白 52px → 72px（全站页脚统一生效） */
 .site-footer {
   --fb-line: #dce0ea;
-  position: relative; padding: 52px 0 28px; margin-top: auto;
+  position: relative; padding: 72px 0 28px; margin-top: auto;
   background: var(--tk96); color: var(--muted); font-size: 13px;
 }
 .site-footer::before {
@@ -998,7 +1086,14 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
    别让浏览器默认的蓝紫色从 <a> 透到站名上（「深度极客社区」被访问过就变蓝的那个问题）。 */
 .footer-friends { display: flex; align-items: flex-start; gap: 16px; margin-top: 16px; line-height: 1.5; }
 .footer-friends .ff-label { flex: none; opacity: .75; padding-top: 1px; }
-.footer-friends .ff-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px 40px; min-width: 0; flex: 1 1 auto; }
+/* 2026-11-26 隐藏冷门友链后：ff-body 只留一层布局壳，撑满友链区宽度 */
+.footer-friends .ff-body { min-width: 0; flex: 1 1 auto; }
+/* 2026-11-25 二改：桌面固定 6 格（申请友链也占一格），列距收窄到 24px 保住站名宽度；
+   窄屏降到 4 格，「关于本站」弹窗里仍由后面的规则压回 2 格。 */
+.footer-friends .ff-list { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px 24px; min-width: 0; width: 100%; }
+@media (max-width: 1100px) and (min-width: 641px) {
+  .site-footer .footer-friends .ff-list { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
 .footer-friends .ff-item { display: block; min-width: 0; text-decoration: none; color: #4a5070; }
 .footer-friends .ff-item:visited { color: #4a5070; }
 .footer-friends .ff-name { display: block; font-size: 13px; font-weight: 600; color: inherit; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1007,9 +1102,20 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;   /* 超长简介截断，别把整行拉宽 */
 }
 .footer-friends .ff-item:hover .ff-name { color: var(--primary); }
-.footer-friends .ff-apply { flex: none; padding: 0; background: none; border: 0; font: inherit; color: var(--muted); cursor: pointer; opacity: .8; white-space: nowrap; }
-.footer-friends .ff-apply:hover { color: var(--primary); }
+/* 「申请友链」和「更多 N」都是网格末段的动作格：跟站名同宽同列，不单独占右侧 */
+.footer-friends .ff-apply, .footer-friends .ff-more {
+  justify-self: start; padding: 0; background: none; border: 0; font: inherit; font-size: 12.5px;
+  color: var(--muted); cursor: pointer; opacity: .8; white-space: nowrap;
+}
+.footer-friends .ff-apply:hover, .footer-friends .ff-more:hover { color: var(--primary); }
 .footer-friends .ff-empty { opacity: .55; }
+.footer-friends .ff-more::after { content: " ▾"; font-size: 11px; }
+.footer-friends .ff-more.open::after { content: " ▴"; font-size: 11px; }
+.footer-friends .ff-more.open { color: var(--primary); opacity: 1; }
+.footer-friends .ff-extra {
+  margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--fb-line, var(--border));
+}
+.footer-friends .ff-extra[hidden] { display: none; }
 
 /* 申请友情链接弹窗：规则区用浅底卡片，别让用户在表单里才看到要求 */
 .fr-rules { display: grid; gap: 10px; margin-bottom: 14px; padding: 10px 12px; background: var(--bg-soft, var(--tk96)); border: 1px solid var(--border); border-radius: 10px; }
@@ -1053,11 +1159,13 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
   box-shadow: 0 24px 80px rgba(24, 22, 52, .22), 0 2px 8px rgba(24, 22, 52, .08);
   animation: dmModalIn .34s cubic-bezier(.16, 1, .3, 1) both;
 }
-/* 桌面端给遮罩加一点背景虚化，让「弹层在前、页面在后」的层次成立；
-   手机端跳过——全屏 backdrop-filter 在低端机上比动画本身更费。 */
-@media (min-width: 641px) {
-  .modal-mask { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
-}
+/* 普通弹窗自己滚动：滚动条槽位预先留好，内容长高到出滚动条时不会横向跳一下。
+   detail 弹窗外层 overflow:hidden，滚动发生在 .detail-info，见下方。 */
+.modal:not(.detail) { scrollbar-gutter: stable; }
+/* 桌面端遮罩原本也做了 backdrop-filter 虚化（与手机端同款取舍），2026-11-27 摘掉：
+   它逼着弹窗底下的整页走「背景纹理」渲染路径，关弹窗遮罩一撤，盖过的区域要整片
+   重新光栅化好几帧，亮度在两种渲染状态间振荡——肉眼就是关弹窗瞬间整页闪一下。
+   遮罩 rgba(18,19,34,.48) 的暗度已经足够撑住「弹层在前、页面在后」的层次。 */
 @keyframes dmMaskIn { from { opacity: 0 } to { opacity: 1 } }
 @keyframes dmModalIn {
   from { opacity: 0; transform: translate3d(0, 10px, 0) scale(.975) }
@@ -1068,8 +1176,34 @@ html.dm-quiet .rv { opacity: 1 !important; translate: none !important; transitio
   .modal-mask { -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
 .modal.detail { max-width: 1040px; padding: 0; overflow: hidden; display: flex; }
-/* 提交作品弹窗内容密（分类宫格、Markdown 编辑器），比默认弹窗放宽一档 */
-#uploadModal .modal { max-width: 720px; }
+/* 提交作品弹窗内容密（分类宫格、Markdown 编辑器），比默认弹窗放宽一档。
+   2026-11-27：右边挂一张实时卡片预览，桌面放宽到两栏；窄屏自动退回单栏。 */
+#uploadModal .modal { max-width: 1140px; }
+#uploadModal .upload-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 22px; align-items: start; }
+#uploadModal .upload-main { min-width: 0; }
+/* 预览卡：复用首页 cardHtml，这里只做「不可交互」和贴边处理 */
+.card-live-preview {
+  position: sticky; top: 0; align-self: start;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--tk98); padding: 12px; min-width: 0;
+}
+.card-live-preview > summary {
+  cursor: pointer; list-style: none; font-size: 14px; font-weight: 600; color: var(--text);
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+}
+.card-live-preview > summary::-webkit-details-marker { display: none; }
+.card-live-preview > summary::before { content: '▸'; font-size: 12px; color: var(--primary); }
+.card-live-preview[open] > summary::before { content: '▾'; }
+.card-live-preview > summary span { font-size: 12px; font-weight: 400; color: var(--muted); }
+.card-live-preview .clp-note { margin: 8px 0 10px; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.card-live-preview .card { width: 100%; cursor: default; }
+.card-live-preview .card:hover { transform: none; box-shadow: none; }
+.card-live-preview .card-link { pointer-events: none; }
+@media (max-width: 1000px) {
+  #uploadModal .upload-body { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .card-live-preview { position: static; order: -1; }
+  .card-live-preview .card { max-width: 340px; }
+}
 
 /* 未登录投稿：注册（免审）还是匿名（需审核）的选择弹窗 */
 .modal.modal-choice { max-width: 440px; }
@@ -1739,7 +1873,8 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
 .gal-prev { left: 10px; }
 .gal-next { right: 10px; }
 
-.detail-info { padding: 24px; flex: 1; min-width: 0; max-height: 90vh; overflow-y: auto; }
+/* 详情右栏滚动条出现/消失时预占槽位，别让内容宽在 520↔505 之间跳一下 */
+.detail-info { padding: 24px; flex: 1; min-width: 0; max-height: 90vh; overflow-y: auto; scrollbar-gutter: stable; }
 .detail-info h2 { font-size: 17px; color: #555; margin-bottom: 8px; word-break: break-all; }
 /* 详情标题里的「一句话简介」（2026-11-10 用户反馈）：名字保持原大小，简介拆出来小一号浅灰 */
 .detail-info h2 .detail-intro { font-size: 13px; font-weight: 400; color: var(--muted); }
@@ -1941,6 +2076,56 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
   /* 不再限高内滚：外层 .detail-info 本身可滚，嵌套滚动条既看不全介绍又容易滚丢位置 */
 }
 .detail-prompt:empty { display: none; }
+
+/* ---------- AI 一句话点评（2026-11-26） ---------- */
+/* 位置：简介之后、更新记录之前。读完作者自述，再听一句外部视角。
+   浅紫底细边，与简介的浅蓝底刻意区分：这句是站方 AI 的看法，不是作者的话。
+   作者隐藏后只剩一行提示（仅作者本人可见），访客整块不出现。 */
+.detail-aitake {
+  border: 1px solid #ece9fa; background: #faf9ff; border-radius: 10px;
+  padding: 12px 14px; margin: 0 0 18px;
+}
+.at-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.at-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: #6b5bd2; }
+.at-badge .ico { font-size: 1em; background: none; padding: 0; }
+.at-note { font-size: 11.5px; color: var(--muted); }
+.at-hide {
+  margin-left: auto; border: 0; background: none; padding: 0;
+  font-size: 12px; color: var(--muted); cursor: pointer;
+}
+.at-hide:hover { color: #6b5bd2; }
+.at-hide:disabled { opacity: .5; cursor: default; }
+.at-text { margin: 0; font-size: 14.5px; line-height: 1.8; color: #3a3f52; }
+.at-wait { color: var(--muted); }
+.at-off { color: var(--muted); font-size: 13px; }
+/* 完整页（/w/ 收录页）：紧跟简介之后，留白与大段落一致 */
+.seo-aitake { margin: 16px 0 4px; }
+
+/* ---------- 小住客解读（2026-11-27，详情弹窗评论区顶部） ---------- */
+/* 与 AI 点评（浅紫、作者向）刻意区分：浅青底 + 圆头像，像评论区里多了一位爱看数据的住客。
+   入口是一行胶囊按钮（不抢评论区的戏），生成后按钮收起、气泡就地展开。 */
+.insight-ask {
+  display: inline-flex; align-items: center; gap: 7px;
+  margin: 2px 0 12px; padding: 7px 14px;
+  border: 1px solid #e3ecec; background: #f6fbfa; border-radius: 999px;
+  font-size: 13px; color: #3a6b62; cursor: pointer;
+}
+.insight-ask:hover { border-color: #bfe0da; background: #eef7f5; }
+.insight-ask:disabled { opacity: .65; cursor: default; }
+.insight-avatar {
+  flex: none; width: 20px; height: 20px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #e2f1ee; font-size: 12px; line-height: 1;
+}
+.detail-insight { margin: 0 0 12px; }
+.insight-bubble {
+  border: 1px solid #e3ecec; background: #f6fbfa;
+  border-radius: 10px; padding: 10px 13px;
+}
+.insight-bubble-head { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+.insight-bubble-head b { font-size: 13px; color: #2f5d55; }
+.insight-note { font-size: 11.5px; color: var(--muted); }
+.insight-text { margin: 0; font-size: 14px; line-height: 1.8; color: #35414b; }
 
 /* ---------- 「一眼看懂」速览卡（详情弹窗） ---------- */
 /* 内容结构五件套：定位 / 解决什么 / 适合谁 / 和同类比 / 上手几步。
@@ -2793,6 +2978,13 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
 @media (min-width: 821px) and (max-width: 1360px) {
   .main-nav .nav-tabs .nav-btn { padding: 0 10px; font-size: 13.5px; }
 }
+/* 2026-11-26 站长定：PC 端榜单与发现互换位置，榜单排到最前。
+   DOM 顺序不动（仍是发现→榜单→酒馆→创作者→更多），只在顶部导航可见的断点（≥641px）
+   用 order 把榜单提到第一位，发现自然落到第二位；≤640px 顶部导航隐藏、走底部 tab，不受影响。
+   独立页同款规则在 site-shell.css。 */
+@media (min-width: 641px) {
+  .main-nav .nav-tabs .nav-rank { order: -1; }
+}
 
 /* ========== 导航黑话提示（2026-11-13） ==========
    星梦榜 / 造梦酒馆是站内叫法，新访客看不懂。原生 title 要悬停一秒才出、样式不可控，
@@ -2876,17 +3068,48 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
   cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .sg-chips button:hover { border-color: var(--primary); color: var(--primary); background: var(--tk96); }
-.sg-chips button.sg-hot { background: var(--tk96); color: var(--tk52); border-color: var(--tk94); }
+/* 2026-11-25 收敛：热词不再用紫色高亮，跟「最近搜索」统一成中性胶囊，少一处花哨 */
+.sg-chips button.sg-hot { background: var(--tk96); color: #4a4f63; border-color: var(--border); }
 
-/* 下拉底部的「让找找帮你翻」入口：一行，跟上面的词条区分开 */
-.sg-ask { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+/* 下拉底部的「让找找帮你翻」入口：弱化成一行淡字，功能保留、视觉不再抢 */
+.sg-ask { margin-top: 8px; padding-top: 6px; }
 .sg-ask-btn {
-  display: flex; align-items: center; gap: 8px; width: 100%;
-  border: 0; background: none; padding: 4px 2px; cursor: pointer;
-  font-size: 12.5px; color: var(--tk52); text-align: left;
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  border: 0; background: none; padding: 2px 2px; cursor: pointer;
+  font-size: 12px; color: var(--muted); text-align: left;
 }
-.sg-ask-btn:hover { color: var(--primary-dark); }
-.sg-ask-star { font-size: 13px; color: var(--tk68); }
+.sg-ask-btn:hover { color: var(--primary); }
+.sg-ask-star { font-size: 12px; color: var(--muted); }
+
+/* 边打边搜：命中作品一行一件，直接列在输入框下面（2026-11-26） */
+.sg-result-count { font-size: 11px; color: var(--muted); }
+.sg-result-list { max-height: 330px; overflow-y: auto; overscroll-behavior: contain; }
+.sg-result {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 4px; border-radius: 8px; text-decoration: none; color: var(--text);
+}
+.sg-result + .sg-result { border-top: 1px solid var(--border); }
+.sg-result:hover { background: var(--tk96); }
+.sg-r-thumb { flex: none; width: 34px; height: 34px; border-radius: 7px; object-fit: cover; background: var(--tk96); }
+.sg-r-thumb-empty {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; color: var(--muted);
+}
+.sg-r-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sg-r-title, .sg-r-sub { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sg-r-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.sg-r-sub { font-size: 11.5px; color: var(--muted); }
+.sg-r-arrow { flex: none; font-size: 16px; color: var(--muted); }
+.sg-r-loading, .sg-r-empty { padding: 14px 4px; text-align: center; font-size: 12px; color: var(--muted); }
+/* 2026-11-27：下拉触底续页的加载 / 到底 / 重试行，贴着列表底部，不冒充作品条目 */
+.sg-r-foot { padding: 10px 4px; text-align: center; font-size: 11.5px; color: var(--muted); }
+.sg-r-foot.sg-r-loading { padding: 10px 4px; }
+.sg-r-foot.sg-r-error { color: #c04a4a; }
+.sg-r-retry {
+  border: 0; background: none; padding: 0; cursor: pointer;
+  font-size: inherit; color: inherit; text-decoration: underline; text-underline-offset: 2px;
+}
+.sg-r-retry:hover { color: var(--primary); }
 
 /* ---------- 找找（一句话找作品） ---------- */
 .findbot { position: fixed; inset: 0; z-index: 220; display: flex; align-items: flex-start; justify-content: center; }
@@ -3128,7 +3351,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
 .featured-card:focus-visible:hover { transform: none; }
 /* 精选加载失败时的重试入口：替掉骨架卡，别让首屏一直转圈；高度和卡片对齐，替换时不跳 */
 .feat-retry {
-  flex: 0 0 auto; min-height: 121px; padding: 14px 18px;
+  flex: 0 0 auto; min-height: 134px; padding: 14px 18px; /* 2026-11-27 与 PC 精选卡 134px 等高，替换零位移 */
   display: inline-flex; align-items: center; justify-content: center;
   border: 1px dashed var(--border); border-radius: 14px;
   background: var(--tk98); color: var(--muted);
@@ -3199,8 +3422,11 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
   margin-top: auto; padding-top: 6px;
   display: flex; align-items: center; gap: 9px;
   font-size: 12px; color: var(--muted); white-space: nowrap;
+  /* 2026-11-25 三改：父级 align-items:flex-start 下这行本来按内容撑宽，
+     数字一长就会越过卡片内边界；卡死 100% + 隐藏溢出做兜底，正常文案压成「次 / 人」后不会触发裁剪 */
+  max-width: 100%; overflow: hidden;
 }
-.featured-meta .fm-i { display: inline-flex; align-items: center; }
+.featured-meta .fm-i { display: inline-flex; align-items: center; flex: 0 1 auto; min-width: 0; }
 .feat-arrow {
   position: absolute; top: 10px; right: 12px;
   font-size: 12px; color: var(--muted); opacity: 0;
@@ -3303,7 +3529,8 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
 .head-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .sort-toggle {
   display: inline-flex; gap: 2px; padding: 3px;
-  background: var(--tk94); border-radius: 999px; flex-shrink: 0;
+  background: #fff; border-radius: 999px; flex-shrink: 0;
+  /* 2026-11-27 站长要求灰白对调：轨道白底（靠 15759 行那圈细描边撑轮廓），选中项改灰底 */
 }
 .sort-toggle .st-btn {
   height: 26px; padding: 0 14px; border: none; border-radius: 999px; cursor: pointer;
@@ -3312,7 +3539,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
 }
 .sort-toggle .st-btn:hover { color: var(--primary); }
 .sort-toggle .st-btn.active {
-  background: #fff; color: var(--primary); font-weight: 600;
+  background: var(--tk94); color: var(--primary); font-weight: 600;
   box-shadow: 0 1px 4px rgba(60, 60, 120, .14);
 }
 
@@ -3534,7 +3761,8 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
 }
 .rank-tab:hover { border-color: var(--primary); color: var(--primary); }
 .rank-tab.active { background: #1f2330; border-color: #1f2330; color: #fff; }
-.rank-list { display: flex; flex-direction: column; gap: 10px; padding-bottom: 48px; }
+.rank-list { display: flex; flex-direction: column; gap: 10px; }
+/* 榜单底部不再自带 48px 垫底：内容终点统一交给视图层与页脚之间那 58px（与发现/创作者/首页一致） */
 /* 榜单页「今日动态」：一行聚合数字 + 当前周期口径；容器为空时自动收起 */
 .rank-today {
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
@@ -5464,7 +5692,18 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
   .user-chip { max-width: none; }
 }
 
-body.scroll-locked { overflow: hidden; }
+/* 弹窗锁滚动（2026-11-26）：不能再只给 body 加 padding-right——那只能撑住文档流，
+   .site-header 这类 width:100% 的粘性/块级元素照样缩一圈，右边缘一开弹窗就往左跳。
+   改成把实测槽位宽挪到 html 的 padding-right，body 用等量负 margin 抵消：
+   视口内容宽、站头、fixed 悬浮球和弹窗居中基准全程不动。--zm-lock-gap 由 JS 实测写入。 */
+html.scroll-lock-gap {
+  overflow-y: hidden;
+  padding-right: var(--zm-lock-gap, 0px);
+}
+body.scroll-locked {
+  overflow: hidden;
+  margin-right: calc(-1 * var(--zm-lock-gap, 0px));
+}
 
 /* ---------- 右下角常驻入口：一组等宽胶囊（装到桌面 / 小程序 / 意见反馈） ----------
    旧版三颗各自 fixed、宽度随文字变，右边缘齐但左边缘参差，图标也是三种风格；
@@ -6130,6 +6369,20 @@ body.on-work .load-more-wrap { display: none !important; }
   padding: 7px 14px; border-radius: 999px; white-space: nowrap;
 }
 .user-chip:hover { background: var(--tk92); }
+/* 站头胶囊头像（2026-11-26）：violet 底首字只是兜底，用户传过站内头像时由 avaHtml 盖一层
+   <img>；只认 /uploads/av-*.webp，不引外链。手机窄屏 .uc-name 隐藏时头像也认得出是谁。
+   与 index.html 首绘快照、app.js renderAuthBox 三处的 DOM 保持一致。 */
+.user-chip .uc-ava {
+  position: relative; overflow: hidden;
+  flex: none; width: 28px; height: 28px; border-radius: 50%;
+  display: inline-grid; place-items: center;
+  background: var(--primary); color: #fff;
+  font-size: 12px; font-weight: 600; line-height: 1;
+}
+.user-chip .uc-ava img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; border-radius: inherit;
+}
 /* 用户下拉菜单：把数据与推荐/改密码/退出等收进来，给头部减负 */
 .user-menu { position: relative; }
 .user-menu .user-chip { border: none; cursor: pointer; font-family: inherit; max-width: 200px; overflow: hidden; }
@@ -6569,6 +6822,29 @@ a.board-row:hover:not(.is-me) { background: var(--tk96); }
   transition: color .15s;
 }
 .stats-gift-link:hover { color: var(--primary); text-decoration-color: var(--primary); }
+/* 兑换码入口升格：原先是按钮下面一行灰字，站长自己都找了半天——
+   改成带票券图标 + 箭头的次级按钮，浅紫底和主按钮分层，一眼看得出能点 */
+.stats-gift-cta {
+  width: 100%; display: flex; align-items: center; gap: 7px; text-align: left;
+  padding: 9px 12px; cursor: pointer;
+  font-size: 13px; font-weight: 700; color: var(--primary);
+  background: #f6f4ff; border: 1px solid var(--tk86); border-radius: 9px;
+  transition: background .15s, border-color .15s, transform .15s;
+}
+.stats-gift-cta:hover { background: #efeaff; border-color: var(--primary); }
+.stats-gift-cta:active { transform: scale(.995); }
+/* 签到弹窗标题栏的兑换码快捷入口：跟标题一起吸顶，滚动时也能点；close-btn 是 absolute 钉在右上角，给它让出位置 */
+.modal-head .stats-head-gift {
+  display: none; align-items: center; gap: 5px; margin: 0 40px 0 auto;
+  padding: 5px 11px; font-size: 12px; font-weight: 700; color: var(--primary);
+  background: #f6f4ff; border: 1px solid var(--tk86); border-radius: 999px;
+  cursor: pointer; transition: background .15s, border-color .15s;
+}
+.modal-head .stats-head-gift:hover { background: #efeaff; border-color: var(--primary); }
+.modal-head .stats-head-gift .ico { display: inline-flex; align-items: center; }
+.stats-gift-cta .ico { flex: 0 0 auto; font-size: 1.2em; }
+.stats-gift-cta span:nth-of-type(2) { flex: 1 1 auto; }
+.stats-gift-cta i { flex: 0 0 auto; font-style: normal; font-size: 16px; font-weight: 700; }
 
 /* 兑换码弹窗：输入框 + 结果提示 */
 .modal.modal-gift { max-width: 420px; }
@@ -6899,26 +7175,64 @@ a.board-row:hover:not(.is-me) { background: var(--tk96); }
 }
 .lp-ali:hover { background: #dceaff; }
 .lp-tip { font-size: 12px; line-height: 1.7; color: var(--muted); margin: 0; }
-/* 扫码买弹层：生码要一两秒，骨架转圈占住码的位置，图到了才亮起来，别让人对着一张破图等 */
-.lampbuy .lpbuy-qrwrap { position: relative; width: 240px; max-width: 72vw; margin: 0 auto 10px; }
-.lampbuy .lpbuy-qr { width: 100%; max-width: 100%; height: auto; display: block; background: #fff; opacity: 0; transition: opacity .2s; }
+.lp-tip.lp-legal, .xp-tip.lp-legal { margin-top: 8px; }
+/* 扫码买弹层：生码要一两秒，先用一张和真码同尺寸的方形卡占位，图到了再无缝亮出来，别让人对着一张破图等 */
+.lampbuy .lpbuy-qrwrap {
+  position: relative; width: 240px; max-width: 72vw; aspect-ratio: 1 / 1;
+  margin: 0 auto 10px;
+}
+.lampbuy .lpbuy-qr {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: contain; display: block; background: #fff;
+  border-radius: 10px; opacity: 0; transition: opacity .2s;
+}
 .lampbuy .lpbuy-qrwrap.is-ready .lpbuy-qr { opacity: 1; }
 .lampbuy .lpbuy-skel {
-  position: absolute; top: 0; right: 0; bottom: 0; left: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
-  border-radius: 8px; background: #fff;
-  font-size: 12px; color: var(--muted); transition: opacity .2s;
+  position: absolute; inset: 0; z-index: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  border: 1px solid var(--border); border-radius: 10px; background: #fff;
+  transition: opacity .2s;
 }
+/* 占位卡里一层很淡的格子，像还没显影的码，别只有一个白框 */
+.lampbuy .lpbuy-skel::before {
+  content: ''; position: absolute; inset: 14px; border-radius: 6px; opacity: .5;
+  background-image:
+    linear-gradient(90deg, var(--tk94) 1px, transparent 1px),
+    linear-gradient(var(--tk94) 1px, transparent 1px);
+  background-size: 14px 14px;
+  -webkit-mask-image: radial-gradient(circle at center, #000 30%, transparent 78%);
+  mask-image: radial-gradient(circle at center, #000 30%, transparent 78%);
+}
+.lampbuy .lpbuy-skel > * { position: relative; z-index: 1; }
 .lampbuy .lpbuy-skel .spin {
-  width: 26px; height: 26px; border-radius: 50%;
+  width: 28px; height: 28px; border-radius: 50%;
   border: 3px solid var(--tk92); border-top-color: var(--primary);
   animation: wxqr-spin .8s linear infinite;
 }
+.lampbuy .lpbuy-skel-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.lampbuy .lpbuy-skel-sub { font-size: 11px; color: var(--muted); }
 .lampbuy .lpbuy-qrwrap.is-ready .lpbuy-skel { opacity: 0; pointer-events: none; }
-/* 失败态：骨架和空图一起收掉，只留状态行一句话说清 */
-.lampbuy .lpbuy-qrwrap.is-err .lpbuy-skel { display: none; }
+/* 失败态：骨架和空图一起收掉，只留状态行 + 重试按钮 */
+.lampbuy .lpbuy-qrwrap.is-err {
+  border: 1px dashed rgba(255, 255, 255, .35); border-radius: 10px;
+}
+.lampbuy .lpbuy-qrwrap.is-err .lpbuy-skel,
 .lampbuy .lpbuy-qrwrap.is-err .lpbuy-qr { display: none; }
-.lampbuy .lpbuy-status { font-size: 13px; color: var(--text); margin: 0 0 8px; }
+.lampbuy .lpbuy-retry {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  padding: 7px 16px; border: 1px solid var(--primary); border-radius: 999px;
+  background: var(--primary); color: #fff; font-size: 13px; cursor: pointer;
+}
+.lampbuy .lpbuy-retry[hidden] { display: none; }
+.lampbuy-card { position: relative; }
+.lampbuy-close {
+  position: absolute; top: -10px; right: -10px; z-index: 2;
+  width: 30px; height: 30px; border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, .92); color: #333; font-size: 14px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.lampbuy-close:hover { background: #fff; }
+.lampbuy .lpbuy-status { font-size: 13px; color: #fff; margin: 0 0 8px; }
 .redeem-empty {
   padding: 16px 14px; font-size: 12.5px; line-height: 1.7; color: var(--muted);
   background: var(--tk98); border: 1px dashed var(--tk92); border-radius: 10px;
@@ -7068,7 +7382,51 @@ a.board-row:hover:not(.is-me) { background: var(--tk96); }
 .rp-cfoot { display: flex; justify-content: space-between; margin-top: 8px; font-size: 10.5px; color: var(--tk64); }
 .rp-cfoot b { color: var(--tk56); font-weight: 600; }
 .rp-card .rp-ad { margin: 2px 8px 8px; padding: 5px 0; }
-@media (max-width: 560px) { .redeem-preview { gap: 10px; } .rp-modal { width: 190px; } .rp-card { width: 190px; } .rp-phone { width: 170px; } }
+/* 首屏叠层卡预览（2026-11-26，11-27 改 5 层）：跟首页首屏右列那叠真实卡对上——
+   真实几何（app.js setupHeroShowcase 浏览器实测）：前 1 后 4 满宽叠放，
+   下层卡往右下错位（x=5/10/15/20、y=18/36/54/72，scale .982/.964/.946/.928，倾角 1.5/-1.8/2.2/-2.4°），
+   露出来的是卡片右缘一条 4~6px 窄白边 + 底部一点白卡脚；下四层没有标题行，所以比最前一张矮。
+   真页那点窄边缩到 224px 缩略图上就看不见了，所以这里把错位放大到 6/11/16/21px，层数一眼数得出来；
+   缩放和倾角照抄真页（这两个是相对值，不用折算）。
+   最前一张：封面 + 来源角标 + 标题 +「N 人在看」；下面一排 5 段进度条（20 秒换一张）。
+   站长 11-27 撤掉预览里的 ‹ › 圆箭头（真页早已撤），只留进度条。 */
+.rp-hero { width: 246px; flex: none; }
+.rp-hero-deck { position: relative; height: 172px; margin-right: 22px; }
+.rp-hero-card {
+  position: absolute; left: 0; right: 0; top: 0;
+  padding: 4px; border-radius: 10px; background: #fff;
+  border: 1px solid var(--border); box-shadow: 0 8px 20px rgba(60, 60, 120, .14);
+}
+.rp-hero-card.is-front { z-index: 5; box-shadow: 0 12px 26px rgba(60, 60, 120, .2); }
+.rp-hero-card.is-l1 { z-index: 4; transform: translate(6px, 6px) rotate(1.2deg); }
+.rp-hero-card.is-l2 { z-index: 3; transform: translate(11px, 12px) rotate(-1.5deg); }
+.rp-hero-card.is-l3 { z-index: 2; transform: translate(16px, 18px) rotate(2deg); opacity: .85; }
+.rp-hero-card.is-l4 { z-index: 1; transform: translate(21px, 24px) rotate(-2.4deg); opacity: .75; }
+.rp-hero-cover {
+  position: relative; display: block; width: 100%; aspect-ratio: 16 / 10;
+  border-radius: 5px; overflow: hidden; background: linear-gradient(135deg, var(--tk94), #f9ecf6);
+}
+/* 后三层只露右缘一条窄边，用更浅的底色跟最前一张分开，层数一眼看得出 */
+.rp-hero-card:not(.is-front) .rp-hero-cover { background: var(--tk96); }
+.rp-hero-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rp-hero-flag {
+  position: absolute; top: 6px; left: 6px; z-index: 2;
+  font-size: 9px; font-weight: 600; line-height: 1.6; color: #fff;
+  background: var(--brand-strong); padding: 0 6px; border-radius: 999px;
+}
+.rp-hero-foot { display: flex; align-items: center; gap: 7px; padding: 6px 2px 1px; }
+.rp-hero-title {
+  flex: 1; min-width: 0; font-size: 10.5px; font-weight: 600; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rp-hero-title.rp-ph { font-weight: 500; color: var(--tk74); }
+.rp-hero-views { flex: none; font-size: 9.5px; color: var(--muted); white-space: nowrap; }
+/* 11-27 站长撤箭头：这里只剩进度条，左右各留一点空给叠层卡露出的白边 */
+.rp-hero-bar { display: flex; align-items: center; margin-right: 22px; padding: 0 20px; }
+.rp-hero-dots { flex: 1; display: flex; gap: 5px; justify-content: center; }
+.rp-hero-dots i { flex: 0 1 20px; width: 20px; height: 4px; border-radius: 999px; background: var(--tk90); }
+.rp-hero-dots i:first-child { background: linear-gradient(90deg, var(--primary), #7a5cf0); }
+@media (max-width: 560px) { .redeem-preview { gap: 10px; } .rp-modal { width: 190px; } .rp-card { width: 190px; } .rp-phone { width: 170px; } .rp-hero { width: 196px; } .rp-hero-deck { height: 138px; margin-right: 18px; } .rp-hero-bar { margin-right: 18px; gap: 8px; } }
 
 .redeem-packs { display: flex; gap: 8px; }
 /* 第 3 步：先选「按什么计费」，下面只出现这一组的档位，不会两组价同屏打架 */
@@ -7084,6 +7442,7 @@ a.board-row:hover:not(.is-me) { background: var(--tk96); }
 .redeem-mode small { font-size: 11px; color: var(--muted); }
 .rmode-note { margin: 8px 2px 0; font-size: 11.5px; line-height: 1.65; color: var(--muted); }
 .rmode-note b { color: var(--text); font-weight: 600; }
+.redeem-disclaimer { margin: 10px 2px 2px; padding: 8px 10px; border-radius: 8px; background: var(--tk98, #f7f5ff); }
 .redeem-pack {
   flex: 1; padding: 8px 6px; cursor: pointer; border-radius: 10px; text-align: center;
   background: #fff; border: 1.5px solid var(--border); transition: border-color .15s, background .15s;
@@ -7296,8 +7655,8 @@ label.redeem-day.rd-custom { cursor: text; }
 
 /* ---------- 造梦酒肆：你有什么想法，让大家实现吗 ---------- */
 /* ===== 造梦酒馆：页头 ===== */
-/* 导航里已有高亮的「造梦酒馆」，页面内不再放大标题，只留一段 padding 撑开间距 */
-#wishView { padding-top: 12px; }
+/* 导航里已有高亮的「造梦酒馆」，页面内不再放大标题；顶部留白统一交给全站口径（页头下 48px），这里不再另垫 */
+#wishView { padding-top: 0; }
 .bar-head { margin: 0 0 14px; }
 .bar-sub { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.6; }
 .bar-sub b { color: #2b2d3f; font-weight: 600; }
@@ -7784,8 +8143,10 @@ label.redeem-day.rd-custom { cursor: text; }
 .br-kind-rec { background: #e6f7f1; color: #128a63; border-color: #c4ecd9; }
 /* 「找工具」：带 #找工具 这类标签的帖子，蓝色跟「安利」的绿、话题的橙各自可辨 */
 .br-kind-seek { background: #e8f1ff; color: #2059c9; border-color: #cfe0ff; }
-/* 「分享」与自建主题（2026-11-14 主题化）：分享用暖紫，自建主题统一走中性灰，别抢四档的主色 */
+/* 「分享」与自建主题（2026-11-14 主题化）：分享用暖紫，自建主题统一走中性灰，别抢固定档的主色 */
 .br-kind-share { background: var(--tk96); color: var(--tk50); border-color: var(--tk92); }
+/* 「创作者故事」（2026-11-27 新增固定档）：深紫跟站点主色同源，与找工具的蓝、安利的绿、话题的橙都可辨 */
+.br-kind-story { background: #f3edfd; color: #6d3fc4; border-color: #e3d6f7; }
 .br-kind-custom { background: #fff; color: #5f6479; border-color: var(--tk88); }
 .br-title { flex: 1 1 auto; min-width: 0; text-align: left; font-size: 14px; font-weight: 600; line-height: 1.55; color: var(--text); background: none; border: none; padding: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* 闲聊正文（span 版）：想法标题仍单行截断，闲聊给两行——正文才是闲聊的主内容，
@@ -7991,6 +8352,23 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 @media (max-width: 460px) {
   .wxgzh-body { flex-direction: column; align-items: center; text-align: left; }
 }
+/* 独立开发者产品交流村（2026-11-27）：站头「更多 → 开发者群」的扫码弹窗。
+   码图自带群名和「7 天内有效」说明，弹窗里不再重复一遍群名，只补一句过期提醒。 */
+.modal.modal-group { max-width: 470px; }
+.wxgroup-lead { margin: 0 0 14px; font-size: 12.5px; line-height: 1.75; color: var(--muted); }
+.wxgroup-body { display: flex; gap: 18px; align-items: flex-start; margin-bottom: 16px; }
+.wxgroup-qr {
+  flex: none; width: 230px; height: auto; object-fit: contain;
+  border: 1px solid var(--border); border-radius: 12px; background: #fff;
+}
+.wxgroup-side p { margin: 0 0 10px; font-size: 12.5px; line-height: 1.85; color: var(--muted); }
+.wxgroup-side b { color: var(--text); font-weight: 600; }
+.wxgroup-expire { color: #b45309; }
+.wxgroup-expire b { color: #b45309; }
+@media (max-width: 460px) {
+  .wxgroup-body { flex-direction: column; align-items: center; text-align: left; }
+  .wxgroup-qr { width: 100%; max-width: 300px; }
+}
 .mini-link {
   display: block; width: 100%; margin: 2px 0 12px; padding: 0; border: none; background: none;
   font-size: 12.5px; color: var(--primary); cursor: pointer; font-family: inherit; text-align: center;
@@ -8011,7 +8389,9 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
   font-weight: 600;
 }
 .checkin-entry.is-done { color: var(--muted); }
-/* 积分小徽章：未签时金黄、已签后随整体转灰 */
+/* 积分小徽章：未签时金黄、已签后随整体转灰。
+   2026-11-26 对齐参考站样式：图标移除（JS 不再输出），≥821px 桌面档改为
+   「签到 +N │ 余额」两段同字号文字 + 竖分隔线（见下方媒体查询）。 */
 .checkin-entry .ck-pts {
   display: inline-flex;
   align-items: center;
@@ -8025,10 +8405,34 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
   color: #d48806;
   white-space: nowrap;
 }
-.checkin-entry .ck-pts .ico { width: 13px; height: 13px; }
-.checkin-entry .ck-pts .ico svg { width: 100%; height: 100%; }
 .checkin-entry.is-done .ck-pts { background: #f2f2f6; color: var(--muted); }
 /* 灯火数字只是余额展示：整颗按钮点开都是签到弹窗，明细入口收进弹窗内（goPoints） */
+
+/* 2026-11-26 站头胶囊化（原型同款）：签到 + 灯火余额合成一颗浅底胶囊，
+   中间加一道竖向分隔；铃铛也收成同款圆角胶囊。只改视觉，id / 事件 / 文案全留着。
+   641–820px 那档空间紧，仍走原来的紧凑规则，这里限定 ≥821px。 */
+@media (min-width: 821px) {
+  .checkin-entry {
+    height: 34px; padding: 0 13px; gap: 6px;
+    background: var(--tk94); border-radius: 999px; font-size: 12px;
+  }
+  .checkin-entry.is-todo { background: var(--tk94); color: var(--primary); font-weight: 600; }
+  .checkin-entry .ck-label { font-size: 12px; font-weight: 500; }
+  .checkin-entry .ck-pts {
+    margin-left: 8px; padding: 0 0 0 11px; border-radius: 0;
+    border-left: 1px solid var(--border); background: none;
+    font-size: 12px; color: var(--text);
+  }
+  .checkin-entry.is-done .ck-pts { background: none; color: var(--muted); }
+  .notice-entry {
+    width: 34px; height: 34px; padding: 0;
+    display: inline-grid; place-items: center;
+    background: var(--tk94); border-radius: 999px;
+  }
+  .notice-entry.has-new { background: var(--primary-soft, var(--tk96)); }
+  .user-chip { height: 34px; padding: 3px 12px 3px 3px; gap: 7px; font-size: 13px; }
+  .user-chip .uc-ava { width: 28px; height: 28px; }
+}
 
 /* ========== 站内消息 ========== */
 /* 顶部铃铛：有未读时轻度高亮 + 右上角红点数字 */
@@ -8118,7 +8522,10 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .nc-msg { background: var(--tk96); color: var(--tk54); }
 /* 酒馆回应：和「消息」栏里的作品评论区分开。青绿是酒馆自己的色，别处没用过 */
 .nc-bar { background: #e7f5f1; color: #12756a; }
-.notice-list { height: min(480px, 56vh); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+/* scrollbar-gutter:stable（2026-11-27）：列表数据异步到位、滚动条一出现，
+   内容宽会瞬间缩一个槽位（15px），行整体左移一跳——开弹窗那一下的"抖"就是它。
+   提前把槽位留死，滚动条出不出现行宽都不变（2026-11-27 实测 497→482 的跳变）。 */
+.notice-list { height: min(480px, 56vh); overflow-y: auto; scrollbar-gutter: stable; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
 /* 营销空态的示例「站长通知」：虚线框 + 半透明，一眼看出不是真消息（app.js 里已禁点） */
 .notice-item.notice-demo { opacity: .68; border-style: dashed; border-left-style: solid; cursor: default; pointer-events: none; }
 .notice-item.notice-demo .nc-tag { opacity: .75; }
@@ -8472,6 +8879,10 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .ckw-cell.is-missed { background: #fff5f4; border-color: #f6ddda; }
 .ckw-cell.is-missed b { color: #d9605a; }
 .ckw-cell.is-missed i { color: #c99b98; }
+/* 历史空洞里最早那天可以直接点着补：紫虚线 + 紫色叉，和纯断签的灰红格分开 */
+.ckw-cell.is-patchable { cursor: pointer; border-style: dashed; border-color: var(--tk58); }
+.ckw-cell.is-patchable b { color: var(--tk42); }
+.ckw-cell.is-patchable:hover { background: var(--tk94); }
 .ckw-cell.is-today:not(.is-signed) { border-color: var(--primary); border-style: dashed; background: var(--tk98); }
 .ckw-cell.is-today b { color: var(--primary); }
 .ckw-cell.is-future { background: var(--tk98); border-style: dashed; }
@@ -9227,6 +9638,37 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .ad-slot-footer { margin: 30px 0 0; }
 .ad-slot-detail { margin: 16px 0 0; }
 
+/* AdSense 固定广告单元（2026-11-27）：ins 天然带 data-ad-slot，容器一律挂 .adsense-unit
+   给 app.js renderAdSlot 排除用（不标记会被自家广告位系统当空位清掉）。
+   display 从 Google 代码的内联 style 挪到 CSS：固定尺寸断点切换（970↔320、728↔320、336↔320）
+   靠 display 开关，内联样式优先级太高会压住切换规则。边距挂在 ins 上——
+   容器里只剩隐藏的 ins 时整个塌成 0 高，不留空白框。隐藏的那个只是不出图，不影响显示的那个。 */
+.adsense-unit { text-align: center; }
+.adsense-unit ins.adsbygoogle { display: inline-block; margin: 22px auto; }
+
+/* 首页顶部宽幅：≥1024px 出 970×250，窄屏换 320×100 */
+#adsHomeTop .adsense-320 { display: inline-block; }
+#adsHomeTop .adsense-970 { display: none; }
+@media (min-width: 1024px) {
+  #adsHomeTop .adsense-320 { display: none; }
+  #adsHomeTop .adsense-970 { display: inline-block; }
+}
+
+/* 页脚上方通栏：≥768px 出 728×90，窄屏换 320×100 */
+#adsFooterBar .adsense-320 { display: inline-block; }
+#adsFooterBar .adsense-728 { display: none; }
+@media (min-width: 768px) {
+  #adsFooterBar .adsense-320 { display: none; }
+  #adsFooterBar .adsense-728 { display: inline-block; }
+}
+
+/* 首页底部方形：常规出 336×280，≤380px 小屏换 320×100（336 在 360px 屏会横向溢出） */
+#adsHomeSquare .adsense-320 { display: none; }
+@media (max-width: 380px) {
+  #adsHomeSquare .adsense-320 { display: inline-block; }
+  #adsHomeSquare .adsense-336 { display: none; }
+}
+
 /* 同一位置多条广告时叠加轮播：grid 让容器高度取最高的一条，切换时页面不跳 */
 .ad-carousel { display: grid; }
 .ad-slide { grid-area: 1 / 1; opacity: 0; pointer-events: none; transition: opacity .45s ease; }
@@ -9292,6 +9734,8 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
   font-size: 12.5px; line-height: 1.5; color: #8b90a6; flex: 1 1 auto; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* 自荐位作者署名：横幅/详情位都露出来，运营广告不渲染这一行 */
+.ad-author { flex: none; max-width: 24%; font-size: 11px; line-height: 1.4; color: #8b90a6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ad-cta {
   align-self: center; margin: 0; flex: none; font-size: 12px; font-weight: 600;
   padding: 4px 12px; border-radius: 999px; background: var(--tk92); color: var(--tk52);
@@ -9316,12 +9760,14 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .ad-row2.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .ad-row2.cols-4 .ad-card.ad-compact .ad-body {
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "badge cta" "title title" "desc desc";
+  grid-template-areas: "badge cta" "title title" "author desc";
   row-gap: 2px;
   padding: 6px 28px 7px 11px;
 }
 .ad-row2.cols-4 .ad-card.ad-compact .ad-title { font-size: 12.5px; }
-.ad-row2.cols-4 .ad-card.ad-compact .ad-desc { font-size: 11px; }
+.ad-row2.cols-4 .ad-card.ad-compact .ad-author { grid-area: author; max-width: 72px; font-size: 10px; }
+.ad-row2.cols-4 .ad-card.ad-compact .ad-author::after { content: '·'; margin-left: 3px; }
+.ad-row2.cols-4 .ad-card.ad-compact .ad-desc { grid-area: desc; font-size: 11px; }
 .ad-row2.cols-4 .ad-card.ad-compact .ad-cta { font-size: 10.5px; padding: 1px 8px; }
 
 /* 1fr 的隐式下限是 auto，卡片内容（角标+标题+按钮）不可压缩时会把格子撑到 340px，
@@ -9333,14 +9779,32 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .ad-card.ad-compact .ad-body {
   display: grid; width: 100%;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-areas: "badge title cta" "desc desc desc";
+  grid-template-areas: "badge title cta" "author desc desc";
   align-items: center; column-gap: 8px; row-gap: 1px;
   padding: 6px 36px 7px 12px;
 }
 .ad-card.ad-compact .ad-badge { grid-area: badge; }
 .ad-card.ad-compact .ad-title { grid-area: title; max-width: 100%; font-size: 13px; }
+/* 自荐署名原本没进 compact 的 grid 区域，被自动塞进隐式第三行、挤成「作...」，
+   看着像简介突然多了一行（2026-11-26 站长截图）。跟简介并排放，卡片恢复两行。 */
+.ad-card.ad-compact .ad-author { grid-area: author; max-width: 76px; font-size: 10.5px; }
+.ad-card.ad-compact .ad-author::after { content: '·'; margin-left: 4px; }
 .ad-card.ad-compact .ad-cta { grid-area: cta; font-size: 11px; padding: 2px 9px; }
 .ad-card.ad-compact .ad-desc { grid-area: desc; font-size: 11.5px; opacity: .85; }
+/* 星梦榜右栏推荐卡压成单行（2026-11-27 站长：右边弄成一行）：
+   角标 + 标题 + 按钮同排，简介与署名不再占第二行；标题被截的部分仍有 hover 完整文案浮层
+   （markTruncAds 只实测可见的 .ad-title，隐藏的 desc 不会误触发）。只作用榜单右栏，
+   顶部通栏 / 酒馆 / 书架 / 详情页的多行版式一律不动。 */
+.rank-side .ad-slot[data-ad-slot="rank"] .ad-card.ad-compact .ad-body {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "badge title cta";
+  row-gap: 0;
+  padding: 8px 34px 8px 11px;
+}
+.rank-side .ad-slot[data-ad-slot="rank"] .ad-card.ad-compact .ad-desc,
+.rank-side .ad-slot[data-ad-slot="rank"] .ad-card.ad-compact .ad-author { display: none; }
+.rank-side .ad-slot[data-ad-slot="rank"] .ad-card.ad-compact .ad-title { font-size: 12.5px; }
+.rank-side .ad-slot[data-ad-slot="rank"] .ad-card.ad-compact .ad-cta { font-size: 10.5px; padding: 2px 7px; }
 .ad-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tk84); transition: background .2s, width .2s; }
 .ad-dot.active { width: 16px; border-radius: 4px; background: var(--primary); }
 
@@ -9804,11 +10268,13 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
    和榜单 4 列一样退成三行：徽标/按钮一行、标题一行、描述一行 */
 .ad-slot-detail .ad-card.ad-compact .ad-body {
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "badge cta" "title title" "desc desc";
+  grid-template-areas: "badge cta" "title title" "author desc";
   row-gap: 2px;
   padding: 9px 30px 10px 12px;
 }
-.ad-slot-detail .ad-card.ad-compact .ad-desc { font-size: 11.5px; }
+.ad-slot-detail .ad-card.ad-compact .ad-author { grid-area: author; max-width: 72px; font-size: 10px; }
+.ad-slot-detail .ad-card.ad-compact .ad-author::after { content: '·'; margin-left: 3px; }
+.ad-slot-detail .ad-card.ad-compact .ad-desc { grid-area: desc; font-size: 11.5px; }
 
 /* ---------- 推荐位（用户用灯火兑换的自荐位） ---------- */
 /* 2026-11-10 统一：站内推荐不再做白底小条（原 .ad-work），和外链推荐一起走上面的
@@ -10386,6 +10852,7 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
    跟统计行挤一格会被省略号截断，单独占行完整显示；z-index 由 .promo-join 自带（盖过 .card-link） */
 .promo-join-line { margin-top: 4px; font-size: 11px; line-height: 1.5; }
 .promo-tip { font-size: 11px; color: var(--tk52); }
+.promo-author { font-size: 11px; color: #8b90a6; white-space: nowrap; }
 .promo-go { flex: none; font-size: 12px; color: var(--primary); }
 /* 卡脚「我也想推荐自己的作品」入口：替掉「作者自荐 · 推荐位」说明字（后台投放的仍标「广告」）。
    走全站 data-join-promote 委托 → openRedeem() 跳 /promote；
@@ -11155,7 +11622,7 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 }
 .disc-pc .cat-main { flex: 1; min-width: 0; }
 .disc-pc .cat-head { margin-bottom: 14px; }
-.disc-pc .cat-head h1, .disc-pc .cat-head h2 { font-size: 24px; font-weight: 700; color: var(--text); margin: 0 0 5px; }
+.disc-pc .cat-head h1, .disc-pc .cat-head h2, .disc-pc .cat-head .disc-pc-title { font-size: 24px; font-weight: 700; color: var(--text); margin: 0 0 5px; }
 .disc-pc .cat-head p { font-size: 13px; color: var(--muted); margin: 0; }
 .disc-pc .cat-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
 .disc-pc .cat-chips { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -11545,6 +12012,7 @@ button.me-fav-empty { width: 100%; cursor: pointer; }
 .site-info-body .footer-friends .ff-label {
   font-size: 12.5px; font-weight: 600; color: var(--text); opacity: .92; letter-spacing: .04em;
 }
+.site-info-body .footer-friends .ff-body { width: 100%; }
 .site-info-body .footer-friends .ff-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 22px; }
 .site-info-body .footer-friends .ff-item { max-width: none; }
 .site-info-body .fgroup { gap: 7px; }
@@ -13796,9 +14264,9 @@ a.st-row { text-decoration: none; }
    参照社区信息流的版式：中列宽、卡片松、正文大、右栏轻。
    全部用 #wishView / .modal-chat-post 收口，不动全站共用样式与其它独立页。
    ========================================================================== */
-#wishView { padding-top: 26px; }
-#wishView .bar-head { margin-bottom: 22px; }
-#wishView .bar-sub { font-size: 14px; line-height: 1.8; color: #7c8094; }
+#wishView { padding-top: 0; }   /* 2026-11-25 顶距统一：与其他页一致（页头下 48px），不再另垫 26px */
+#wishView .bar-head { margin-bottom: 22px; padding-top: 25px; }   /* 2026-11-27 提示文案删掉后这里只当占位：padding-top 顶住原那句的高度，间距不变 */
+#wishView .bar-sub { font-size: 14px; line-height: 1.8; color: #7c8094; }   /* 文案已删（index.html 2026-11-27），规则先留着，恢复加回 <p class="bar-sub"> 就能用 */
 #wishView .bar-sub b { color: #3a3d52; }
 
 /* 中列 + 右栏：把整块收进 1100px 并居中，给两侧留出真正的呼吸空间 */
@@ -13985,7 +14453,7 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
   #wishView .bar-rail .bar-hot, #wishView .bar-rail .bar-shelf { margin-bottom: 20px; }
 }
 @media (max-width: 700px) {
-  #wishView { padding-top: 16px; }
+  #wishView { padding-top: 0; }   /* 手机端同样不再另垫，顶距跟其他页一致 */
   #wishView .cmp-wrap { padding: 8px 12px; }
   #wishView .cmp-wrap.cmp-open { padding: 14px 16px; }
   #wishView .br-card { padding: 18px 16px 14px; }
@@ -14929,12 +15397,14 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
   animation: wpGlow 62s ease-in-out infinite alternate;
 }
 @keyframes wpDrift {
-  from { transform: scale(1.04) translate3d(0, 0, 0); }
-  to   { transform: scale(1.12) translate3d(-1.6%, -1.2%, 0); }
+  /* 幅度收小（2026-11-25）：词列离画缘 10%，这里最坏裁单侧 ~5%（scale 1.08 半边 4% + 平移 1%），
+     吃不到字。之前 1.04→1.12 + 1.6% 平移最坏裁 ~7.6%，题跋贴边时直接被切。 */
+  from { transform: scale(1.03) translate3d(0, 0, 0); }
+  to   { transform: scale(1.08) translate3d(-1%, -0.8%, 0); }
 }
 @keyframes wpGlow {
-  from { transform: translate3d(-3%, 2%, 0); }
-  to   { transform: translate3d(3%, -2.5%, 0); }
+  from { transform: translate3d(-2%, 1.4%, 0); }
+  to   { transform: translate3d(2%, -1.6%, 0); }
 }
 /* 与 aurora 同口径：系统要求减少动态效果时整层停住 */
 @media (prefers-reduced-motion: reduce) {
@@ -15024,6 +15494,7 @@ html[data-theme="ink"] {
   --grad-end: #4f8ec9;
   --primary: #5b8ed6;
   --primary-dark: #477ac2;
+  --brand-strong: #477ac2;
   --bg: #f7f9fb;
   --border: #e6eaf0;
   --tk42: #3f679e;
@@ -15077,6 +15548,7 @@ html[data-theme="amber"] {
   --grad-end: #e8a96b;
   --primary: #d6985b;
   --primary-dark: #c28447;
+  --brand-strong: #c28447;
   --bg: #fbf9f7;
   --border: #f0ebe6;
   --tk42: #9e6e3f;
@@ -15130,6 +15602,7 @@ html[data-theme="jade"] {
   --grad-end: #6ee0a8;
   --primary: #5bd6b7;
   --primary-dark: #47c2a3;
+  --brand-strong: #47c2a3;
   --bg: #f7fbfa;
   --border: #e6f0ee;
   --tk42: #3f9e86;
@@ -15207,12 +15680,40 @@ html[data-theme="jade"] {
    目标：首屏主任务收敛、精选少而大、筛选分两层、作品卡默认放大。
    全部是覆盖式规则，集中在文件末尾，方便整段回退。
    ================================================================ */
+/* ---------- 首屏三改（2026-11-25 晚）：站长说「越改越难看」，把过头的地方收回来 ----------
+   光晕恢复原始浓度、标题回到 30px 档、副标题恢复整句行文；
+   只保留他点名要修的内嵌式搜索框。手机端仍沿用小程序式首屏。 */
 .hero { padding: 30px 0 8px; }
-.hero-sub { font-size: 13px; line-height: 1.7; color: #5f6577; }
-/* 点亮灯火 / 星梦榜 / 开源好物留在 DOM 里（绑定不丢），首屏不再排成一句话 */
+.hero-sub { font-size: 13px; line-height: 1.6; color: var(--muted); }
+/* 点亮灯火 / 榜单留在 DOM 里（绑定不丢），首屏不排成第二句话 */
 .hero-sub-extra { display: none; }
-.hero > .hero-search-combo { margin-top: 14px; }
-.hero-search-combo .hero-search-slot { flex-basis: 400px; max-width: 480px; }
+
+@media (min-width: 721px) {
+  .hero { padding: 30px 0 8px; }
+  .hero h1, .hero .hero-title {
+    font-size: clamp(30px, 1.1vw + 14px, 34px);
+    line-height: 1.35; letter-spacing: .01em;
+    margin-bottom: 10px;
+  }
+  .hero .hero-sub { margin-top: 8px; font-size: 13px; line-height: 1.6; color: var(--muted); }
+  .hero > .hero-search-combo { margin-top: 14px; }
+  .hero-search-combo .hero-search-slot { flex-basis: 400px; max-width: 480px; }
+  /* 不再覆盖 .aurora 三团背景：沿用基础段的原始浓度，恢复首屏的空气感 */
+}
+/* 2026-11-26 搜索框下的直达入口行（参考站长给的图）：紫字 + 细箭头。
+   三条就是副标题里原有的同名入口搬下来，不新增业务；手机端沿用小程序口径不显示。 */
+.hero-links { display: none; }
+@media (min-width: 641px) {
+  .hero-links {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px 24px;
+    margin-top: 10px;
+  }
+  .hero-links .hero-link-go {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 13px; font-weight: 600;
+  }
+  .hero-links .hl-arrow { font-size: 15px; line-height: 1; opacity: .65; }
+}
 .hero-find.hero-find-go {
   background: #fff; color: var(--tk58);
   box-shadow: 0 1px 3px rgba(var(--tk58-rgb), .08);
@@ -15225,6 +15726,7 @@ html[data-theme="jade"] {
 .section-head { margin-bottom: 12px; }
 .featured-row { gap: 16px; padding: 4px 2px 10px; }
 .featured-card, .feat-sk {
+  /* 站长说二改后卡片太瘦，恢复发布前的饱满版：卡更宽、更高，标题/简介两行 + 推荐标签/作者行 */
   flex-basis: clamp(300px, calc((100% - 32px) * 0.3125), 392px);
   gap: 14px; min-height: 156px; padding: 16px;
   background: #fff; border-color: #e4e6f0;
@@ -15241,38 +15743,99 @@ html[data-theme="jade"] {
   font-size: 12.5px; line-height: 1.45;
 }
 .feat-sub { margin: 2px 0 6px; }
-.featured-meta { gap: 8px; font-size: 12px; color: #6f7488; }
+.featured-meta { gap: 6px; font-size: 12px; color: #6f7488; }
 .feat-no { left: 8px; top: 8px; width: 22px; height: 22px; line-height: 22px; }
 .feat-bar { max-width: 280px; margin-top: 4px; }
 
 .filter-bar { gap: 10px; padding: 16px 0 18px; }
-.filter-row .dd-btn { padding: 7px 11px; font-size: 13px; }
+/* 2026-11-26 对齐站长给的筛选样式：下拉改白底胶囊，选中项浅紫底 */
+.filter-row .dd-btn {
+  padding: 6px 12px; font-size: 13px; border-radius: 999px;
+  background: rgba(255, 255, 255, .92); border-color: rgba(var(--tk58-rgb), .14);
+}
+.filter-row .dd-btn.has-value {
+  background: var(--primary-soft, var(--tk96)); border-color: var(--tk90);
+}
 .filter-row .dd-btn .dd-label { color: #6f7488; }
+.sort-toggle, .view-toggle, .cols-toggle { border: 1px solid rgba(var(--tk58-rgb), .08); }
 .sort-toggle .st-btn, .view-toggle .vt-btn, .cols-toggle .ct-btn { color: #6f7488; }
 .remember-filters { padding: 3px 9px; font-size: 12px; }
+/* 已选筛选标签行（2026-11-26）：浅紫胶囊 + × 单删 + 「清空全部筛选」 */
+.selected-filters {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 0 2px; font-size: 12.5px; color: var(--muted);
+}
+.selected-filters[hidden] { display: none; }
+.sf-label { flex: none; }
+.sf-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 9px; border-radius: 999px; cursor: pointer;
+  background: var(--primary-soft, var(--tk96)); color: var(--primary);
+  border: 1px solid rgba(var(--tk58-rgb), .16); font-size: 12px; line-height: 1.2;
+  transition: background .15s, border-color .15s;
+}
+.sf-chip:hover { background: var(--tk92); border-color: var(--tk90); }
+.sf-x { font-size: 13px; line-height: 1; opacity: .7; }
+.sf-clear {
+  border: 0; background: none; padding: 4px 2px; cursor: pointer;
+  color: var(--primary); font-size: 12.5px; font-weight: 600;
+}
+.sf-clear:hover { text-decoration: underline; }
 /* 2026-11-25 二改：两行方案实测第二行只剩「更多筛选 + 记住」，空白太多，
    恢复成一行；只保留提深的未选中态和缩短的「记住」文案。 */
 
-/* 2026-11-25 首屏搜索条：把输入框和「搜索」拼成一个控件（只改 hero，不动共享 .search-box）。
-   下拉建议仍锚在 .search-box 上，位置不变；「找找AI」仍是独立的辅助入口，隔 8px。 */
-.hero-search-combo .hero-search-slot { margin-right: -8px; }  /* 吃掉 flex gap，两个控件贴在一起 */
+/* 2026-11-25 晚：搜索框保持「外层白胶囊 + 内嵌按钮」，找找AI 并排第二颗白框。
+   （晚三改曾把找找AI 降到框下，下拉一展开就把小字盖掉、入口凭空消失，已撤销。）
+   .search-box 仍是同一个节点、下拉仍锚在它上面；这里的规则只作用于 hero 里的那一份。 */
+.hero-search-combo { gap: 10px; }
+.hero-search-field {
+  display: flex; align-items: center; flex: 1 1 520px; max-width: 560px; min-width: 0;
+  padding: 4px; border: 1px solid #e5e3f2; border-radius: 15px;
+  background: #fff;
+  box-shadow: 0 4px 18px rgba(var(--tk58-rgb), .08);
+  transition: border-color .15s, box-shadow .15s;
+}
+.hero-search-field:focus-within {
+  border-color: rgba(var(--tk58-rgb), .55);
+  box-shadow: 0 0 0 3px rgba(var(--tk68-rgb), .12), 0 6px 20px rgba(var(--tk58-rgb), .12);
+}
+.hero-search-combo .hero-search-slot {
+  flex: 1 1 auto; max-width: none; min-width: 0; margin-right: 0;
+}
 .hero-search-combo .search-box input {
-  border-radius: 11px 0 0 11px;
-  border-right: 0;
-  box-shadow: 0 2px 12px rgba(var(--tk58-rgb), .08);
+  height: 42px; padding-left: 46px;
+  border: 0; border-radius: 11px; background: transparent;
+  box-shadow: none; font-size: 14px;
 }
-.hero-search-combo .search-box input::placeholder { color: #9b96ae; opacity: 1; }
-.hero-search-combo .search-icon { color: var(--primary); opacity: .7; }
 .hero-search-combo .search-box input:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(var(--tk68-rgb), .16), 0 2px 14px rgba(var(--tk58-rgb), .12);
+  border-color: transparent; background: transparent; box-shadow: none;
 }
+/* 提示加深一档：原来 #a09bb2 太淡，框里像空的。带「例如」例子也让人一眼知道搜什么 */
+.hero-search-combo .search-box input::placeholder { color: #857f96; opacity: 1; }
+/* 放大镜做成淡紫圆底徽标，给空框一个视觉锚点 */
+.hero-search-combo .search-icon {
+  left: 11px; top: 50%; transform: translateY(-50%);
+  width: 27px; height: 27px; border-radius: 50%;
+  background: rgba(var(--tk58-rgb), .10); color: var(--primary);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; opacity: 1;
+}
+/* 2026-11-26 站长定：两颗动作同框——「搜索」浅紫小胶囊在前，「用 AI 找找」紫色实心在后 */
 .hero-search-combo #heroSearchGo {
-  position: relative; z-index: 1;  /* 压在输入框的 focus 光环上，接缝不露紫边 */
-  border-radius: 0 11px 11px 0;
-  box-shadow: 0 2px 12px rgba(var(--tk58-rgb), .10);
+  flex: none; height: 42px; margin-left: 6px; padding: 0 14px;
+  border-radius: 11px; background: var(--primary-soft, var(--tk96)); color: var(--primary);
+  box-shadow: none; font-size: 13px; font-weight: 600;
 }
-.hero-find.hero-find-go { box-shadow: 0 2px 12px rgba(var(--tk58-rgb), .08); }
+.hero-search-combo #heroSearchGo:hover { background: var(--tk92); }
+.hero-find.hero-find-go {
+  flex: none; height: 42px; margin-left: 6px; padding: 0 15px; border-radius: 11px;
+  border: 0; background: var(--primary); color: #fff;
+  box-shadow: 0 2px 8px rgba(var(--tk58-rgb), .2);
+  font-size: 13px; font-weight: 600;
+}
+.hero-find.hero-find-go b { font-weight: 700; }
+.hero-find.hero-find-go .hf-star { margin-right: 3px; opacity: .9; }
+.hero-find.hero-find-go:hover { filter: brightness(1.06); }
 
 /* 2026-11-25 矮屏笔记本（1366×768 一类）：可视高只有 ~650px，Hero + 精选吃掉 479px，
    「全部作品」被挤到第二屏。只在 ≥641px 且高 ≤760px 时收边距/卡片留白，约省 60px；
@@ -15289,3 +15852,660 @@ html[data-theme="jade"] {
   .featured-card img, .feat-sk-img { width: 60px; height: 60px; border-radius: 10px; }
   .filter-bar { padding: 10px 0 12px; }
 }
+
+/* 2026-11-25 四改：站长最终要矮卡（去推荐标签/作者行 + 标题简介单行）。覆写上面的三改饱满版。
+   feat-sub 已由 app.js/server.js 不再渲染，这里再 display:none 兜底旧缓存。 */
+@media (min-width: 641px) {
+  .featured-card, .feat-sk { min-height: 104px; padding: 12px; gap: 12px; }
+  .featured-card img, .feat-sk-img { width: 60px; height: 60px; border-radius: 11px; }
+  .featured-title {
+    display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    min-height: 0; font-size: 15px; line-height: 1.4;
+  }
+  .featured-intro {
+    display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    -webkit-line-clamp: unset; min-height: 0; margin-bottom: 4px;
+    font-size: 12.5px; line-height: 1.45;
+  }
+  .feat-sub { display: none; }
+  .featured-meta { margin-top: 2px; }
+}
+@media (min-width: 641px) and (max-height: 760px) {
+  .featured-card, .feat-sk { min-height: 96px; padding: 10px; gap: 10px; }
+  .featured-card img, .feat-sk-img { width: 54px; height: 54px; border-radius: 10px; }
+}
+
+/* 2026-11-25 五改：每行露 4 个半卡片 + 简介改两行（红框里单行被截太狠）。覆写四改。
+   行宽按 4.5 张算：basis = (100% - 4*gap) / 4.5，gap 16 时 ≈ 20.4%。
+   卡窄了标题仍单行省略，简介放两行；高度跟不上就由内容撑开，不锁死 min-height。 */
+@media (min-width: 641px) {
+  .featured-row { gap: 16px; }
+  .featured-card, .feat-sk {
+    flex: 0 0 calc((100% - 64px) / 4.5);
+    min-height: 0; padding: 12px 16px; gap: 10px;
+  }
+  .featured-card img, .feat-sk-img { width: 56px; height: 56px; border-radius: 11px; }
+  .featured-title {
+    display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    min-height: 0; font-size: 14px; line-height: 1.4;
+  }
+  .featured-intro {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    white-space: normal; overflow: hidden; min-height: 0; margin-bottom: 4px;
+    font-size: 12px; line-height: 1.4;
+  }
+}
+@media (min-width: 641px) and (max-height: 760px) {
+  .featured-card, .feat-sk { padding: 10px 14px; gap: 8px; }
+  .featured-card img, .feat-sk-img { width: 52px; height: 52px; border-radius: 10px; }
+}
+
+/* 2026-11-26 六改：入选理由标签回炉，但长度/高度都不变。
+   标签绝对定位到封面图下方（正文从图片右侧起，互不占流），
+   窄卡放不下完整文案时省略号截断，hover 看 title 完整口径。
+   2026-11-27：站长说「开源免费」这类标签贴边太紧，补内边距；同步收 line-height，
+   让标签总高度仍是 15px，卡片布局不动。
+   2026-11-27 三次：站长截图「标签上边挤」——根因是五改把卡片改成内容撑高（约 105~130px），
+   封面图下方根本没有六改假设的空白角落：标签(17)+间距(5)+作者(16)=38px 的一摞
+   比图片下的空间高，底部锚定后只能向上顶进封面图。这里把卡片加高出真正的角落：
+   所需高度 = 上内边距12 + 图56 + 图下间隙8~10 + 一摞43 + 底部锚点12 ≈ 134（实测 .feat-sub 高 43px）。
+   骨架卡 .feat-sk 同步，加载完替换不跳。
+   同时把统计行 margin-top 恢复成 auto（四改为适应矮卡改成了 2px，卡片加高后统计行会
+   悬在半空、和钉底的作者行错位；恢复钉底后两行回到同一条底线上，也是最初的设计意图）。 */
+@media (min-width: 641px) {
+  .featured-card, .feat-sk { min-height: 134px; }
+  .featured-card .featured-meta { margin-top: auto; }
+  .featured-card .feat-sub {
+    position: absolute; left: 16px; bottom: 12px; z-index: 2;
+    display: block; max-width: 64px; margin: 0;
+  }
+  .featured-card .feat-reason {
+    display: block; max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 10px; line-height: 13px; padding: 1px 7px; border-radius: 4px;
+    /* 2026-11-27 二次：站长说的「挤」不是标签内部贴边，而是竖排时标签和下面作者行零间距。
+       补 margin-bottom 拉开两行；角标块锚在 bottom，标签整体会上移几像素，仍在封面图下方空白区内。 */
+    margin-bottom: 5px;
+  }
+  /* 2026-11-27：作者昵称长的时候会冲出 64px 角标区、压到底部数据行上。
+     .feat-author 是 inline-flex，本身不卡宽度的话，里面 .fa-name 的省略号根本不生效。 */
+  .featured-card .feat-author { max-width: 100%; }
+  .featured-card .fa-name { min-width: 0; }
+}
+@media (min-width: 641px) and (max-height: 760px) {
+  /* 矮窗口紧凑版：图 52 + 内边距 10；实测角标一摞 42px，= 10+52+9+42+10 ≈ 123，取 124 */
+  .featured-card, .feat-sk { min-height: 124px; }
+  .featured-card .feat-sub { left: 14px; bottom: 10px; max-width: 60px; }
+  .featured-card .feat-reason { font-size: 9px; line-height: 12px; }
+}
+
+/* 2026-11-26 七改：精选横滑右缘渐隐——把「第 5 张卡被切在文字中间」解释成「后面还有」，
+   跟发现页 .cat-fade-r（2026-11-18）同一套做法：app.js updateFeatNav 按真实溢出/滚动位置
+   挂 .feat-fade-r，还能往右滑才渐隐，滑到头自动收掉（末卡不会被白白淡化）。
+   mask 只改视觉，不挡点击/拖拽；遮罩带 32px，切在卡片中部时正好盖住半截字。 */
+.featured-row.feat-fade-r {
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 32px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 32px), transparent 100%);
+}
+
+/* ============ 首屏左文右卡（2026-11-26）============
+   原型那种大标题在左、叠层作品卡在右。只在 ≥1024px 生效：
+   手机 / 平板沿用原来的居中排版，右边这张卡整个不出现，避免窄屏挤成一团。
+   标题、搜索、热词、副标题都还在原位，只把它们排进左列。 */
+.hero-showcase { display: none; }
+@media (min-width: 1024px) {
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr);
+    grid-template-areas:
+      "title visual"
+      "sub   visual"
+      "search visual"
+      "links visual"
+      "hot   visual";
+    align-items: center;
+    column-gap: 36px;
+    text-align: left;
+    padding: 48px 0 18px;
+  }
+  .hero h1 {
+    grid-area: title;
+    font-size: clamp(36px, 3vw, 44px);
+    line-height: 1.2; margin-bottom: 14px;
+  }
+  /* 原型是「…都值得」一行、「被更多人看见」一行；强制渐变句独占一行，
+     不用改 HTML / 服务端那句替换串（窄屏 .hero-br 的规则也不受影响）。 */
+  #homeView .hero h1 .grad { display: block; }
+  .hero .hero-sub { grid-area: sub; max-width: 560px; line-height: 1.75; }
+  .hero .hero-links { grid-area: links; margin-top: 10px; }
+  .hero > .hero-search-combo { grid-area: search; justify-content: flex-start; margin-top: 22px; }
+  /* 11-26 修：槽位要跟着外层白框伸缩。上一版把槽位卡在 340px、外层框仍有 560px，
+     紫色「搜索」右边就空出一大块白底（站长截图指出的）。放开上限，同时把外层框
+     basis 从 520 收到 380，窄桌面也不会把「找找AI」挤到第二行。 */
+  .hero-search-combo .hero-search-slot { flex: 1 1 auto; max-width: none; }
+  .hero-search-field { flex: 1 1 380px; }
+  .hero .hero-hot { grid-area: hot; justify-content: flex-start; max-width: 620px; margin-top: 14px; }
+  .hero-search-row { display: none; }   /* 桌面本来就是空行，别让它占一个 grid 轨道 */
+
+  .hero-showcase {
+    grid-area: visual; display: block; position: relative;
+    /* 11-26 加一句话简介：卡片脚从一行变两行，容器同步加高 30px，别挤到底下的进度条 */
+    width: 100%; max-width: 440px; height: 388px; margin: 0 auto;
+  }
+}
+/* 叠层卡的柔光底：固定淡紫雾，避免卡片换来换去时背景跟着闪 */
+.hs-halo {
+  position: absolute; inset: 40px 24px 16px; z-index: 0;
+  border-radius: 44px; pointer-events: none;
+  background: var(--primary-soft, var(--tk96)); opacity: .75;
+  filter: blur(26px);
+}
+.hs-deck { position: absolute; inset: 0; z-index: 1; }
+.hs-card {
+  position: absolute; left: 0; right: 0; top: 0;
+  padding: 8px; border-radius: 14px; cursor: pointer;
+  background: #fff; border: 1px solid var(--border);
+  box-shadow: 0 12px 30px rgba(60, 60, 120, .14);
+  will-change: transform;
+  transition: transform 520ms cubic-bezier(.22, 1, .36, 1), opacity 520ms ease;
+}
+.hs-card:not(.is-front) { pointer-events: none; }
+.hs-card.is-front { box-shadow: 0 20px 44px rgba(60, 60, 120, .2); }
+/* 封面外壳固定 16:10（2026-11-26）：aspect-ratio 直接放在 img 上，破图（404/加载失败）时
+   Chrome 会塌成 alt 文本高度、整叠穿帮；套一层 .hs-media 兜住高度，破图也只是底色+裂图图标。
+   底色由 JS 按 id 哈希铺粉彩色（原型同款思路），淡色/透明底 PNG、加载空档都不露怯。 */
+.hs-media {
+  position: relative; aspect-ratio: 16 / 10;
+  border-radius: 9px; overflow: hidden; background: var(--tk94);
+}
+.hs-media img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+/* 文案行常驻（2026-11-26 照首屏原型作者的经验改）：display 切换会让换层瞬间卡片高度突变、
+   整叠抖一下；改成四张卡都渲染同一高度的文案行，非顶层只是 opacity 0，高度恒定不抖。 */
+.hs-foot {
+  display: flex; flex-direction: column; gap: 4px; padding: 10px 4px 4px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 520ms ease;
+}
+.hs-card.is-front .hs-foot { opacity: 1; }
+.hs-foot-top { display: flex; align-items: center; gap: 8px; }
+.hs-title {
+  flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.hs-views { flex: none; font-size: 12px; color: var(--muted); white-space: nowrap; }
+/* 一句话简介（11-26）：跟本周精选卡同款灰字，两行封顶；有简介才渲染这一行，
+   标题行高度不变，四张卡仍等高、换层不抖。没有简介的卡只有标题行、不会留空洞。 */
+.hs-desc {
+  font-size: 12px; line-height: 1.45; color: var(--muted);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+/* 2026-11-26 站长定：两侧圆形箭头撤下（悬停自动暂停、点段可跳，箭头突兀且多余），规则一并删 */
+/* 轮播进度条（2026-11-26）：参考「一小段深色 + 其余浅灰」的分段指示器。
+   当前段里的深色条按 4.2s 从左填满，读者看得出马上切下一张；点段直接跳。 */
+/* 注意：用 #hsDots 而不是 .hs-dots——欢迎屏星空背景款也用 .hs-dots 这个类名（3872 行），
+   撞名会让欢迎屏的深紫渐变底漏到指示条上（2026-11-26 去白底后暴露过）。 */
+#hsDots {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  z-index: 41; display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 4px 6px; border-radius: 999px;
+  /* 2026-11-26 站长定：去掉白色胶囊底，直接裸露在卡片下沿 */
+  background: none; box-shadow: none;
+}
+#hsDots[hidden] { display: none; }
+#hsDots::before, #hsDots::after { content: none; }   /* 欢迎屏星空款的 ::before/::after 星点别画到指示条上 */
+.hs-dot {
+  width: 36px; height: 6px; padding: 0; border: 0; border-radius: 999px;
+  background: #d5d1e4; overflow: hidden; cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(80, 70, 120, .07);
+  transition: background-color .2s;
+}
+.hs-dot:hover { background: #c5bee0; }
+.hs-dot:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.hs-dot-fill {
+  display: block; width: 100%; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, #4b3fd6, #7a5cf0);
+  transform: scaleX(0); transform-origin: left center;
+}
+.hs-dot.is-active .hs-dot-fill { transform: scaleX(1); }
+@keyframes hsDotFill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+/* 2026-11-27：间隔由后台配置，JS 把 --hs-cycle 写在 #heroShowcase 上；老缓存没有这个变量就回落 20s */
+.hs-dot.is-running .hs-dot-fill { animation: hsDotFill var(--hs-cycle, 20000ms) linear both; }
+.hs-dot.is-paused .hs-dot-fill { animation-play-state: paused; }
+#hsDots { transition: opacity .12s; }
+/* 自动切换前的加载弧圈（2026-11-26）：视频里那一下黑色小转圈。
+   只占进度条的位置，转圈时进度条淡出，换完卡再淡回来；手动切换不触发。 */
+.hs-spin {
+  position: absolute; left: 50%; bottom: 9px; transform: translateX(-50%);
+  z-index: 42; width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid rgba(70, 65, 95, .2); border-top-color: #222; border-right-color: #222;
+  animation: hsSpin .8s linear infinite;
+}
+.hs-spin[hidden] { display: none; }
+@keyframes hsSpin { to { transform: translateX(-50%) rotate(360deg); } }
+.hero-showcase.is-switching #hsDots { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .hs-dot.is-active .hs-dot-fill { transform: scaleX(1); }
+}
+/* 顶层卡呼吸：参考稿是 7s 上下 10px；rotate 放在外层 .hs-card 上、这里只动内层 .hs-inner，
+   两者不抢同一个 transform，也就不需要参考稿那套 --rot 注入。 */
+@keyframes hsFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@media (prefers-reduced-motion: no-preference) {
+  .hs-card.is-front .hs-inner { animation: hsFloat 7s ease-in-out infinite; }
+}
+
+/* ============ 清新的站头（2026-11-26）============
+   站长喜欢参考图那种淡紫到淡蓝的通透感：站头铺极浅渐变，导航收成胶囊组，
+   当前项用白底胶囊而不是底部紫条；发布加号和登录区跟着改成浅底。
+   只改视觉：五个导航入口一个不少，id / data-tip / 事件全留；手机端沿用自己的紧凑规则。 */
+@media (min-width: 641px) {
+  .site-header {
+    background: linear-gradient(100deg, var(--tk98), var(--primary-soft, var(--tk96)) 52%, var(--tk98));
+    border-bottom-color: rgba(var(--tk58-rgb), .12);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  }
+  .main-nav .nav-tabs {
+    height: auto; gap: 2px; padding: 3px;
+    background: rgba(255, 255, 255, .62);
+    border: 1px solid rgba(var(--tk58-rgb), .10);
+    border-radius: 999px;
+  }
+  .main-nav .nav-tabs .nav-btn {
+    padding: 6px 13px; border-radius: 999px; font-size: 13.5px;
+  }
+  .main-nav .nav-tabs .nav-btn:hover {
+    color: var(--primary); background: rgba(255, 255, 255, .92);
+  }
+  .main-nav .nav-tabs .nav-btn.active {
+    color: var(--primary); background: #fff; box-shadow: 0 1px 4px rgba(60, 60, 120, .12);
+  }
+  .pub-btn {
+    background: var(--primary-soft, var(--tk96)); color: var(--primary);
+    border: 1px solid rgba(var(--tk58-rgb), .14); box-shadow: none;
+  }
+  .pub-btn:hover, .pub-btn.is-open { background: var(--tk92); box-shadow: 0 2px 8px rgba(var(--tk58-rgb), .14); }
+  .plus-ico::before, .plus-ico::after { background: var(--primary); }
+  .checkin-entry, .notice-entry, .user-chip {
+    background: rgba(255, 255, 255, .72);
+    border: 1px solid rgba(var(--tk58-rgb), .10);
+  }
+  .checkin-entry .ck-pts { border-left-color: rgba(var(--tk58-rgb), .16); }
+}
+@media (min-width: 821px) and (max-width: 1360px) {
+  .main-nav .nav-tabs .nav-btn { padding: 6px 10px; font-size: 13.5px; }
+}
+@media (min-width: 641px) and (max-width: 820px) {
+  .main-nav .nav-tabs { height: auto; gap: 0; }
+  .main-nav .nav-tabs .nav-btn { padding: 5px 8px; }
+}
+
+/* ============ 站头按站长截图复刻（2026-11-26 九改）============
+   参考图：淡紫→淡青的极浅渐变 + 细点纹理；紫色圆角方块里一只白色小鲸，
+   品牌名近黑；导航没有外框，只有当前项是浅紫胶囊；「更多」里三项。
+   只改视觉与导航项数量，id / data-tip / 事件全留；手机端照旧不显示顶导。
+   2026-11-27 主题化：这版把深紫/浅紫写死成了 #6b3ce4/#ebeaff，换外观主题站头不跟
+   （正文换了、站头还是紫，站长截图报的就是这个）。全部改回变量——
+   深色走 --brand-strong（:root 默认 #6b3ce4 观感不变），浅底走 tk 色阶，主题块各覆盖一份。 */
+@media (min-width: 641px) {
+  .site-header {
+    background-color: var(--tk98);
+    background-image:
+      radial-gradient(rgba(var(--tk58-rgb), .07) .7px, transparent .8px),
+      linear-gradient(100deg, var(--tk98) 0%, var(--tk96) 32%, var(--tk98) 62%, var(--tk94) 100%);
+    background-size: 18px 18px, 100% 100%;
+    border-bottom-color: rgba(var(--tk58-rgb), .08);
+  }
+  .header-inner { gap: 18px; }
+  .logo { gap: 9px; font-size: 17px; color: #211d33; }
+  /* 紫色圆角方块 + 白鲸：mask 从元素挪到 ::before，元素本身才能画紫色底 */
+  .logo-mark {
+    position: relative; width: 26px; height: 26px; border-radius: 8px;
+    background: var(--brand-strong); -webkit-mask: none; mask: none;
+  }
+  .logo-mark::before {
+    content: ""; position: absolute; inset: 4px; background: #fff;
+    -webkit-mask: url('/logo.svg') center / contain no-repeat;
+    mask: url('/logo.svg') center / contain no-repeat;
+  }
+  .main-nav .nav-tabs {
+    height: auto; gap: 3px; padding: 0; background: none; border: 0;
+  }
+  .main-nav .nav-tabs .nav-btn {
+    padding: 7px 13px; border-radius: 10px; font-size: 13.5px; color: #666579;
+  }
+  .main-nav .nav-tabs .nav-btn:hover {
+    color: var(--brand-strong); background: rgba(var(--tk58-rgb), .07);
+  }
+  .main-nav .nav-tabs .nav-btn.active {
+    color: var(--brand-strong); background: var(--tk96); font-weight: 600; box-shadow: none;
+  }
+  /* 参考图导航是纯文字，不要图标；提示气泡仍按 data-tip 正常工作 */
+  .main-nav .nav-tabs > .nav-btn > .ico { display: none; }
+  /* 「更多」下拉：小程序 / App / 公众号，菜单随站头同款浅底白卡 */
+  .nav-more { position: relative; display: inline-flex; }
+  .nav-more-btn { cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+  .nm-caret { width: 14px; height: 14px; flex: none; transition: transform .16s; }
+  .nav-more.is-open .nm-caret { transform: rotate(180deg); }
+  .nav-more-menu {
+    position: absolute; top: calc(100% + 8px); left: 0; z-index: 40;
+    min-width: 150px; padding: 6px;
+    background: #fff; border: 1px solid rgba(var(--tk58-rgb), .12); border-radius: 12px;
+    box-shadow: 0 12px 30px rgba(40, 34, 90, .14);
+  }
+  .nav-more-menu[hidden] { display: none; }
+  .nav-menu-item {
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    padding: 9px 11px; border: 0; border-radius: 9px; background: none;
+    color: #4a475c; font-size: 13px; font-weight: 500; text-align: left;
+    text-decoration: none; cursor: pointer;
+  }
+  .nav-menu-item:hover, .nav-menu-item:focus-visible {
+    color: var(--brand-strong); background: var(--tk96); outline: none;
+  }
+  .nav-menu-item .ico { display: inline-flex; width: 15px; height: 15px; }
+  .nav-menu-item .ico svg { width: 15px; height: 15px; }
+  /* 右侧：加号收成一枚浅紫文字按钮，登录区更透，跟参考图一样轻 */
+  .pub-btn {
+    width: 30px; height: 30px; background: transparent;
+    border-color: transparent; box-shadow: none; color: var(--brand-strong);
+  }
+  .pub-btn:hover, .pub-btn.is-open {
+    background: rgba(var(--tk58-rgb), .08); box-shadow: none;
+  }
+  .plus-ico::before, .plus-ico::after { background: var(--brand-strong); }
+  .checkin-entry, .notice-entry, .user-chip {
+    background: rgba(255, 255, 255, .56);
+    border-color: rgba(var(--tk58-rgb), .07);
+  }
+  .checkin-entry.is-todo { background: rgba(255, 255, 255, .56); }
+  .notice-entry.has-new { background: var(--tk96); }
+}
+
+/* ============ 站头右侧控件照截图换色（2026-11-26 十改）============
+   站长另发的截图里：加号是浅紫实心圆（#ebeaff），签到+灯火和头像昵称是同一只
+   中性浅灰紫胶囊（#ebecf2），铃铛裸着没有底；头像圈是浅丁香底 + 紫首字。
+   只改视觉，按钮 id / 事件 / 文案 / 未读红点全留；641px 以下顶导本来就隐藏。 */
+@media (min-width: 641px) {
+  .site-header .pub-btn {
+    background: var(--tk96); border-color: transparent; box-shadow: none;
+  }
+  .site-header .pub-btn:hover, .site-header .pub-btn.is-open {
+    background: var(--tk92); box-shadow: none;
+  }
+  .auth-box .checkin-entry,
+  .auth-box .checkin-entry.is-todo,
+  .auth-box .user-chip {
+    background: #ebecf2; border-color: rgba(var(--tk58-rgb), .06);
+  }
+  .auth-box .checkin-entry,
+  .auth-box .checkin-entry.is-todo { color: #52558b; font-weight: 500; }
+  /* 截图里的两只胶囊没有图标，只有「签到 +10 | 8179」文字；移动端空间紧的规则不碰 */
+  .auth-box .checkin-entry .lb-ico,
+  .auth-box .checkin-entry .ck-pts .ico { display: none; }
+  /* 641–820px 那档原本为了省地方把「签到 +10」藏了，改成跟桌面同款保留；
+     本段选择器多一层，正好压过那条 .auth-box .ck-label{display:none}。 */
+  .auth-box .checkin-entry .ck-label { display: inline; color: #75768b; font-weight: 500; }
+  .auth-box .checkin-entry:hover { background: #e3e1ed; }
+  .auth-box .checkin-entry .ck-pts {
+    color: #26273c; border-left-color: rgba(82, 85, 139, .22); font-weight: 600;
+  }
+  .auth-box .checkin-entry.is-done .ck-pts { background: none; color: #26273c; }
+  .auth-box .notice-entry,
+  .auth-box .notice-entry.has-new {
+    background: none; border-color: transparent; color: #7e8196;
+  }
+  /* 铃铛平时裸着，hover 才浮出同款灰紫圆底（站长截图「改造后」那颗） */
+  .auth-box .notice-entry:hover,
+  .auth-box .notice-entry.has-new:hover {
+    background: #ebecf2; border-color: rgba(var(--tk58-rgb), .06); color: var(--brand-strong);
+  }
+  .auth-box .user-chip {
+    color: #2f3046; font-size: 13px; font-weight: 500;
+    height: 34px; padding: 3px 12px 3px 3px; gap: 7px;
+  }
+  .auth-box .user-chip:hover { background: #e3e1ed; }
+  .auth-box .user-chip .uc-ava {
+    width: 28px; height: 28px; background: var(--tk90); color: var(--brand-strong);
+  }
+  .auth-box .user-chip .um-caret { color: #9a9cb2; }
+}
+
+/* ============ 右上角胶囊对齐设计稿（2026-11-26 十一改）============
+   设计稿口径：两颗胶囊都 h-8（32px）；签到胶囊 px-3 + 沉底浅灰；用户胶囊
+   pl-1.5 / pr-2.5 + 白卡面 + 卡片阴影。文字分两层不靠字号、靠字重 + 灰阶：
+   「签到」12px/400/ink-400；「+10」「余额」12px/600/ink-600 且挂 .num
+   （等宽数字，余额跳动时胶囊不左右抖）；头像首字 12px/600 品牌紫、底 violet/12；
+   昵称 13px/400/ink-600；下拉箭头换成 lucide chevron-down SVG（14px、ink-300）。
+   中间分隔竖线定高 14px（h-3.5），不再随文字行高走。
+   只改视觉：按钮 id / 事件 / 文案 / 未读红点全留；641px 以下顶导本来就没有。 */
+@media (min-width: 641px) {
+  .auth-box .checkin-entry {
+    height: 32px; padding: 0 12px;
+    color: var(--ink-600); font-weight: 400;
+  }
+  .auth-box .checkin-entry .ck-label {
+    display: inline; color: var(--ink-400); font-weight: 400; font-family: var(--font-body);
+  }
+  .auth-box .checkin-entry .ck-plus {
+    font-weight: 600; color: var(--ink-600); margin-left: 3px;
+  }
+  .auth-box .checkin-entry .ck-pts {
+    position: relative; margin-left: 8px; padding-left: 11px;
+    border-left: 0; background: none;
+    font-weight: 600; color: var(--ink-600); font-family: var(--font-body);
+  }
+  /* 分隔竖线定高 14px：border 会跟着行高撑满整颗按钮，改用伪元素画 */
+  .auth-box .checkin-entry .ck-pts::before {
+    content: ""; position: absolute; left: 0; top: 50%;
+    width: 1px; height: 14px; transform: translateY(-50%);
+    background: rgba(var(--tk58-rgb), .20);
+  }
+  /* 已签/未签共用一套灰阶（设计稿不按状态分档），把旧的金黄徽章底一并抹掉 */
+  .auth-box .checkin-entry.is-done { color: var(--ink-600); }
+  .auth-box .checkin-entry.is-done .ck-label { color: var(--ink-400); }
+  .auth-box .checkin-entry.is-done .ck-pts { background: none; color: var(--ink-600); }
+  .auth-box .user-chip {
+    /* 参考稿的呼吸感：头像与昵称、昵称与箭头各留 10px（原 7px 显挤），左右内边距不动 */
+    height: 32px; padding: 2px 10px 2px 6px; gap: 10px;
+    background: #fff; border-color: rgba(var(--tk58-rgb), .10);
+    box-shadow: 0 1px 2px rgba(40, 34, 90, .10);
+    color: var(--ink-600); font-size: 13px; font-weight: 400; font-family: var(--font-body);
+  }
+  .auth-box .user-chip:hover {
+    background: #fff; box-shadow: 0 2px 6px rgba(40, 34, 90, .14);
+  }
+  .auth-box .user-chip .uc-name { color: var(--ink-600); font-weight: 400; }
+  .auth-box .user-chip .uc-ava {
+    width: 28px; height: 28px;
+    background: rgba(var(--tk58-rgb), .12); color: var(--brand-strong);
+    font-family: var(--font-display);
+  }
+  .auth-box .user-chip svg.um-caret {
+    width: 14px; height: 14px; flex: none; color: var(--ink-300);
+  }
+  /* 641–820 那档 user-chip 有 88px 硬上限，放大 gap 会把昵称挤成空白，维持原 7px */
+  @media (max-width: 820px) {
+    .auth-box .user-chip { gap: 7px; }
+  }
+}
+
+/* ========== 首屏点阵底纹（2026-11-26，参考站长给的锚点堆叠稿）============
+   参考稿 hero-canvas 在三团柔光上铺了一层极淡的紫色点阵（26px 网格、往下渐隐），
+   我们原来只有 aurora 光晕、底是空的。这里补同款点阵：
+   纯背景装饰（z-index 1，压在光晕之上、内容之下），不碰任何交互与文案，
+   静态底纹不受 prefers-reduced-motion 影响。 */
+.hero::before {
+  content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background-image: radial-gradient(rgba(var(--tk58-rgb), .15) 1px, transparent 1px);
+  background-size: 26px 26px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 8%, transparent 62%);
+  mask-image: linear-gradient(to bottom, #000 8%, transparent 62%);
+}
+
+/* ============ 首屏叠层卡：来源角标 + 混合池进度条（2026-11-26）============
+   指示器固定 5 段（池子 ≤5 全画，>5 是滑动窗口），容器 380px、段定宽 46px 居中排。
+   四类来源角标：自荐（品牌紫）/ 猜你喜欢（胭脂粉）/ 企业认证（青蓝）/ 优秀作品（暖金），压在封面左上角。 */
+/* 2026-11-27 站长：指示条「稍微短一点」——单段 46→36px、整条 380→300px，5 段仍左对齐居中 */
+#hsDots { width: min(100%, 300px); }
+.hs-dot { flex: 0 1 36px; width: 36px; min-width: 6px; max-width: 36px; }
+.hs-kind {
+  position: absolute; top: 14px; left: 14px; z-index: 2;
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 4px 9px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; line-height: 1;
+  letter-spacing: .02em; white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(30, 30, 70, .14);
+}
+.hs-kind-self { background: var(--brand-strong); color: #fff; }
+.hs-kind-cert { background: #0f8a86; color: #fff; }
+.hs-kind-peak { background: #f5b323; color: #4a3200; }
+.hs-kind-rec { background: #e8597a; color: #fff; }
+@media (max-width: 1023px) {
+  .hs-kind { top: 10px; left: 10px; font-size: 10px; padding: 3px 7px; }
+}
+
+/* ============ 2026-11-26 首页筛选条改版（按站长给的图）============
+   形态 / 场景 / 分类 / 更多 收进同一个白色圆角容器，段与段之间一条 1px 竖线；
+   收起时只显示名字，选中后才把值跟在名字后面（原来默认就写「全部形态」，太长且不如图里干净）。
+   选中底由浅紫换成中性浅灰，跟稿里高亮的那一格一致；hover / 展开也走同一块灰底。
+   作用域限定在首页 .filter-row，榜单页那排下拉（.rank-dd-row）保持原样。 */
+.filter-bar .filter-row {
+  display: inline-flex; align-items: center; flex-wrap: wrap;
+  gap: 2px 0; padding: 4px;
+  background: #fff;
+  border: 1px solid rgba(30, 34, 70, .07);
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(30, 34, 70, .04), 0 8px 22px rgba(30, 34, 70, .06);
+}
+/* 段间竖线：画在每段左缘，hover / 展开时两边都让开，高亮块才是一个完整胶囊 */
+.filter-row .dd-filter + .dd-filter::before {
+  content: ''; position: absolute; left: -1px; top: 50%;
+  width: 1px; height: 16px; margin-top: -8px;
+  background: rgba(30, 34, 70, .10);
+  transition: opacity .12s;
+}
+.filter-row .dd-filter:hover::before,
+.filter-row .dd-filter:hover + .dd-filter::before,
+.filter-row .dd-filter.open::before,
+.filter-row .dd-filter.open + .dd-filter::before { opacity: 0; }
+
+.filter-row .dd-btn {
+  padding: 7px 12px; gap: 6px;
+  border: 0; border-radius: 999px; background: transparent;
+  font-size: 13px; color: #2b2f45; box-shadow: none;
+}
+.filter-row .dd-btn:hover { background: #f4f5f7; }
+.filter-row .dd-filter.open .dd-btn { background: #f4f5f7; box-shadow: none; }
+.filter-row .dd-btn .dd-ico { font-size: 14px; color: #5f6478; }
+.filter-row .dd-btn .dd-label { color: #2b2f45; font-weight: 500; }
+.filter-row .dd-btn .dd-caret { display: inline-flex; align-items: center; color: #a3a8ba; }
+.filter-row .dd-btn .dd-caret .ico { width: 13px; height: 13px; }
+/* 未选中时值整个不渲染出来（只剩「形态 / 场景 / 分类」），选中后才显示具体值 */
+.filter-row .dd-btn:not(.has-value) .dd-value { display: none; }
+.filter-row .dd-btn.has-value { background: #eef0f3; border-color: transparent; }
+.filter-row .dd-btn.has-value .dd-label { color: #8a8fa3; font-weight: 400; }
+.filter-row .dd-btn.has-value .dd-value { color: var(--text); }
+/* 窄窗口换行时竖线会落到行首，像凭空多出一条线，直接不画 */
+@media (max-width: 1120px) {
+  .filter-row .dd-filter + .dd-filter::before { display: none; }
+}
+/* 2026-11-26 设计补齐：排序三颗加图标（罗盘 / 时钟 / 火苗），「记住」加图钉。
+   图标吃 currentColor，所以 active / 勾选时不用另写颜色，跟着文字一起变主色。 */
+.sort-toggle .st-btn { display: inline-flex; align-items: center; gap: 5px; }
+.sort-toggle .st-btn .ico { font-size: 13px; }
+/* 与旁边筛选胶囊（实测 41px）齐高：原 34px 矮一截，并排时底边对不齐 */
+.sort-toggle { padding: 4px; }
+.sort-toggle .st-btn { height: 30px; }
+.remember-filters-main .ico { font-size: 13px; }
+
+/* ---------- 造梦日志（2026-11-27） ----------
+   作者主页上的轻量博客：档案卡下面、作品流上面。没写过日志时整块 display:none，
+   访客视角完全不占位；本人没写过时给一张引导卡。颜色全走主题令牌，换肤自动跟随 */
+.author-logs { margin-bottom: 20px; }
+.alog-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.alog-title {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 16px; font-weight: 700; color: var(--text);
+}
+.alog-title .ico { color: var(--primary); }
+.alog-write {
+  font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  padding: 7px 16px; border-radius: 999px; border: none;
+  background: linear-gradient(135deg, var(--tk68), var(--tk58)); color: #fff;
+  transition: filter .15s;
+}
+.alog-write:hover { filter: brightness(1.08); }
+.alog-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+  padding: 16px 18px; margin-bottom: 12px;
+}
+.alog-card-head { display: flex; align-items: center; gap: 8px; }
+.alog-date { font-size: 12.5px; color: var(--muted); font-family: var(--font-num); }
+.alog-edited { font-style: normal; font-size: 11.5px; color: var(--muted); background: var(--tk96); border-radius: 999px; padding: 1px 8px; }
+.alog-ops { margin-left: auto; display: inline-flex; gap: 4px; }
+.alog-op {
+  font-family: inherit; font-size: 12px; color: var(--muted); cursor: pointer;
+  background: transparent; border: none; border-radius: 8px; padding: 3px 8px;
+  transition: background .15s, color .15s;
+}
+.alog-op:hover { background: var(--tk96); color: var(--primary-dark); }
+.alog-card-title { margin: 8px 0 0; font-size: 15.5px; font-weight: 700; color: var(--text); }
+.alog-body { margin-top: 8px; }
+.alog-body p { margin: 0 0 8px; font-size: 14px; line-height: 1.75; color: var(--text); }
+.alog-body p:last-child { margin-bottom: 0; }
+.alog-img {
+  display: block; max-width: 100%; max-height: 460px;
+  border-radius: 10px; margin: 8px 0; border: 1px solid var(--border);
+}
+.alog-card.alog-empty p { margin: 0; font-size: 13.5px; line-height: 1.7; color: var(--muted); }
+.alog-empty-act { margin-top: 12px !important; }
+@media (max-width: 640px) {
+  .alog-card { padding: 13px 14px; }
+}
+/* 写作弹窗 */
+.alog-composer { width: min(560px, 94vw); padding: 22px; }
+.alog-cp-title { margin: 0 0 4px; font-size: 17px; font-weight: 700; }
+.alog-cp-hint { margin: 0 0 14px; font-size: 12.5px; color: var(--muted); }
+.alog-cp-input {
+  width: 100%; box-sizing: border-box; font-family: inherit; font-size: 14.5px;
+  padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); margin-bottom: 10px;
+}
+.alog-cp-input:focus, .alog-cp-text:focus { outline: none; border-color: var(--primary); }
+.alog-cp-text {
+  width: 100%; box-sizing: border-box; font-family: inherit; font-size: 14px; line-height: 1.7;
+  padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text);
+  min-height: 180px; resize: vertical;
+}
+.alog-cp-bar { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+.alog-cp-img {
+  font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  padding: 7px 14px; border-radius: 999px; border: 1px dashed var(--tk86);
+  background: var(--tk98); color: var(--primary);
+  transition: filter .15s;
+}
+.alog-cp-img:hover { filter: brightness(0.97); }
+.alog-cp-img:disabled { opacity: .6; cursor: default; }
+.alog-cp-count { flex: 1; font-size: 12px; color: var(--muted); }
+/* 删除确认弹窗 */
+.alog-confirm { width: min(360px, 90vw); padding: 22px; }
+.alog-cf-title { margin: 0 0 8px; font-size: 16px; font-weight: 700; }
+.alog-cf-sub { margin: 0 0 16px; font-size: 13px; line-height: 1.6; color: var(--muted); word-break: break-all; }
+.alog-cf-row { display: flex; gap: 10px; justify-content: flex-end; }
+.alog-cf-no {
+  font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  padding: 8px 18px; border-radius: 999px; border: 1px solid var(--border);
+  background: transparent; color: var(--text);
+}
+.alog-cf-yes {
+  font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  padding: 8px 18px; border-radius: 999px; border: none;
+  background: var(--danger); color: #fff;
+}
+.alog-cf-yes:disabled { opacity: .6; }

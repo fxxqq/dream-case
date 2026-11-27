@@ -1728,7 +1728,9 @@ const tokRe = new RegExp(Object.keys(COMP).sort((a, b) => b.length - a.length).j
 /* ───────────── 题跋 ───────────── */
 function TL() {
   const { W, H } = S, fs = clamp(min(H * .038, W * .062), 18, 34), lh = fs * 1.12, gap = fs * 1.55;
-  return { fs, lh, gap, top: max(H * .075, 36), rows: max(4, floor(H * .5 / lh)), right: W - max(W * .05, 30) - fs / 2, maxCols: max(2, floor(W * .4 / gap)) };
+  /* 边距给足（2026-11-25）：词列贴边太近（右 5%/顶 7.5%），铺成壁纸后 cover+漂移动效
+     最坏要裁掉单侧 ~7%，字直接被切。收到右 10%/顶 11%，动效裁边也吃不到字。 */
+  return { fs, lh, gap, top: max(H * .11, 56), rows: max(4, floor(H * .5 / lh)), right: W - max(W * .1, 56) - fs / 2, maxCols: max(2, floor(W * .4 / gap)) };
 }
 function addInsc(ch) {
   const L = TL(); let col = S.insc[S.insc.length - 1];

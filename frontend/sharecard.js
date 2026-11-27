@@ -256,6 +256,30 @@
 
     ctx.textAlign = 'left';
 
+    // 上榜横幅（2026-11-27）：期刊定稿通知带来的 honor（rank / period / no）——
+    // 金色彩带横贯截图底部，一眼看出「上榜」这件事。没有 honor 就是普通分享卡，零改动。
+    // 叠在截图上不占文字区：截图下方到分割线只有 70px 出头的余量，塞不下一条横幅。
+    if (work.honor && Number(work.honor.rank) > 0) {
+      const bh = 64, bx = imgX, by = imgY + imgH - bh;
+      const band = ctx.createLinearGradient(bx, by, bx + imgW, by);
+      band.addColorStop(0, '#c79b3b');
+      band.addColorStop(0.5, '#e8c766');
+      band.addColorStop(1, '#b78a2c');
+      ctx.fillStyle = band;
+      ctx.fillRect(bx, by, imgW, bh);
+      ctx.fillStyle = 'rgba(80,52,0,.45)';
+      ctx.fillRect(bx, by, imgW, 2);   // 顶边细线：跟截图分得开，也压得住圆角里的斜边
+      const kindLabel = work.honor.period === 'month' ? '月榜' : '周榜';
+      ctx.fillStyle = '#3d2a00';
+      ctx.font = `700 30px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.shadowColor = 'rgba(255,246,210,.85)';
+      ctx.shadowBlur = 5;
+      ctx.fillText(`★ 星梦期刊 · ${kindLabel}第 ${work.honor.no} 期 · 第 ${work.honor.rank} 名`, imgX + imgW / 2, by + bh / 2 - 15);
+      ctx.shadowBlur = 0;
+      ctx.textAlign = 'left';
+    }
+
     // 标题（紧跟截图下方，随图片高度自适应）
     const maxTextW = W - PAD * 2;
     ctx.fillStyle = t.text;
@@ -488,6 +512,16 @@
   function syncLampTip() {
     const el = $('shareLampTip');
     if (!el) return;
+    // 上榜海报（work.honor）不挂「好友扫码 +5」这类奖励话术（2026-11-27 站长）：
+    // 金榜横幅底下跟一行拉人头的利益提示，喜事瞬间变传销现场。二维码 ref 归因照旧，
+    // 扫码该给的灯火服务端照给，只是海报上不明说。
+    if (current && current.honor) {
+      el.className = 'share-lamp-tip';
+      el.innerHTML = '';
+      el.hidden = true;
+      return;
+    }
+    el.hidden = false;
     const pts = myPoints();
     if (pts === null) {
       el.className = 'share-lamp-tip is-guest show';
@@ -587,8 +621,13 @@
       if (!current) return;
       const types = (typeof typesOf === 'function' ? typesOf(current) : []).join('/');
       const intro = String(current.intro || '').replace(/\s+/g, ' ').trim();
+      // 上榜卡（work.honor）复制文案带名次：海报是图、文案是字，两处都把「上榜」说明白
+      const honorLine = (current.honor && Number(current.honor.rank) > 0)
+        ? `🏆 星梦期刊 · ${current.honor.period === 'month' ? '月榜' : '周榜'}第 ${current.honor.no} 期 第 ${current.honor.rank} 名`
+        : '';
       const text = [
         `【${current.title}】${intro ? '—— ' + intro.slice(0, 60) : ''}`,
+        honorLine,
         `作者 @${current.authorName || current.author || '匿名'}${types ? ' · ' + types : ''}${current.category ? ' · ' + current.category : ''}`,
         `👉 ${cardUrl(current)}`,
         '来自「造梦橱窗」：每一个认真做出的想法，都值得被看见'
