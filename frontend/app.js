@@ -437,6 +437,7 @@ function ensureInteractiveSetups() {
   setupCommentEmoji();
   setupAuthForms();
   setupSubmitChoice();
+  setupEmailAuth();
   setupPhoneVerify();
   setupPhoneKeep();
   setupFeedback();
@@ -3102,6 +3103,158 @@ function showLoginUpgrade(username, password, remember) {
     } catch (err) { showToast(err.message, undefined, 'err'); }
     finally { btn.disabled = false; btn.textContent = '注册并登录'; }
   });
+}
+
+// ---------- 邮箱绑定 / 邮箱找回密码（前端侧） ----------
+// 服务端是 email-auth.js + server.js 的 /api/email/*。
+// 通道没开通时整个入口自动隐藏（status.enabled=false），不显示点了没反应的按钮。
+let emailChannelOn = false;
+async function loadEmailStatus() {
+  try {
+    const r = await fetch('/api/email/status');
+    const d = await r.json();
+    emailChannelOn = !!(d && d.enabled);
+    // 登录弹窗「忘记密码？」入口：只有通道开了才亮（否则用户点进去发不出码）
+    const wrap = $('forgotPwWrap');
+    if (wrap) wrap.style.display = emailChannelOn ? '' : 'none';
+    // 设置页行：开了通道才显示
+    const row = $('stEmail');
+    if (row) row.style.display = emailChannelOn ? '' : 'none';
+  } catch { emailChannelOn = false; }
+}
+function emailErr(id, msg) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = msg || '';
+  el.hidden = !msg;
+}
+function validEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || '').trim()); }
+
+// 发码按钮共用逻辑：60 秒倒计时，失败不进入倒计时
+function wireEmailSend(btnId, inputId, sceneLabel) {
+  const btn = $(btnId);
+  if (!btn || btn.dataset.wired) return;
+  btn.dataset.wired = '1';
+  btn.onclick = async () => {
+    const input = $(inputId);
+    const email = (input && input.value || '').trim();
+    if (!validEmail(email)) { showToast('先填一个正确的邮箱地址', undefined, 'err'); return; }
+    const old = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '发送中…';
+    try {
+      const r = await fetch('/api/email/send', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, scene: sceneLabel }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) throw new Error((d && d.error) || '验证码发送失败');
+      if (d.mode === 'local') showToast('验证码已打到服务器控制台（本地降级模式）', undefined, 'ok');
+      else showToast('验证码已发送，请查收邮件（含垃圾箱）', undefined, 'ok');
+      let left = Number(d.ttl) || 60;
+      btn.textContent = left + 's 后重发';
+      const timer = setInterval(() => {
+        left -= 1;
+        if (left <= 0) { clearInterval(timer); btn.disabled = false; btn.textContent = '重新获取'; }
+        else btn.textContent = left + 's 后重发';
+      }, 1000);
+      return;
+    } catch (e) {
+      showToast(e.message || '验证码发送失败', undefined, 'err');
+    } finally {
+      if (btn.disabled && btn.textContent === '发送中…') { btn.disabled = false; btn.textContent = old; }
+    }
+  };
+}
+
+function setupEmailAuth() {
+  // 1) 绑定邮箱弹窗
+  const bindForm = $('emailBindForm');
+  if (bindForm) {
+    wireEmailSend('bindEmailSend', 'bindEmail', 'bind');
+    const close = () => hideModal($('emailBindModal'));
+    if ($('emailBindClose')) $('emailBindClose').onclick = close;
+    if ($('emailBindCancel')) $('emailBindCancel').onclick = close;
+    bindMaskClose($('emailBindModal'), close);
+    bindForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      emailErr('bindEmailErr', '');
+      const email = ($('bindEmail').value || '').trim();
+      const code = ($('bindEmailCode').value || '').trim();
+      if (!validEmail(email)) { emailErr('bindEmailErr', '邮箱格式不正确'); return; }
+      if (!/^\d{6}$/.test(code)) { emailErr('bindEmailErr', '请填写 6 位数字验证码'); return; }
+      const btn = $('bindEmailSave'), old = btn.textContent;
+      btn.disabled = true; btn.textContent = '绑定中…';
+      try {
+        const r = await fetch('/api/me/email', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, code }),
+        });
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw new Error((d && d.error) || '绑定失败');
+        if (state.user) { state.user.hasEmail = true; state.user.emailMasked = d.masked || ''; }
+        hideModal($('emailBindModal'));
+        showToast('邮箱绑定成功，现在可以用它找回密码了', undefined, 'ok');
+        renderSettingsPage();
+      } catch (err) { emailErr('bindEmailErr', err.message || '绑定失败'); }
+      finally { btn.disabled = false; btn.textContent = old; }
+    });
+  }
+
+  // 2) 找回密码弹窗
+  const recoverForm = $('emailRecoverForm');
+  if (recoverForm) {
+    wireEmailSend('recoverSend', 'recoverEmail', 'recover');
+    const close = () => hideModal($('emailRecoverModal'));
+    if ($('emailRecoverClose')) $('emailRecoverClose').onclick = close;
+    if ($('emailRecoverBack')) $('emailRecoverBack').onclick = () => {
+      close();
+      setTimeout(() => openAuth('login'), 60);
+    };
+    bindMaskClose($('emailRecoverModal'), close);
+    recoverForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      emailErr('recoverErr', '');
+      const email = ($('recoverEmail').value || '').trim();
+      const code = ($('recoverCode').value || '').trim();
+      const pass = $('recoverNewPass').value;
+      if (!validEmail(email)) { emailErr('recoverErr', '邮箱格式不正确'); return; }
+      if (!/^\d{6}$/.test(code)) { emailErr('recoverErr', '请填写 6 位数字验证码'); return; }
+      if (pass.length < 6) { emailErr('recoverErr', '新密码至少 6 位'); return; }
+      const btn = $('recoverSave'), old = btn.textContent;
+      btn.disabled = true; btn.textContent = '重置中…';
+      try {
+        const r = await fetch('/api/email/recover', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, code, newPassword: pass }),
+        });
+        const d = await r.json();
+        if (!r.ok || !d.ok) throw new Error((d && d.error) || '重置失败');
+        hideModal($('emailRecoverModal'));
+        showToast('密码已重置，请用新密码登录', undefined, 'ok');
+        setTimeout(() => openAuth('login'), 60);
+      } catch (err) { emailErr('recoverErr', err.message || '重置失败'); }
+      finally { btn.disabled = false; btn.textContent = old; }
+    });
+  }
+
+  // 3) 登录弹窗里的「忘记密码？」入口
+  const forgot = $('forgotPwEmail');
+  if (forgot) forgot.onclick = e => {
+    e.preventDefault();
+    hideModal($('authModal'));
+    setTimeout(() => showModal($('emailRecoverModal')), 60);
+  };
+
+  // 4) 新密码右侧小眼睛
+  const eye = $('recoverNewPassEye');
+  if (eye) eye.onclick = () => {
+    const inp = $('recoverNewPass');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+  };
+
+  // 5) 通道状态异步拉取（不阻塞首屏）
+  loadEmailStatus();
 }
 
 // ---------- 手机实名核验（前端侧） ----------
@@ -9411,6 +9564,12 @@ function renderSettingsPage() {
       <span class="st-main"><b>${canSetAlias ? '账号与密码' : '登录密码'}</b><i>${canSetAlias ? (isWxAux ? '微信辅助号的登录名和密码在这里改；想并回主号，去小程序「我的 → 绑定已有账号」' : '登录名（别名）和密码都在这里改') : '账号名 @' + escapeHtml(u.username || '') + ' 注册时就定了，这里只改密码'}${setupAvail ? ` · 设置好送 ${setupPts} 盏灯火` : ''}</i></span>
       <span class="st-more">›</span>
     </button>
+    <button type="button" class="st-row" id="stEmail" style="display:none">
+      <span class="st-ico">${ic('mail', 18) || ic('link', 18)}</span>
+      <span class="st-main"><b>${u.hasEmail ? '更换邮箱' : '绑定邮箱'}</b><i>绑定后忘记密码可以用邮箱自助找回，邮箱加密保存，不会公开</i></span>
+      <span class="st-val${u.hasEmail ? '' : ' st-dim'}">${u.hasEmail ? escapeHtml(u.emailMasked || '已绑定') : '未绑定'}</span>
+      <span class="st-more">›</span>
+    </button>
     <button type="button" class="st-row" id="stPubKey">
       <span class="st-ico">${ic('key', 18)}</span>
       <span class="st-main"><b>AI 发布密钥</b><i>把产品资料交给你的 AI 助手，它按投稿说明书替你一键投稿</i></span>
@@ -9446,6 +9605,20 @@ function renderSettingsPage() {
   $('stNick').onclick = openNickModal;
   $('stSlug').onclick = openSlugModal;
   $('stPass').onclick = openPassModal;
+  const stEmail = $('stEmail');
+  if (stEmail) stEmail.onclick = () => {
+    $('bindEmail').value = '';
+    $('bindEmailCode').value = '';
+    emailErr('bindEmailErr', '');
+    const hint = $('emailBindHint');
+    if (hint) hint.textContent = u.hasEmail
+      ? `当前绑定：${u.emailMasked || '已绑定'}。换成新邮箱后，旧邮箱将不能再用来找回密码。`
+      : '绑定后可以用邮箱找回密码。邮箱加密保存，不会出现在主页和作品里。';
+    showModal($('emailBindModal'));
+    setTimeout(() => { try { $('bindEmail').focus(); } catch { /* 已关闭 */ } }, 80);
+  };
+  // 设置页里的行是动态生成的，渲染完重新拉一次通道状态决定是否显示
+  loadEmailStatus();
   $('stPubKey').onclick = openPubKeyModal;
   $('stMute').onclick = openNoticePrefsModal;
   const ghRow = $('stGh'); if (ghRow) ghRow.onclick = openGhModal;
