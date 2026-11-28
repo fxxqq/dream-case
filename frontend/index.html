@@ -3071,7 +3071,7 @@
           <button type="button" class="btn-primary btn-block" id="upgradeRegBtn">一键注册并登录</button>
           <button type="button" class="auth-upgrade-cancel" id="upgradeCancel">不对，换个用户名</button>
         </div>
-        <p class="auth-switch">还没有账号？<a href="#" id="toRegister">注册一个 →</a></p>
+        <p class="auth-switch">还没有账号？<a href="#" id="toRegister">注册一个 →</a><span id="forgotPwWrap" style="display:none"> · <a href="#" id="forgotPwEmail">忘记密码？</a></span></p>
       </form>
 
       <form id="registerForm" style="display:none">
@@ -3126,6 +3126,61 @@
         <p class="wxscan-expired" id="wxScanRefresh" style="display:none">二维码已过期，<a href="#" id="wxScanRefreshBtn">刷新重试</a></p>
         <button type="button" class="auth-upgrade-cancel" id="wxScanBack">返回账号密码登录</button>
       </div>
+    </div>
+  </div>
+  </template>
+
+  <!-- 绑定邮箱弹窗（账号设置 → 绑定邮箱）：登录后才能开，发码走阿里云邮件推送 -->
+  <template id="dm-tpl-emailBindModal" data-modal-root>
+  <div class="modal-mask" id="emailBindModal" style="display:none">
+    <div class="modal auth-modal">
+      <div class="modal-head">
+        <h2>绑定邮箱</h2>
+        <button class="close-btn" id="emailBindClose">✕</button>
+      </div>
+      <p class="form-hint" id="emailBindHint">绑定后可以用邮箱找回密码。邮箱加密保存，不会出现在主页和作品里。</p>
+      <form id="emailBindForm">
+        <label>邮箱地址</label>
+        <input type="email" name="email" id="bindEmail" maxlength="120" autocomplete="email" placeholder="name@example.com" required />
+        <label>验证码</label>
+        <div class="sms-code-wrap">
+          <input type="text" name="code" id="bindEmailCode" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="6 位数字" required />
+          <button type="button" class="sms-send" id="bindEmailSend">获取验证码</button>
+        </div>
+        <p class="form-err" id="bindEmailErr" hidden></p>
+        <button type="submit" class="btn-primary btn-block" id="bindEmailSave">确认绑定</button>
+      </form>
+      <button type="button" class="auth-upgrade-cancel" id="emailBindCancel">取消</button>
+    </div>
+  </div>
+  </template>
+
+  <!-- 邮箱找回密码弹窗（登录弹窗 → 忘记密码）：无需登录，验码通过即重置密码 -->
+  <template id="dm-tpl-emailRecoverModal" data-modal-root>
+  <div class="modal-mask" id="emailRecoverModal" style="display:none">
+    <div class="modal auth-modal">
+      <div class="modal-head">
+        <h2>邮箱找回密码</h2>
+        <button class="close-btn" id="emailRecoverClose">✕</button>
+      </div>
+      <p class="form-hint">输入绑定时用的邮箱，验证码通过后会直接重置密码，并让所有设备重新登录。</p>
+      <form id="emailRecoverForm">
+        <label>绑定过的邮箱</label>
+        <input type="email" name="email" id="recoverEmail" maxlength="120" autocomplete="email" placeholder="name@example.com" required />
+        <label>验证码</label>
+        <div class="sms-code-wrap">
+          <input type="text" name="code" id="recoverCode" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="6 位数字" required />
+          <button type="button" class="sms-send" id="recoverSend">获取验证码</button>
+        </div>
+        <label>新密码（至少 6 位）</label>
+        <div class="pw-wrap">
+          <input type="password" name="newPassword" id="recoverNewPass" minlength="6" maxlength="64" autocomplete="new-password" required />
+          <button type="button" class="pw-eye" id="recoverNewPassEye" tabindex="-1" title="显示 / 隐藏密码"><span class="ico" data-ico="eye"></span></button>
+        </div>
+        <p class="form-err" id="recoverErr" hidden></p>
+        <button type="submit" class="btn-primary btn-block" id="recoverSave">重置密码</button>
+      </form>
+      <button type="button" class="auth-upgrade-cancel" id="emailRecoverBack">返回登录</button>
     </div>
   </div>
   </template>

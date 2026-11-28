@@ -20,6 +20,9 @@ const siteMeta = require('./site-meta');
 const { renderWechatArticle } = require('./wechat-article');
 // 短信验证码（阿里云号码认证 · 短信认证）：发码、校验、频控、手机号加密，见 sms-auth.js
 const { createSmsService } = require('./sms-auth');
+// 邮箱验证码（阿里云邮件推送 · SingleSendMail）：绑定邮箱 + 邮箱找回密码，见 email-auth.js
+// 与短信通道彼此独立：短信通道没开通也不影响邮箱找回，反之亦然。
+const { createEmailService } = require('./email-auth');
 // 人机验证（滑块拼图）：发码前问一句「是不是人」，见 captcha.js
 const { createCaptchaService } = require('./captcha');
 // 本地开发用的环境切换（线上自动关闭）：可把 /api 与 /uploads 转发到生产，见 dev-env.js
@@ -120,6 +123,16 @@ const sms = createSmsService({
   log: (kind, extra) => secLog(kind, null, extra),
   onAlert: (a) => notifySmsAlert(a),
 });
+
+// ---------- 邮箱验证码（绑定邮箱 + 找回密码） ----------
+// 未配置 data/email.json 时降级为控制台打码（仅本地开发）；线上不配置则接口明确报「通道未配置」，
+// 不会静默放行。发信走阿里云 DM，密钥读 data/email.json 或环境变量 ALIYUN_DM_AK_ID/SECRET。
+const emailAuth = createEmailService({
+  dataDir: DATA_DIR,
+  log: (kind, extra) => secLog(kind, null, extra),
+});
+// 邮箱只下发脱敏形式（a***@zm94.com），前端展示「已绑定」用，完整地址不出 /api/me
+function maskEmailView(v) { return emailAuth.maskEmail(emailAuth.decEmail(v)); }
 
 // ---------- 人机验证（滑块拼图） ----------
 // 发码接口对未登录开放，没有这道闸，频控只是「限损」：别人换号换 IP 照样能把余额刷空。
@@ -10281,6 +10294,9 @@ app.get('/api/me', (req, res) => {
         aliasNextAt: aliasNextAt(user),
         // 临时号标记：还能不能走「合并到老账号」（passSet=false 是老数据兜底，见 merge 路由注释）
         tempAcct: user.passSet === false || !!user.tempAcct,
+        // 邮箱绑定状态：只下发布尔值和脱敏地址，完整邮箱绝不出这个接口（密文也不下）
+        hasEmail: !!user.emailHash,
+        emailMasked: (user && user.email) ? maskEmailView(user.email) : '',
         // 实名核验状态：只下发 true/false，手机号本身绝不出这个接口（密文也不下，前端用不着）
         hasPhone: !!user.phoneHash,
         // 预留态（2026-11-19）：填过号码但还没验证。只给布尔值，号码同样不出接口；
@@ -11163,6 +11179,128 @@ app.post('/api/me/password', (req, res) => {
     catch (e) { console.warn('[acct-setup-bonus] 发放失败:', e.message); }
   }
   res.json({ ok: true, kicked, bonus: bonus });
+});
+
+// ================= 邮箱绑定 / 邮箱找回密码 =================
+// 2026-11-28 加。站点原本只有微信验证重设 + 站长后台重置两条找回路径，
+// 这里补上「先绑邮箱，再靠邮箱找回」这条自助通道，发信走阿里云 DM（mail.zm94.com）。
+// 设计要点：
+//   · 找回时对不存在的邮箱也回 ok，只是不发信——防账号枚举（否则接口就是「查某邮箱注册过没」的工具）。
+//   · 邮箱密文存 users.json，查重靠 HMAC 摘要；/api/me 只下发脱敏形式。
+//   · 一个邮箱只能绑一个账号；改绑时旧邮箱立即失效。
+//   · 重置成功后踢掉该账号所有会话（与改密码同口径）。
+
+// 通道状态：前端据此决定要不要显示「绑定邮箱 / 忘记密码（邮箱）」入口
+app.get('/api/email/status', (req, res) => {
+  const me = currentUser(req);
+  const st = emailAuth.status();
+  res.json({
+    enabled: st.enabled,
+    mode: st.mode,
+    bound: !!(me && me.emailHash),
+    masked: (me && me.email) ? maskEmailView(me.email) : '',
+    ttl: st.validTime,
+  });
+});
+
+// 发码：登录态 = 绑定场景；未登录 = 找回场景。
+// 找回场景不暴露「邮箱是否存在」，两种情况都回 ok。
+app.post('/api/email/send', async (req, res) => {
+  const me = currentUser(req);
+  const email = emailAuth.normalizeEmail((req.body && req.body.email) || '');
+  const scene = me ? 'bind' : 'recover';
+  if (!emailAuth.emailOk(email)) return res.status(400).json({ error: '邮箱格式不正确' });
+  if (!rateLimit('emailsend:' + (me ? me.id : clientIp(req)), 30, 3600000)) {
+    return res.status(429).json({ error: '请求过于频繁，请稍后再试' });
+  }
+  // 找回：邮箱没绑过任何账号 → 假装发送成功，不发信
+  if (scene === 'recover') {
+    const hash = emailAuth.hashEmail(email);
+    const holder = users.find(u => u.emailHash && u.emailHash === hash);
+    if (!holder) {
+      secLog('email_send', req, secCtx(req, { ok: true, d: 'RECOVER_UNKNOWN' }));
+      return res.json({ ok: true, ttl: emailAuth.status().validTime });
+    }
+  }
+  // 绑定：已经绑在自己账号上的邮箱，直接提示不用再验
+  if (scene === 'bind' && me.emailHash === emailAuth.hashEmail(email)) {
+    return res.json({ ok: true, already: true });
+  }
+  const r = await emailAuth.send(email, clientIp(req), scene);
+  if (!r.ok) return res.status(400).json({ error: r.error, code: r.code, wait: r.wait });
+  res.json({ ok: true, ttl: r.ttl || emailAuth.status().validTime, mode: r.mode });
+});
+
+// 绑定邮箱（需登录）：验码 + 查重 + 落库。
+// 与 /api/me/phone 同口径：查重放在验码之后，否则就是免费的「邮箱是否被占用」探测器。
+app.post('/api/me/email', (req, res) => {
+  const me = currentUser(req);
+  if (!me) return res.status(401).json({ error: '请先登录' });
+  if (!rateLimit('bindemail:' + me.id, 10, 3600000)) {
+    return res.status(429).json({ error: '操作过于频繁，请稍后再试' });
+  }
+  const email = emailAuth.normalizeEmail((req.body && req.body.email) || '');
+  const code = String((req.body && req.body.code) || '');
+  if (!emailAuth.emailOk(email)) return res.status(400).json({ error: '邮箱格式不正确' });
+  const hash = emailAuth.hashEmail(email);
+  if (me.emailHash === hash) return res.json({ ok: true, already: true, masked: maskEmailView(me.email) });
+  const v = emailAuth.check(email, code);
+  if (!v.ok) {
+    secLog('bind_email', req, secCtx(req, { uid: me.id, u: me.username, ok: false, d: v.code, email: emailAuth.maskEmail(email) }));
+    return res.status(400).json({ error: v.error, code: v.code });
+  }
+  const holder = users.find(u => u.emailHash === hash && u.id !== me.id);
+  if (holder) return res.status(400).json({ error: '这个邮箱已绑定其他账号' });
+  me.email = emailAuth.encEmail(email);   // 只存密文（users.json 是明文 JSON，不能裸存）
+  me.emailHash = hash;                    // 单向摘要，查重与找回定位用
+  me.emailAt = new Date().toISOString();
+  saveUsers();
+  secLog('bind_email', req, secCtx(req, { uid: me.id, u: me.username, ok: true, email: emailAuth.maskEmail(email) }));
+  res.json({ ok: true, masked: emailAuth.maskEmail(email) });
+});
+
+// 邮箱找回密码（无需登录）：输入邮箱 + 验证码 + 新密码。
+// 定位账号靠 emailHash；验码通过才认账号，不存在的邮箱在发码阶段就已经假装成功，
+// 这里再兜一次底，同样回「验证码不正确」，不泄露账号是否存在。
+app.post('/api/email/recover', (req, res) => {
+  const email = emailAuth.normalizeEmail((req.body && req.body.email) || '');
+  const code = String((req.body && req.body.code) || '');
+  const np = String((req.body && req.body.newPassword) || '');
+  if (!emailAuth.emailOk(email)) return res.status(400).json({ error: '邮箱格式不正确' });
+  if (!rateLimit('emailrecover:' + clientIp(req), 10, 3600000)) {
+    return res.status(429).json({ error: '操作过于频繁，请稍后再试' });
+  }
+  const v = emailAuth.check(email, code);
+  if (!v.ok) {
+    secLog('email_recover', req, secCtx(req, { ok: false, d: v.code, email: emailAuth.maskEmail(email) }));
+    return res.status(400).json({ error: v.error, code: v.code });
+  }
+  const hash = emailAuth.hashEmail(email);
+  const user = users.find(u => u.emailHash === hash);
+  if (!user) return res.status(400).json({ error: '验证码不正确', code: 'WRONG_CODE' });
+  if (np.length < 6) return res.status(400).json({ error: '新密码至少 6 位' });
+  if (np.length > 64) return res.status(400).json({ error: '新密码最多 64 位' });
+  if (checkPassword(user, np)) return res.status(400).json({ error: '新密码不能和当前密码一样' });
+  user.salt = crypto.randomBytes(16).toString('hex');
+  user.pass = hashPassword(np, user.salt);
+  user.passSet = true;
+  user.passChangedAt = new Date().toISOString();
+  user.passResetAt = new Date().toISOString();
+  saveUsers();
+  secLog('email_recover', req, secCtx(req, { uid: user.id, u: user.username, ok: true, email: emailAuth.maskEmail(email) }));
+  // 改密后踢掉全部会话。找回场景没有「当前会话要保留」一说——
+  // 攻击者可能正拿着旧会话，必须全部失效。
+  let kicked = 0;
+  for (const k of Object.keys(sessions)) {
+    if (sessions[k].uid === user.id) { delete sessions[k]; kicked++; }
+  }
+  if (kicked) saveSessions();
+  addNotice(user.id, {
+    kind: 'system',
+    title: '登录密码已通过邮箱重置',
+    text: '有人用你绑定的邮箱重置了登录密码。如果不是你本人操作，请立刻联系站长。',
+  });
+  res.json({ ok: true, kicked });
 });
 
 // ---- 设置登录别名 ----
