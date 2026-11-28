@@ -169,7 +169,7 @@ function notifySmsAlert(a) {
         key: isBalance ? `sms-balance-${day}` : `sms-alert-${day}-${lvTag}`,
         title: isBalance ? '短信账户余额不足，验证码发不出去' : `短信验证码用量告警（${pct}%）`,
         text: isBalance
-          ? `阿里云短信认证返回「${a.code || '余额不足'}」。现在所有用户都收不到验证码，注册与发布前核验会整体停摆。请尽快到阿里云控制台充值或续购套餐；恢复前可先关闭强制核验开关，避免把注册流程卡死。`
+          ? `阿里云短信认证返回「${a.code || '余额不足'}」。现在所有用户都收不到验证码，第二次发布前的核验会整体停摆。请尽快到阿里云控制台充值或续购套餐；恢复前可先关闭强制核验开关，避免把发布流程卡死。`
           : `今日已发 ${a.used}/${a.limit} 条。${state}。请到后台「实名核验」页查看用量；若非业务增长所致，建议先关闭强制核验开关，再看安全日志里的 sms_send 记录定位来源。`,
       });
     } catch { /* 单条通知失败不影响其余人 */ }
@@ -8375,9 +8375,17 @@ const RELATED_KW_SKIP = ['免费', '开源', '效率', '极简', '离线', '无�
 // 协同过滤分压在 3 分以内（对数归一）：共现 1 人 +1、3 人 +2、7 人及以上 +3。
 // 行为是隐式信号，只能当平票加权用，不能盖过作者自己写的关键词（显式信号）。
 function relatedCfBonus(c) { return c > 0 ? Math.min(3, Math.round(Math.log2(1 + c))) : 0; }
+// 标题 + 标签语是作者最浓缩的自我描述。相关位不能只认「作者标的关键词」——
+// 11-28 站长反馈：搜「钓鱼」出《空军基地 钓鱼佬的福音》和《收竿 钓友们自己的朋友圈》两件，
+// 但前者关键词只标了「个人站」、分类也不同，两件互为相关作品一位都排不上。
+// 搜索看 title/titleTag/prompt 多字段，相关位只认关键词，口径不一致才有这个落差。
+// 这里补一路「跨标法命中」：对方的关键词出现在自己标题/标签语里也算相关信号，
+// 权重低于关键词直接重合（kw*2 vs text 封顶 2），避免把一堆蹭词的作品顶上来。
+const relatedTextOf = w => [w.titleName, w.title, w.titleTag].filter(Boolean).join(' ').toLowerCase();
 function relatedWorksOf(w, user, limit = 6) {
   const cats = catsOf(w);
-  const kws = keyWordsOf(w).map(k => String(k).toLowerCase()).filter(k => !RELATED_KW_SKIP.includes(k));
+  const kws = keyWordsOf(w).map(k => String(k).toLowerCase()).filter(k => k.length >= 2 && !RELATED_KW_SKIP.includes(k));
+  const wText = relatedTextOf(w);
   // 同作者件整体不进相关位（2026-11-27）：作者的其他作品已由独立模块（sameAuthorWorksOf）出，
   // 同作者件哪怕关键词/分类重合也不再来一遍，不然详情页两个模块会重复出同一件。
   // 作者匿名时这个值就是空串，等于不排除，老口径不受影响
@@ -8395,14 +8403,22 @@ function relatedWorksOf(w, user, limit = 6) {
     const sharedCat = cats.length ? catsOf(x).filter(c => cats.includes(c)).length : 0;
     // 关键词对齐大小写再比（作者填的 AI 和自动生成的 ai 是同一个词）；
     // 关键词不存在或为空时 keyWordsOf 会现算，老数据也能命中
-    const xkws = keyWordsOf(x).map(k => String(k).toLowerCase()).filter(k => !RELATED_KW_SKIP.includes(k));
+    const xkws = keyWordsOf(x).map(k => String(k).toLowerCase()).filter(k => k.length >= 2 && !RELATED_KW_SKIP.includes(k));
     const sharedKw = kws.length ? xkws.filter(k => kws.includes(k)).length : 0;
+    // 跨标法命中：对方关键词出现在自己标题/标签语里，或自己关键词出现在对方标题/标签语里。
+    // 关键词仍是「作者明确标注」的那一组（质量高），标题/标签语是补充信号，别把它当 keyword 直接比。
+    const xText = relatedTextOf(x);
+    const textHit = xkws.filter(k => wText.includes(k)).length + kws.filter(k => xText.includes(k)).length;
     // 共现候选：关键词分类都不沾边、但确实被同一批人看过的件，也要有资格进相关位——
     // 这正是协同过滤比内容匹配多捞出来的那部分（如「简历生成器」和「面试题库」毫无词面重合）
     const cfCnt = cf ? (cf.get(x.id) || 0) : 0;
-    if (sharedCat > 0 || sharedKw > 0 || cfCnt > 0) cands.push({ x, shared: sharedCat, kw: sharedKw, cf: cfCnt });
+    if (sharedCat > 0 || sharedKw > 0 || textHit > 0 || cfCnt > 0) {
+      cands.push({ x, shared: sharedCat, kw: sharedKw, text: textHit, cf: cfCnt });
+    }
   });
-  cands.sort((a, b) => (b.kw * 2 + b.shared + relatedCfBonus(b.cf)) - (a.kw * 2 + a.shared + relatedCfBonus(a.cf))
+  // 文本命中封顶 2 分，压在关键词直接重合（每个 2 分）之下，排序不会让蹭词件翻上去
+  const scoreOf = o => o.kw * 2 + Math.min(o.text, 2) + o.shared + relatedCfBonus(o.cf);
+  cands.sort((a, b) => scoreOf(b) - scoreOf(a)
     || (new Date(b.x.createdAt) - new Date(a.x.createdAt)));
   return cands.map(o => o.x)
     .slice(0, limit)
@@ -8411,12 +8427,14 @@ function relatedWorksOf(w, user, limit = 6) {
 // 作者的其他作品（2026-11-27）：详情页独立模块、排在相关作品前面，帮创作者导流。
 // 之前同作者件只是 relatedWorksOf 的兜底尾巴，要等关键词分类都匹配不上才露面，导流效果差。
 // 匿名作品不出：前台连作者都不认，谈不上「他的其他作品」；站长设了「随便逛逛不推荐」的件同样排除。
+// 两种匿名都不出（11-27 站长反馈）：anonymous=匿名发布（有归属但前台只显示「匿名」）、
+// anon=匿名投稿（提交时没账号、作品无归属）——以前只判了 anonymous，匿名投稿的详情仍露出同署名作品。
 function sameAuthorWorksOf(w, user, limit = 3) {
-  if (w.anonymous === true) return [];
+  if (isAnonWork(w)) return [];
   const author = w.author || '';
   if (!author) return [];
   const list = visibleWorks().filter(x =>
-    x.id !== w.id && x.anonymous !== true && x.author === author && !expoNoRec(x.id));
+    x.id !== w.id && !isAnonWork(x) && x.author === author && !expoNoRec(x.id));
   return byNewest(list).slice(0, limit).map(x => publicWork(x, user));
 }
 // 作品推进阶段（作者自己声明的进度，和站内审核是两条线）：
@@ -8569,7 +8587,7 @@ app.post('/api/captcha/verify', (req, res) => {
 });
 
 // ---------- 手机号核验：发码 / 绑定 ----------
-// 发码对未登录也开放（注册页要用），所以按 IP + 手机号双维度限流，细则见 sms-auth.js 的 RULE
+// 发码按 IP + 手机号双维度限流，细则见 sms-auth.js 的 RULE（注册页已不用发码，核验都在登录态）
 app.post('/api/sms/send', async (req, res) => {
   const ip = clientIp(req);
   if (!rateLimit('sms:' + ip, 30, 3600000)) {
@@ -8593,12 +8611,14 @@ app.post('/api/sms/send', async (req, res) => {
   res.json({ ok: true, ttl: sms.status().validTime });
 });
 
-// 前端据此决定要不要渲染「手机号 + 验证码」两栏。
-// 没开通通道时 required=false：用户不会看到一栏填了也发不出去的输入框。
+// 注册页不再收手机号，前端用 required 只是判断通道是否开通（匿名投稿等场景）。
+// 真正决定「这次发布要不要弹核验」的是 needPhoneOnPublish，按当前账号的发布次数现算。
 app.get('/api/sms/status', (req, res) => {
   const me = currentUser(req);
   res.json({
     required: smsRequired(),
+    needPhoneOnPublish: !!(me && phoneGateNeeded(me)),
+    publishActions: me ? publishActionCount(me) : 0,
     enabled: sms.mode() === 'live',
     // 前端据此决定发码前要不要弹滑块。必须跟服务端 403 的判断同源（都走 captchaRequired），
     // 否则会出现「前端不弹、后端拒收」的死循环：用户怎么点都发不出去，还不明白为什么。
@@ -8665,12 +8685,40 @@ app.post('/api/me/phone', async (req, res) => {
   res.json({ ok: true, bonus: awardPhoneBonus(me) });
 });
 
+// 「第二次发布才核验」的计数口径（2026-11-28 站长定的）：
+// 作品 / 酒馆帖 / 酒馆回应 / 想法 / 私信消息，各算一次发布行为；浏览、点赞、收藏不算。
+// 第一次发布先放行，第二次起才要求手机号核验——注册时不再收号码，不把人挡在门口。
+// 身份只认 userId（author/username 会重名，见 /api/works 的归属口径）；
+// 老数据缺 userId 时才回退到展示名，避免历史记录凭空消失。删掉的作品不再计数。
+function publishActionCount(user) {
+  if (!user) return 0;
+  const uid = user.id, uname = user.username;
+  const mine = x => !!x && ((uid && x.userId === uid) || (!x.userId && uname && x.author === uname));
+  let n = works.filter(w => mine(w) && !w.deleted).length;
+  for (const p of barPosts) {
+    if (mine(p)) n++;
+    for (const r of (Array.isArray(p.replies) ? p.replies : [])) if (mine(r)) n++;
+  }
+  n += ideas.filter(mine).length;
+  for (const t of dmThreads) {
+    for (const m of (Array.isArray(t.messages) ? t.messages : [])) {
+      if (m && uid && m.from === uid) n++;
+    }
+  }
+  return n;
+}
+// 已经发过至少一次、账号还没核验：下一次发布要拦。
+// 站长/管理员豁免（后台运营不能被自己的闸门挡住）。
+function phoneGateNeeded(user) {
+  if (!user || user.phoneHash || isAdminName(user.username)) return false;
+  return smsRequired() && publishActionCount(user) >= 1;
+}
+
 // 发布闸门（服务端硬校验）
 // 前端那层拦截只是体验，这里防的是「绕过前端直接调接口」——网安做渗透测试最容易打这一点：
 // 一个没核验的账号用 curl 直接 POST /api/works，照样能把内容发出去，前端拦得再漂亮也没用。
 // 与短信通道共用 smsRequired() 这一个开关：通道没启用时一律放行，
 // 否则「开关还关着、闸门已经落下」会把全站发布锁死（匿名投稿也会一起被挡），等于自伤。
-// 豁免：站长/管理员（后台运营不能被自己的闸门挡住）。
 // userOverride：调用方已解析好的当前用户（AI 发布密钥投稿走这里——密钥不进 currentUser，
 // 只有 /api/works 这一个接口认密钥，见 userByPublishKey）
 function publishGate(req, res, userOverride) {
@@ -8680,10 +8728,12 @@ function publishGate(req, res, userOverride) {
     res.status(403).json({ error: '发布内容前需完成手机号核验，请先登录', needPhone: true, needLogin: true });
     return false;
   }
-  if (user.phoneHash) return true;
-  if (isAdminName(user.username)) return true;
+  if (!phoneGateNeeded(user)) return true;   // 第一次发布 / 已核验 / 管理员：直接放行
   secLog('publish_block', req, secCtx(req, { uid: user.id, u: user.username, ok: false, d: req.path }));
-  res.status(403).json({ error: '发布内容前需完成手机号核验（一次即可，之后不再打扰）', needPhone: true });
+  res.status(403).json({
+    error: '按《网络安全法》要求，第二次发布前需核验一次真实身份。手机号加密保存，核验一次永久有效',
+    needPhone: true
+  });
   return false;
 }
 
@@ -8730,41 +8780,15 @@ app.post('/api/register', async (req, res) => {
     }
   }
 
-  // 手机号核验（实名）。刻意放在最后一步：一次性验证码只能成功消费一次，
-  // 放在前面的话「用户名被占」「昵称违规」这类失败会把用户的码白白烧掉，还得重新发一次。
-  let phoneNorm = '';
-  if (smsRequired()) {
-    phoneNorm = sms.normalizePhone(String((req.body && req.body.phone) || ''));
-    const codeRaw = String((req.body && req.body.code) || '');
-    if (!sms.phoneOk(phoneNorm)) return res.status(400).json({ error: '请填写正确的手机号', needPhone: true });
-    if (!codeRaw) return res.status(400).json({ error: '请填写短信验证码', needPhone: true });
-    const c = await sms.check(phoneNorm, codeRaw);
-    if (!c.ok) {
-      secLog('register', req, secCtx(req, { u: name, ok: false, d: 'sms:' + c.code, phone: maskPhone(phoneNorm) }));
-      return res.status(400).json({ error: c.error, code: c.code, needPhone: true });
-    }
-    // 查重刻意放在校验通过之后：原来先查 hash 再校验，等于白送一个「这个手机号是否已注册」的查询接口，
-    // 拿号码库逐个试就能把本站用户名单画出来（无滑块时成本几乎为零）。
-    // 挪到后面，要问这个问题就得先拥有这个号码收到的验证码。
-    if (users.some(u => u.phoneHash === sms.hashPhone(phoneNorm))) {
-      // 一个手机号一个号：同人开小号会直接绕开实名核验，也是审核重点
-      return res.status(400).json({ error: '这个手机号已注册过账号，直接登录即可', needPhone: true });
-    }
-  }
-
+  // 手机号核验改到「第二次发布前」（2026-11-28）：注册不再收手机号，
+  // 也不读 phone/code 字段——没验证过的号码算不上实名，更不能拿它发灯火。
+  // 核验统一走 /api/me/phone（弹窗发码 + 校验 + 落库 + 奖励），服务端发布闸门只认 phoneHash。
   const user = makeUser(name, String(password));
   if (nick.nick) user.nickname = nick.nick;   // 注：不写 nicknameChangedAt，注册后的第一次改名不受 7 天限制
-  if (phoneNorm) {
-    user.phone = sms.encPhone(phoneNorm);   // 密文，users.json 不裸存号码
-    user.phoneHash = sms.hashPhone(phoneNorm);
-    user.phoneAt = new Date().toISOString();
-  }
   user.regIp = ipKeyOf(req);
   user.regIpRaw = ipRawOf(req);
   users.push(user);
   saveUsers();
-  // 注册时就带手机核验的，和存量补验同一个口径：首次核验通过发一笔（见 awardPhoneBonus）
-  if (phoneNorm) { try { awardPhoneBonus(user); } catch (e) { /* 发奖励失败不该把注册退回 */ } }
   secLog('register', req, secCtx(req, { uid: user.id, u: user.username, ok: true }));
   // 新用户上线第一件事：把「造梦编年史」当系统消息推给他（可屏蔽提示，不会拒收）
   try { pushChronicleWelcome(user); } catch (e) { /* 消息失败不影响注册 */ }
@@ -9167,10 +9191,10 @@ function taskBoardOf(user) {
     state: user.phoneHash ? 'done' : (user.phoneKeepHash ? 'kept' : 'todo'),
     doneText: user.phoneHash ? '已核验' : '已预留',
     desc: user.phoneHash
-      ? '已完成实名核验，投稿 / 发帖 / 私信不会再被拦'
+      ? '已完成实名核验，之后再发布内容不会再被拦'
       : user.phoneKeepHash
         ? '号码留好了。核验通道开放后会给你发一条验证短信，验证通过这笔灯火立刻到账'
-        : '按《网络安全法》要求，投稿、发帖、私信需核验真实身份。先留个手机号（现在不发短信、不花钱），通道开放后验证一次即可'
+        : '按《网络安全法》要求，信息发布 / 即时通讯需核验身份：第一次发布不打扰，第二次发布前验证一次即可。先留个号码，现在不发短信、不花钱'
   });
   // 邀请朋友投稿：每位朋友上架第一件作品 +1000，可以一直累计。
   // 刻意不进 claimable —— 这笔钱取决于别人做不做，算不进「你现在就能领多少」；
@@ -10273,6 +10297,8 @@ app.get('/api/me', (req, res) => {
         bio: bioOf(user),
         // 主页作品隐藏：true = 别人打开 /u/xxx 只看得到档案，看不到作品卡片（本人不受影响）
         hideWorks: user.hideWorks === true,
+        // 整站壁纸：只给本人铺背景，不进公开主页数据；空串 = 没选
+        siteWallpaper: siteWallpaperOf(user),
         passSet: user.passSet !== false,            // false = OAuth 建号还没设密码
         isSiteOwner: isSiteOwner(user),             // 站长：编辑作品时不显示「内容由我负责」承诺框（前端显示依据）
         // 管理后台入口显示依据：站长或名单管理员才亮「管理后台」；真正的鉴权仍在后台接口，这里只管显隐
@@ -10892,13 +10918,22 @@ const HERO_SKINS = [
   'meteor', 'dots', 'galaxy', 'aurora', 'trail', 'deep',        // 星空
   'dawn', 'rain', 'neon', 'ocean', 'paper', 'dune',              // 别样（非星空）
   'mist', 'candy', 'film', 'snow', 'sakura', 'window', 'vinyl', 'grid',  // 质感
-  'lake', 'cloud', 'forest', 'peak', 'ink', 'moon'                       // 静态壁纸（无动画）
+  'lake', 'cloud', 'forest', 'peak', 'ink', 'moon',                       // 静态壁纸（纯 CSS 渐变）
+  'catnap', 'meadow', 'pasture', 'snowpalace', 'vortex'                   // 静态壁纸（站长提供的实景图片）
 ];
 const HERO_SKIN_DEFAULT = 'meteor';
 // 库里的值可能是旧数据/脏值（手改过 json、删过皮肤），取不到就退回默认
 function heroSkinOf(user) {
   const k = user && user.heroSkin;
   return HERO_SKINS.includes(k) ? k : HERO_SKIN_DEFAULT;
+}
+
+// 整站壁纸（2026-11-28）：只给登录用户自己用，不存在公开主页上。图片放 frontend/wallpapers/，
+// 这里只存一个 key；空串 = 没铺壁纸。和主页卡头皮肤（heroSkin）是两回事，别混用一个字段。
+const SITE_WALLPAPERS = ['catnap', 'meadow', 'pasture', 'snowpalace', 'vortex'];
+function siteWallpaperOf(user) {
+  const k = user && user.siteWallpaper;
+  return SITE_WALLPAPERS.indexOf(k) !== -1 ? k : '';
 }
 
 // 解析一条链接：允许不带协议（github.com/xxx 直接粘也行），去掉 www./m. 前缀再比域名
@@ -10997,6 +11032,20 @@ app.post('/api/me/hero-skin', (req, res) => {
   user.heroSkin = skin;
   saveUsers();
   res.json({ ok: true, skin: heroSkinOf(user) });
+});
+
+// 整站壁纸：登录用户自己挑，空串 = 取消。只存 key，背景图由前端按 key 取 /wallpapers/<key>.png。
+app.post('/api/me/site-wallpaper', (req, res) => {
+  const user = requireUser(req, res);
+  if (!user) return;
+  if (!rateLimit('sitewall:' + user.id, 60, 600000)) {
+    return res.status(429).json({ error: '换得太频繁了，稍后再试' });
+  }
+  const raw = String((req.body && req.body.wallpaper) || '');
+  if (raw && SITE_WALLPAPERS.indexOf(raw) === -1) return res.status(400).json({ error: '没有这张壁纸' });
+  user.siteWallpaper = raw;
+  saveUsers();
+  res.json({ ok: true, wallpaper: siteWallpaperOf(user) });
 });
 
 // ---------- 发现页「分类」自定义（2026-11-18） ----------
@@ -23117,7 +23166,7 @@ app.post('/api/works', (req, res) => {
   const keyUser = userByPublishKey(req);
   const user = keyUser || currentUser(req);
   const viaKey = req.authVia === 'key';
-  if (!publishGate(req, res, user)) return;   // 未核验不放行（通道未启用时自动放行，见 publishGate）
+  if (!publishGate(req, res, user)) return;   // 第二次发布起未核验不放行（通道未启用时自动放行，见 publishGate）
   const budget = user ? POST_LIMIT : Math.min(3, POST_LIMIT); // 匿名额度更紧，防刷
   if (!rateLimit('post:' + clientIp(req), budget, 3600000)) {
     return res.status(429).json({
@@ -25075,10 +25124,10 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
 });
 
 // ---- 实名核验开关（2026-11-19）----
-// 平时关着（不烧短信费、注册无门槛），提交安全评估 / 复核前在后台点一下开，
+// 平时关着（不烧短信费、发布无门槛），提交安全评估 / 复核前在后台点一下开，
 // 不用登服务器改 data/sms.json 再重启（手改 JSON 少个逗号服务就起不来）。
-// 改的是 sms.json 的 enabled，与注册校验、publishGate 共用同一个开关：
-// 只有「真通道就绪」和「强制核验」同时成立，注册与发布才会开始拦人，不会出现锁死注册的状态。
+// 改的是 sms.json 的 enabled，与 publishGate 共用同一个开关：
+// 通道就绪后只在「第二次发布」拦人，注册不收号码，不会出现锁死注册的状态。
 function smsSentToday() {
   try {
     const f = path.join(SEC_LOG_DIR, new Date().toISOString().slice(0, 10) + '.log');
@@ -25098,7 +25147,7 @@ app.get('/api/admin/sms-config', requireAdmin, (req, res) => {
     enabled: st.enabled,
     mode: st.mode,                 // live（真通道）/ off（关着）/ misconfigured（开了但配置不全）
     configured: st.configured,
-    required: smsRequired(),       // 实际生效口径：注册与发布此刻会不会拦人
+    required: smsRequired(),       // 通道是否生效：此刻第二次发布会不会拦人（注册已不收号码）
     sign: st.sign,
     template: st.template,
     validTime: st.validTime,
@@ -31202,6 +31251,29 @@ function siteHeaderHtml(kind) {
     .replace(tpl.slice(a, b + end.length), siteNavHtml(kind));
   return out.trim();
 }
+// ---------- 百度统计（2026-11-28 站长接百度站长平台）----------
+// 性能口径：head 里只放这段 ~300B 的内联 loader，真正的 hm.js 等页面 load 完 + 浏览器空闲
+// 才 async 插入 —— 不跟首屏的字体 / 图片 / app.js 抢 DNS、带宽和主线程。
+// 百度默认只报首次加载；SPA 站内跳转由前端 route() 里 _hmt.push(['_trackPageview', path]) 补报。
+// 站长的 data/visit-exclude.json 只管站内统计，百度那边自己按访客去重，这里不读它。
+const BAIDU_HM_ID = 'ce3ac540ccd478705262bb6c75302bc4';
+const BAIDU_HM_MARK = 'data-dm-baidu-hm';   // 去重标记：作品正文里出现 hm.baidu.com 字样不算已注入
+const BAIDU_HM_TAG = `<script ${BAIDU_HM_MARK}>
+(function(){
+window._hmt=window._hmt||[];
+function go(){if(window._hmLoaded)return;window._hmLoaded=1;
+var s=document.createElement('script');s.async=1;s.src='https://hm.baidu.com/hm.js?${BAIDU_HM_ID}';
+var f=document.getElementsByTagName('script')[0];
+f?f.parentNode.insertBefore(s,f):document.head.appendChild(s);}
+function later(){window.requestIdleCallback?window.requestIdleCallback(go,{timeout:3000}):setTimeout(go,1200);}
+document.readyState==='complete'?later():window.addEventListener('load',later,{once:1});
+})();
+</script>`;
+function injectBaiduHm(html) {
+  if (!html || html.indexOf(BAIDU_HM_MARK) !== -1) return html;   // 已注入过就不重复
+  return html.replace('</head>', BAIDU_HM_TAG + '\n</head>');
+}
+
 // 独立页统一加工：换站头 + 引公共 CSS + 引公共脚本（登录态 / 高亮）
 function injectSiteShell(html, kind) {
   if (!html) return html;
@@ -31213,7 +31285,7 @@ function injectSiteShell(html, kind) {
   }
   html = html.replace('</head>', '<link rel="stylesheet" href="/site-shell.css" />\n</head>');
   html = html.replace('</body>', '<script src="/site-shell.js"></script>\n</body>');
-  return html;
+  return injectBaiduHm(html);
 }
 
 // 静态资源版本号：HTML 里引用的本地 css/js 统一带 ?v=<文件mtime>，
@@ -31321,6 +31393,7 @@ function shell(seoHead, bodyBlock, homeBlock = '', boot = null) {
     .replace('<!--SEO_HEAD-->', seoHead)
     .replace('<!--SEO_BODY-->', bodyBlock || '')
     .replace('<!--SEO_HOME-->', homeBlock || '');
+  out = injectBaiduHm(out);
   out = applyHomeBoot(out, boot);
   // 内页正文（bodyBlock 或 homeBlock）自带 <h1> 时，把壳里 hero 的 slogan 从 <h1> 降为 <p class="hero-title">，
   // 保证一页只有一个 H1（首页的 SEO 区块没有自己的 h1，slogan 继续独占首页的 H1，不在此列）。
@@ -31680,8 +31753,8 @@ app.get('/', (req, res) => {
   let headHtml = seo.head({
     title: q
       ? `搜索「${q}」的结果 - ${seo.SITE_NAME}`
-      // 首页 title 补上关键词位（原来 17 字太短）：收录榜/免费投稿/平台形态都进标题，slogan 留给 H1
-      : `${seo.SITE_NAME} - 独立开发者作品收录榜 · 免费投稿网站/小程序/软件`,
+      // 平台形态交给 keywords/description，标题只留「收录榜 + 免费投稿」两个记忆点（避免堆词）
+      : `${seo.SITE_NAME} - 独立开发者作品收录榜 · 免费投稿`,
     description,
     keywords: [
       '作品集', '作品展示', '工具导航', '网站推荐', '小程序', 'iOS', 'Android', 'macOS', 'Windows',
@@ -31742,7 +31815,11 @@ app.get('/', (req, res) => {
       boot = null;
     }
   }
-  sendHtml(res, shell(headHtml, '', block, boot)); // 同构：真人与爬虫共用一份 SSR，区块落在 #homeView 内，切视图时自动隐藏
+  // 首页 HTML 带当前访客口径的精选/广告（currentUser(req)），只能进浏览器私有缓存，不能给共享代理。
+  // 60 秒短缓存省掉每次访问的 304 往返；ETag 仍由 express 生成，提前刷新照旧能校验。
+  // Vary: Cookie 防止同一浏览器登录态切换后 60 秒内命中上一个人的缓存。
+  res.setHeader('Vary', 'Cookie');
+  sendHtml(res, shell(headHtml, '', block, boot), 200, 'private, max-age=60, must-revalidate');
 });
 
 app.get('/index.html', (req, res) => res.redirect(301, '/'));
@@ -32034,6 +32111,7 @@ app.get('/mini/:id', (req, res) => {
   });
   sendHtml(res, miniShowcase.render({
     seoHead: headHtml,
+    trackHead: BAIDU_HM_TAG,   // /mini/:id 整页自包含，统计 loader 随 seoHead 一起进 head
     w,
     inWeChat,
     detailHref: '/w/' + w.id
@@ -33880,7 +33958,7 @@ app.get('/paint', (req, res) => {
   } catch {
     return res.status(500).send('页面暂时打不开，回 <a href="/">首页</a> 试试');
   }
-  res.type('html').send(devEnv.injectInto(html.split('__ADMIN__').join(isAdmin(req) ? '1' : '0')));
+  res.type('html').send(injectBaiduHm(devEnv.injectInto(html.split('__ADMIN__').join(isAdmin(req) ? '1' : '0'))));
 });
 
 // 账号申诉页（2026-11-20）：跟 /mascots /musicbox 同一路数——独立静态页、不接 SPA、不进 sitemap，页面自带 noindex。

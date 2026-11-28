@@ -54,6 +54,10 @@ Thumbs.db
 # 本地截图验证脚本
 _iconpreview/
 
+# 本地临时产物（截图/预览/公众号文章草稿）与 Python 字节码
+output/
+__pycache__/
+
 # 发布锁：改代码期间存在，deploy.sh 见到就中止发版（内容是本机临时状态，不入库）
 .deploy-lock
 

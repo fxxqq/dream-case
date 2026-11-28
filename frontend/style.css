@@ -5,19 +5,21 @@
    警告：body 上绝不能写 font-feature-settings:"tnum" 0——它优先级高于
    font-variant-numeric 且会继承，会把 .num 的等宽静默压掉。
    字体文件 fonts/SpaceGrotesk-{400,600}.woff2（Google Fonts latin 子集，共约 47KB）。 */
+/* 字体 URL 带 ?v=1：Express 静态层见到版本号才发 1 年 immutable（否则是 no-cache，每次都回源）。
+   字体文件若替换，务必同步把这里的 v 和 index.html 的 preload 一起 +1，否则老用户拿不到新版。 */
 @font-face {
   font-family: "Space Grotesk";
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url("/fonts/SpaceGrotesk-400.woff2") format("woff2");
+  src: url("/fonts/SpaceGrotesk-400.woff2?v=1") format("woff2");
 }
 @font-face {
   font-family: "Space Grotesk";
   font-style: normal;
   font-weight: 600;
   font-display: swap;
-  src: url("/fonts/SpaceGrotesk-600.woff2") format("woff2");
+  src: url("/fonts/SpaceGrotesk-600.woff2?v=1") format("woff2");
 }
 :root {
   --font-display: "Space Grotesk", "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
@@ -491,7 +493,8 @@ nav { display: flex; gap: 8px; flex: 1; }
 .hero-search-combo .search-icon { left: 13px; font-size: 15px; }
 .hero-search-go {
   flex: 0 0 auto; height: 42px; padding: 0 20px; border: 0; border-radius: 11px;
-  background: var(--primary); color: #fff; font: inherit; font-size: 13.5px; font-weight: 600;
+  /* 搜索是首屏第一 CTA：用更深的主题色把白字对比度从 ~5.4:1 提到 ~7:1 */
+  background: var(--primary-dark); color: #fff; font: inherit; font-size: 13.5px; font-weight: 700;
   cursor: pointer; transition: filter .15s, transform .15s;
 }
 .hero-search-go:hover { filter: brightness(1.06); }
@@ -590,10 +593,11 @@ nav { display: flex; gap: 8px; flex: 1; }
    hero 高度是反复调过的，所以只换配色、不换行不改尺寸。 */
 .hero-link-submit {
   padding: 2px 10px 3px; border-radius: 999px; border-bottom: 0;
-  background: rgba(var(--tk58-rgb), .12); color: var(--primary);
+  /* 投稿入口是第二 CTA：底色加重一档，跟周围灰色说明文字拉开层级 */
+  background: rgba(var(--tk58-rgb), .18); color: var(--primary); font-weight: 700;
   transition: background-color .15s, color .15s;
 }
-.hero-link-submit:hover { background: rgba(var(--tk58-rgb), .22); color: var(--primary-dark); border-bottom: 0; }
+.hero-link-submit:hover { background: rgba(var(--tk58-rgb), .28); color: var(--primary-dark); border-bottom: 0; }
 .hero-br { display: none; }   /* 移动端才启用：在逗号后手动换行，避免 balance 把词组拆开 */
 @media (prefers-reduced-motion: no-preference) {
   .hero h1, .hero .hero-title, .hero .hero-sub { animation: hero-in .55s ease both; }
@@ -3931,7 +3935,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
 }
 
 /* ---- 主页背景皮肤（2026-11-21 质感重做）----
-   二十六套纯 CSS 皮肤（二十套动效 + 六套静态壁纸），作者页 .author-hero-band 和弹层 .skin-thumb 共用同一套 .hs-*。
+   三十一套背景皮肤（二十套纯 CSS 动效 + 十一套静态壁纸，其中五套为实景图片），作者页 .author-hero-band 和弹层 .skin-thumb 共用同一套 .hs-*。
    这次重做的重点不是加特效，而是让光、材质、景深有来源：
      · 底色叠多层渐变，先有环境光再有材质，不平铺一张「图案」了事；
      · 星空分远近两层，粒子大小和亮度有差，闪烁只动 opacity；
@@ -4586,6 +4590,21 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
     radial-gradient(130% 110% at 50% 44%, transparent 42%, rgba(4,8,20,.4) 100%);
 }
 
+/* 7-11 · 站长提供的实景壁纸（2026-11-27）：仍是 .hs-* 一套样式两处生效，
+   只是把渐变换成图片。cover + center 让缩略条和整块卡头取同一块画面，别露白边。 */
+.hs-catnap, .hs-meadow, .hs-pasture, .hs-snowpalace, .hs-vortex {
+  background-color: #d9e9f5;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+/* 横幅很扁，cover 会裁掉大半张图：把焦点往下压，猫 / 牛群 / 咖啡杯才还在画面里 */
+.hs-catnap { background-image: url("/wallpapers/catnap.png"); background-position: 68% 76%; }
+.hs-meadow { background-image: url("/wallpapers/meadow.png"); background-position: center 46%; }
+.hs-pasture { background-image: url("/wallpapers/pasture.png"); background-position: 52% 72%; }
+.hs-snowpalace { background-image: url("/wallpapers/snowpalace.png"); background-position: center 62%; }
+.hs-vortex { background-image: url("/wallpapers/vortex.png"); }
+
 /* ---- 铺满后的皮肤微调（2026-11-14）----
    窄条时 36px 的波点只是点缀，铺到整块卡头就变成「包装纸」，字压在上面发花。
    做法：作者页把糖纸的单元放大到 58px（点跟着变大、密度降下来）+ 整层降到 .8，
@@ -4638,6 +4657,13 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
   display: block; height: 46px; border-radius: 8px; background-color: #5b5bd6;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.18), inset 0 -10px 18px rgba(12,10,30,.12);
 }
+/* 整站壁纸弹层的「无壁纸」缩略图：一眼能看出是回到原来的底 */
+.skin-thumb.wp-none {
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--bg) 92%, #fff), color-mix(in srgb, var(--bg) 84%, var(--primary)));
+  color: var(--muted); font-size: 12px; letter-spacing: .08em;
+  box-shadow: inset 0 0 0 1px rgba(var(--tk42-rgb), .12);
+}
 .skin-name { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 7px; font-size: 12.5px; color: var(--muted); }
 .skin-item.is-on .skin-name { color: var(--primary); font-weight: 600; }
 .skin-modal-hint { margin: 0; font-size: 12.5px; color: var(--muted); }
@@ -4687,7 +4713,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
 }
 /* 浅底皮肤：文字全部转深色（这些皮肤的底色亮，白字压不住）。
    变量要同时盖到 main / 统计行 / 功能行 / tab——11-16 背景铺满后这几行都在皮肤上 */
-:is(.hs-paper, .hs-mist, .hs-candy, .hs-snow, .hs-sakura, .hs-grid, .hs-window)
+:is(.hs-paper, .hs-mist, .hs-candy, .hs-snow, .hs-sakura, .hs-grid, .hs-window, .hs-catnap, .hs-meadow, .hs-pasture, .hs-snowpalace, .hs-vortex)
   ~ :is(.author-hero-main, .author-stat-grid, .author-acts, .author-tabs) {
   --hero-ink: #232a36;
   --hero-ink-2: rgba(35, 42, 54, .72);
@@ -4695,7 +4721,7 @@ form input:focus, form select:focus, form textarea:focus { outline: 2px solid va
   --hero-chip-bg: rgba(255, 255, 255, .58);
   --hero-chip-bd: rgba(35, 42, 54, .16);
 }
-:is(.hs-paper, .hs-mist, .hs-candy, .hs-snow, .hs-sakura, .hs-grid, .hs-window) ~ .author-hero-main .author-title {
+:is(.hs-paper, .hs-mist, .hs-candy, .hs-snow, .hs-sakura, .hs-grid, .hs-window, .hs-catnap, .hs-meadow, .hs-pasture, .hs-snowpalace, .hs-vortex) ~ .author-hero-main .author-title {
   text-shadow: 0 1px 10px rgba(255, 255, 255, .5);
 }
 .author-info h1, .author-info .author-title { font-size: 21px; margin-bottom: 4px; }
@@ -6000,11 +6026,16 @@ body.scroll-locked {
 .seo-wrap.seo-home { border-top: 1px solid var(--border); margin-top: 40px; padding: 2px 0 10px; }
 .seo-wrap.seo-home.seo-index { margin-top: 24px; padding: 0 0 6px; }
 .seo-index-nav { display: flex; flex-direction: column; gap: 4px; padding: 14px 0 12px; }
-.seo-index-row { display: flex; align-items: baseline; gap: 12px; font-size: 12.5px; line-height: 1.9; }
-.seo-index-label { flex: 0 0 66px; color: var(--muted); font-size: 12px; white-space: nowrap; }
-.seo-index-links { display: flex; flex-wrap: wrap; column-gap: 12px; min-width: 0; }
-.seo-index-links a { color: #626a7b; text-decoration: none; white-space: nowrap; }
-.seo-index-links a:hover { color: var(--primary); text-decoration: underline; }
+.seo-index-row { display: flex; align-items: baseline; gap: 12px; font-size: 14px; line-height: 1.9; }
+.seo-index-label { flex: 0 0 66px; color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.seo-index-links { display: flex; flex-wrap: wrap; gap: 2px 8px; min-width: 0; }
+/* 底部索引词云：原来 12.5px 灰字糊成一片，提字号 + 加深对比 + 淡底胶囊，
+   分组（按分类/按形态/最新收录）与高频词前置的顺序由 seo.homeBlock 负责。 */
+.seo-index-links a {
+  color: #41485a; text-decoration: none; white-space: nowrap;
+  padding: 0 7px; border-radius: 6px; background: rgba(var(--tk58-rgb), .06);
+}
+.seo-index-links a:hover { color: var(--primary); background: rgba(var(--tk58-rgb), .12); text-decoration: none; }
 @media (max-width: 640px) {
   .seo-index-row { flex-direction: column; gap: 0; padding: 2px 0; }
   .seo-index-label { flex: none; }
@@ -9768,7 +9799,7 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .ad-row2.cols-4 .ad-card.ad-compact .ad-author { grid-area: author; max-width: 72px; font-size: 10px; }
 .ad-row2.cols-4 .ad-card.ad-compact .ad-author::after { content: '·'; margin-left: 3px; }
 .ad-row2.cols-4 .ad-card.ad-compact .ad-desc { grid-area: desc; font-size: 11px; }
-.ad-row2.cols-4 .ad-card.ad-compact .ad-cta { font-size: 10.5px; padding: 1px 8px; }
+.ad-row2.cols-4 .ad-card.ad-compact .ad-cta { grid-area: cta; justify-self: end; font-size: 10.5px; padding: 1px 8px; }
 
 /* 1fr 的隐式下限是 auto，卡片内容（角标+标题+按钮）不可压缩时会把格子撑到 340px，
    320px 小屏上就顶出右边 40px、整页能横向滑动；minmax(0,1fr) 允许收缩（2026-11-12 修） */
@@ -10275,6 +10306,7 @@ button.install-mini b { display: block; margin-top: 2px; color: var(--primary); 
 .ad-slot-detail .ad-card.ad-compact .ad-author { grid-area: author; max-width: 72px; font-size: 10px; }
 .ad-slot-detail .ad-card.ad-compact .ad-author::after { content: '·'; margin-left: 3px; }
 .ad-slot-detail .ad-card.ad-compact .ad-desc { grid-area: desc; font-size: 11.5px; }
+.ad-slot-detail .ad-card.ad-compact .ad-cta { grid-area: cta; justify-self: end; }
 
 /* ---------- 推荐位（用户用灯火兑换的自荐位） ---------- */
 /* 2026-11-10 统一：站内推荐不再做白底小条（原 .ad-work），和外链推荐一起走上面的
@@ -14944,7 +14976,7 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
 }
 .author-hero .author-avatar img { border-radius: 50%; }
 /* 浅底皮肤上，白色描边的光晕改用深色系才托得住头像 */
-:is(.hs-paper, .hs-mist, .hs-candy, .hs-snow, .hs-sakura, .hs-grid, .hs-window) ~ .author-hero-main .author-avatar {
+:is(.hs-paper, .hs-mist, .hs-candy, .hs-snow, .hs-sakura, .hs-grid, .hs-window, .hs-catnap, .hs-meadow, .hs-pasture, .hs-snowpalace, .hs-vortex) ~ .author-hero-main .author-avatar {
   border-color: #fff;
   box-shadow: 0 0 0 4px rgba(35, 42, 54, .08), 0 6px 18px rgba(35, 42, 54, .16);
 }
@@ -15358,77 +15390,118 @@ a.br-name:hover { color: var(--primary); text-decoration: underline; }
 }
 .paint-wall:hover, .paint-unwall:hover, .paint-close:hover { background: rgba(27, 26, 24, .13); color: #1b1a18; }
 .paint-close { position: static; }
-/* 壁纸入口：首页右上角一颗常驻小胶囊（2026-11-23，站长定：header 导航里不放）。
-   fixed 钉在 header 下缘，z 85 在纸面层（92）之下——纸一开就被盖住，不抢戏 */
-.paint-entry {
-  position: fixed; top: 72px; right: 20px; z-index: 85;
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 8px 14px; border: 1px solid rgba(27, 26, 24, .14); border-radius: 999px;
-  background: rgba(255, 255, 255, .72); backdrop-filter: blur(6px);
-  color: #4b4237; font-size: 13px; font-weight: 500; cursor: pointer;
-  box-shadow: 0 4px 14px rgba(27, 26, 24, .1);
-  transition: transform .15s, background .15s, box-shadow .15s;
+/* 装扮入口（2026-11-28）：落笔成画 + 整站壁纸合成一颗头栏小圆钮，跟铃铛同款。
+   以前两颗 fixed 胶囊钉在 header 下缘压着卡片；现在收进 header 工具区，
+   菜单沿用发布菜单那套卡片式样，跟着站点主题走，不单独飘一块白。 */
+.decor-wrap { position: relative; flex: none; }
+.decor-btn {
+  width: 34px; height: 34px; padding: 0;
+  display: inline-grid; place-items: center;
+  border: none; border-radius: 999px; background: var(--tk94);
+  color: var(--muted); cursor: pointer;
+  transition: background .15s, color .15s;
 }
-.paint-entry:hover { transform: translateY(-1px); background: #fff; box-shadow: 0 6px 18px rgba(27, 26, 24, .16); }
-.paint-entry .ico { width: 16px; height: 16px; color: #7a6a52; }
-.paint-entry .ico svg { width: 16px; height: 16px; stroke-width: 2.2; }
+.decor-btn:hover { background: var(--tk92); color: var(--primary); }
+.decor-btn.is-open { background: var(--primary-soft, var(--tk96)); color: var(--primary); }
+.decor-btn .ico, .decor-btn .ico svg { width: 17px; height: 17px; }
+.decor-menu {
+  position: absolute; top: calc(100% + 10px); right: 0; z-index: 95;
+  width: 258px; padding: 6px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(31, 35, 48, .14), 0 2px 6px rgba(31, 35, 48, .05);
+}
+.decor-menu[hidden] { display: none; }
+/* 指向按钮的小尖角，位置跟发布菜单一致 */
+.decor-menu::before {
+  content: ''; position: absolute; top: -6px; right: 11px;
+  width: 12px; height: 12px; background: var(--card);
+  border-left: 1px solid var(--border); border-top: 1px solid var(--border);
+  border-radius: 3px 0 0 0; transform: rotate(45deg);
+}
+.decor-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 10px; border: none; border-radius: 10px;
+  background: none; color: var(--text); text-align: left;
+  font-family: inherit; cursor: pointer; transition: background .12s;
+}
+.decor-item:hover, .decor-item:focus-visible { background: var(--tk96); outline: none; }
+.decor-ico {
+  flex: none; width: 30px; height: 30px; border-radius: 9px;
+  display: inline-grid; place-items: center;
+}
+.di-paint { background: color-mix(in srgb, var(--primary) 13%, transparent); color: var(--primary); }
+.di-wall { background: rgba(76, 144, 186, .13); color: #4c90ba; }
+.di-theme { background: var(--tk94); color: var(--muted); }
+.decor-ico .ico, .decor-ico .ico svg { width: 17px; height: 17px; }
+.decor-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.decor-txt b { font-size: 13px; font-weight: 600; line-height: 1.2; }
+.decor-txt em { font-size: 11px; font-style: normal; color: var(--muted); line-height: 1.3; }
+.decor-item.is-on .decor-txt b { color: var(--primary); }
+@media (max-width: 820px) {
+  .decor-menu { width: 190px; }
+  .decor-txt em { display: none; }
+}
 @media (max-width: 640px) {
-  .paint-entry { display: none; }   /* 手机入口走小住客面板 */
+  .decor-wrap { display: none; }   /* 手机头部整条隐藏，落笔成画走小住客面板 */
 }
 /* 壁纸层：纸面里「设为壁纸」后画铺在这（app.js 存 localStorage，回访还在）。
    z-index:-1 钉在整页内容底下 + pointer-events:none——纯背景，绝不挡任何点击；
    body 的底色已经传播到画布根上，负 z 层正好浮在它上面、所有内容之下。
    画上后 aurora 光斑淡出（首屏本来就是它的舞台），卡片白底自动盖住保证正文可读 */
+/* 2026-11-27 性能与融合重做：
+   ① 去掉 wpDrift/wpGlow 两条常驻的全屏动画（以前纸面打开还得用 animation-play-state 暂停，
+      本质就是白烧两层合成）。改成一张静态画 + 静态柔光，滚动/翻页不再有动画层跟着跑。
+   ② 壁纸不再是"把一张画贴在 body 背后"：底色用当前 --bg 薄薄压一层，四边用径向遮罩化进页面，
+      柔光改用站点主题色 --glow-rgb。换主题时墨层从同一个底色里透出来，不再是白纸+白纱的拼贴。 */
 #paintWp {
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background-size: cover; background-position: center;
-  /* 轻动效（2026-11-24）：静态画叠极慢的推近+微移，像呼吸不像晃眼。
-     只动 transform（合成层接走，不重绘、不卡）；scale 常年 >1 保证边缘不露出底色。
-     ::after 那层柔光跟着飘，给静止的水墨一点空气感，不用 GIF 不占存储。 */
-  will-change: transform;
-  animation: wpDrift 48s ease-in-out infinite alternate;
+  background-repeat: no-repeat;
+  background-size: cover; background-position: center 46%;
+  background-color: rgba(247, 247, 251, .88);
+  background-color: color-mix(in srgb, var(--bg) 88%, transparent);
+  opacity: .92;
+  contain: paint;
+  -webkit-mask-image: radial-gradient(ellipse 92% 84% at 50% 44%, #000 38%, rgba(0,0,0,.72) 70%, transparent 100%);
+          mask-image: radial-gradient(ellipse 92% 84% at 50% 44%, #000 38%, rgba(0,0,0,.72) 70%, transparent 100%);
 }
 #paintWp::after {
-  content: ''; position: absolute; inset: -20%;   /* 溢出给平移留余量，边缘不露直线 */
+  content: ''; position: absolute; inset: 0;
+  background: rgba(216, 128, 202, .07);
   background:
-    radial-gradient(circle at 28% 32%, rgba(255, 246, 214, .12), transparent 52%),
-    radial-gradient(circle at 72% 68%, rgba(150, 190, 255, .10), transparent 52%);
-  will-change: transform;
-  animation: wpGlow 62s ease-in-out infinite alternate;
+    radial-gradient(circle at 24% 20%, rgba(var(--glow-rgb), .10), transparent 56%),
+    radial-gradient(circle at 78% 74%, rgba(var(--glow-rgb), .08), transparent 52%),
+    linear-gradient(to bottom, color-mix(in srgb, var(--bg) 58%, transparent), transparent 16%, transparent 80%, color-mix(in srgb, var(--bg) 66%, transparent));
 }
-@keyframes wpDrift {
-  /* 幅度收小（2026-11-25）：词列离画缘 10%，这里最坏裁单侧 ~5%（scale 1.08 半边 4% + 平移 1%），
-     吃不到字。之前 1.04→1.12 + 1.6% 平移最坏裁 ~7.6%，题跋贴边时直接被切。 */
-  from { transform: scale(1.03) translate3d(0, 0, 0); }
-  to   { transform: scale(1.08) translate3d(-1%, -0.8%, 0); }
+body.paint-wp .aurora, body.site-wallpaper .aurora { opacity: 0; transition: opacity .8s; }
+
+/* 整站实景壁纸（2026-11-28）：和透明墨层一样钉在内容底下，但图片本身亮，
+   必须压一层主题色薄纱才不跟白字/卡片打架。两层共用 body 状态，所以互斥由 JS 保证。 */
+#siteWallpaper {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-repeat: no-repeat; background-size: cover; background-position: center;
+  background-color: var(--bg);
+  opacity: .82;
+  contain: paint;
 }
-@keyframes wpGlow {
-  from { transform: translate3d(-2%, 1.4%, 0); }
-  to   { transform: translate3d(2%, -1.6%, 0); }
+#siteWallpaper::after {
+  content: ''; position: absolute; inset: 0;
+  background:
+    linear-gradient(to bottom, color-mix(in srgb, var(--bg) 70%, transparent) 0%, color-mix(in srgb, var(--bg) 32%, transparent) 22%, color-mix(in srgb, var(--bg) 28%, transparent) 74%, color-mix(in srgb, var(--bg) 76%, transparent) 100%),
+    radial-gradient(ellipse 90% 80% at 50% 44%, transparent 46%, color-mix(in srgb, var(--bg) 30%, transparent) 100%);
 }
-/* 与 aurora 同口径：系统要求减少动态效果时整层停住 */
-@media (prefers-reduced-motion: reduce) {
-  #paintWp, #paintWp::after { animation: none !important; }
-}
-body.paint-wp .aurora { opacity: 0; transition: opacity .8s; }
-/* 纸面（落笔成画）打开时，壁纸被完整盖在下面，两层全屏动画继续跑只是白烧 GPU
-   （2026-11-25 用户反馈卡顿）。类由 app.js 的 openPaint/closePaint 加删，收笔即自动续上。 */
-body.paint-sheet-open #paintWp,
-body.paint-sheet-open #paintWp::after { animation-play-state: paused; }
-/* 壁纸开着时，头部也融入画里（2026-11-23 站长：既然是壁纸，头部也弄成这样；
-   11-25 壁纸改成透明墨层后，薄纱改用主题底色 color-mix，任何主题下都只压一层极淡的底，
-   墨从纱下透出来，不再出现「白纸 + 白纱」叠出的亮带。
-   故意不用 backdrop-filter——头部是吸顶的，滚动内容会不停从它底下过，
-   实时模糊是常驻合成开销（底栏当年也是为这个拆的） */
-body.paint-wp .site-header {
-  background: rgba(247, 247, 251, .62);
-  background: color-mix(in srgb, var(--bg) 62%, transparent);   /* 薄纱跟着主题底色走，墨色从纱下透出来 */
-  border-bottom-color: rgba(27, 26, 24, .1);
+/* 壁纸开着时，头部也融入画里（2026-11-27 调到 82%）：
+   薄纱压紧一点，墨还在、但不会从导航字缝里钻出来抢读；依旧不用 backdrop-filter，
+   吸顶头部底下的实时模糊是常驻合成开销。边框改跟主题走，不再固定深灰。 */
+body.paint-wp .site-header, body.site-wallpaper .site-header {
+  background: rgba(247, 247, 251, .82);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  border-bottom-color: rgba(var(--tk42-rgb), .14);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--card) 55%, transparent);
 }
 /* 页脚同一层薄纱口径：壁纸上下的「框」都融进画里，只剩中间内容区卡片自己浮着 */
-body.paint-wp .site-footer {
-  background: rgba(247, 247, 251, .62);
-  background: color-mix(in srgb, var(--bg) 62%, transparent);
+body.paint-wp .site-footer, body.site-wallpaper .site-footer {
+  background: rgba(247, 247, 251, .82);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
 }
 /* 手机端 header 整个移掉（height:0），纸直接从屏幕顶上滑下来铺满 */
 @media (max-width: 640px) {
@@ -15712,15 +15785,33 @@ html[data-theme="jade"] {
     display: inline-flex; align-items: center; gap: 3px;
     font-size: 13px; font-weight: 600;
   }
-  .hero-links .hl-arrow { font-size: 15px; line-height: 1; opacity: .65; }
+  .hero-links .hl-arrow { font-size: 15px; line-height: 1; opacity: .8; font-weight: 500; }
 }
 .hero-find.hero-find-go {
   background: #fff; color: var(--tk58);
   box-shadow: 0 1px 3px rgba(var(--tk58-rgb), .08);
 }
-.hero-hot { margin-top: 12px; min-height: calc(1.7em + 5px); font-size: 12px; color: #6f6b85; }
-.hero-hot-word { color: #5f5a78; background: rgba(var(--tk68-rgb), .12); }
-.hh-badge { font-size: 10px; }
+/* 2026-11-27 参考图热词行：白底描边胶囊 + 圆点「热/新」角标。
+   词条继续走 /api/search/hot 的动态数据，这里只换外观；字号/整体高度不动，移动端同样生效。 */
+.hero-hot { margin-top: 12px; min-height: calc(1.7em + 5px); font-size: 12px; color: #8b869c; }
+.hero-hot-label .ico { color: #8b869c; }
+.hero-hot-word {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 14px; border: 1px solid #e8e5f2; border-radius: 999px;
+  background: #fff; color: #4d4a5f;
+  box-shadow: 0 1px 2px rgba(74, 60, 140, .04);
+}
+.hh-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; padding: 0; margin-right: 0;
+  border-radius: 50%; font-size: 10px; line-height: 1; color: #fff;
+}
+.hh-badge.is-hot { background: #fb7185; }
+.hh-badge.is-new { background: #34c9a3; }
+/* 全站那条「角标退中性色」规则 (.hh-badge.is-hot/.is-new，两级选择器) 会把字压成灰，
+   这里用三级选择器明确压回白色，红/绿实底上才看得清。 */
+.hero-hot .hh-badge.is-hot,
+.hero-hot .hh-badge.is-new { color: #fff; }
 
 .featured-section { margin-top: 20px; }
 .section-head { margin-bottom: 12px; }
@@ -15784,57 +15875,68 @@ html[data-theme="jade"] {
 /* 2026-11-25 二改：两行方案实测第二行只剩「更多筛选 + 记住」，空白太多，
    恢复成一行；只保留提深的未选中态和缩短的「记住」文案。 */
 
-/* 2026-11-25 晚：搜索框保持「外层白胶囊 + 内嵌按钮」，找找AI 并排第二颗白框。
-   （晚三改曾把找找AI 降到框下，下拉一展开就把小字盖掉、入口凭空消失，已撤销。）
+/* 2026-11-27 站长给的参考图：搜索区按「白底通栏胶囊 + 淡紫描边 + 内嵌两颗小胶囊」收口。
+   外层、输入框、按钮一律 999px 全圆角；尺寸沿用现有档位（框高 42px、按钮高 42px），
+   只换形状/配色，右侧叠层作品卡照旧保留（首屏核心，不动布局）。
    .search-box 仍是同一个节点、下拉仍锚在它上面；这里的规则只作用于 hero 里的那一份。 */
 .hero-search-combo { gap: 10px; }
 .hero-search-field {
   display: flex; align-items: center; flex: 1 1 520px; max-width: 560px; min-width: 0;
-  padding: 4px; border: 1px solid #e5e3f2; border-radius: 15px;
+  padding: 4px 5px; border: 1px solid #d9d5f2; border-radius: 999px;
   background: #fff;
-  box-shadow: 0 4px 18px rgba(var(--tk58-rgb), .08);
+  box-shadow: 0 3px 16px rgba(74, 60, 140, .10);
   transition: border-color .15s, box-shadow .15s;
 }
 .hero-search-field:focus-within {
-  border-color: rgba(var(--tk58-rgb), .55);
-  box-shadow: 0 0 0 3px rgba(var(--tk68-rgb), .12), 0 6px 20px rgba(var(--tk58-rgb), .12);
+  /* 参考图的聚焦很轻：描边稍微加深一点、影子稍微收一收，不加 3px 发光圈 */
+  border-color: #c9bff5;
+  box-shadow: 0 4px 18px rgba(100, 78, 200, .14);
 }
 .hero-search-combo .hero-search-slot {
   flex: 1 1 auto; max-width: none; min-width: 0; margin-right: 0;
 }
 .hero-search-combo .search-box input {
-  height: 42px; padding-left: 46px;
-  border: 0; border-radius: 11px; background: transparent;
-  box-shadow: none; font-size: 14px;
+  height: 42px; padding-left: 42px;
+  /* 只保留外层胶囊那条框：input 自己不能有任何边框/阴影。
+     Safari 的 type=search 会画一条原生内框，appearance:none 才真正关掉，
+     这层还叠了 !important 兜住旧缓存和 UA 样式。 */
+  -webkit-appearance: none; appearance: none;
+  border: 0 !important; border-radius: 999px; background: transparent;
+  box-shadow: none !important; outline: none; font-size: 14px;
 }
 .hero-search-combo .search-box input:focus {
-  border-color: transparent; background: transparent; box-shadow: none;
+  border-color: transparent !important; background: transparent; box-shadow: none !important;
 }
-/* 提示加深一档：原来 #a09bb2 太淡，框里像空的。带「例如」例子也让人一眼知道搜什么 */
-.hero-search-combo .search-box input::placeholder { color: #857f96; opacity: 1; }
-/* 放大镜做成淡紫圆底徽标，给空框一个视觉锚点 */
+.hero-search-combo .search-box { border: 0 !important; box-shadow: none !important; }
+/* 提示词维持站点原文，不动文案 */
+.hero-search-combo .search-box input::placeholder { color: #9b95ae; opacity: 1; }
+/* 放大镜回到参考图的细线图标：不加圆底、不抢字，颜色压到中性灰紫 */
 .hero-search-combo .search-icon {
-  left: 11px; top: 50%; transform: translateY(-50%);
-  width: 27px; height: 27px; border-radius: 50%;
-  background: rgba(var(--tk58-rgb), .10); color: var(--primary);
+  left: 16px; top: 50%; transform: translateY(-50%);
+  width: auto; height: auto; border-radius: 0;
+  background: none; color: #7f7996;
   display: flex; align-items: center; justify-content: center;
-  font-size: 13px; opacity: 1;
+  font-size: 16px; opacity: 1;
 }
-/* 2026-11-26 站长定：两颗动作同框——「搜索」浅紫小胶囊在前，「用 AI 找找」紫色实心在后 */
+/* 两颗动作收进同一只胶囊：「搜索」浅紫在前，「用 AI 找找」紫色渐变在后 */
 .hero-search-combo #heroSearchGo {
-  flex: none; height: 42px; margin-left: 6px; padding: 0 14px;
-  border-radius: 11px; background: var(--primary-soft, var(--tk96)); color: var(--primary);
+  flex: none; height: 42px; margin-left: 6px; padding: 0 18px;
+  border-radius: 999px; background: #ebe7fa; color: #5b46c8;
   box-shadow: none; font-size: 13px; font-weight: 600;
 }
-.hero-search-combo #heroSearchGo:hover { background: var(--tk92); }
+.hero-search-combo #heroSearchGo:hover { background: #e1dbf6; }
 .hero-find.hero-find-go {
-  flex: none; height: 42px; margin-left: 6px; padding: 0 15px; border-radius: 11px;
-  border: 0; background: var(--primary); color: #fff;
-  box-shadow: 0 2px 8px rgba(var(--tk58-rgb), .2);
+  flex: none; height: 42px; margin-left: 6px; padding: 0 18px; border-radius: 999px;
+  border: 0; background: linear-gradient(100deg, #8a70ff, #5b42e3); color: #fff;
+  box-shadow: 0 2px 8px rgba(91, 66, 227, .18);
   font-size: 13px; font-weight: 600;
 }
-.hero-find.hero-find-go b { font-weight: 700; }
-.hero-find.hero-find-go .hf-star { margin-right: 3px; opacity: .9; }
+/* 实心紫按钮上「AI」用纯白，别继承小胶囊那套紫→蓝渐变字（在紫底上几乎看不见） */
+.hero-find.hero-find-go b {
+  font-weight: 700; color: #fff; -webkit-text-fill-color: #fff;
+  background: none; animation: none;
+}
+.hero-find.hero-find-go .hf-star { margin-right: 3px; color: #fff; text-shadow: none; animation: none; }
 .hero-find.hero-find-go:hover { filter: brightness(1.06); }
 
 /* 2026-11-25 矮屏笔记本（1366×768 一类）：可视高只有 ~650px，Hero + 精选吃掉 479px，
@@ -15972,6 +16074,10 @@ html[data-theme="jade"] {
     grid-area: title;
     font-size: clamp(36px, 3vw, 44px);
     line-height: 1.2; margin-bottom: 14px;
+    /* 2026-11-27 参考图是宋体粗字，比黑体更衬得出「作品」气质；字号不变，只换字形。
+       系统字体兜底，不新增字体文件；Windows 落回宋体，缺字体时仍是衬线族。 */
+    font-family: "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", serif;
+    font-weight: 700;
   }
   /* 原型是「…都值得」一行、「被更多人看见」一行；强制渐变句独占一行，
      不用改 HTML / 服务端那句替换串（窄屏 .hero-br 的规则也不受影响）。 */
@@ -15984,7 +16090,14 @@ html[data-theme="jade"] {
      basis 从 520 收到 380，窄桌面也不会把「找找AI」挤到第二行。 */
   .hero-search-combo .hero-search-slot { flex: 1 1 auto; max-width: none; }
   .hero-search-field { flex: 1 1 380px; }
-  .hero .hero-hot { grid-area: hot; justify-content: flex-start; max-width: 620px; margin-top: 14px; }
+  /* 参考图的「大家在找」是独立一行小标题，词条在下面折两行；桌面才这样排，手机沿用原样 */
+  .hero .hero-hot {
+    grid-area: hot; display: block; justify-content: flex-start;
+    max-width: 620px; margin-top: 14px;
+    min-height: calc(1.7em + 72px);   /* 小标题 + 两行胶囊的占位，词条到位前不抖 */
+  }
+  .hero .hero-hot-label { margin-bottom: 8px; }
+  .hero .hero-hot-list { justify-content: flex-start; }
   .hero-search-row { display: none; }   /* 桌面本来就是空行，别让它占一个 grid 轨道 */
 
   .hero-showcase {

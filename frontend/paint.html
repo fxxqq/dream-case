@@ -13,6 +13,10 @@
      ① 纸色跟站点主题走：父页开纸面时带 ?paper=#rrggbb（当前 --bg），纸/白纱/暗角全部对齐站点底色。
      ② 壁纸改「透明墨层」：导出按纸色亮度差算 alpha，存 WebP（带透明），站点底色和主题光透上来。
      ③ 新增 AI 题诗：底部输入 ≤10 字，服务端 /api/paint/poem 拼五言/七言绝句，逐句落墨。 -->
+<!-- 2026-11-27 性能与交互：
+     ① 主循环空闲 / 后台 / 导出时不再空转 rAF；指针拖动合并到每帧一次描边。
+     ② 壁纸导出加门闩 + 异步 toBlob/FileReader，直接按目标尺寸合成，不再先画一张全屏再缩。
+     ③ 换纸会中断在途题诗，旧诗不再覆盖新纸；chips 补语义与队列上限。 -->
 <!doctype html>
 <html lang="zh-CN">
 <head>
@@ -23,7 +27,11 @@
 <style>
 @font-face{
   font-family:"Mo Brush";
-  src:local("Ma Shan Zheng"),local("MaShanZheng-Regular"),url("fonts/MaShanZheng-Regular.ttf") format("truetype");
+  /* 2026-11-28 打开提速：ttf 5.5MB → woff2 3.1MB，ttf 留作老浏览器兜底。
+     字库 7017 字压不动了，剩下的提速靠父页悬停预取（app.js）。 */
+  src:local("Ma Shan Zheng"),local("MaShanZheng-Regular"),
+      url("fonts/MaShanZheng-Regular.woff2") format("woff2"),
+      url("fonts/MaShanZheng-Regular.ttf") format("truetype");
   font-display:swap;
 }
 :root{
@@ -95,12 +103,12 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var
 </head>
 <body>
 <div id="stage">
-  <canvas id="paper"></canvas>
-  <canvas id="far"></canvas>
-  <canvas id="mid"></canvas>
-  <canvas id="near"></canvas>
-  <canvas id="live"></canvas>
-  <canvas id="text"></canvas>
+  <canvas id="paper" aria-hidden="true"></canvas>
+  <canvas id="far" aria-hidden="true"></canvas>
+  <canvas id="mid" aria-hidden="true"></canvas>
+  <canvas id="near" aria-hidden="true"></canvas>
+  <canvas id="live" aria-hidden="true"></canvas>
+  <canvas id="text" aria-hidden="true"></canvas>
 </div>
 
 <div id="intro">
@@ -111,7 +119,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var
 
 <div id="tools">
   <button id="btn-new" title="清空画面（Esc）">换纸</button>
-  <button id="btn-poem" title="自动题一句古诗">题诗</button>
+  <button id="btn-poem" title="随机题一句古诗（下面也可以用 AI 按你给的字题诗）">来一句</button>
   <button id="btn-save" title="保存为图片">存画</button>
 </div>
 
@@ -123,7 +131,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var
     <button type="button" class="poem-go" data-form="5" title="拼成五言绝句">五言</button>
     <button type="button" class="poem-go" data-form="7" title="拼成七言绝句">七言</button>
   </div>
-  <div id="chips" aria-label="点选一字入画"></div>
+  <div id="chips" role="group" aria-label="点选一字入画"></div>
 </div>
 
 <script>
@@ -230,6 +238,9 @@ function drawPaper() {
      看起来还是「贴了一张纸」。纸感靠上面的纤维和墨团，不靠边框。 */
 }
 
+function updateFloor() {
+  S.floor = max(S.H * .78, min(S.H - 60, $('#ui').getBoundingClientRect().top - 14));   // 水面元素的下界：输入区上沿
+}
 function resize(first) {
   const W = innerWidth, H = innerHeight, dpr = min(2, devicePixelRatio || 1);
   const sx = W / (S.W || W), sy = H / (S.H || H), keep = {};
@@ -238,13 +249,13 @@ function resize(first) {
     t.getContext('2d').drawImage(cv[k], 0, 0); keep[k] = t;
   }
   S.W = W; S.H = H; S.dpr = dpr; S.u = clamp(min(W, H) / 860, .5, 1.3); S.horizon = H * .7;
-  S.floor = max(H * .78, min(H - 60, $('#ui').getBoundingClientRect().top - 14));   // 水面元素的下界：输入区上沿
+  updateFloor();
   for (const k in cv) { cv[k].width = round(W * dpr); cv[k].height = round(H * dpr); cx[k].setTransform(dpr, 0, 0, dpr, 0, 0); }
   drawPaper();
   if (first) return;
   for (const k in keep) cx[k].drawImage(keep[k], 0, 0, W, H);
   for (const L of [S.birds, S.fish, S.boats, S.strands, S.petals, S.emitters, S.ripples, S.shimmer, S.puffs, S.stars, S.lights, S.flies,
-    S.dragons, S.lanterns, S.kites, S.dflies, S.smokes, S.falls, S.flags, S.frogs, S.chims])
+    S.dragons, S.lanterns, S.kites, S.dflies, S.smokes, S.falls, S.flags, S.frogs, S.chims, S.flour, S.drops, S.flakes, S.gusts])
     for (const o of L) { if (o.x !== undefined) { o.x *= sx; o.y *= sy; } if (o.by !== undefined) o.by *= sy; if (o.hx !== undefined) { o.hx *= sx; o.hy *= sy; } }
   for (const m of S.mounts) for (const p of m.ridge) { p[0] *= sx; p[1] *= sy; }
   for (const c of [S.sun, S.moon]) if (c) { c.x *= sx; c.y *= sy; }
@@ -1760,7 +1771,8 @@ function drawText(now) {
   g.fillStyle = 'rgb(178,44,34)'; const r = sz * .1, h = sz / 2;
   g.beginPath(); g.moveTo(-h + r, -h); g.arcTo(h, -h, h, h, r); g.arcTo(h, h, -h, h, r); g.arcTo(-h, h, -h, -h, r); g.arcTo(-h, -h, h, -h, r); g.closePath(); g.fill();
   g.fillStyle = rgba(PAPER, 1); g.font = `${sz * .43}px ${FONT}`;
-  [['落', .23, -.22], ['笔', .23, .24], ['成', -.23, -.22], ['画', -.23, .24]].forEach(([c, dx, dy]) => g.fillText(c, dx * sz, dy * sz));
+  // 印章文字（2026-11-28 站长改）：落笔成画 → 造梦橱窗，右列「造梦」、左列「橱窗」，仍是四字方印
+  [['造', .23, -.22], ['梦', .23, .24], ['橱', -.23, -.22], ['窗', -.23, .24]].forEach(([c, dx, dy]) => g.fillText(c, dx * sz, dy * sz));
   g.globalCompositeOperation = 'destination-out';
   for (const [sx, sy, sr] of SPECK) { g.beginPath(); g.arc(sx * sz, sy * sz, sr * sz, 0, TAU); g.fill(); }
   g.restore();
@@ -2249,10 +2261,20 @@ function drawLive(now, dt) {
 
 /* ───────────── 主循环 ───────────── */
 let last = performance.now(), acc = 0;
-let exporting = false;   // 存画编码期间冻结动画：让出主线程，toBlob 才不会被拖几秒
+let exporting = false;   // 存画 / 壁纸编码期间冻结动画：让出主线程，编码才不会拖几秒
+let rafId = 0;
+const scheduleFrame = () => { if (!rafId) rafId = requestAnimationFrame(frame); };
+function setExporting(on) {
+  exporting = on;
+  // 以前是空转 rAF 等编码结束，等于每帧还在调一次函数；现在直接停掉，恢复时再接上。
+  if (on) { if (rafId) cancelAnimationFrame(rafId); rafId = 0; }
+  else { last = performance.now(); scheduleFrame(); }
+}
 function frame(now) {
+  rafId = 0;
   const dt = min(100, now - last); last = now;
-  if (exporting) { requestAnimationFrame(frame); return; }   // 空转保留 rAF，恢复时不跳帧
+  if (document.hidden || exporting) return;   // 后台 / 编码期间彻底停帧，恢复靠 visibilitychange / setExporting
+  flushStroke();                               // 高频 pointermove 先攒着，一帧只描一次
   acc += dt;
   let n = 0; const quick = CALM || FAST, cap = quick ? 40 : 3;
   while ((acc >= 16.6 || quick) && n < cap) { tick(); acc -= 16.6; n++; }
@@ -2261,8 +2283,12 @@ function frame(now) {
   const want = S.insc.some(c => c.length) && now - S.lastType > 1700 && !queue.length;
   if (want !== S.sealOn) { S.sealOn = want; S.sealT = now; S.textUntil = now + 500; S.textFinal = false; }
   if (now < S.textUntil) drawText(now); else if (!S.textFinal) { drawText(now); S.textFinal = true; }
-  requestAnimationFrame(frame);
+  scheduleFrame();
 }
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { if (rafId) cancelAnimationFrame(rafId); rafId = 0; }
+  else { last = performance.now(); scheduleFrame(); }
+});
 
 /* ───────────── 交互 ───────────── */
 /* 输入框已去（2026-11-23 站长改）：入画只靠点字（chips 全集），Esc 保留「换纸」快捷 */
@@ -2273,9 +2299,12 @@ addEventListener('keydown', e => {
   newPaper();
 });
 
-let clearing = false;
+let clearing = false, sceneEpoch = 0, poemCtrl = null;
 function newPaper(then) {
-  if (clearing) return; clearing = true; queue = []; stage.classList.add('fade');
+  if (clearing) return;
+  clearing = true; sceneEpoch++; queue = []; stage.classList.add('fade');
+  // 换纸就中断在途题诗：以前请求回来还会把诗落到新纸上，像"换了张纸又冒出旧字"。
+  if (poemCtrl) { poemCtrl.abort(); poemCtrl = null; }
   setTimeout(() => {
     for (const k of ['far', 'mid', 'near', 'live', 'text']) cx[k].clearRect(0, 0, S.W, S.H);
     tasks = []; resetState(); stage.classList.remove('fade'); clearing = false;
@@ -2297,43 +2326,75 @@ function composite() {
   return c;
 }
 /* 存画（2026-11-24）：异步 toBlob 编码，不再同步 toDataURL + atob 逐字节拷贝。
-   编码前先冻结动画把主线程让出来（上面的 exporting），否则 toBlob 回调会被动画拖几秒。
+   编码前先冻结动画把主线程让出来（setExporting），否则 toBlob 回调会被动画拖几秒。
    blob 直接给 URL.createObjectURL，省掉 base64 解码和逐字节循环，大图也不卡界面。 */
+const nextTick = () => new Promise(r => setTimeout(r, 0));
+const canvasToBlob = (c, type, quality) => new Promise(r => c.toBlob(r, type, quality));
+const blobToDataURL = blob => new Promise((resolve, reject) => {
+  const fr = new FileReader();
+  fr.onload = () => resolve(String(fr.result)); fr.onerror = () => reject(fr.error);
+  fr.readAsDataURL(blob);
+});
 $('#btn-save').onclick = () => {
   if (exporting) return;   // 防连点：上一张还没编码完
-  exporting = true;
+  setExporting(true);
   const c = composite();
-  c.toBlob(blob => {
-    exporting = false;
+  canvasToBlob(c, 'image/png').then(blob => {
     if (!blob) return;   // 浏览器极端情况下编码失败，静默放过
     const url = URL.createObjectURL(blob), a = document.createElement('a');
     a.href = url; a.download = '落笔成画.png'; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);   // 慢设备下载写盘慢，留足时间再撤 URL
-  }, 'image/png');
+  }).catch(() => {}).finally(() => setExporting(false));
 };
-/* 设为壁纸（2026-11-25 改透明墨层）：按钮不在本页——父页纸面右上角（app.js），这里只听指令合成回传。
+/* 设为壁纸（2026-11-27 性能重做）：按钮不在本页——父页纸面右上角（app.js），这里只听指令合成回传。
    纸不再是白的：按「与纸色的亮度差」逐像素算 alpha，纯纸变全透明、墨越浓越实，
    站点底色 / 纸纹 / 主题光晕从画里直接透上来，换主题自动融合，四边也不再有白框。
-   带 alpha 的 WebP 通常比原来的 JPEG 还小；浏览器不支持 WebP 编码时回落 PNG。 */
-if (window.parent !== window) addEventListener('message', e => {
+   这轮改三点：① 直接按目标尺寸合成，不再先画一张全屏 composite 再缩放，少一张大位图；
+   ② getContext 声明 willReadFrequently，避免 getImageData 的 GPU→CPU 回读惩罚；
+   ③ toBlob + FileReader 异步编码，父页按钮有 busy 态与失败回执，连点不会叠加导出。 */
+const WALL_MAXW = 2400;   // 物理像素上限：2x 屏上比原来的 1920 清楚，又不至于塞爆 localStorage
+function wallLayer() {
+  const sw = cv.paper.width, sh = cv.paper.height;
+  const w = min(sw, WALL_MAXW), h = round(sh * w / sw);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(cv.paper, 0, 0, sw, sh, 0, 0, w, h);
+  g.globalCompositeOperation = 'multiply';
+  for (const k of ['far', 'mid', 'near']) g.drawImage(cv[k], 0, 0, sw, sh, 0, 0, w, h);
+  g.globalCompositeOperation = 'source-over';
+  g.drawImage(cv.live, 0, 0, sw, sh, 0, 0, w, h);
+  g.globalCompositeOperation = 'multiply';
+  g.drawImage(cv.text, 0, 0, sw, sh, 0, 0, w, h);
+  return c;
+}
+let wallBusy = false;
+if (window.parent !== window) addEventListener('message', async e => {
   if (e.source !== window.parent || !e.data || e.data.type !== 'dm-paint-wall-req') return;
-  const c = composite(), MAXW = 1920;
-  const w = c.width > MAXW ? MAXW : c.width, h = round(c.height * w / c.width);
-  const s = document.createElement('canvas'); s.width = w; s.height = h;
-  const sg = s.getContext('2d');
-  sg.drawImage(c, 0, 0, w, h);
-  const id = sg.getImageData(0, 0, w, h), d = id.data;
-  const pl = PAPER[0] * .299 + PAPER[1] * .587 + PAPER[2] * .114;
-  for (let i = 0; i < d.length; i += 4) {
-    const lum = d[i] * .299 + d[i + 1] * .587 + d[i + 2] * .114;
-    const a = (pl - lum) / pl * 255 * 1.35;   // 1.35：补一点淡墨层次，雾和远山不至于全透明
-    d[i + 3] = a <= 12 ? 0 : a >= 255 ? 255 : a;   // ≤12 判为纸纹/压缩底噪，整片清掉，壁纸不留灰雾
+  const id = e.data.id;
+  const done = (ok, reason) => {
+    wallBusy = false; setExporting(false);
+    parent.postMessage(ok ? { type: 'dm-paint-wallpaper', data: reason, id }
+      : { type: 'dm-paint-wall-fail', reason, id }, e.origin);
+  };
+  if (wallBusy || exporting) { done(false, 'busy'); return; }
+  wallBusy = true; setExporting(true);
+  await nextTick();   // 让父页先把按钮切到"生成中"再开始逐像素处理
+  try {
+    const c = wallLayer(), g = c.getContext('2d', { willReadFrequently: true });
+    const idata = g.getImageData(0, 0, c.width, c.height), d = idata.data;
+    const pl = PAPER[0] * .299 + PAPER[1] * .587 + PAPER[2] * .114;
+    for (let i = 0; i < d.length; i += 4) {
+      const lum = d[i] * .299 + d[i + 1] * .587 + d[i + 2] * .114;
+      const a = (pl - lum) / pl * 255 * 1.35;   // 1.35：补一点淡墨层次，雾和远山不至于全透明
+      d[i + 3] = a <= 12 ? 0 : a >= 255 ? 255 : a;   // ≤12 判为纸纹/压缩底噪，整片清掉，壁纸不留灰雾
+    }
+    g.putImageData(idata, 0, 0);
+    const blob = await canvasToBlob(c, 'image/webp', .84);   // 不支持 webp 时浏览器自动回 png
+    if (!blob) throw new Error('encode');
+    done(true, await blobToDataURL(blob));
+  } catch (_) {
+    done(false, 'encode');
   }
-  sg.putImageData(id, 0, 0);
-  let data = '';
-  try { data = s.toDataURL('image/webp', .86); } catch { /* 老浏览器不支持 webp 编码 */ }
-  if (data.indexOf('data:image/webp') !== 0) data = s.toDataURL('image/png');
-  parent.postMessage({ type: 'dm-paint-wallpaper', data }, e.origin);
 });
 const chips = $('#chips');
 /* 全字 chips（2026-11-23）：M 是 def 注册的「一字一景」映射，引擎认得多少字就列多少；
@@ -2343,9 +2404,12 @@ const chips = $('#chips');
   let prevFn;
   for (const c of new Set(Object.keys(M))) {
     const b = document.createElement('button'); b.type = 'button'; b.textContent = c;
+    b.setAttribute('aria-label', c + '：落笔成画'); b.title = c;
     if (prevFn && M[c] !== prevFn) b.style.marginLeft = '12px';
     prevFn = M[c];
-    b.onclick = () => typeText(c); chips.appendChild(b);
+    // 连点几十下时只保留最近一批，别让 queue/tasks 无限堆积拖垮主线程
+    b.onclick = () => { if (queue.length > 96) queue.splice(0, queue.length - 96); typeText(c); };
+    chips.appendChild(b);
   }
 }
 
@@ -2380,13 +2444,14 @@ async function startPoem(form) {
   const seed = poemSeed.value.replace(/[^\u3400-\u9fff]/g, '').slice(0, 10);
   if (!seed) { poemSay('先输入一两个字，再题诗', 'warn', 2600); poemSeed.focus(); return; }
   poemBusy = true;
+  const myEpoch = sceneEpoch;
   const hit = poemBtns.find(b => b.dataset.form === String(form));
   const labels = poemBtns.map(b => b.textContent);
   poemBtns.forEach(b => { b.disabled = true; });
   if (hit) hit.textContent = '落笔中…';
   poemSay('正在题诗，十几秒就好…', 'info');
   // 前端自己也设一道闸：服务端 18s 会回 504，这里多留几秒兜住「连接挂住不回」
-  const ctrl = new AbortController();
+  const ctrl = new AbortController(); poemCtrl = ctrl;
   const cut = setTimeout(() => ctrl.abort(), 26000);
   try {
     const r = await fetch('/api/paint/poem', {
@@ -2394,45 +2459,58 @@ async function startPoem(form) {
       body: JSON.stringify({ seed, form }), signal: ctrl.signal
     });
     const j = await r.json().catch(() => ({}));
+    if (sceneEpoch !== myEpoch) return;   // 期间换过纸：这首诗作废，不落到新纸上
     if (!r.ok || !Array.isArray(j.lines) || j.lines.length < 2) throw new Error(j.error || 'AI 没接上，等会儿再试');
     poemSeed.value = '';
     poemSay('');
     intro.classList.add('gone');
     newPaper(() => typeText(j.lines.join('，') + '。'));
   } catch (err) {
+    if (err && err.name === 'AbortError' && sceneEpoch !== myEpoch) return;  // 换纸主动中断，不报"等太久"
     const msg = err && err.name === 'AbortError' ? '等了太久，AI 没回话，再点一次' : String((err && err.message) || '题诗没成功，再试一次');
     poemSay(msg.slice(0, 40), 'warn', 6000);
   } finally {
     clearTimeout(cut);
+    if (poemCtrl === ctrl) poemCtrl = null;
     poemBusy = false;
     poemBtns.forEach((b, i) => { b.disabled = false; b.textContent = labels[i]; });
   }
 }
 
-/* 以指为笔：拖动成干笔，点按落墨 */
+/* 以指为笔：拖动成干笔，点按落墨。
+   高轮询鼠标一帧能推十几个 pointermove；以前每个事件都 save/restore + 12 根线，
+   这里只把点攒进 pending，由主循环一帧描一次，路径仍是逐段连的，笔感不变。 */
 let stroke = null;
+function flushStroke() {
+  if (!stroke || !stroke.pending || !stroke.pending.length) return;
+  const pts = stroke.pending; stroke.pending = [];
+  const g = cx.near;
+  g.save(); g.lineCap = 'round'; g.lineWidth = 1.7;
+  for (const p of pts) {
+    const dx = p.x - stroke.x, dy = p.y - stroke.y, d = hypot(dx, dy); if (d < 2.5) continue;
+    if (stroke.moved < 6 && stroke.moved + d >= 6) intro.classList.add('gone');
+    const w0 = stroke.w, w1 = lerp(w0, clamp(17 - d * .45, 3, 17) * S.u, .25), nx = -dy / d, ny = dx / d, K = 12;
+    const px = stroke.moved ? stroke.nx : nx, py = stroke.moved ? stroke.ny : ny;
+    for (let j = 0; j < K; j++) {
+      if (n1(stroke.seeds[j] + stroke.moved * .03) < .26 + abs(j / (K - 1) - .5) * .3) continue;
+      const o = j / (K - 1) - .5; g.strokeStyle = rgba(INK, stroke.al[j]); g.beginPath();
+      g.moveTo(stroke.x + px * o * w0, stroke.y + py * o * w0); g.lineTo(p.x + nx * o * w1, p.y + ny * o * w1); g.stroke();
+    }
+    Object.assign(stroke, { x: p.x, y: p.y, w: w1, nx, ny, moved: stroke.moved + d });
+  }
+  g.restore();
+}
 stage.addEventListener('pointerdown', e => {
-  stroke = { x: e.clientX, y: e.clientY, w: 4 * S.u, moved: 0, nx: 0, ny: 0, seeds: Array.from({ length: 12 }, () => rand(1000)), al: Array.from({ length: 12 }, () => rand(.4, .85)) };
+  stroke = { x: e.clientX, y: e.clientY, w: 4 * S.u, moved: 0, nx: 0, ny: 0, pending: [], seeds: Array.from({ length: 12 }, () => rand(1000)), al: Array.from({ length: 12 }, () => rand(.4, .85)) };
   try { stage.setPointerCapture(e.pointerId); } catch (_) {}
   if (e.pointerType === 'mouse') e.preventDefault();
 });
 stage.addEventListener('pointermove', e => {
-  if (!stroke) return;
-  const dx = e.clientX - stroke.x, dy = e.clientY - stroke.y, d = hypot(dx, dy); if (d < 2.5) return;
-  if (stroke.moved < 6 && stroke.moved + d >= 6) intro.classList.add('gone');
-  const g = cx.near, w0 = stroke.w, w1 = lerp(w0, clamp(17 - d * .45, 3, 17) * S.u, .25), nx = -dy / d, ny = dx / d, K = 12;
-  const px = stroke.moved ? stroke.nx : nx, py = stroke.moved ? stroke.ny : ny;
-  g.save(); g.lineCap = 'round'; g.lineWidth = 1.7;
-  for (let j = 0; j < K; j++) {
-    if (n1(stroke.seeds[j] + stroke.moved * .03) < .26 + abs(j / (K - 1) - .5) * .3) continue;
-    const o = j / (K - 1) - .5; g.strokeStyle = rgba(INK, stroke.al[j]); g.beginPath();
-    g.moveTo(stroke.x + px * o * w0, stroke.y + py * o * w0); g.lineTo(e.clientX + nx * o * w1, e.clientY + ny * o * w1); g.stroke();
-  }
-  g.restore();
-  Object.assign(stroke, { x: e.clientX, y: e.clientY, w: w1, nx, ny, moved: stroke.moved + d });
+  if (stroke) stroke.pending.push({ x: e.clientX, y: e.clientY });
 });
 const endStroke = e => {
   if (!stroke) return;
+  flushStroke();
   if (stroke.moved < 5) {
     const x = e.clientX, y = e.clientY, R = rand(14, 30) * S.u; intro.classList.add('gone');
     run(bloom(cx.near, x, y, R, { alpha: .36, frames: 46, rim: true })); run(splatter(cx.near, x, y, R * 2.4, 9));
@@ -2448,9 +2526,10 @@ addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => resiz
 /* ───────────── 启动 ───────────── */
 resize(true); resetState();
 if (FAST) intro.style.display = 'none';
-requestAnimationFrame(frame);
+scheduleFrame();
 const ready = document.fonts && document.fonts.load ? Promise.race([document.fonts.load('40px "Mo Brush"', '落笔成画'), new Promise(r => setTimeout(r, 2500))]) : Promise.resolve();
 ready.catch(() => {}).then(() => {
+  updateFloor();   // 字体换宽后输入区高度会变，水面下界跟着重算一次
   S.textUntil = performance.now() + 200; S.textFinal = false;
   const t = Q.get('t'); if (t) typeText(t);
 });

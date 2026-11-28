@@ -82,7 +82,8 @@ function typeBadges(w) {
 const LINK_LABELS = {
   'Web': '🌐 打开网站', 'iOS': '🍎 App Store 下载', 'Android': '🤖 前往下载',
   'macOS': '💻 下载 Mac 版', 'Windows': '🪟 下载 Windows 版', 'Linux': '🐧 下载 Linux 版',
-  '小程序': '📱 微信扫码打开', '浏览器插件': '🧩 前往安装', '机器人': '🦾 体验机器人', 'API': '🔌 查看文档'
+  // 小程序的 link 是介绍页/官网，点开是网页，不能标「微信扫码打开」；真入口是详情页的小程序码
+  '小程序': '了解详情', '浏览器插件': '🧩 前往安装', '机器人': '🦾 体验机器人', 'API': '🔌 查看文档'
 };
 function linkLabelOf(w) {
   const t = typesOf(w);
@@ -134,6 +135,13 @@ function absolute(base, p) {
   return base + (p.startsWith('/') ? '' : '/') + p;
 }
 
+// 社交分享图统一走 /og/：/uploads/ 是原图（动辄几百 KB 的 PNG 很常见），
+// 微信/QQ/Google 的抓取器经常等不到就降级成没有图。/og/ 输出 1200 宽 JPEG（见 server.js）。
+// 作品页自己已经传 /og/，这里兜住首页/榜单/列表页直接传 /uploads/ 的调用方。
+function socialImageUrl(p) {
+  return typeof p === 'string' ? p.replace(/(\/uploads\/)([^/?#]+)/, '/og/$2') : p;
+}
+
 /** 生成 <head> 内的全部 SEO 标签 */
 function head(opts) {
   const {
@@ -142,7 +150,7 @@ function head(opts) {
     type = 'website', publishedTime, modifiedTime, noindex = false,
     jsonLd = [], extra = ''
   } = opts;
-  const rawImage = image || '/invite-og.jpg';
+  const rawImage = socialImageUrl(image || '/invite-og.jpg');
   const socialImage = /^https?:\/\//i.test(rawImage)
     ? rawImage
     : (canonical ? new URL(rawImage, canonical).href : rawImage);
@@ -489,7 +497,26 @@ function workLd(base, w, pageUrl) {
     name: w.title,
     description: describeWork(w, 300),
     url: pageUrl,
-    image: absolute(base, w.image),
+    image: absolute(base, socialImageUrl(w.image)),
+    // 截图数组：Google 可在软件富结果里直接展示。原图走 /og/ 的 1200px JPEG，别让抓取器拉 MB 级 PNG。
+    ...(() => {
+      const shots = [w.image, w.thumb, ...(Array.isArray(w.images) ? w.images : [])]
+        .filter(u => typeof u === 'string' && u && (u.indexOf('/uploads/') === 0 || /^https?:\/\//i.test(u)))
+        .map(u => (/^https?:\/\//i.test(u) ? u : absolute(base, socialImageUrl(u))))
+        .filter((u, i, all) => all.indexOf(u) === i)
+        .slice(0, 4);
+      return shots.length ? { screenshot: shots } : {};
+    })(),
+    // 收费信息：本站浏览作品详情免费（第三方产品本身的收费以作者页为准），
+    // 明确给个 0 元 Offer，Google 才有依据在软件卡片上展示「免费」。
+    offers: {
+      '@type': 'Offer',
+      price: '0',
+      priceCurrency: 'CNY',
+      availability: 'https://schema.org/InStock',
+      url: pageUrl,
+      description: '在造梦橱窗免费浏览作品详情；第三方服务收费以作者页面为准'
+    },
     applicationCategory: APP_CATEGORY[w.category] || 'UtilitiesApplication',
     operatingSystem: OS_BY_TYPE[typesOf(w)[0]] || 'Web',
     inLanguage: 'zh-CN',
@@ -714,7 +741,8 @@ function sitemapXml(base, { works, categories, types, authors, siteUpdated, cate
   extraUrls.forEach(u => { if (u && u.loc) add(u.loc, u.lastmod || '', u.priority || '0.6', u.changefreq || 'monthly'); });
   categories.forEach(c => add('/c/' + encodeURIComponent(c), categoryLastmod[c] || updated, '0.7', 'weekly'));
   types.forEach(t => add('/t/' + encodeURIComponent(t), typeLastmod[t] || updated, '0.6', 'weekly'));
-  works.forEach(w => add('/w/' + w.id, w.createdAt, '0.9', 'monthly', w.image));
+  // 图片同样走 /og/ 的 1200px JPEG：sitemap 里给抓取器一条轻量地址，别让它拉原图
+  works.forEach(w => add('/w/' + w.id, w.createdAt, '0.9', 'monthly', socialImageUrl(w.image)));
   // 作者页地址优先用个性地址（作者自设的 /u/<slug>），没设退回账号 id
   authors.forEach(a => add(a.slug ? '/u/' + a.slug : (a.uid ? '/u/' + a.uid : '/u/' + encodeURIComponent(a.name)), a.lastmod, '0.5', 'weekly'));
 

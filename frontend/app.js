@@ -616,7 +616,9 @@ const MOBILE_TYPES = ['小程序', 'iOS', 'Android'];
 const LINK_LABEL = {
   'Web': '🌐 打开网站', 'iOS': '🍎 App Store', 'Android': '🤖 Android 版',
   'macOS': '💻 Mac 版', 'Windows': '🪟 Windows 版', 'Linux': '🐧 Linux 版',
-  '小程序': '📱 微信扫码打开', '浏览器插件': '🧩 前往安装', '机器人': '🦾 体验机器人', 'API': '🔌 查看文档'
+  // 小程序形态的链接是介绍页/官网，点开的是网页，不能标「微信扫码打开」；
+  // 真要进小程序，用详情页下方那张小程序码（11-27 站长反馈：按钮写着扫码打开，点开却是官网）
+  '小程序': '了解详情', '浏览器插件': '🧩 前往安装', '机器人': '🦾 体验机器人', 'API': '🔌 查看文档'
 };
 // 收费形式（标注「需要付费」时可选）→ 中文标签
 const PAID_MODELS = { freemium: '部分免费', freeuse: '免费能用（有付费功能）', member: '会员专享', onetime: '单篇购买', subscription: '订阅制', buyout: '一次买断', trial: '试用后付费', lamp: '灯火解锁' };
@@ -680,7 +682,12 @@ function typeTextHtml(w) {
   }).join(' · ');
 }
 function linkLabelOf(types) {
-  for (const t of types) if (LINK_LABEL[t]) return LINK_LABEL[t].replace(/^[^A-Za-z\u4e00-\u9fa5]+/, '');
+  // 按固定优先级取，不按形态勾选顺序：小程序常被填在 Web 前头，但它那条 link 是介绍页/官网，
+  // 点开是网页。让 Web 等真实网页形态先出「打开网站」，和 SSR 页（seo.js）口径一致；
+  // 只有小程序形态时才落「了解详情」，真要进小程序用下面的小程序码。
+  for (const t of ['Web', 'iOS', 'Android', 'macOS', 'Windows', 'Linux', '小程序', '浏览器插件', '机器人', 'API']) {
+    if (types.indexOf(t) !== -1 && LINK_LABEL[t]) return LINK_LABEL[t].replace(/^[^A-Za-z\u4e00-\u9fa5]+/, '');
+  }
   return '访问作品';
 }
 // 按钮去重用的链接指纹（2026-11-17）：投稿里官网常写 https://x.com、Web 链接写 https://x.com/，
@@ -1224,6 +1231,7 @@ function saveMeSnapshot() {
       points: u.points || 0, checkin: u.checkin || {},
       unreadNotices: Number(u.unreadNotices || 0),
       passSet: u.passSet !== false,
+      siteWallpaper: u.siteWallpaper || '',
       providers: state.providers || {}
     }));
   } catch { /* 隐私模式存不了就算了，最多闪一下 */ }
@@ -1239,9 +1247,11 @@ function restoreMeSnapshot() {
       points: s.points || 0, checkin: s.checkin || {},
       unreadNotices: Number(s.unreadNotices || 0),
       passSet: s.passSet !== false,
+      siteWallpaper: s.siteWallpaper || '',
       noticePrefs: { announce: true, cats: {} }   // 只是视觉占位，loadMe 回来会覆盖成服务端真值
     };
     state.providers = s.providers || {};
+    applySiteWallpaper(s.siteWallpaper || '');   // 首绘就铺上，别等 /api/me 回来才闪一下
     renderAuthBox();   // 只为视觉占位：blocked/favs 等仍为空，接口回来后由 loadMe 校准
   } catch { /* 快照坏了就当没有 */ }
 }
@@ -1271,7 +1281,6 @@ function renderAuthBox() {
           <button class="ud-item" id="pointsBtn">${ic('lamp', 15)} 灯光明细<span class="ud-pts">${pts}</span></button>
           <button class="ud-item" id="promoBtn">${ic('promo', 15)} 推荐自己的作品</button>
           <div class="ud-sep"></div>
-          <button class="ud-item" id="themeBtn">${ic('palette', 15)} 外观主题</button>
           <a class="ud-item" href="/settings" data-nav>${ic('gear', 15)} 账号设置</a>
           ${state.user.isAdmin ? `<a class="ud-item" href="/admin" target="_blank" rel="noopener" title="管理后台（新标签页打开）">${ic('shield', 15)} 管理后台</a>` : ''}
           <button class="ud-item ud-logout" id="logoutBtn">${ic('logout', 15)} 退出登录</button>
@@ -1303,7 +1312,7 @@ function renderAuthBox() {
     $('pointsBtn').onclick = () => openStats('points');
     // 推荐直达：点「推荐」直接弹兑换弹窗，不再先进推荐面板绕一层
     $('promoBtn').onclick = () => openRedeem();
-    if ($('themeBtn')) $('themeBtn').onclick = () => openThemeModal();
+    // 外观主题入口已挪进头栏装扮菜单（静态按钮，游客也能点），绑定统一放在那里
     // 签到独立成弹窗：签到卡 + 签到累计榜，不再和推荐混在一个弹窗里
     $('checkinBtn').onclick = () => openStats('checkin');
     $('noticeBtn').onclick = openNotices;
@@ -1779,6 +1788,7 @@ async function doLogout() {
   state.user = null;
   state.favs = [];
   state.myClaims = [];
+  applySiteWallpaper('');
   renderAuthBox();
   saveMeSnapshot();   // 退出即清快照，下次刷新首绘直接是「登录 / 注册」
   refreshDraftHint(); // 草稿挂在账号上，退出后角标必须收掉（否则下一个人会看到别人的份数）
@@ -1833,6 +1843,7 @@ async function loadMe() {
           links: Array.isArray(data.links) ? data.links : [],   // 我的链接（GitHub/知乎/…），作者主页档案行下面那排
           bio: data.bio || '',   // 个人介绍：作者主页档案区那段纯文本
           hideWorks: data.hideWorks === true,   // 主页作品隐藏：别人打开 /u/xxx 只看得到档案
+          siteWallpaper: data.siteWallpaper || '',   // 整站壁纸：只对自己生效，空串 = 没选
           noticePrefs: data.noticePrefs || { announce: true, cats: {} },   // 消息提示偏好（屏蔽后仍收消息、不弹窗）
           discLayout: (data.discLayout && typeof data.discLayout === 'object')   // 发现页分类自定义（游客记本机、登录记账号）
             ? { order: Array.isArray(data.discLayout.order) ? data.discLayout.order : [],
@@ -1854,7 +1865,8 @@ async function loadMe() {
     state.favs = Array.isArray(data.favs) ? data.favs : [];
     state.blocked = Array.isArray(data.blocked) ? data.blocked : [];
     state.blockedUsers = Array.isArray(data.blockedUsers) ? data.blockedUsers : [];
-  } catch { state.user = null; state.providers = {}; state.favs = []; state.blocked = []; state.blockedUsers = []; }
+    applySiteWallpaper(data.siteWallpaper || '');   // /api/me 回来后按账号真值校准
+  } catch { state.user = null; state.providers = {}; state.favs = []; state.blocked = []; state.blockedUsers = []; applySiteWallpaper(''); }
   await loadMyClaims();
   if (state.user) await mergeLocalFavs(); // 本机遗留的旧收藏（换设备/重新登录都会补一次）
   applyAuthProviders();
@@ -2753,7 +2765,7 @@ async function sendDm() {
   const text = (input.value || '').trim();
   if (!text) return;
   if (text.length > 500) { showToast('最多 500 字', undefined, 'err'); return; }
-  // 实名核验：私信属于即时通讯，发之前要完成一次（核验一次永久有效）。
+  // 实名核验：私信属于即时通讯，第二次发布起要先核验一次（核验一次永久有效）。
   // 绑定成功后重入 sendDm()，文本还在输入框里；重入时 status.bound 已为 true，直接走到真正的发送
   {
     const ok = await ensurePhoneVerified(() => sendDm(), '发私信');
@@ -3061,8 +3073,8 @@ function showLoginUpgrade(username, password, remember) {
       const fd = new FormData(e.target);
       const payload = Object.fromEntries(fd);
       payload.remember = !!fd.get('remember');
-      // 手机实名两栏：区块藏起来时 input 已 disable，FormData 本来就不会带；
-      // 这里再 delete 一次双保险——服务端 smsRequired()=false 时也不读这两个字段
+      // 手机实名两栏：注册已经不收号码（改到第二次发布前），区块常藏 + input 禁用；
+      // 这里再 delete 一次双保险，服务端也不再读这两个字段
       if ($('regSmsRow') && $('regSmsRow').style.display === 'none') { delete payload.phone; delete payload.code; }
       // 带上来路分享者：注册后由服务端判断是否给邀请人加分（同 IP 有严格上限）
       payload.ref = (refStore() || {}).ref || '';
@@ -3093,18 +3105,17 @@ function showLoginUpgrade(username, password, remember) {
 }
 
 // ---------- 手机实名核验（前端侧） ----------
-// 服务端是 sms-auth.js + server.js 的 /api/sms/*。口径：
-//   注册：通道开通（/api/sms/status.required）时注册表单多出「手机号 + 验证码」两栏，
-//         码随注册一起提交。不单独调 check——一次性验证码只能成功消费一次，
-//         先 check 再 register 会把码烧掉，第二次校验必失败。
-//   存量：投稿 / 酒馆 / 私信这些「发布内容」的动作前，ensurePhoneVerified() 弹窗补一次，
-//         核验一次永久有效；浏览、点赞、收藏一律不拦。
-//   通道没开通：一切照旧。代码可以比配置先上线，行为不能跑在配置前面。
+// 服务端是 sms-auth.js + server.js 的 /api/sms/*。口径（2026-11-28 改）：
+//   注册：不再收手机号，也不发码——第一次发布先让人用起来，不把人挡在门口。
+//   发布：作品 / 酒馆帖 / 回应 / 想法 / 私信合并计数，第二次发布前 ensurePhoneVerified()
+//         弹窗核验一次，之后永久有效；浏览、点赞、收藏一律不拦。
+//   是否需要拦由服务端 /api/sms/status.needPhoneOnPublish 现算（前端不自己数作品/帖子），
+//   通道没开通时恒为 false。代码可以比配置先上线，行为不能跑在配置前面。
 let smsStatusCache = null;
 async function smsStatus(force) {
   if (!smsStatusCache || force) {
     try { smsStatusCache = await (await fetch('/api/sms/status', { cache: 'no-store' })).json(); }
-    catch { smsStatusCache = { required: false, enabled: false, bound: false }; }
+    catch { smsStatusCache = { required: false, enabled: false, bound: false, needPhoneOnPublish: false }; }
   }
   return smsStatusCache;
 }
@@ -3205,23 +3216,22 @@ async function smsSendCode(phone, btn, retried) {
   } catch { btn.disabled = false; showToast('网络异常，稍后再试', undefined, 'err'); return false; }
 }
 
-// 注册表单那两栏的显隐：required=true 才亮。藏起来的同时把 input disable——
-// FormData 不会带 disabled 字段，服务端收不到脏值，比提交时再 delete 干净。
-// force=true：站长可能在别的标签页刚拨了后台开关，内存里的缓存已经过期了
-async function refreshRegSmsRow(force) {
+// 注册表单那两栏已经不用了：手机号改到第二次发布前再收（见 ensurePhoneVerified）。
+// 这里仍然把行藏掉 + 禁用 input，是为了兼容老页面结构，也避免 FormData 带上脏值。
+async function refreshRegSmsRow() {
   const row = $('regSmsRow');
   if (!row) return;
-  const st = await smsStatus(!!force);
-  row.style.display = st.required ? '' : 'none';
-  row.querySelectorAll('input').forEach(i => { i.disabled = !st.required; });
+  row.style.display = 'none';
+  row.querySelectorAll('input').forEach(i => { i.disabled = true; i.value = ''; });
 }
 
 // 发布前的统一闸口。after = 核验**成功后**才要继续的那件事（绑定成功的回调里会调它，
-// 见 setupPhoneVerify 的 phoneForm submit）；已经核验过 / 通道没开时直接 return true，
-// 让调用方在原流程里继续。**千万别在这里顺手 after()**：现在投稿的 after 是
-// formEl.requestSubmit()，私信 / 酒馆的 after 也是重入自己——无需核验时再调一次就是
-// 无限递归，服务端每小时 5 次的投稿限频一拦，用户就会看到「一次提交多了 5 件作品」（2026-11-20 修）。
-// 判定沿用 /api/sms/status 的 bound（服务端按当前 session 现算），不用前端内存里的 hasPhone。
+// 见 setupPhoneVerify 的 phoneForm submit）；无需核验时直接 return true，让调用方继续。
+// **千万别在这里顺手 after()**：现在投稿的 after 是 formEl.requestSubmit()，私信 / 酒馆的
+// after 也是重入自己——无需核验时再调一次就是无限递归，服务端每小时 5 次的投稿限频一拦，
+// 用户就会看到「一次提交多了 5 件作品」（2026-11-20 修）。
+// 判定用 /api/sms/status.needPhoneOnPublish：服务端按当前账号的发布次数现算，
+// 第一次发布不拦、已核验不拦、通道没开不拦。前端不自己数，避免两端口径打架。
 // 打开核验窗（发码那条路）。文案由调用方给：拦截场景要说明「哪个动作前需要」，
 // 主动去核验的场景要说「验证通过能领多少」，同一句话套两种场景会都不合适。
 function showBindModal(hintText) {
@@ -3233,13 +3243,10 @@ function showBindModal(hintText) {
 let phoneBindAfter = null;
 async function ensurePhoneVerified(after, sceneName) {
   if (!state.user) return true;                        // 未登录不在这里管，调用方自己引导登录
-  const st = await smsStatus(true);                    // 每次现拉：后台开关随时可能被拨动
-  if (!st.required) return true;                       // 通道没开：原流程继续，不重入
-  if (st.bound) return true;                           // 已经核验过：原流程继续，不重入
+  const st = await smsStatus(true);                    // 每次现拉：发布次数、后台开关都可能刚变
+  if (!st.needPhoneOnPublish || st.bound) return true; // 第一次发布 / 已核验 / 通道没开：原流程继续
   phoneBindAfter = after || null;                      // 只有真正弹窗时存下「核验成功后要做的事」
-  showBindModal(sceneName
-    ? `按法规要求，${sceneName}前需要核验一次真实身份。手机号仅用于核验，加密保存，之后不再需要验证。`
-    : '按法规要求，发布内容前需要核验一次真实身份。手机号仅用于核验，加密保存，之后不再需要验证。');
+  showBindModal(`按《网络安全法》等法规要求，信息发布、即时通讯服务需核验真实身份。你已经完成第一次发布，${sceneName || '继续发布'}前请核验一次手机号：仅用于身份核验、加密保存，之后不再需要验证。`);
   return false;
 }
 
@@ -3306,7 +3313,7 @@ async function openPhoneKeep() {
   const bonus = Number(st.bonus || (state.user && state.user.phoneBonus) || 0);
   // 通道已经被拨开了：别再走「不验证的预留」，直接进核验窗——那才是真正能拿到灯火的那条路
   if (st.required) {
-    showBindModal(`实名核验通道已经开放：验证一次，通过后${bonus ? ` ${bonus} 盏灯火立刻到账` : '即可正常发布'}。手机号加密保存，只用于身份核验与账号找回。`);
+    showBindModal(`实名核验通道已经开放：按法规要求，第二次发布前需要验证一次手机号${bonus ? `，通过后 ${bonus} 盏灯火立刻到账` : ''}。号码加密保存，只用于身份核验与账号找回。`);
     return;
   }
   const errEl = $('keepErr');
@@ -3316,7 +3323,7 @@ async function openPhoneKeep() {
     hint.innerHTML = (st.kept
       ? `你已经预留过 <b>${escapeHtml(st.keepMasked || '一个号码')}</b>，可以改成新号码。<br />`
       : '')
-      + `按《网络安全法》要求，投稿、发帖、私信需核验真实身份。现在只登记号码，<b>不发短信、不产生费用</b>，也还不算实名；通道开放后你会收到一条验证短信，验证通过后${bonus ? ` <b>${bonus} 盏灯火</b>立刻到账` : '即可正常发布'}。号码加密保存，只用于身份核验与账号找回，不对外展示、不发营销短信。`;
+      + `按《网络安全法》要求，发布内容需核验真实身份：第一次发布不打扰，第二次发布前验证一次手机号。现在只登记号码，<b>不发短信、不产生费用</b>，也还不算实名；通道开放后你会收到一条验证短信，验证通过后${bonus ? ` <b>${bonus} 盏灯火</b>立刻到账` : '即可正常发布'}。号码加密保存，只用于身份核验与账号找回，不对外展示、不发营销短信。`;
   }
   const inp = $('keepPhone');
   if (inp) inp.value = '';
@@ -5059,7 +5066,9 @@ function renderAdSlot(el, slot, opts = {}) {
   // AdSense 固定广告单元（frontend/index.html 里的 .adsense-unit，2026-11-27）也要排除：
   // ins 天然带 data-ad-slot（Google 的属性名），会被 renderAllAdSlots 的全局扫描误捞进来，
   // 走到下面按 ADS 过滤必然是空池子 → 位置被清空/隐藏，广告就没了。
-  if (el.classList && el.classList.contains('adsense-unit')) return;
+  // 排除标记挂在父容器上，<ins> 自己没有这个类；连同 adsbygoogle / 任意后代一起挡掉，
+  // 不然 renderAllAdSlots 会把 Google 的槽位当自家空位清空（2026-11-28）。
+  if ((el.classList && (el.classList.contains('adsense-unit') || el.classList.contains('adsbygoogle'))) || (el.closest && el.closest('.adsense-unit'))) return;
   // 这个槽位的渲染参数要记在节点上：关广告（renderAdSlot 只带 slot 重渲染）和
   // renderAllAdSlots 整页刷都不传 opts，不记下来散座栏的单张上限就丢了。
   // HTML 里也可以直接写 data-ad-maxcols / data-ad-stack（榜单右栏竖排 3 条用的就是这个），首次渲染记进 _adOpts
@@ -6145,21 +6154,42 @@ function setupFeatCarousel() {
    点指示段手动翻。付费自荐那几张轮到时走 adTrack 曝光埋点、点击也报一次。
    只在 ≥1024px 显示（窄屏 CSS 藏掉整块）；开了减弱动效就不自动轮播、也不做位移动画。 */
 let heroDeckCtrl = null;   // 未登录访客异步补「猜你喜欢」用；setupHeroShowcase 接管后挂上
+// 非首页直达（/?q= 搜索落地页、/w/ 作品页等 SSR 页）服务端不下发 #dm-boot，
+// 启动时拿不到池子。这里留一个异步兜底位：切回首页时拉 /api/featured 现补一批，
+// 不再把整块永久隐藏（2026-11-27 站长反馈「切路由后这块经常丢失」）。
+let heroPoolFallback = null;
+let heroFallbackPending = false;
+async function ensureHeroFallback() {
+  if (heroFallbackPending || heroPoolFallback || heroDeckCtrl) return;
+  heroFallbackPending = true;
+  try {
+    const r = await fetch('/api/featured', { cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    const rows = (Array.isArray(d.list) ? d.list : []).slice(0, 5);
+    if (rows.length >= 2) { heroPoolFallback = rows; setupHeroShowcase(); }
+  } catch { /* 接口失败就保持现状，route() 再进首页时会重试 */ }
+  finally { heroFallbackPending = false; }
+}
 function setupHeroShowcase() {
   const deck = $('hsDeck'), wrap = $('heroShowcase'), dotsWrap = $('hsDots');
   if (!deck || !wrap) return;
   // 混合池是服务端现洗好的；BOOT.heroPool 缺失时（老缓存 / 直出失败）退回本周精选前 5，
   // 保证这一块不会因为新字段没下来就空着。
   // 2026-11-27 站长定：4 不吉利，一批改 5 张（前 1 后 4），指示条同步 5 段；批内循环规则不变。
-  const pool = (BOOT && Array.isArray(BOOT.heroPool) && BOOT.heroPool.length >= 2)
-    ? BOOT.heroPool
-    : ((BOOT && Array.isArray(BOOT.featured) ? BOOT.featured : []) || []).slice(0, 5);
+  const pool = heroPoolFallback && heroPoolFallback.length >= 2
+    ? heroPoolFallback
+    : (BOOT && Array.isArray(BOOT.heroPool) && BOOT.heroPool.length >= 2)
+      ? BOOT.heroPool
+      : ((BOOT && Array.isArray(BOOT.featured) ? BOOT.featured : []) || []).slice(0, 5);
+  if (heroDeckCtrl) { wrap.hidden = false; heroDeckCtrl.restore(); return; }  // 已初始化过：只恢复，别重复绑事件/定时器
   // 批次轮换（2026-11-26 站长定，11-27 一批 4→5）：池子里 5 张一批，批内五张卡循环滑动——原型作者确认顺滑的
   // 关键就是「这批卡永远在场内循环」，池子一大、每次换卡都有卡进出场就必然跳。轮完一批整叠
   // 淡出、下一批淡入，观众不刷新也能持续看到池子里的新作品，自荐位曝光和优秀作品轮播都更公平。
   const BATCH = 5;
   let batchStart = 0, swapping = false;
-  if (pool.length < 2) { wrap.hidden = true; return; }
+  if (pool.length < 2) { wrap.hidden = true; ensureHeroFallback(); return; }
+  wrap.hidden = false;   // 搜索页进入时曾隐藏过，有数据后必须恢复（含切回首页重入）
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const views = w => (w.uvAll || w.pvAll || 0);
   const KIND_LABEL = { self: '自荐', rec: '猜你喜欢', cert: '企业认证', peak: '优秀作品' };
@@ -6416,7 +6446,23 @@ function setupHeroShowcase() {
   armTimer();
   // 未登录访客的「猜你喜欢」拿不到 SSR（服务端看不到本机 vid），登录态回来后再按本机行为取卡。
   // 插进当前批而不是另起一个轮播：复用已有的 20s 计时/暂停逻辑，淡出淡入跟换批同款。
+  let peekResumeTimer = null;
   heroDeckCtrl = {
+    // 「我的投放 → 看效果」：把指定作品翻到最前面并暂停轮播 20 秒，让投放者亲眼看到自己的卡。
+    // 池子里找不到（刚投还没进池 / 作品下架）就返回 false，由调用方给一句兜底提示。
+    peekWork(id) {
+      if (!id || !pool.length) return false;
+      const i = pool.findIndex(w => String(w.id) === String(id));
+      if (i < 0) return false;
+      batchStart = Math.floor(i / BATCH) * BATCH;   // 作品可能在后面某一批，先切到那批
+      idx = i - batchStart;
+      renderBatch();
+      paint();
+      pause('peek');
+      clearTimeout(peekResumeTimer);
+      peekResumeTimer = setTimeout(() => resume('peek'), 20000);
+      return true;
+    },
     addRecs(rows) {
       if (!Array.isArray(rows) || !rows.length) return;
       const have = new Set(pool.map(w => String(w.id)));
@@ -6432,6 +6478,15 @@ function setupHeroShowcase() {
       } catch (e) {
         console.warn('[hero] 补卡失败，保留当前卡片:', e);
       }
+    },
+    // 路由切回首页时调用：视图 display:none 期间 IntersectionObserver 会记下 offscreen 暂停，
+    // 若回调没赶上就把定时器停死。这里清掉暂停原因、重画并重新排班，卡片原地不动。
+    restore() {
+      if (!wrap.isConnected || !cards().length) return;
+      wrap.hidden = false;
+      pauses.clear();
+      paint();
+      armTimer();
     }
   };
 }
@@ -9497,7 +9552,7 @@ function renderMePage() {
     ${!state.user.hasPhone ? `
     <button type="button" class="me-task-bar me-keep-bar" id="mePhoneKeep">
       <span class="me-task-ico">${ic('shield', 18)}</span>
-      <span class="me-task-txt"><b>${state.user.phoneKept ? '手机号已预留' : `预留手机号${state.user.phoneBonus ? `，核验通过送 ${state.user.phoneBonus} 盏` : ''}`}</b><i>${state.user.phoneKept ? '法规要求的实名核验，通道开放后验证一次，灯火立刻到账' : '法规要求投稿 / 发帖 / 私信需核验身份，现在先留号、不发短信'}</i></span>
+      <span class="me-task-txt"><b>${state.user.phoneKept ? '手机号已预留' : `预留手机号${state.user.phoneBonus ? `，核验通过送 ${state.user.phoneBonus} 盏` : ''}`}</b><i>${state.user.phoneKept ? '法规要求的实名核验，通道开放后验证一次，灯火立刻到账' : '法规要求第二次发布前核验身份，现在先留号、不发短信'}</i></span>
       <span class="me-task-go">›</span>
     </button>` : ''}
     <a class="me-task-bar${taskClaimable ? ' has-reward' : ''}" href="/tasks" data-nav>
@@ -10302,6 +10357,12 @@ function route() {
   const initialRoute = !routeStarted;
   routeStarted = true;
   const path = location.pathname;
+  // 百度统计：hm.js 只自动记首次加载，站内 pushState 跳转要自己补一次 PV。
+  // _hmt 在 loader 里已建好数组（hm.js 加载后再消费队列），这里只是内存 push，零网络开销；
+  // 首次 route 不报——hm.js 加载时会按当前 URL 自动记一次，重复报会双计。
+  if (!initialRoute && window._hmt && typeof window._hmt.push === 'function') {
+    try { window._hmt.push(['_trackPageview', path + location.search]); } catch (e) { /* 统计失败不影响页面 */ }
+  }
   syncSearchBoxPlacement(path);
   detailLeaving = false; // back() 已落地，防重入标记解除
   // 从详情弹窗退回：列表视图原样保留，不重新拉数据（分页、滚动位置、「展示更多」都不动）
@@ -10577,6 +10638,10 @@ function route() {
   stripForeignSeoBlocks();   // 从 /u/ 等整页 SSR 页切回首页：清掉挂在列表下方的上一页副本
   showView('homeView');
   setTitle(state.q ? `搜索「${state.q}」` : '');
+  // 首屏叠层卡：初始化只在启动时跑一次。从搜索页 / 作品页等 SSR 页进来的那份 HTML
+  // 没有 #dm-boot，当时整块被隐藏过；切回首页时在这里恢复或异步兜底拉一批（2026-11-27）
+  if (heroDeckCtrl) heroDeckCtrl.restore();
+  else ensureHeroFallback();
   // 「大家在找」只在首页露面（只拉一次，之后 heroHotLoaded 短路）
   loadHeroHot();
   if (!keepList || !document.querySelector('#gallery .card, #gallery .work-row')) {
@@ -11604,8 +11669,9 @@ async function ehSaveAvatar(url, init, pendingText, doneText) {
 }
 
 // ---- 主页背景皮肤（2026-11-14）----
-// 二十种纯 CSS 皮肤，分「星空」「别样」「质感」三组：key 是服务端白名单里的那个，name 只给人看，
-// group 决定弹层里的分组小标题。存在账号上（user.heroSkin），访客进作者主页看到的是同一种；没挑过 = 默认流星。
+// 三十一种背景，分「星空」「别样」「质感」「壁纸」四组：key 是服务端白名单里的那个，name 只给人看，
+// group 决定弹层里的分组小标题。壁纸组前六套是纯 CSS 景，后五套是站长提供的实景图片（style.css 里 .hs-*）。
+// 存在账号上（user.heroSkin），访客进作者主页看到的是同一种；没挑过 = 默认流星。
 const HERO_SKINS = [
   { key: 'meteor', name: '流星', group: '星空' },
   { key: 'dots', name: '星点', group: '星空' },
@@ -11632,10 +11698,27 @@ const HERO_SKINS = [
   { key: 'forest', name: '林间', group: '壁纸' },
   { key: 'peak', name: '雪山', group: '壁纸' },
   { key: 'ink', name: '水墨', group: '壁纸' },
-  { key: 'moon', name: '月夜', group: '壁纸' }
+  { key: 'moon', name: '月夜', group: '壁纸' },
+  { key: 'catnap', name: '猫眠', group: '壁纸' },
+  { key: 'meadow', name: '绿野', group: '壁纸' },
+  { key: 'pasture', name: '牧场', group: '壁纸' },
+  { key: 'snowpalace', name: '雪宫', group: '壁纸' },
+  { key: 'vortex', name: '漩涡', group: '壁纸' }
 ];
 const HERO_SKIN_DEFAULT = 'meteor';
 let authorSkin = HERO_SKIN_DEFAULT;
+
+// 整站壁纸（2026-11-28）：登录用户自己挑，账号级保存；和「落笔成画 → 设为壁纸」的透明墨层共用一个槽位。
+// 图片就是皮肤壁纸组那 5 张，直接复用 /wallpapers/<key>.png，不另存一份。
+const SITE_WALLPAPERS = [
+  { key: 'catnap', name: '猫眠' }, { key: 'meadow', name: '绿野' },
+  { key: 'pasture', name: '牧场' }, { key: 'snowpalace', name: '雪宫' },
+  { key: 'vortex', name: '漩涡' }
+];
+let SITE_WALL_KEY = '';
+let paintWpActive = false;      // 落笔成画那张透明墨层是否铺着
+let clearPaintWpFn = null;      // setupInstall 里注册，供整站壁纸互斥调用
+let siteWallModalEl = null;
 
 // 换皮肤只动一个类名：.band-skin 提供定位/裁切，.hs-* 提供背景和动效（见 style.css）
 function paintBandSkin(key) {
@@ -11651,6 +11734,108 @@ function paintBandSkin(key) {
     band.classList.add('is-swapping');
     clearTimeout(band._skinSwapTimer);
     band._skinSwapTimer = setTimeout(() => band.classList.remove('is-swapping'), 460);
+  }
+}
+
+// ---- 整站壁纸：账号级，铺在所有页面内容底下 ----
+function siteWallNameOf(key) {
+  const w = SITE_WALLPAPERS.find(x => x.key === key);
+  return w ? w.name : '';
+}
+function siteWallpaperLayer() {
+  let el = $('siteWallpaper');
+  if (!el) {
+    // SSR 页壳同样带这层；万一老缓存里没有，临时补一个，别让壁纸只在新模板生效
+    el = document.createElement('div');
+    el.id = 'siteWallpaper';
+    document.body.insertBefore(el, document.body.firstChild);
+  }
+  return el;
+}
+function syncWallpaperChrome() {
+  const unwall = $('paintUnwall');
+  if (unwall) unwall.hidden = !(SITE_WALL_KEY || paintWpActive);
+  const entry = $('siteWallEntry'), txt = $('siteWallEntryText');
+  if (entry) entry.classList.toggle('is-on', !!SITE_WALL_KEY);
+  if (txt) txt.textContent = SITE_WALL_KEY ? '壁纸：' + siteWallNameOf(SITE_WALL_KEY) : '换壁纸';
+}
+function applySiteWallpaper(key) {
+  const k = SITE_WALLPAPERS.some(w => w.key === key) ? key : '';
+  // 一个槽位只留一张：选了实景图就把落笔成画的墨层卸掉（它只在 localStorage 里）
+  if (k && paintWpActive && clearPaintWpFn) clearPaintWpFn();
+  SITE_WALL_KEY = k;
+  const layer = siteWallpaperLayer();
+  if (k) {
+    layer.style.backgroundImage = `url("/wallpapers/${k}.png")`;
+    layer.hidden = false;
+    document.body.classList.add('site-wallpaper');
+  } else {
+    layer.hidden = true; layer.style.backgroundImage = '';
+    document.body.classList.remove('site-wallpaper');
+  }
+  syncWallpaperChrome();
+  syncSiteWallPick();
+}
+function syncSiteWallPick() {
+  if (!siteWallModalEl) return;
+  siteWallModalEl.querySelectorAll('[data-wall]').forEach(b => {
+    const k = b.dataset.wall, on = k === SITE_WALL_KEY;
+    b.classList.toggle('is-on', on);
+    const nm = b.querySelector('.skin-name');
+    if (nm) nm.textContent = (on ? '✓ ' : '') + (k ? siteWallNameOf(k) : '无壁纸');
+  });
+}
+function openSiteWallpaperModal() {
+  if (!state.user) { openAuth('login'); return; }
+  if (!siteWallModalEl) {
+    siteWallModalEl = document.createElement('div');
+    siteWallModalEl.className = 'modal-mask';
+    document.body.appendChild(siteWallModalEl);
+    bindMaskClose(siteWallModalEl, () => hideModal(siteWallModalEl));
+  }
+  siteWallModalEl.innerHTML = `
+    <div class="modal skin-modal">
+      <button type="button" class="close-btn" aria-label="关闭">×</button>
+      <h3 class="links-title">整站壁纸</h3>
+      <p class="skin-modal-hint">挑一张铺在所有页面背后，只对你自己生效，换设备也跟着走；和「落笔成画」设的壁纸互斥。</p>
+      <div class="skin-group">
+        <div class="skin-group-t">图片壁纸</div>
+        <div class="skin-grid">
+          <button type="button" class="skin-item" data-wall=""><span class="skin-thumb wp-none">无</span><span class="skin-name">无壁纸</span></button>
+          ${SITE_WALLPAPERS.map(s => `
+            <button type="button" class="skin-item" data-wall="${s.key}">
+              <span class="skin-thumb hs-${s.key}"></span><span class="skin-name">${s.name}</span>
+            </button>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  siteWallModalEl.querySelector('.close-btn').onclick = () => hideModal(siteWallModalEl);
+  siteWallModalEl.querySelectorAll('[data-wall]').forEach(btn => {
+    btn.onclick = () => saveSiteWallpaper(btn.dataset.wall);
+  });
+  syncSiteWallPick();
+  showModal(siteWallModalEl);
+}
+async function saveSiteWallpaper(key) {
+  if (!state.user) { openAuth('login'); return false; }
+  const prev = SITE_WALL_KEY;
+  applySiteWallpaper(key);   // 先眼前生效，保存失败再退回去
+  syncSiteWallPick();
+  try {
+    const r = await fetch('/api/me/site-wallpaper', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallpaper: key })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || '保存失败');
+    if (state.user) state.user.siteWallpaper = d.wallpaper || '';
+    saveMeSnapshot();
+    showToast(key ? '换好了，整站都是这张' : '壁纸取消了，换回原来的底', 1800, 'ok');
+    return true;
+  } catch (e) {
+    applySiteWallpaper(prev); syncSiteWallPick();
+    showToast(e.message || '没能保存，稍后再试', 2400, 'err');
+    return false;
   }
 }
 
@@ -14729,7 +14914,7 @@ function setupUploadForm() {
       '请打开 https://zm94.com/skill.md 阅读投稿说明书，然后按它的流程替我把我的产品投稿到「造梦橱窗」。',
       '我的投稿密钥（请求头 x-publish-key，或 Authorization: Bearer 均可）：',
       key,
-      '注意：先问我要作品资料（名字、一句话介绍、网址、形态等），缺什么问什么，不要编造；提交前把作品信息列给我确认一次再调接口。'
+      '资料我不用一次给齐：一段简介、官网链接，或者一篇介绍它的文章链接，有哪个给哪个；链接打不开我把正文贴过来。缺什么问我就行，别自己编；提交前把整理好的作品信息发我确认一次再调接口。'
     ].join('\n');
     // 生成/换新共用一条路：auto=true 是首次展开时「没钥匙就直接生成」，auto=false 是手动换钥匙。
     // POST 每次都会作废旧钥匙，所以自动路径只在 GET 明确说「还没有密钥」时走，绝不每次展开都轮换。
@@ -16637,7 +16822,7 @@ function setupUploadForm() {
       if (choice !== 'anon') return; // 取消/关闭：留在表单继续改
     }
 
-    // 实名核验：登录用户发布作品前完成一次（存量老用户第一次投稿时才遇到）。
+    // 实名核验：登录用户第二次发布起才拦（第一次发布照常，核验一次永久有效）。
     // 绑定成功后 requestSubmit 重走一遍提交：表单内容、图片、勾选都还在，
     // 校验会再过一遍；重入时 status.bound 已为 true，不会递归。
     if (state.user) {
@@ -18729,7 +18914,7 @@ async function submitChat() {
   if (text.length < 2) return showToast('至少写两个字', undefined, 'err');
   if (barAttachments.some(x => x.loading)) return showToast('图片还在传，等一下再发', undefined, 'err');
   if (!state.user) { openAuth('login'); return; }
-  // 实名核验：发帖前完成一次。绑定成功后重入 submitChat()，正文和话题都还在输入框里
+  // 实名核验：第二次发布起发帖前要完成一次。绑定成功后重入 submitChat()，正文和话题都还在输入框里
   {
     const ok = await ensurePhoneVerified(() => submitChat(), '发闲聊');
     if (!ok) return;
@@ -18835,7 +19020,7 @@ async function sendChatReply(id, input, btn) {
   chatReplySending = true;
   if (btn) btn.disabled = true;
   try {
-    // 实名核验：回应也是发布内容。绑定成功后重入，重入时 status.bound 已为 true 直接发送
+    // 实名核验：回应也算一次发布，第二次起要验。绑定成功后重入，重入时 status.bound 已为 true 直接发送
     const ok = await ensurePhoneVerified(() => sendChatReply(id, input, btn), '发回应');
     if (!ok) return;
     const r = await fetch(`/api/bar/posts/${encodeURIComponent(id)}/reply`, {
@@ -19548,6 +19733,8 @@ async function submitWish(opts = {}) {
   if (title.length < 4) return showToast('至少写 4 个字，说清楚要什么', undefined, 'err');
   if (barAttachments.some(x => x.loading)) return showToast('图片还在传，等一下再发', undefined, 'err');
   if (!state.user) { openAuth('login'); return; }
+  // 实名核验：想法也算一次发布，第二次起要先验；成功后重入，标题/图片都还在
+  if (!(await ensurePhoneVerified(() => submitWish(opts), '发想法'))) return;
   const btn = $('wishSubmit');
   btn.disabled = true;
   try {
@@ -21295,7 +21482,7 @@ function renderRedeem() {
         <div class="ri-foot">
           <span>${foot}</span>
           <span class="ri-foot-btns">
-            ${r.status === 'active' ? `<button type="button" class="ri-peek" data-rpeek="${escapeHtml(r.slot)}" title="亲眼看看你的广告现在长什么样、在哪儿"><span class="ico">${ic('eye')}</span> 看效果</button>` : ''}
+            ${r.status === 'active' ? `<button type="button" class="ri-peek" data-rpeek="${escapeHtml(r.slot)}" data-rwork="${escapeHtml(r.workId || '')}" title="亲眼看看你的广告现在长什么样、在哪儿"><span class="ico">${ic('eye')}</span> 看效果</button>` : ''}
             ${(r.status === 'active' || queued) ? `<button type="button" class="ri-cancel" data-rcancel="${escapeHtml(r.id)}">${queued ? '取消排队' : '撤下'}</button>` : ''}
           </span>
         </div>
@@ -21683,7 +21870,7 @@ function renderRedeem() {
     el.onclick = () => cancelRedeem(el.dataset.rcancel);
   });
   body.querySelectorAll('[data-rpeek]').forEach(el => {
-    el.onclick = () => peekRedeem(el.dataset.rpeek);
+    el.onclick = () => peekRedeem(el.dataset.rpeek, el.dataset.rwork);
   });
   // 位置卡标题旁的「查看投放效果」：出一张直达该小程序页面的码（stopPropagation 别误选这个位）
   body.querySelectorAll('[data-slotqr]').forEach(el => {
@@ -21714,10 +21901,36 @@ function renderRedeem() {
 // 详情位的广告只出现在别人的作品详情页（打开自己的作品时不展示，多条广告每次随机抽一条），
 // 用户自己刷半天可能碰不到，所以这里直接随机打开一件别人的作品让他看；
 // 榜单位/首页第一格位置固定，直接带过去看。
-async function peekRedeem(slot) {
+async function peekRedeem(slot, workId) {
   if (slot === 'rank') {
     navigate('/rank');
     showToast('你的横幅就在星梦榜页（PC 宽屏在右栏竖排展示，手机在页头下方）');
+    return;
+  }
+  if (slot === 'hero') {
+    // 首屏叠层卡：带去首页首屏，把投放者自己的卡翻到最前面，别再误落进「详情位」兜底分支
+    if (location.pathname !== '/') navigate('/');
+    setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 60);
+    if (window.innerWidth < 1024) {
+      showToast('首屏叠层卡只在电脑宽屏显示；用电脑打开首页，首屏右列那叠卡里带「自荐」角标的就是你的');
+      return;
+    }
+    // 从 SSR 子页切回首页时 heroDeckCtrl 可能是异步兜底才建好，等它就绪再翻卡
+    const focus = () => {
+      if (heroDeckCtrl && workId && heroDeckCtrl.peekWork(workId)) {
+        showToast('你的作品卡已翻到首屏最前面（带「自荐」角标），暂停 20 秒给你看');
+      } else {
+        showToast('你的作品卡在首页首屏右列那叠轮播里，轮到带「自荐」角标的就是；20 秒换一张');
+      }
+    };
+    if (heroDeckCtrl) focus();
+    else {
+      let waited = 0;
+      const t = setInterval(() => {
+        waited += 200;
+        if (heroDeckCtrl || waited >= 3000) { clearInterval(t); focus(); }
+      }, 200);
+    }
     return;
   }
   if (slot === 'list-first' || slot === 'mini-home-first') {
@@ -23887,6 +24100,9 @@ function setupSearchSuggest() {
     });
   }
 
+  // 2026-11-28 站长：点「搜索」按钮只出下拉、不跳完整结果页（下面隔着「本周精选」看不见结果）。
+  // 把 open 挂到输入框上给全局点击委托调用，避免那边重新实现一份下拉状态。
+  input._sgOpen = open;
   input.addEventListener('focus', () => open(true));
   // 有词就边打边把结果列在框下；清空了回到「最近搜索 / 在搜这些」
   input.addEventListener('input', () => open(false));
@@ -24178,15 +24394,19 @@ function setupFindBot() {
 // 找找入口委托（2026-11-15）：脚本加载到这就挂上，不等 setupHeader / 路由。
 // openFindBot 有 open 幂等闸、fbAsk 有 busy 闸，就算别处也绑过一份也不会重复开/重复问。
 document.addEventListener('click', e => {
-  // hero 搜索组合条里的「搜索」按钮：等价于在输入框里回车（输入本身也是防抖自动搜，
-  // 这颗按钮给习惯点一下的人一个明确动作）。取当前词 -> 记历史 -> 收起下拉 -> 立刻搜。
+  // hero 搜索组合条里的「搜索」按钮（2026-11-28 站长改）：只展开下拉建议、不跳完整结果页。
+  // 输入本来就是防抖自动搜，这颗按钮给习惯点一下的人一个明确动作——把结果列在框下就行，
+  // 下方隔着「本周精选」，跳到完整结果页反而看不见刚搜的东西。
+  // 回车 / 点下拉里的热词仍走 applySearch 做一次完整搜索（仍是明确动作，行为不变）。
   if (e.target.closest('#heroSearchGo')) {
     const inp = $('searchInput');
     const v = inp ? inp.value.trim() : '';
     if (v) pushSearchHistory(v);
-    const sug = $('searchSuggest'); if (sug) sug.hidden = true;
-    if (inp) inp.blur();
-    applySearch(v);
+    if (inp) {
+      if (typeof inp._sgOpen === 'function') inp._sgOpen(true);   // 有词立刻出结果，无词出历史/热搜
+      else { const sug = $('searchSuggest'); if (sug) sug.hidden = false; }
+      inp.focus();   // 保持聚焦，别让手机端覆盖层/下拉被收起
+    }
     return;
   }
   if (e.target.closest('#sgAsk') || e.target.closest('#heroFindGo')) {
@@ -25050,6 +25270,7 @@ async function submitDelAcc() {
     state.blocked = [];
     state.blockedUsers = [];
     state.myClaims = [];
+    applySiteWallpaper('');
     renderAuthBox();
     if (detailModal && detailModal.style.display === 'flex') hideModal(detailModal);
     showToast(wipe && d.worksDeleted ? `账号已注销，${d.worksDeleted} 件作品已删除` : '账号已注销，感谢你来过', undefined, 'ok');
@@ -25526,20 +25747,82 @@ function setupInstall() {
   // 默认零加载：iframe 平时不带 src，第一次点开才灌 /paint；收起后卸掉，回到零开销。
   // 纸面层 z-index 低于各弹窗，header 保持可见可点——画是从 header 底下长出来的。
   const paintLayer = $('paintLayer');
+  // 落笔成画打开提速（2026-11-28）：鼠标悬停/键盘聚焦入口就先把 /paint 和书法字体
+  // 拉进浏览器缓存，点开时 iframe 直接命中，首屏也不会先出楷体再跳成马体。
+  // 桌面才做：移动端没有 hover，不做无谓的 3MB 下载。真正没预取到也不影响，照常加载。
+  let paintPrefetched = false;
+  const prefetchPaint = () => {
+    if (paintPrefetched) return;
+    paintPrefetched = true;
+    const bg = (getComputedStyle(document.documentElement).getPropertyValue('--bg') || '').trim();
+    const url = '/paint' + (/^#[0-9a-f]{6}$/i.test(bg) ? '?paper=' + encodeURIComponent(bg) : '');
+    const html = document.createElement('link');
+    html.rel = 'prefetch'; html.href = url; document.head.appendChild(html);
+    const font = document.createElement('link');
+    font.rel = 'preload'; font.as = 'font'; font.type = 'font/woff2';
+    font.href = '/fonts/MaShanZheng-Regular.woff2'; font.crossOrigin = 'anonymous';
+    document.head.appendChild(font);
+  };
+  document.addEventListener('mouseover', e => {
+    if (e.target.closest && e.target.closest('.paint-open, .decor-btn')) prefetchPaint();
+  });
+  document.addEventListener('focusin', e => {
+    if (e.target.closest && e.target.closest('.paint-open, .decor-btn')) prefetchPaint();
+  });
+  // 装扮菜单（2026-11-28）：落笔成画 + 整站壁纸合成一颗头栏按钮。
+  // 菜单项沿用原来的 .paint-open / #siteWallEntry，开纸和挑壁纸的逻辑都不动。
+  const decorWrap = $('decorWrap'), decorBtn = $('decorBtn'), decorMenu = $('decorMenu');
+  if (decorWrap && decorBtn && decorMenu) {
+    const setDecor = on => {
+      decorMenu.hidden = !on;
+      decorBtn.classList.toggle('is-open', on);
+      decorBtn.setAttribute('aria-expanded', String(on));
+    };
+    decorBtn.onclick = e => { e.stopPropagation(); setDecor(decorMenu.hidden); };
+    document.addEventListener('click', e => {
+      if (!decorMenu.hidden && !decorWrap.contains(e.target)) setDecor(false);
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !decorMenu.hidden) setDecor(false);
+    });
+    decorMenu.querySelectorAll('.decor-item').forEach(el => {
+      el.addEventListener('click', () => setDecor(false));
+    });
+  }
+  // 整站壁纸入口：装扮菜单里第二项；游客点了去登录
+  const siteWallEntry = $('siteWallEntry');
+  if (siteWallEntry) siteWallEntry.onclick = () => openSiteWallpaperModal();
+  // 外观主题（2026-11-28 从头像菜单挪来）：按钮是静态的，绑定不能待在 renderAuthBox 的登录分支里，
+  // 否则游客点了没反应。主题只存在本机，不需要登录。
+  const themeBtn = $('themeBtn');
+  if (themeBtn) themeBtn.onclick = () => openThemeModal();
   if (paintLayer) {
-    const paintFrame = $('paintFrame');
-    let paintLoaded = false;
-    const openPaint = () => {
+    const paintFrame = $('paintFrame'), paintWp = $('paintWp'),
+      paintUnwall = $('paintUnwall'), paintWall = $('paintWall');
+    let paintLoaded = false, unloadTimer = 0, paintTrigger = null;
+    let wallReqId = 0, wallTimer = 0;
+    const finishWall = () => {
+      clearTimeout(wallTimer); wallTimer = 0;
+      if (paintWall) { paintWall.disabled = false; paintWall.textContent = '设为壁纸'; }
+    };
+    const openPaint = trigger => {
+      clearTimeout(unloadTimer);   // 快速收/开时别让上一次的 about:blank 把新纸清掉
+      paintTrigger = trigger || null;
       if (window.closeBotPanel) window.closeBotPanel();
       paintLayer.classList.add('on');
       paintLayer.setAttribute('aria-hidden', 'false');
-      // 纸面把壁纸整层盖住了，底下那两层全屏动画纯属空转（11-25 用户反馈卡顿），暂停掉
       document.body.classList.add('paint-sheet-open');
       if (!paintLoaded) {
         // 纸色跟着当前主题（2026-11-25）：把 --bg 传给 /paint，纸面和站点底色一致，滑下来才没有白边
         const bg = (getComputedStyle(document.documentElement).getPropertyValue('--bg') || '').trim();
+        paintFrame.onload = () => {
+          if (!paintLayer.classList.contains('on')) return;
+          try { paintFrame.focus({ preventScroll: true }); } catch (_) { paintFrame.focus(); }
+        };
         paintFrame.src = '/paint' + (/^#[0-9a-f]{6}$/i.test(bg) ? '?paper=' + encodeURIComponent(bg) : '');
         paintLoaded = true;
+      } else {
+        try { paintFrame.focus({ preventScroll: true }); } catch (_) {}
       }
     };
     const closePaint = () => {
@@ -25548,15 +25831,31 @@ function setupInstall() {
       paintLayer.setAttribute('aria-hidden', 'true');
       document.body.classList.remove('paint-sheet-open');
       // 过渡完再卸 iframe：画不占内存，下次打开是一张新纸（「换纸」本来就是常态）
-      setTimeout(() => { paintFrame.src = 'about:blank'; paintLoaded = false; }, 420);
+      clearTimeout(unloadTimer);
+      unloadTimer = setTimeout(() => {
+        if (paintLayer.classList.contains('on')) return;
+        paintFrame.src = 'about:blank'; paintLoaded = false;
+      }, 420);
+      if (paintTrigger && document.contains(paintTrigger)) {
+        try { paintTrigger.focus({ preventScroll: true }); } catch (_) {}
+      }
+      paintTrigger = null;
     };
     document.addEventListener('click', e => {
       const t = e.target.closest && e.target.closest('.paint-open');
       if (!t) return;
       e.preventDefault();
-      paintLayer.classList.contains('on') ? closePaint() : openPaint();
+      paintLayer.classList.contains('on') ? closePaint() : openPaint(t);
     });
     $('paintClose').onclick = closePaint;
+    // 焦点不在 iframe 里时（比如刚点开、还没 load），Esc 也能收笔；iframe 内 Esc 仍是换纸。
+    // 若此时有更高层的弹窗抢着焦点，别连它一起收掉——只处理纸面自己 / 触发按钮 / body。
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape' || !paintLayer.classList.contains('on')) return;
+      const ae = document.activeElement;
+      if (ae && ae !== document.body && !paintLayer.contains(ae) && ae !== paintTrigger) return;
+      closePaint();
+    }, true);
     // 开着纸面时点了站内链接（头部导航 / 页脚 / 正文里都有）：先收纸再走路由。
     // 捕获阶段跑在路由劫持之前；头部里除了「落笔成画」自己的按钮，其它一律收纸。
     document.addEventListener('click', e => {
@@ -25572,40 +25871,79 @@ function setupInstall() {
     // aurora 光斑由 body.paint-wp 淡出，画就在首屏露出来。取消壁纸 = 清存储回到原来的底。
     // 2026-11-25：壁纸从「不透明白纸 JPEG」换成「透明墨层 WebP」，存储 key 升一版；
     // 旧值必须主动清掉，否则回访者看到的还是白底图，会以为没改。
+    // 2026-11-27：请求带 id + busy 态 + 15s 兜底；子页编码失败也会回执，按钮不会假死。
     const WP_KEY = 'dm_paint_wp2', WP_KEY_OLD = 'dm_paint_wp';
-    const paintWp = $('paintWp'), paintUnwall = $('paintUnwall'), paintWall = $('paintWall');
     const applyWp = data => {
+      paintWpActive = !!data;
       if (!data) {
         paintWp.hidden = true; paintWp.style.backgroundImage = '';
         document.body.classList.remove('paint-wp');
-        if (paintUnwall) paintUnwall.hidden = true;
+        syncWallpaperChrome();
         return;
       }
       paintWp.style.backgroundImage = `url("${data}")`;
       paintWp.hidden = false;
       document.body.classList.add('paint-wp');
-      if (paintUnwall) paintUnwall.hidden = false;
+      syncWallpaperChrome();
+    };
+    clearPaintWpFn = () => {
+      try { localStorage.removeItem(WP_KEY); } catch { /* 存储被禁就当没壁纸 */ }
+      applyWp(null);
     };
     try {
       localStorage.removeItem(WP_KEY_OLD);
-      const saved = localStorage.getItem(WP_KEY);
+      // 账号壁纸优先：选过整站壁纸就把本机残留的墨层清掉，别两次刷新后在底下叠一张
+      const saved = SITE_WALL_KEY ? null : localStorage.getItem(WP_KEY);
+      if (SITE_WALL_KEY) localStorage.removeItem(WP_KEY);
       if (saved) applyWp(saved);
     } catch { /* 存储被禁就当没壁纸 */ }
     if (paintWall) paintWall.onclick = () => {
-      if (!paintLoaded) return;   // 纸还没灌进来，没什么可设
-      paintFrame.contentWindow.postMessage({ type: 'dm-paint-wall-req' }, location.origin);
+      if (!paintLoaded || paintWall.disabled) return;   // 纸还没灌进来，没什么可设
+      wallReqId++;
+      paintWall.disabled = true; paintWall.textContent = '生成中…';
+      clearTimeout(wallTimer);
+      wallTimer = setTimeout(() => {
+        finishWall(); showToast('生成慢了点，再点一次试试', undefined, 'err');
+      }, 15000);
+      try {
+        paintFrame.contentWindow.postMessage({ type: 'dm-paint-wall-req', id: wallReqId }, location.origin);
+      } catch (_) {
+        finishWall(); showToast('这张画没能生成壁纸，再试一次', undefined, 'err');
+      }
     };
     if (paintUnwall) paintUnwall.onclick = () => {
-      try { localStorage.removeItem(WP_KEY); } catch { /* 同上 */ }
-      applyWp(null);
+      // 现在铺的是账号壁纸就走接口取消；否则还是清本机那张墨层
+      if (SITE_WALL_KEY) { saveSiteWallpaper(''); return; }
+      clearPaintWpFn();
       showToast('壁纸取消了，换回原来的底', undefined, 'ok');
     };
     window.addEventListener('message', e => {
       if (e.origin !== location.origin || e.source !== paintFrame.contentWindow) return;
-      if (!e.data || e.data.type !== 'dm-paint-wallpaper' || !e.data.data) return;
-      try { localStorage.setItem(WP_KEY, e.data.data); }
-      catch { showToast('这张画太大存不下，换个简单点的画面再试', undefined, 'err'); return; }
-      applyWp(e.data.data);
+      const d = e.data; if (!d) return;
+      if (d.type === 'dm-paint-wall-fail') {
+        if (d.id && d.id !== wallReqId) return;
+        finishWall(); showToast('这张画没能生成壁纸，再试一次', undefined, 'err'); return;
+      }
+      if (d.type !== 'dm-paint-wallpaper' || !d.data) return;
+      if (d.id && d.id !== wallReqId) return;
+      try { localStorage.setItem(WP_KEY, d.data); }
+      catch { finishWall(); showToast('这张画太大存不下，换个简单点的画面再试', undefined, 'err'); return; }
+      // 一次只留一张：这张画上墙，账号里那张实景壁纸就得退掉（失败也不影响本机这张）
+      if (SITE_WALL_KEY) {
+        SITE_WALL_KEY = '';
+        document.body.classList.remove('site-wallpaper');
+        const layer = $('siteWallpaper');
+        if (layer) { layer.hidden = true; layer.style.backgroundImage = ''; }
+        syncWallpaperChrome(); syncSiteWallPick();
+        if (state.user) fetch('/api/me/site-wallpaper', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wallpaper: '' })
+        }).then(r => r.json()).then(x => {
+          if (state.user) state.user.siteWallpaper = '';
+          saveMeSnapshot();
+        }).catch(() => {});
+      }
+      applyWp(d.data); finishWall();
       showToast('设好了，这就是站里的壁纸', undefined, 'ok');
     });
   }
@@ -26378,7 +26716,7 @@ function tasksGuestHtml() {
       <div class="task-hero-txt">
         <span class="task-kicker">任务中心</span>
         <b class="task-hero-title">登录后开始做任务，账号任务最多 <em>850</em> 盏灯火等你领</b>
-        <p>把 GitHub、微信绑到账号上、把账号设置好，或者去酒馆发第一条帖子，都能一次性领灯火。按法规要求要做的实名核验也在这里：先留个手机号，通道开放后验证一次就到账。邀请朋友来投稿还有一份更大的奖励，愿意带人就带，不带也不影响用。</p>
+        <p>把 GitHub、微信绑到账号上、把账号设置好，或者去酒馆发第一条帖子，都能一次性领灯火。按法规要求要做的实名核验也在这里：第一次发布不用管，第二次发布前验证一次手机号即可。邀请朋友来投稿还有一份更大的奖励，愿意带人就带，不带也不影响用。</p>
         <div class="task-guest-actions"><button type="button" class="task-btn" data-task-login>登录 / 注册</button></div>
       </div>
       <span class="task-hero-lamp">${ic('lamp')}</span>
@@ -26390,7 +26728,7 @@ function tasksGuestHtml() {
         ${row('github', '绑定 GitHub', 200, '一键登录；作品填了仓库的，星标奖励能自动同步')}
         ${row('wechat', '绑定微信', 300, '小程序免密登录，手机上看作品、签到都少一步')}
         ${row('chat', '发第一条帖子', 50, '去造梦酒馆说一句话，灯火立刻到账')}
-        ${row('shield', '预留手机号（法规要求）', 300, '按《网络安全法》要求，投稿 / 发帖 / 私信要核验真实身份：现在先留号（不发短信、不花钱），通道开放后验证一次即到账')}
+        ${row('shield', '预留手机号（法规要求）', 300, '按《网络安全法》要求，第二次发布前需核验身份：现在先留号（不发短信、不花钱），通道开放后验证一次即到账')}
       </ul>
     </div>
     ${limitedTaskGuestHtml()}

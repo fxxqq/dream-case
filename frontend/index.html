@@ -54,15 +54,19 @@
   <link rel="stylesheet" href="/style.css" />
   <!-- 右上角胶囊的等宽数字字体（2026-11-26）：登录用户首绘就有数字，提前 warm 起来，
        避免 font-display:swap 先落回雅黑再跳一格。只 preload 登录态用到的两个字重。 -->
-  <link rel="preload" href="/fonts/SpaceGrotesk-400.woff2" as="font" type="font/woff2" crossorigin />
-  <link rel="preload" href="/fonts/SpaceGrotesk-600.woff2" as="font" type="font/woff2" crossorigin />
+  <!-- 与 style.css 的 @font-face 用同一份带 ?v=1 的地址，命中 1 年 immutable 且不会重复下载 -->
+  <link rel="preload" href="/fonts/SpaceGrotesk-400.woff2?v=1" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/SpaceGrotesk-600.woff2?v=1" as="font" type="font/woff2" crossorigin />
   <!-- 小住客动效：与 /mascots 换形象页共用同一份，必须在 style.css 之后 -->
   <link rel="stylesheet" href="/mascots.css" />
+  <!-- icons.js 刻意保持同步：下面的首绘登录区快照与末尾的兜底水合都要在解析期拿到 window.Icons，
+       改 defer 会让首绘先出无图标头部再跳一下。58KB，代价远小于主脚本。 -->
   <script src="/icons.js"></script>
-  <!-- Umami 统计（Umami Cloud）：defer 加载不阻塞；SPA 路由切换由 umami 自动追踪 history 变化。
-       preconnect 提前把 DNS + TLS 握手做掉，省一次完整往返（2026-11-25）。 -->
-  <link rel="preconnect" href="https://analytics.umami.is" crossorigin />
-  <script defer src="https://analytics.umami.is/script.js" data-website-id="96b6aaa5-bc4f-4f33-8af4-fc294f577e0b"></script>
+  <!-- Umami 统计（自建 v5pc.com/tongji，2026-11-28 从 Cloud 迁过来）：defer 不阻塞解析，
+       SPA 路由切换由脚本自己拦截 history，不用手动 track。preconnect 提前把 DNS + TLS 握手做掉。
+       录制脚本 recorder.js 不放这里，挪到 body 末尾等首屏之后按需注入（见文件底部）。 -->
+  <link rel="preconnect" href="https://v5pc.com" crossorigin />
+  <script defer src="https://v5pc.com/tongji/script.js" data-website-id="c6bedb7a-6b8c-4e0b-b2b2-1c68ca7b78c7"></script>
   <!-- 谷歌广告 AdSense（2026-11-27）：async 不阻塞渲染；大陆访问加载失败也只是静默失败，不影响页面。
        这份壳覆盖所有 SPA 页面（首页/榜单/吧/详情/作者页…），实际展示什么广告由 AdSense 后台的自动广告配置决定。 -->
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5526491839331555"
@@ -70,10 +74,15 @@
 </head>
 <body>
 
-<!-- 落笔成画·壁纸层（2026-11-23）：纸面里点「设为壁纸」后，画就铺在这层（app.js 收 postMessage 存 localStorage）。
+<!-- 落笔成画·壁纸层（2026-11-23，11-27 调融合）：纸面里点「设为壁纸」后，画就铺在这层（app.js 收 postMessage 存 localStorage）。
      z-index:-1 钉在整页内容底下 + pointer-events:none——纯背景，绝不挡点击；卡片是白底自动盖住，
-     首页 aurora 光斑由 body.paint-wp 淡出让画在首屏露出来。取消壁纸走纸面右上角那颗「取消壁纸」。 -->
+     首页 aurora 光斑由 body.paint-wp 淡出。11-27 起这张画是静态的：底色/四边/柔光都跟当前主题融，
+     不再跑全屏漂移动画。取消壁纸走纸面右上角那颗「取消壁纸」。 -->
 <div id="paintWp" hidden></div>
+
+<!-- 整站壁纸层（2026-11-28）：登录用户在「换壁纸」里挑的实景图铺在这，和上面的落笔成画墨层共用一个槽位。
+     z-index:-1 + pointer-events:none，永远在内容底下；body.site-wallpaper 时头部/页脚加薄纱、aurora 淡出。 -->
+<div id="siteWallpaper" hidden></div>
   <header class="site-header">
     <div class="container header-inner">
       <a class="logo" href="/" data-nav><span class="logo-mark" aria-hidden="true"></span>造梦橱窗</a>
@@ -85,8 +94,8 @@
       <form class="search-box" role="search" onsubmit="return false;">
         <span class="search-icon"><i class="ico" data-ico="search"></i></span>
         <!-- 输入框够长，完整提示常驻默认（不再聚焦才换文案）。
-             2026-11-25 站长截图红箭头指这里：抽象提示太空，带个真实例子让人一眼知道能搜什么。 -->
-        <input id="searchInput" type="search" name="q" autocomplete="off" placeholder="搜作品、作者、关键词，例如「效率工具」" />
+             站长截图红箭头指这里：抽象提示太空，带个真实例子让人一眼知道能搜什么。 -->
+        <input id="searchInput" type="search" name="q" autocomplete="off" placeholder="搜作品、作者、关键词，例如「开源作品」" />
         <!-- 手机端覆盖层展开时的「取消」按钮（PC 隐藏） -->
         <button type="button" class="search-cancel" id="searchCancel">取消</button>
         <!-- 聚焦时下拉：最近搜索（本地记住）+ 在搜这些（站点真实分类） -->
@@ -175,6 +184,35 @@
         </div>
         <!-- 手机端菜单是底部抽屉，这层半透明遮罩负责「点别处收起」 -->
         <div class="pub-mask" id="pubMask" hidden></div>
+      </div>
+
+      <!-- 装扮入口（2026-11-28）：落笔成画 + 整站壁纸合成一颗按钮，跟铃铛同款收在头栏右侧。
+           原先两颗 fixed 胶囊钉在 header 下缘、压着卡片，站长说突兀；现在不再悬浮占位。
+           菜单里「落笔成画」沿用 .paint-open 那套开纸逻辑，壁纸沿用 #siteWallEntry；
+           手机端头部整条隐藏，落笔成画仍走小住客面板，壁纸本来就只有桌面入口。 -->
+      <div class="decor-wrap" id="decorWrap">
+        <button type="button" class="decor-btn" id="decorBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="decorMenu"
+                title="装扮：落笔成画 / 整站壁纸">
+          <i class="ico" data-ico="palette"></i>
+        </button>
+        <div class="decor-menu" id="decorMenu" role="menu" aria-label="装扮" hidden>
+          <button type="button" class="decor-item paint-open" role="menuitem">
+            <span class="decor-ico di-paint"><i class="ico" data-ico="edit"></i></span>
+            <span class="decor-txt"><b>落笔成画</b><em>点一个字，现场挥毫成水墨画</em></span>
+          </button>
+          <button type="button" class="decor-item" id="siteWallEntry" role="menuitem"
+                  title="挑一张壁纸铺满整站（只对你自己生效）">
+            <span class="decor-ico di-wall"><i class="ico" data-ico="image"></i></span>
+            <span class="decor-txt"><b id="siteWallEntryText">换壁纸</b><em>挑一张铺在所有页面背后</em></span>
+          </button>
+          <!-- 外观主题（2026-11-28 从头像菜单挪来）：三件美化事都收在这一颗按钮里；
+               id 沿用 themeBtn，app.js 里原有的 openThemeModal 绑定不用动。 -->
+          <button type="button" class="decor-item" id="themeBtn" role="menuitem"
+                  title="换一套配色，只在这台设备上生效">
+            <span class="decor-ico di-theme"><i class="ico" data-ico="palette"></i></span>
+            <span class="decor-txt"><b>外观主题</b><em>换个配色，只在这台设备上生效</em></span>
+          </button>
+        </div>
       </div>
 
       <!-- 预置「登录 / 注册」按钮：游客刷新时首绘就有它，不用等 /api/me 回来才蹦出来；
@@ -280,9 +318,9 @@
              不开新业务、不重复出现；id heroSubmitLink 跟着搬，setupHeader 的绑定不用改。
              手机端（≤640px）沿用小程序口径，这行整个不显示。 -->
         <div class="hero-links" id="heroLinks">
-          <button type="button" class="hero-link hero-link-go" id="heroSubmitLink" title="提交你的作品">提交作品<span class="hl-arrow" aria-hidden="true">›</span></button>
-          <a class="hero-link hero-link-go" href="/bar" title="去造梦酒馆投递灵感">投递灵感<span class="hl-arrow" aria-hidden="true">›</span></a>
-          <a class="hero-link hero-link-go" href="/open" title="站外收录的开源项目，只放外链">开源好物<span class="hl-arrow" aria-hidden="true">›</span></a>
+          <button type="button" class="hero-link hero-link-go" id="heroSubmitLink" title="提交你的作品">提交作品<span class="hl-arrow" aria-hidden="true">→</span></button>
+          <a class="hero-link hero-link-go" href="/bar" title="去造梦酒馆投递灵感">投递灵感<span class="hl-arrow" aria-hidden="true">→</span></a>
+          <a class="hero-link hero-link-go" href="/open" title="站外收录的开源项目，只放外链">开源好物<span class="hl-arrow" aria-hidden="true">→</span></a>
         </div>
         <!-- 大家在找：2026-11-14 从酒馆热搜榜搬来——「搜」归搜索区，酒馆只留想法。
              只放站内搜得到的词（点了落空结果是坑人的），12 条全出：种子词贴「热」、
@@ -1348,15 +1386,7 @@
     <a class="tab-item" href="/me" data-tab="me" data-nav><img class="tab-ico t-off" src="/tabbar/wode-gray.png" alt="" /><img class="tab-ico t-on" src="/tabbar/wode-purple.png" alt="" /><span>我的</span></a>
   </nav>
 
-  <!-- 落笔成画入口（2026-11-23）：首页右上角一颗常驻小胶囊（站长定的：header 导航里不放）。
-       点开同一张纸面；画好后纸面里「设为壁纸」可把画铺成全站背景。
-       手机端隐藏，入口走小住客面板那扇门；/paint 直达仍保留。原作 github.com/ns2250225/ink（MIT）。
-       2026-11-24：纸面里那颗「摘壁纸」改叫「取消壁纸」，口径跟按钮一致。 -->
-  <button type="button" class="paint-entry paint-open" title="点一个字，现场挥毫成一幅水墨画；画好还能设成站里的壁纸">
-    <i class="ico" data-ico="edit"></i>落笔成画
-  </button>
-
-  <!-- 落笔成画的纸面层（2026-11-23）：点右上角胶囊/小住客面板那扇门，
+  <!-- 落笔成画的纸面层（2026-11-23）：点头栏「装扮」菜单 / 小住客面板那扇门，
        宣纸从 header 底下滑出铺满。z-index 92：盖过底栏（80）/回顶按钮（89）/右下浮标（90），
        让位给发布菜单（95）和各弹窗（90+/9999）。header 保持可见可点，等于「画长在 header 下面」。
        默认零加载：iframe 不带 src，第一次点开才灌 /paint（app.js），收起时卸掉。 -->
@@ -1553,7 +1583,7 @@
             <span class="ai-fill-caret" aria-hidden="true"></span>
           </button>
           <div class="ai-feed-body" id="aiFeedBody" hidden>
-            <p class="ai-fill-tip">复制这段话粘给你的 AI 助手（WorkBuddy / Trae / Qoder / ChatGPT / Claude / 元宝…都行），它会照 <a href="/skill.md" target="_blank" rel="noopener">投稿说明书</a> 替你完成投稿、把作品送进审核。登录后展开这里：<b>已有密钥自动带出，没有就直接生成</b>，点按钮就能复制；没登录会先提示登录，不想登录直接在下面投稿走人工审核。密钥<b>只对投稿生效</b>，动不了你的账号；感觉泄露了就换一把新的。</p>
+            <p class="ai-fill-tip">复制这段话粘给你的 AI 助手（WorkBuddy / Trae / Qoder / ChatGPT / Claude / 元宝…都行），它会照 <a href="/skill.md" target="_blank" rel="noopener">投稿说明书</a> 替你完成投稿、把作品送进审核。资料不用先整理成表格：一段简介、官网链接，或者一篇介绍它的文章链接，有哪个给哪个；链接打不开就把正文贴过去。登录后展开这里：<b>已有密钥自动带出，没有就直接生成</b>，点按钮就能复制；没登录会先提示登录，不想登录直接在下面投稿走人工审核。密钥<b>只对投稿生效</b>，动不了你的账号；感觉泄露了就换一把新的。</p>
             <input type="text" id="aiFeedKey" maxlength="56" autocomplete="off" spellcheck="false"
                    placeholder="这里会自动带出或生成你的投稿密钥，不用手动填" />
             <div class="ai-fill-actions">
@@ -2299,7 +2329,7 @@
         </div>
         <p class="nick-tip">
           给 AI 的投稿说明书：<a href="/skill.md" target="_blank" rel="noopener">zm94.com/skill.md</a>——
-          把这个链接发给 AI（或让它直接读这个地址），再补上你的密钥和产品资料，剩下的它来办。
+          把这个链接发给 AI（或让它直接读这个地址），再补上你的密钥；资料随手给一个就行——一段简介、官网链接，或者一篇介绍它的文章链接，剩下的它来办。
           拿不准你的 AI 能不能干、或手头只有一篇文章想让它解析？看人读版指南：<a href="/skill-guide.md" target="_blank" rel="noopener">zm94.com/skill-guide.md</a>。
         </p>
       </div>
@@ -2508,7 +2538,7 @@
         <h2>要注册一下吗？</h2>
       </div>
       <div class="choice-list">
-        <p><b>微信扫码</b>投稿：手机确认后自动建号，<b>不用填注册表单</b>，作品立即上线；已填的内容和图片都留在表单里。按法规要求，首次发布前仍需核验一次手机号。</p>
+        <p><b>微信扫码</b>投稿：手机确认后自动建号，<b>不用填注册表单</b>，作品立即上线；已填的内容和图片都留在表单里。按法规要求，第二次发布前需核验一次手机号。</p>
         <p><b>注册 / 登录后</b>提交：作品<b>立即上线</b>（免审核），之后还能随时编辑、管理作品。</p>
         <p><b>不注册</b>也能提交：作品先进入<b>人工审核</b>，通过后才会展示，通常几小时内处理完。</p>
       </div>
@@ -3088,8 +3118,8 @@
           <input type="password" name="password" id="regPass" required minlength="6" autocomplete="new-password" />
           <button type="button" class="pw-eye" id="regPassEye" tabindex="-1" title="显示 / 隐藏密码"><span class="ico" data-ico="eye"></span></button>
         </div>
-        <!-- 手机实名（网络安全法第 24 条）：短信通道开通时才显示（/api/sms.status.required），
-             没开通时整个区块藏起来、注册走原来的两栏，代码可以先上线不改变任何行为 -->
+        <!-- 手机实名（网络安全法第 24 条）：2026-11-28 起注册不再收手机号，
+             改到第二次发布前弹核验窗；此区块保留仅为兼容旧模板，始终隐藏 + 禁用。 -->
         <div id="regSmsRow" style="display:none">
           <label>手机号（实名核验，之后登录不再验）</label>
           <input type="tel" name="phone" id="regPhone" maxlength="11" inputmode="numeric" autocomplete="tel" placeholder="11 位大陆手机号" />
@@ -3130,8 +3160,8 @@
   </div>
   </template>
 
-  <!-- 绑手机弹窗：投稿 / 酒馆发帖 / 私信这些「发布内容」的动作前，还没核验过手机号的
-       存量用户在这里补一次（核验一次永久有效）。浏览、点赞、收藏一律不拦。 -->
+  <!-- 绑手机弹窗：第二次发布（作品 / 帖子 / 回应 / 私信 / 想法）前，还没核验过手机号的
+       用户在这里补一次（核验一次永久有效）。第一次发布、浏览、点赞、收藏一律不拦。 -->
   <template id="dm-tpl-phoneModal" data-modal-root>
   <div class="modal-mask" id="phoneModal" style="display:none">
     <div class="modal phone-modal">
@@ -3139,7 +3169,7 @@
         <h2>完成实名核验</h2>
         <button class="close-btn" id="closePhoneModal" type="button" title="关闭">✕</button>
       </div>
-      <p class="form-hint" id="phoneModalHint">按法规要求，发布内容前需要核验一次真实身份。手机号仅用于核验，加密保存，之后不再需要验证。</p>
+      <p class="form-hint" id="phoneModalHint">按《网络安全法》等法规要求，信息发布、即时通讯服务需核验真实身份。你已经完成第一次发布，继续发布前请核验一次手机号：仅用于身份核验、加密保存，之后不再需要验证。</p>
       <form id="phoneForm" novalidate>
         <label>手机号</label>
         <input type="tel" id="bindPhone" maxlength="11" inputmode="numeric" autocomplete="tel" placeholder="11 位大陆手机号" />
@@ -3166,7 +3196,7 @@
         <h2>预留手机号</h2>
         <button class="close-btn" id="closePhoneKeep" type="button" title="关闭">✕</button>
       </div>
-      <p class="form-hint" id="phoneKeepHint">按《网络安全法》要求，投稿、发帖、私信需核验真实身份。这里先只登记号码，<b>不发短信、不产生费用</b>，也还不算实名；等核验通道开放，你会收到一条验证短信，验证通过后灯火立刻到账。号码加密保存，只用于身份核验与账号找回，不对外展示、不发营销短信。</p>
+      <p class="form-hint" id="phoneKeepHint">按《网络安全法》要求，发布内容需核验真实身份：第一次发布不打扰，第二次发布前验证一次手机号。这里先只登记号码，<b>不发短信、不产生费用</b>，也还不算实名；等核验通道开放，你会收到一条验证短信，验证通过后灯火立刻到账。号码加密保存，只用于身份核验与账号找回，不对外展示、不发营销短信。</p>
       <form id="phoneKeepForm" novalidate>
         <label>手机号</label>
         <input type="tel" id="keepPhone" maxlength="11" inputmode="numeric" autocomplete="tel" placeholder="11 位大陆手机号" />
@@ -3285,9 +3315,12 @@
   </div>
   <!-- 八音盒引擎（2026-11-18）：曲库 + 现场合成 + 生成器，几十 KB 的活全在 musicbox.js，
        这里只留「点一下」的门。放在 mascots.js 之前，ACTS 那段脚本用得到它。 -->
-  <script src="/musicbox.js"></script>
-  <script src="/mascots.js"></script>
+  <!-- 小住客面板用得到这两个库，但不参与首绘：加 defer 不阻塞解析；紧随其后的初始化脚本
+       已挪进 DOMContentLoaded，届时两个库必定执行完。 -->
+  <script defer src="/musicbox.js"></script>
+  <script defer src="/mascots.js"></script>
   <script>
+  document.addEventListener('DOMContentLoaded', function () {
   (function(){
     var bot = document.getElementById('siteBot'), panel = document.getElementById('botPanel');
     if (!bot || !panel) return;
@@ -4018,6 +4051,7 @@
     }
     bindEyes();
   })();
+  });
   </script>
 
   <template id="dm-tpl-feedbackModal" data-modal-root>
@@ -4392,18 +4426,50 @@
     </div>
   </div>
 
-  <!-- 全页图标兜底水合：赶在 qrcode/app.js 这些同步脚本开始下载之前执行，
-       此时整棵 DOM 已解析完，首绘前把所有 data-ico 占位符填掉（幂等，重复调无害） -->
+  <!-- 全页图标兜底水合：icons.js 是同步脚本，此处整棵 DOM 已解析完、首绘前先把所有
+       data-ico 占位符填掉（幂等，重复调无害），defer 的 app.js 会晚一步执行 -->
   <!-- 首屏直出的启动数据（本周精选 + 广告位）：服务端按这次请求生成，app.js 读它原地接管，
        不再为首屏多发两个请求。没有直出数据时这里什么都不输出，app.js 照旧走接口。 -->
   <!--SSR_BOOT-->
   <script>if (window.Icons) Icons.hydrate();</script>
   <!-- 首屏用不到的四个脚本交给 app.js 按需加载（点分享卡 / 发短信验证码 / 选投稿二维码 / 开安装弹窗时才拉）：
        qrcode、qr-guard、sharecard、captcha。原来它们和 app.js 一起同步下载，白占首屏带宽和解析时间。
-       md.js 留在同步列表：投稿简介的文案生成会直接用 MiniMd.plain，拿不到就退化成原始 markdown 文本。 -->
-  <script src="/md.js"></script>
-  <!-- app.js 保持挂在 body 末尾（2026-11-15 试过挪到 head + defer：解析期间就开始下，
-       实测 Fast3G 下跟阻塞的 style.css 抢带宽，FCP 反而晚 0.4~2.7s，已回退）。 -->
-  <script src="/app.js"></script>
+       md.js 与 app.js 仍按原顺序放 body 末尾，只加 defer：解析不被阻塞，两者先后次序不变
+       （MiniMd.plain 要在 app.js 启动前就位）。没挪到 head —— 2026-11-15 实测那样会和 style.css
+       抢带宽，Fast3G 下 FCP 反而晚 0.4~2.7s。 -->
+  <script defer src="/md.js"></script>
+  <script defer src="/app.js"></script>
+  <!-- 回放/热图录制脚本（recorder.js，190KB）：刻意不进 head，等 DOMContentLoaded 且浏览器空闲再注入，
+       不跟首屏的 style.css / app.js / 字体抢带宽和主线程。它依赖 script.js 暴露的 window.umami，
+       主脚本没加载成功就别白拉这 190KB；本地调试和后台标签页也跳过。
+       采样率 0.15、遮罩 moderate、时长 5 分钟是服务端 /api/websites/<id>/recorder 下发，
+       由 Umami 后台配置，这里不重复抽样（重复会把实际采样率乘小）。 -->
+  <script>
+  (function () {
+    function inject() {
+      if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;
+      if (document.visibilityState === 'hidden') return;
+      if (!window.umami || typeof window.umami.getSession !== 'function') return;
+      var websiteId = 'c6bedb7a-6b8c-4e0b-b2b2-1c68ca7b78c7';
+      // 动态插入的 script，currentScript 不一定靠谱，给 recorder 一份等价配置兜底
+      window.umamiConfig = Object.assign({}, window.umamiConfig, {
+        websiteId: websiteId,
+        // 自建实例挂在 /tongji 子路径下，API 是 /tongji/api/...，写成根域会拉不到配置（404 后录制静默失效）
+        hostUrl: 'https://v5pc.com/tongji'
+      });
+      var s = document.createElement('script');
+      s.src = 'https://v5pc.com/tongji/recorder.js';
+      s.setAttribute('data-website-id', websiteId);
+      s.setAttribute('data-host-url', 'https://v5pc.com/tongji');
+      document.body.appendChild(s);
+    }
+    function whenIdle() {
+      if (window.requestIdleCallback) window.requestIdleCallback(inject, { timeout: 2500 });
+      else setTimeout(inject, 1500);
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', whenIdle, { once: true });
+    else whenIdle();
+  })();
+  </script>
 </body>
 </html>

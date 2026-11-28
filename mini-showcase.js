@@ -81,10 +81,11 @@ const STYLE = `
  * 生成整页 HTML（自包含：样式内联，只有一个统计用的小脚本）
  * @param {object} p
  * @param {string} p.seoHead  由 seo.head() 生成的 <head> 内容
+ * @param {string} p.trackHead 可选：站点统计 loader（百度统计，load 后空闲再拉，不影响首屏）
  * @param {object} p.w        作品对象（publicWork 的产物）
  * @param {boolean} p.inWeChat  访客是不是在微信里打开（微信里文案要变成「长按识别」）
  */
-function render({ seoHead, w, inWeChat }) {
+function render({ seoHead, w, inWeChat, trackHead = '' }) {
   const title = w.title || '未命名作品';
   const locked = !!w.lampLocked;
   // 作品形态分两路：小程序作品讲「扫码进小程序打开作品」；iOS / 安卓（App）作品
@@ -177,6 +178,7 @@ function render({ seoHead, w, inWeChat }) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   ${seoHead}
+  ${trackHead}
   ${STYLE}
 </head>
 <body>
